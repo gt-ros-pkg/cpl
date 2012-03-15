@@ -1,0 +1,10 @@
+*/build/*
+*so
+_*.py
+*/srv_gen/*
+*/msg_gen/*
+*/bin/*
+*Action.msg
+*Feedback.msg
+*Result.msg
+*Goal.msg
