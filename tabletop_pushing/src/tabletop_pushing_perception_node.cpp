@@ -209,7 +209,8 @@ class TabletopPushingPerceptionNode
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
                            this);
     push_pose_server_ = n_.advertiseService(
-        "get_push_pose", &TabletopPushingPerceptionNode::getPushVector, this);
+        "get_learning_push_pose",
+        &TabletopPushingPerceptionNode::learnPushCallback, this);
     table_location_server_ = n_.advertiseService(
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
@@ -351,7 +352,7 @@ class TabletopPushingPerceptionNode
    *
    * @return true if successfull, false otherwise
    */
-  bool getPushVector(LearnPush::Request& req, LearnPush::Response& res)
+  bool learnPushCallback(LearnPush::Request& req, LearnPush::Response& res)
   {
     if ( have_depth_data_ )
     {
@@ -365,7 +366,7 @@ class TabletopPushingPerceptionNode
       }
       else if (req.analyze_previous)
       {
-        res.no_push = true;
+        res = getAnalysisVector(req.push_angle);
       }
       else
       {
@@ -391,25 +392,23 @@ class TabletopPushingPerceptionNode
         objs, cur_color_frame_.size(), workspace_frame_);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
 
-    // Assume 1 currently
-    // int chosen_idx = 0;
-    // int max_size = 0;
-    // for (unsigned int i = 0; i < objs.size(); ++i)
-    // {
-    //   if (objs[i].cloud.size() > max_size)
-    //   {
-    //     max_size = objs[i].cloud.size() > max_size;
-    //     chosen_idx = i;
-    //   }
-    // }
-
+    // Assume we care about the biggest currently
+    int chosen_idx = 0;
+    int max_size = 0;
+    for (unsigned int i = 0; i < objs.size(); ++i)
+    {
+      if (objs[i].cloud.size() > max_size)
+      {
+        max_size = objs[i].cloud.size();
+        chosen_idx = i;
+      }
+    }
     if (objs.size() == 0)
     {
       PushVector p;
       ROS_WARN_STREAM("No objects found");
       return p;
     }
-    int chosen_idx = rand() % objs.size();
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
@@ -507,9 +506,43 @@ class TabletopPushingPerceptionNode
                     << p.start_point.y << ", " << p.start_point.z << ")");
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
     ROS_INFO_STREAM("Push angle: " << p.push_angle);
+    prev_centroid_ = objs[chosen_idx].centroid;
     return p;
   }
 
+  LearnPush::Response getAnalysisVector(double desired_push_angle)
+  {
+    // Segment objects
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
+    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+        objs, cur_color_frame_.size(), workspace_frame_);
+    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
+
+    // Assume we care about the biggest currently
+    int chosen_idx = 0;
+    int max_size = 0;
+    for (unsigned int i = 0; i < objs.size(); ++i)
+    {
+      if (objs[i].cloud.size() > max_size)
+      {
+        max_size = objs[i].cloud.size();
+        chosen_idx = i;
+      }
+    }
+    LearnPush::Response res;
+    res.no_push = true;
+    if (objs.size() == 0)
+    {
+      ROS_WARN_STREAM("No objects found");
+      return res;
+    }
+
+    Eigen::Vector4f moved_centroid = objs[chosen_idx].centroid - prev_centroid_;
+    res.moved.x = moved_centroid[0];
+    res.moved.y = moved_centroid[1];
+    res.moved.z = moved_centroid[2];
+    return res;
+  }
   /**
    * ROS Service callback method for determining the location of a table in the
    * scene
@@ -604,7 +637,6 @@ class TabletopPushingPerceptionNode
       disp_img.convertTo(push_out_img, CV_8UC3, 255);
       cv::imwrite(push_out_name.str(), push_out_img);
     }
-
   }
 
   /**
@@ -666,6 +698,7 @@ class TabletopPushingPerceptionNode
   bool recording_input_;
   int record_count_;
   int callback_count_;
+  Eigen::Vector4f prev_centroid_;
 };
 
 int main(int argc, char ** argv)
