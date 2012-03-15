@@ -52,7 +52,7 @@ OVERHEAD_PULL = 3
 
 class TabletopExecutive:
 
-    def __init__(self, use_fake_push_pose=False):
+    def __init__(self, use_singulation, use_learning, use_fake_push_pose=False):
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         # TODO: Determine workspace limits for max here
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
@@ -95,9 +95,6 @@ class TabletopExecutive:
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
                                             -0.27)
         # Setup service proxies
-        # Singulation Push proxy
-        self.singulation_push_pose_proxy = rospy.ServiceProxy(
-            'get_singulation_push_pose', SingulationPush)
         self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                      GripperPush)
         self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
@@ -125,15 +122,101 @@ class TabletopExecutive:
         self.raise_and_look_proxy = rospy.ServiceProxy('raise_and_look',
                                                        RaiseAndLook)
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
+
         # Bookkeeping fof fake pushes
         self.use_fake_push_pose = use_fake_push_pose
         self.push_count = 0
+        if use_singulation:
+            self.init_singulation()
+        if use_learning:
+            self.init_learning()
+
+    def init_singulation(self):
+        # Singulation Push proxy
+        self.singulation_push_pose_proxy = rospy.ServiceProxy(
+            'get_singulation_push_pose', SingulationPush)
+
+    def init_learning(self):
+        # Singulation Push proxy
+        self.learning_push_pose_proxy = rospy.ServiceProxy(
+            'get_learning_push_pose', LearnPush)
 
     def run_singulation(self, num_pushes=1, use_guided=True):
         # Get table height and raise to that before anything else
         self.raise_and_look()
         # Initialize push pose
         self.initialize_singulation_push_pose();
+
+        # NOTE: Should exit before reaching num_pushes, this is just a backup
+        for i in xrange(num_pushes):
+            pose_res = self.request_singulation_push(use_guided)
+            # raw_input('Hit any key to continue')
+            # continue
+            if pose_res is None:
+                rospy.logwarn("pose_res is None. Exiting pushing");
+                break
+            if pose_res.no_push:
+                rospy.loginfo("No push. Exiting pushing.");
+                break
+            rospy.loginfo('Performing push #' + str(i+1))
+            # Decide push based on the orientation returned
+            rospy.loginfo('Push start_point: (' + str(pose_res.start_point.x) +
+                          ', ' + str(pose_res.start_point.y) +
+                          ', ' + str(pose_res.start_point.z) + ')')
+            rospy.loginfo('Push angle: ' + str(pose_res.push_angle))
+            rospy.loginfo('Push dist: ' + str(pose_res.push_dist))
+
+            # TODO: Make this a function
+            # Choose push behavior
+            if fabs(pose_res.push_angle) > self.use_pull_angle_thresh:
+                push_opt = OVERHEAD_PULL
+            elif pose_res.start_point.x < self.use_overhead_x_thresh:
+                push_opt = OVERHEAD_PUSH
+            elif fabs(pose_res.push_angle) > self.use_sweep_angle_thresh:
+                push_opt = GRIPPER_SWEEP
+            else:
+                push_opt = GRIPPER_PUSH
+
+            # TODO: Make this a function
+            # Choose arm
+            if (fabs(pose_res.start_point.y) > self.use_same_side_y_thresh or
+                pose_res.start_point.x > self.use_same_side_x_thresh):
+                if (pose_res.start_point.y < 0):
+                    which_arm = 'r'
+                    rospy.loginfo('Setting arm to right because of limits')
+                else:
+                    which_arm = 'l'
+                    rospy.loginfo('Setting arm to left because of limits')
+            elif pose_res.push_angle > 0:
+                which_arm = 'r'
+                rospy.loginfo('Setting arm to right because of angle')
+            else:
+                which_arm = 'l'
+                rospy.loginfo('Setting arm to left because of angle')
+
+            push_dist = pose_res.push_dist
+            push_dist = max(min(push_dist, self.max_push_dist),
+                            self.min_push_dist)
+            if push_opt == GRIPPER_PUSH:
+                self.gripper_push_object(push_dist, which_arm, pose_res)
+            if push_opt == GRIPPER_SWEEP:
+                self.sweep_object(push_dist, which_arm, pose_res)
+            if push_opt == OVERHEAD_PUSH:
+                self.overhead_push_object(push_dist, which_arm, pose_res)
+            if push_opt == OVERHEAD_PULL:
+                self.overhead_pull_object(push_dist, which_arm, pose_res)
+            rospy.loginfo('Done performing push behavior.\n')
+
+        if not (pose_res is None):
+            rospy.loginfo('Singulated objects: ' + str(pose_res.singulated))
+            rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
+                          ' objects')
+
+    def run_learning(self, num_pushes=1):
+        # Get table height and raise to that before anything else
+        self.raise_and_look()
+        # Initialize push pose
+        # self.initialize_singulation_push_pose();
 
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
@@ -245,6 +328,7 @@ class TabletopExecutive:
             pose_res.start_point.z = -0.25
             pose_res.push_dist = 0.15
             pose_res.push_angle = 0.75*pi
+        push_count += 1
         return pose_res
 
     def initialize_singulation_push_pose(self):
@@ -414,6 +498,11 @@ class TabletopExecutive:
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
 if __name__ == '__main__':
-    node = TabletopExecutive(False)
-    node.run_singulation(50)
-    #node.run_singulation(100, False)
+    use_learning = True
+    use_singulation = False
+    use_guided = True
+    node = TabletopExecutive(use_singulation, use_learning)
+    if use_singulation:
+        node.run_singulation(50, use_guided)
+    else:
+        node.run_learning()
