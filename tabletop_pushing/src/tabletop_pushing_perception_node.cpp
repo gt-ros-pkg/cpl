@@ -299,7 +299,8 @@ class TabletopPushingPerceptionNode
     // Debug stuff
     if (autorun_pcl_segmentation_)
     {
-      getPushVector(0.0);
+      float rand_angle = randf()*2.0*M_PI-M_PI;
+      getPushVector(rand_angle);
     }
 
     // Display junk
@@ -386,23 +387,29 @@ class TabletopPushingPerceptionNode
   {
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
+    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+        objs, cur_color_frame_.size(), workspace_frame_);
+    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
+
     // Assume 1 currently
-    int chosen_idx = 0;
-    int max_size = 0;
-    for (unsigned int i = 0; i < objs.size(); ++i)
-    {
-      if (objs[i].cloud.size() > max_size)
-      {
-        max_size = objs[i].cloud.size() > max_size;
-        chosen_idx = i;
-      }
-    }
+    // int chosen_idx = 0;
+    // int max_size = 0;
+    // for (unsigned int i = 0; i < objs.size(); ++i)
+    // {
+    //   if (objs[i].cloud.size() > max_size)
+    //   {
+    //     max_size = objs[i].cloud.size() > max_size;
+    //     chosen_idx = i;
+    //   }
+    // }
+
     if (objs.size() == 0)
     {
       PushVector p;
       ROS_WARN_STREAM("No objects found");
       return p;
     }
+    int chosen_idx = rand() % objs.size();
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
@@ -448,31 +455,51 @@ class TabletopPushingPerceptionNode
         max_x_idx = i;
       }
     }
-    double x_dist = max_x - min_x;
-    double y_dist = max_y - min_y;
+    const double y_dist_obs = max_y - min_y;
+    const double x_dist_obs = max_x - min_x;
+    int start_idx = min_x_idx;
+    int end_idx = max_x_idx;
 
-    // TODO: is this the right way to pick between x and y?
-    int max_idx = (x_dist > y_dist) ? max_x_idx : max_y_idx;
-    int min_idx = (x_dist > y_dist) ? min_x_idx : min_y_idx;
-
-    // NOTE: This is NOT the right way to do this need to reason about the
-    // direction of the push (i.e. needs to go through the centroid...)
-    if (p.push_angle > 0)
+    if (x_dist_obs > y_dist_obs)
     {
-      p.start_point.x = intersection.at(min_idx).x;
-      p.start_point.y = intersection.at(min_idx).y;
-      p.start_point.z = intersection.at(min_idx).z;
+      // Use X index
+      if (push_unit_vec[0] > 0)
+      {
+        // Use min
+        start_idx = min_x_idx;
+        end_idx = max_x_idx;
+      }
+      else
+      {
+        // use max
+        start_idx = max_x_idx;
+        end_idx = min_x_idx;
+      }
     }
     else
     {
-      p.start_point.x = intersection.at(max_idx).x;
-      p.start_point.y = intersection.at(max_idx).y;
-      p.start_point.z = intersection.at(max_idx).z;
+      // Use Y index
+      if (push_unit_vec[1] > 0)
+      {
+        // Use min
+        start_idx = min_y_idx;
+        end_idx = max_y_idx;
+      }
+      else
+      {
+        // use max
+        start_idx = max_y_idx;
+        end_idx = min_y_idx;
+      }
+
     }
+    p.start_point.x = intersection.at(start_idx).x;
+    p.start_point.y = intersection.at(start_idx).y;
+    p.start_point.z = intersection.at(start_idx).z;
 
     // Get push distance
     p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(
-        intersection.at(max_idx), intersection.at(min_idx)));
+        intersection.at(start_idx), intersection.at(end_idx)));
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
     callback_count_++;
@@ -643,6 +670,9 @@ class TabletopPushingPerceptionNode
 
 int main(int argc, char ** argv)
 {
+  int seed = time(NULL);
+  srand(seed);
+  std::cout << "Rand seed is: " << seed << std::endl;
   ros::init(argc, argv, "tabletop_pushing_perception_node");
   ros::NodeHandle n;
   TabletopPushingPerceptionNode perception_node(n);
