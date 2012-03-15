@@ -454,6 +454,9 @@ class TabletopPushingPerceptionNode
     // TODO: is this the right way to pick between x and y?
     int max_idx = (x_dist > y_dist) ? max_x_idx : max_y_idx;
     int min_idx = (x_dist > y_dist) ? min_x_idx : min_y_idx;
+
+    // NOTE: This is NOT the right way to do this need to reason about the
+    // direction of the push (i.e. needs to go through the centroid...)
     if (p.push_angle > 0)
     {
       p.start_point.x = intersection.at(min_idx).x;
