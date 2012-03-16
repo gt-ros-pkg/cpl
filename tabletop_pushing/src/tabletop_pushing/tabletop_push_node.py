@@ -125,7 +125,6 @@ class TabletopPushNode:
                                                         use_slip, use_slip)
 
 
-        self.push_pose_proxy = rospy.ServiceProxy('get_push_pose', PushPose)
         self.gripper_push_service = rospy.Service('gripper_push',
                                                   GripperPush,
                                                   self.gripper_push_action)

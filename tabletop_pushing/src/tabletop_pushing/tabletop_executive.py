@@ -49,7 +49,7 @@ GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
 OVERHEAD_PUSH = 2
 OVERHEAD_PULL = 3
-_OFFLINE = True
+_OFFLINE = False
 
 class TabletopExecutive:
 
@@ -212,7 +212,7 @@ class TabletopExecutive:
             rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
                           ' objects')
 
-    def run_learning(self, num_pushes=1):
+    def run_learning(self, num_trials, push_angle, push_dist):
         # Get table height and raise to that before anything else
         if not _OFFLINE:
             self.raise_and_look()
@@ -220,28 +220,20 @@ class TabletopExecutive:
         self.initialize_learning_push();
 
         # TODO: Get angle and distance correctly...
-        push_angle = 0.0 # radians
-        push_dist = 0.4 # meters
-        push_options = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP, OVERHEAD_PULL]
+        push_options = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP]
         arms = ['l', 'r']
-        rospy.loginfo('push opt is: ' + str(push_options))
         # NOTE: Should exit before reaching num_pushes, this is just a backup
-        for i in xrange(num_pushes):
-            rospy.loginfo('Place item at new initial pose')
+        rospy.loginfo('Place item at new initial pose')
+        for t in xrange(num_trials):
             for arm in arms:
-                rospy.loginfo('arm is: ' + str(arm))
-                rospy.loginfo('push dist is: ' + str(push_dist))
-                rospy.loginfo('push angle is: ' + str(push_angle))
                 for push_opt in push_options:
-                    rospy.loginfo('arm is: ' + str(arm))
-                    rospy.loginfo('push opt is: ' + str(int(push_opt)))
-                    rospy.loginfo('push dist is: ' + str(push_dist))
-                    rospy.loginfo('push angle is: ' + str(push_angle))
                     res = self.learning_trial(arm, int(push_opt), push_angle,
                                               push_dist)
                     if not res:
                         self.finish_learning()
                         return
+        self.finish_learning()
+        return
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
@@ -264,7 +256,6 @@ class TabletopExecutive:
                       str(push_vector_res.push.start_point.y) + ', ' +
                       str(push_vector_res.push.start_point.z) + ')')
         rospy.loginfo('Push angle: ' + str(push_vector_res.push.push_angle))
-        rospy.loginfo('Returned push dist: ' + str(push_vector_res.push.push_dist))
         rospy.loginfo('Push dist: ' + str(push_dist))
 
         if not _OFFLINE:
@@ -279,16 +270,14 @@ class TabletopExecutive:
         rospy.loginfo('Done performing push behavior.')
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
-        # TODO: Save all the push vector and analysis to disk
         rospy.loginfo('Push: ' + str(push_opt))
         rospy.loginfo('Arm: ' + str(which_arm))
-        rospy.loginfo('Init (X,Y,Theta): ' + str(push_vector_res.centroid.x) + ' ' +
-                       str(push_vector_res.centroid.y) + ' ' + str(push_angle))
-        rospy.loginfo('Moved (X,Y,): ' + str(analysis_res.centroid.x) + ' ' +
-                       str(analysis_res.centroid.y) + ' ' + str(push_angle))
+        rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
+                      ', ' + str(push_vector_res.centroid.y) + ', ' +
+                      str(push_angle))
+        rospy.loginfo('Moved (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
+                       str(analysis_res.centroid.y) + ')')
         # NOTE: Unsaed stuff
-        # push_vector_res.centroid.z, theta, push_dist,
-        # analysis_res.moved.x, analysis_res.moved.y, analysis_res.moved.z,
         data_line = str(push_vector_res.centroid.x) + ' ' + \
             str(push_vector_res.centroid.y) + ' ' + \
             str(push_vector_res.centroid.z) + ' ' + str(push_angle) + ' ' +\
@@ -514,8 +503,12 @@ if __name__ == '__main__':
     use_learning = True
     use_singulation = False
     use_guided = True
+    num_trials = 3
+    push_angle = 0.0 # radians
+    push_dist = 0.15 # meters
+    max_pushes = 50
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
-        node.run_singulation(50, use_guided)
+        node.run_singulation(max_pushes, use_guided)
     else:
-        node.run_learning(8)
+        node.run_learning(num_trials, push_angle, push_dist)
