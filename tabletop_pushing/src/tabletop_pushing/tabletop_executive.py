@@ -135,6 +135,7 @@ class TabletopExecutive:
 
     def init_learning(self):
         # Singulation Push proxy
+        # TODO: Setup save file
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
 
@@ -215,72 +216,49 @@ class TabletopExecutive:
         # Initialize push pose
         self.initialize_learning_push();
 
+        # TODO: Get angle and distance correctly...
+        push_angle = 0.0 # radians
+        push_dist = 0.4 # meters
+        push_opts = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP, OVERHEAD_PULL]
+        arms = ['l', 'r']
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
-            # TODO: Get angle correctly...
-            raw_input('Hit any key to continue')
-            push_angle = 0.0
-            push_res = self.request_learning_push(push_angle)
-            # continue
-            if push_res is None:
-                rospy.logwarn("push_res is None. Exiting pushing");
-                break
-            if push_res.no_push:
-                rospy.loginfo("No push. Exiting pushing.");
-                break
-            rospy.loginfo('Performing push #' + str(i+1))
-            # Decide push based on the orientation returned
-            rospy.loginfo('Push start_point: (' + str(push_res.start_point.x) +
-                          ', ' + str(push_res.start_point.y) +
-                          ', ' + str(push_res.start_point.z) + ')')
-            rospy.loginfo('Push angle: ' + str(push_res.push_angle))
-            rospy.loginfo('Push dist: ' + str(push_res.push_dist))
+            rospy.loginfo('Place item at new initial pose')
+            for arm in arms:
+                for push_opt in push_opts:
+                    res = perform_learning_trial(arm, push_opt, push_angle, push_dist)
 
-            # TODO: Make this a function
-            # Choose push behavior
-            if fabs(push_res.push_angle) > self.use_pull_angle_thresh:
-                push_opt = OVERHEAD_PULL
-            elif push_res.start_point.x < self.use_overhead_x_thresh:
-                push_opt = OVERHEAD_PUSH
-            elif fabs(push_res.push_angle) > self.use_sweep_angle_thresh:
-                push_opt = GRIPPER_SWEEP
-            else:
-                push_opt = GRIPPER_PUSH
+    def perform_learning_trial(self, which_arm, push_opt, push_angle, push_dist):
+        raw_input('Reset item to inital pose and press any key to continue')
+        push_res = self.request_learning_push(push_angle)
+        if push_res is None:
+            rospy.logwarn("push_res is None. Exiting pushing");
+            break
+        if push_res.no_push:
+            rospy.loginfo("No push. Exiting pushing.");
+            return False
+        # Decide push based on the orientation returned
+        rospy.loginfo('Push start_point: (' + str(push_res.push.start_point.x) +
+                      ', ' + str(push_res.push.start_point.y) +
+                      ', ' + str(push_res.push.start_point.z) + ')')
+        rospy.loginfo('Push angle: ' + str(push_res.push.push_angle))
+        # rospy.loginfo('Returned push dist: ' + str(push_res.push_dist))
+        rospy.loginfo('Push dist: ' + str(push_dist))
 
-            # TODO: Make this a function
-            # Choose arm
-            if (fabs(push_res.start_point.y) > self.use_same_side_y_thresh or
-                push_res.start_point.x > self.use_same_side_x_thresh):
-                if (push_res.start_point.y < 0):
-                    which_arm = 'r'
-                    rospy.loginfo('Setting arm to right because of limits')
-                else:
-                    which_arm = 'l'
-                    rospy.loginfo('Setting arm to left because of limits')
-            elif push_res.push_angle > 0:
-                which_arm = 'r'
-                rospy.loginfo('Setting arm to right because of angle')
-            else:
-                which_arm = 'l'
-                rospy.loginfo('Setting arm to left because of angle')
-
-            push_dist = push_res.push_dist
-            push_dist = max(min(push_dist, self.max_push_dist),
-                            self.min_push_dist)
-            if push_opt == GRIPPER_PUSH:
-                self.gripper_push_object(push_dist, which_arm, push_res)
-            if push_opt == GRIPPER_SWEEP:
-                self.sweep_object(push_dist, which_arm, push_res)
-            if push_opt == OVERHEAD_PUSH:
-                self.overhead_push_object(push_dist, which_arm, push_res)
-            if push_opt == OVERHEAD_PULL:
-                self.overhead_pull_object(push_dist, which_arm, push_res)
-            rospy.loginfo('Done performing push behavior.\n')
-
-        if not (push_res is None):
-            rospy.loginfo('Singulated objects: ' + str(push_res.singulated))
-            rospy.loginfo('Final estimate of ' + str(push_res.num_objects) +
-                          ' objects')
+        if push_opt == GRIPPER_PUSH:
+            self.gripper_push_object(push_dist, which_arm, push_res.push)
+        if push_opt == GRIPPER_SWEEP:
+            self.sweep_object(push_dist, which_arm, push_res.push)
+        if push_opt == OVERHEAD_PUSH:
+            self.overhead_push_object(push_dist, which_arm, push_res.push)
+        if push_opt == OVERHEAD_PULL:
+            self.overhead_pull_object(push_dist, which_arm, push_res.push)
+        rospy.loginfo('Done performing push behavior.')
+        analysis_res = self.request_learning_analysis()
+        rospy.loginfo('Done getting analysis response.')
+        # TODO: Save analysis to disk
+        # x, y, z, theta, dist, which_arm, push_opt, score
+        # TODO: save initial (x,y)
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequst()
@@ -300,6 +278,18 @@ class TabletopExecutive:
         push_req.initialize = False
         push_req.analyze_previous = False
         push_req.push_angle = push_angle
+        rospy.loginfo("Calling learning push vector service")
+        try:
+            push_res = self.learning_push_vector_proxy(push_vector_req)
+            return push_res
+        except rospy.ServiceException, e:
+            rospy.logwarn("Service did not process request: %s"%str(e))
+            return None
+
+    def request_learning_analysis(self):
+        push_req = LearnPushRequest()
+        push_req.initialize = False
+        push_req.analyze_previous = True
         rospy.loginfo("Calling learning push vector service")
         try:
             push_res = self.learning_push_vector_proxy(push_vector_req)
