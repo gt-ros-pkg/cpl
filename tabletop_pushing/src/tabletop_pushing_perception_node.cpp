@@ -367,10 +367,11 @@ class TabletopPushingPerceptionNode
       else if (req.analyze_previous)
       {
         res = getAnalysisVector(req.push_angle);
+        res.no_push = true;
       }
       else
       {
-        res.push = getPushVector(req.push_angle);
+        res = getPushVector(req.push_angle);
         res.no_push = false;
       }
     }
@@ -384,7 +385,7 @@ class TabletopPushingPerceptionNode
     return true;
   }
 
-  PushVector getPushVector(double desired_push_angle)
+  LearnPush::Response getPushVector(double desired_push_angle)
   {
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
@@ -403,12 +404,16 @@ class TabletopPushingPerceptionNode
         chosen_idx = i;
       }
     }
+    LearnPush::Response res;
     if (objs.size() == 0)
     {
-      PushVector p;
       ROS_WARN_STREAM("No objects found");
-      return p;
+      return res;
     }
+    res.centroid.x = objs[chosen_idx].centroid[0];
+    res.centroid.y = objs[chosen_idx].centroid[1];
+    res.centroid.z = objs[chosen_idx].centroid[2];
+
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
@@ -507,7 +512,8 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
     ROS_INFO_STREAM("Push angle: " << p.push_angle);
     prev_centroid_ = objs[chosen_idx].centroid;
-    return p;
+    res.push = p;
+    return res;
   }
 
   LearnPush::Response getAnalysisVector(double desired_push_angle)
@@ -530,17 +536,20 @@ class TabletopPushingPerceptionNode
       }
     }
     LearnPush::Response res;
-    res.no_push = true;
     if (objs.size() == 0)
     {
       ROS_WARN_STREAM("No objects found");
       return res;
     }
 
-    Eigen::Vector4f moved_centroid = objs[chosen_idx].centroid - prev_centroid_;
-    res.moved.x = moved_centroid[0];
-    res.moved.y = moved_centroid[1];
-    res.moved.z = moved_centroid[2];
+    Eigen::Vector4f move_vec = objs[chosen_idx].centroid - prev_centroid_;
+    res.moved.x = move_vec[0];
+    res.moved.y = move_vec[1];
+    res.moved.z = move_vec[2];
+    res.centroid.x = objs[chosen_idx].centroid[0];
+    res.centroid.y = objs[chosen_idx].centroid[1];
+    res.centroid.z = objs[chosen_idx].centroid[2];
+
     return res;
   }
   /**

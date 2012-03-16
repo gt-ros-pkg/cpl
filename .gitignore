@@ -8,3 +8,4 @@ _*.py
 *Feedback.msg
 *Result.msg
 *Goal.msg
+*.pyc
