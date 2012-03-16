@@ -2710,7 +2710,7 @@ class ObjectSingulationNode
     sync_.registerCallback(&ObjectSingulationNode::sensorCallback,
                            this);
     push_pose_server_ = n_.advertiseService(
-        "get_singulation_push_pose", &ObjectSingulationNode::getPushPose, this);
+        "get_singulation_push_vector", &ObjectSingulationNode::getPushPose, this);
     table_location_server_ = n_.advertiseService(
         "get_table_location", &ObjectSingulationNode::getTableLocation,
         this);

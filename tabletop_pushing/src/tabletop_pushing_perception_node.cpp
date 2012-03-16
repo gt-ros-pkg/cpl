@@ -209,7 +209,7 @@ class TabletopPushingPerceptionNode
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
                            this);
     push_pose_server_ = n_.advertiseService(
-        "get_learning_push_pose",
+        "get_learning_push_vector",
         &TabletopPushingPerceptionNode::learnPushCallback, this);
     table_location_server_ = n_.advertiseService(
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
