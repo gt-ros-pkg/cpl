@@ -289,7 +289,7 @@ class TabletopExecutive:
         return True
 
     def request_singulation_push(self, use_guided=True):
-        push_vector_req = SingulationPushRequst()
+        push_vector_req = SingulationPushRequest()
         push_vector_req.use_guided = use_guided
         push_vector_req.initialize = False
         push_vector_req.no_push_calc = False
@@ -500,8 +500,8 @@ class TabletopExecutive:
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
 if __name__ == '__main__':
-    use_learning = True
-    use_singulation = False
+    use_learning = False
+    use_singulation = True
     use_guided = True
     num_trials = 3
     push_angle = 0.0 # radians
