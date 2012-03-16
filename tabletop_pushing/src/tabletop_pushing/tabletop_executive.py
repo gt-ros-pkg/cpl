@@ -257,7 +257,9 @@ class TabletopExecutive:
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
         # TODO: Save analysis to disk
-        # x, y, z, theta, dist, which_arm, push_opt, score
+        # push_res.centroid.x, push_res.centroid.y, push_res.centroid.z, theta, dist,
+        # which_arm, push_opt, score, analysis_res.moved.x, analysis_res.moved.y,
+        # analysis_res.moved.z, analysis_res.dist
         # TODO: save initial (x,y)
 
     def request_singulation_push(self, use_guided=True):
