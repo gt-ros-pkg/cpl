@@ -137,7 +137,7 @@ class TabletopExecutive:
 
     def init_learning(self):
         # Singulation Push proxy
-        # TODO: Setup save file
+        self.learn_data_out = file('/u/thermans/data/learn_out.txt', 'a')
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
 
@@ -222,21 +222,35 @@ class TabletopExecutive:
         # TODO: Get angle and distance correctly...
         push_angle = 0.0 # radians
         push_dist = 0.4 # meters
-        push_opts = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP, OVERHEAD_PULL]
+        push_options = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP, OVERHEAD_PULL]
         arms = ['l', 'r']
+        rospy.loginfo('push opt is: ' + str(push_options))
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
             rospy.loginfo('Place item at new initial pose')
             for arm in arms:
-                for push_opt in push_opts:
-                    res = self.learning_trial(arm, push_opt, push_angle,
+                rospy.loginfo('arm is: ' + str(arm))
+                rospy.loginfo('push dist is: ' + str(push_dist))
+                rospy.loginfo('push angle is: ' + str(push_angle))
+                for push_opt in push_options:
+                    rospy.loginfo('arm is: ' + str(arm))
+                    rospy.loginfo('push opt is: ' + str(int(push_opt)))
+                    rospy.loginfo('push dist is: ' + str(push_dist))
+                    rospy.loginfo('push angle is: ' + str(push_angle))
+                    res = self.learning_trial(arm, int(push_opt), push_angle,
                                               push_dist)
                     if not res:
-                        break
+                        self.finish_learning()
+                        return
+
+    def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
+        self.learn_data_out.close()
 
     def learning_trial(self, which_arm, push_opt, push_angle, push_dist):
-        raw_input('Reset item to inital pose and press <Enter> to continue')
+        code_in = raw_input('Reset item to inital pose and press <Enter> to continue: ')
+        if code_in.startswith('q'):
+            return False
         push_vector_res = self.request_learning_push(push_angle)
         if push_vector_res is None:
             rospy.logwarn("push_vector_res is None. Exiting pushing");
@@ -265,19 +279,25 @@ class TabletopExecutive:
         rospy.loginfo('Done performing push behavior.')
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
-        # TODO: Save this analysis to disk
+        # TODO: Save all the push vector and analysis to disk
         rospy.loginfo('Push: ' + str(push_opt))
         rospy.loginfo('Arm: ' + str(which_arm))
-        rospy.loginfo('(X,Y,Theta): ' + str(push_vector_res.centroid.x) + ' ' +
+        rospy.loginfo('Init (X,Y,Theta): ' + str(push_vector_res.centroid.x) + ' ' +
                        str(push_vector_res.centroid.y) + ' ' + str(push_angle))
-        score = self.compute_error_score(push_vector_res, analysis_res)
+        rospy.loginfo('Moved (X,Y,): ' + str(analysis_res.centroid.x) + ' ' +
+                       str(analysis_res.centroid.y) + ' ' + str(push_angle))
         # NOTE: Unsaed stuff
         # push_vector_res.centroid.z, theta, push_dist,
         # analysis_res.moved.x, analysis_res.moved.y, analysis_res.moved.z,
-
-    def compute_error_score(self, push_vector_res, analysis_res):
-        # TODO: get distance of centroid from desired location
-        return 0.0
+        data_line = str(push_vector_res.centroid.x) + ' ' + \
+            str(push_vector_res.centroid.y) + ' ' + \
+            str(push_vector_res.centroid.z) + ' ' + str(push_angle) + ' ' +\
+            str(push_opt) + ' ' + str(which_arm) + ' ' + \
+            str(analysis_res.centroid.x) + ' ' + \
+            str(analysis_res.centroid.y) + ' ' + \
+            str(analysis_res.centroid.z) + '\n'
+        self.learn_data_out.write(data_line)
+        return True
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequst()
@@ -498,4 +518,4 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(50, use_guided)
     else:
-        node.run_learning(50)
+        node.run_learning(8)
