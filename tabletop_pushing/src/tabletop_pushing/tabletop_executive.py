@@ -37,13 +37,13 @@ import actionlib
 import hrl_pr2_lib.linear_move as lm
 import hrl_pr2_lib.pr2 as pr2
 import hrl_lib.tf_utils as tfu
-from geometry_msgs.msg import PoseStamped
 import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs
 import sys
+from push_learning_io import PushLearningIO
 
 GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
@@ -137,7 +137,9 @@ class TabletopExecutive:
 
     def init_learning(self):
         # Singulation Push proxy
-        self.learn_data_out = file('/u/thermans/data/learn_out.txt', 'a')
+        # self.learn_data_out = file('/u/thermans/data/learn_out.txt', 'a')
+        self.learn_io = PushLearningIO()
+        self.learn_io.open_out_file('/u/thermans/data/learn_out.txt')
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
 
@@ -237,7 +239,8 @@ class TabletopExecutive:
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
-        self.learn_data_out.close()
+        # self.learn_data_out.close()
+        self.learn_io.close_out_file()
 
     def learning_trial(self, which_arm, push_opt, push_angle, push_dist):
         code_in = raw_input('Reset item to inital pose and press <Enter> to continue: ')
@@ -277,15 +280,16 @@ class TabletopExecutive:
                       str(push_angle))
         rospy.loginfo('Moved (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
                        str(analysis_res.centroid.y) + ')')
-        # NOTE: Unsaed stuff
-        data_line = str(push_vector_res.centroid.x) + ' ' + \
-            str(push_vector_res.centroid.y) + ' ' + \
-            str(push_vector_res.centroid.z) + ' ' + str(push_angle) + ' ' +\
-            str(push_opt) + ' ' + str(which_arm) + ' ' + \
-            str(analysis_res.centroid.x) + ' ' + \
-            str(analysis_res.centroid.y) + ' ' + \
-            str(analysis_res.centroid.z) + '\n'
-        self.learn_data_out.write(data_line)
+        # data_line = str(push_vector_res.centroid.x) + ' ' + \
+        #     str(push_vector_res.centroid.y) + ' ' + \
+        #     str(push_vector_res.centroid.z) + ' ' + str(push_angle) + ' ' +\
+        #     str(push_opt) + ' ' + str(which_arm) + ' ' + \
+        #     str(analysis_res.centroid.x) + ' ' + \
+        #     str(analysis_res.centroid.y) + ' ' + \
+        #     str(analysis_res.centroid.z) + '\n'
+        # self.learn_data_out.write(data_line)
+        self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
+                                 which_arm, analysis_res.centroid)
         return True
 
     def request_singulation_push(self, use_guided=True):
