@@ -1,5 +1,38 @@
+#!/usr/bin/env python
+# Software License Agreement (BSD License)
+#
+#  Copyright (c) 2012, Georgia Institute of Technology
+#  All rights reserved.
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions
+#  are met:
+#
+#  * Redistributions of source code must retain the above copyright
+#     notice, this list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above
+#     copyright notice, this list of conditions and the following
+#     disclaimer in the documentation and/or other materials provided
+#     with the distribution.
+#  * Neither the name of the Georgia Institute of Technology nor the names of
+#     its contributors may be used to endorse or promote products derived
+#     from this software without specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#  'AS IS' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+#  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+#  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+#  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+#  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+#  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+#  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+#  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+#  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
 from geometry_msgs.msg import Point
+from math import sin, cos, pi, sqrt, fabs
 
 _HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist'
 
@@ -11,6 +44,7 @@ class PushTrial:
         self.push_opt = None
         self.arm = None
         self.push_dist = None
+        self.score = None
 
     def __str__(self):
         return str((self.c_x, self.push_angle, self.push_opt, self.arm, self.c_x_prime, self.push_dist))
@@ -20,35 +54,110 @@ class PushLearningAnalysis:
     def __init__(self):
         self.raw_data = None
         self.io = PushLearningIO()
+        self.compute_push_score = self.compute_push_error_xy
+        # self.compute_push_score = self.compute_push_error_push_dist_diff
+        self.xy_hash_precision = 5.0
 
-    def read_in_data(self, file_name):
-        self.raw_data = self.io.read_in_data_file(file_name)
+    def read_in_push_trials(self, file_name):
+        return self.io.read_in_data_file(file_name)
 
     def show_max_vectors(self):
         pass
 
-    def group_data(self):
-        for d in self.raw_data():
-            # Group by angle
-            pass
+    def group_trials(self, all_trials):
+        # Get error scores for each push
+        angle_map = {}
+        for t in all_trials:
+            t.score = self.compute_push_score(t)
+            angle_key = self.hash_angle(t.push_angle)
+            try:
+                angle_map[angle_key].append(t)
+            except KeyError:
+                angle_map[angle_key] = [t]
+            # print 'len(angle_map)', len(angle_map)
+            # print 'len(angle_map[angle_key])', len(angle_map[angle_key])
+        # TODO: Group different pushes by start centroid
+        groups = []
+        i = 0
+        for angle_key in angle_map:
+            x_map = {}
+            for t in angle_map[angle_key]:
+                x_key, y_key = self.hash_xy(t.c_x.x, t.c_x.y)
+                # Check if x_key exists
+                try:
+                    cur_y_map = x_map[x_key]
+                    # Check if y_key exists
+                    try:
+                        x_map[x_key][y_key].append(t)
+                    except KeyError:
+                        x_map[x_key][y_key] = [t]
+                except KeyError:
+                    y_map = {y_key:[t]}
+                    x_map[x_key] = y_map
+            # Flatten groups
+            for x_key in x_map:
+                for y_key in x_map[x_key]:
+                    groups.append(x_map[x_key][y_key])
+                    # print x_map[x_key][y_key][0]
+                    # print 'len(groups['+str(i)+'])', len(groups[i])
+                    i += 1
+            print 'len(groups)', len(groups)
+        return groups
+
 
     def hash_angle(self, theta):
+        # Group different pushes by push_angle
+        # TODO: Discretize this
         return theta
 
-    def hash_centroid(self, c):
-        # TODO: discretize to .05 meter interval
-        # TODO: Put in two closest bins in x and y directions...
-        return (c.x, c.y)
+    def hash_xy(self, x,y):
+        # Group different pushes by push_angle
+        x_prime = round(x*self.xy_hash_precision)/self.xy_hash_precision
+        y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
+        return (x_prime, y_prime)
 
-    def determine_max_vectors(self, file_name):
-        self.read_in_data(file_name)
-        # TODO: Get error scores for each push
-        # TODO: Group different pushes by push_angle
-        # TODO: Group different pushes by start centroid
-        # TODO: Choose best push for each (angle, centroid) group
+    def determine_best_pushes(self, file_name):
+        all_trials = self.read_in_push_trials(file_name)
+        groups = self.group_trials(all_trials)
+        # TODO: Group multiple trials of same push at a given location
+        # Choose best push for each (angle, centroid) group
+        #best_pushes = {}
+        best_pushes = []
+        for i, group in enumerate(groups):
+            min_score = 200.0 # Meters
+            min_score_push = None
+            for j, t in enumerate(group):
+                if t.score < min_score:
+                    min_score = t.score
+                    min_score_push = t
+            # best_pushes[i] = min_score_push
+            best_pushes.append(min_score_push)
+        return best_pushes
 
-    def compute_push_score(self, push):
-        return 0.0
+    def visualize_push_choices(self, choices):
+        # TODO: Draw these on an image, color coded by choice
+        for c in choices:
+            start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
+            push_angle = self.hash_angle(c.push_angle)
+            print 'Choice for (' + str(start_x) + ', ' + str(start_y) + ', ' +\
+                str(push_angle) + '):', c.push_opt
+    #
+    # Scoring Functions
+    #
+    def compute_push_error_xy(self, push):
+        desired_x = push.c_x.x + cos(push.push_angle)*push.push_dist
+        desired_y = push.c_x.y + sin(push.push_angle)*push.push_dist
+        err_x = desired_x - push.c_x_prime.x
+        err_y = desired_y - push.c_x_prime.y
+        return err_x*err_x+err_y*err_y
+
+    def compute_push_error_push_dist_diff(self, push):
+        desired_x = push.c_x.x + cos(push.push_angle)*push.push_dist
+        desired_y = push.c_x.y + sin(push.push_angle)*push.push_dist
+        d_x = push.c_x_prime.x - push.c_x.x
+        d_y = push.c_x_prime.y - push.c_x.y
+        actual_dist = sqrt(d_x*d_x + d_y*d_y)
+        return fabs(actual_dist - push.push_dist)
 
 class PushLearningIO:
     def __init__(self):
@@ -92,3 +201,10 @@ class PushLearningIO:
 
     def close_out_file(self):
         self.data_out.close()
+
+if __name__ == '__main__':
+    # TODO: Read command line arguments for data file and metric to use
+    pla = PushLearningAnalysis()
+    best_pushes = pla.determine_best_pushes(
+        '/home/thermans/Dropbox/Data/choose_push/batch_out0.txt')
+    pla.visualize_push_choices(best_pushes)
