@@ -1,14 +1,19 @@
 import roslib; roslib.load_manifest('tabletop_pushing')
 from geometry_msgs.msg import Point
 
+_HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist'
+
 class PushTrial:
     def __init__(self):
-        self.c_x = Point()
-        self.c_x_prime = Point()
+        self.c_x = None
+        self.c_x_prime = None
         self.push_angle = None
         self.push_opt = None
         self.arm = None
         self.push_dist = None
+
+    def __str__(self):
+        return str((self.c_x, self.push_angle, self.push_opt, self.arm, self.c_x_prime, self.push_dist))
 
 class PushLearningAnalysis:
 
@@ -62,18 +67,18 @@ class PushLearningIO:
         self.data_out.write(data_line)
 
     def parse_line(self, line):
-        if line.startwith('#'):
+        if line.startswith('#'):
             return None
         l  = line.split()
         # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
-        c_x = Point(float(l[0]), float(l[1]), float(l[2]))
-        push_angle = float(l[3])
-        push_opt = int(l[4])
-        which_arm = l[5]
-        c_x_prime = Point(float(l[6]),float(l[7]),float(l[8]))
-        push_dist = l[9]
-        # TODO: Replace with new struct
-        return (c_x, push_angle, push_opt, which_arm, c_x_prime, push_dist)
+        push = PushTrial()
+        push.c_x = Point(float(l[0]), float(l[1]), float(l[2]))
+        push.push_angle = float(l[3])
+        push.push_opt = int(l[4])
+        push.arm = l[5]
+        push.c_x_prime = Point(float(l[6]),float(l[7]),float(l[8]))
+        push.push_dist = float(l[9])
+        return push
 
     def read_in_data_file(self, file_name):
         data_in = file(file_name, 'r')
@@ -83,7 +88,7 @@ class PushLearningIO:
 
     def open_out_file(self, file_name):
         self.data_out = file(file_name, 'a')
-        # TODO: Write header?
+        self.data_out.write(_HEADER_LINE+'\n')
 
     def close_out_file(self):
         self.data_out.close()
