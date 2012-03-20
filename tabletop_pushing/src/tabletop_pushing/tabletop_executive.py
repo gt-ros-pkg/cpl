@@ -43,7 +43,7 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs
 import sys
-from push_learning_io import PushLearningIO
+from push_learning import PushLearningIO, PushTrial
 
 GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
@@ -289,7 +289,7 @@ class TabletopExecutive:
         #     str(analysis_res.centroid.z) + '\n'
         # self.learn_data_out.write(data_line)
         self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
-                                 which_arm, analysis_res.centroid)
+                                 which_arm, analysis_res.centroid, push_dist)
         return True
 
     def request_singulation_push(self, use_guided=True):
