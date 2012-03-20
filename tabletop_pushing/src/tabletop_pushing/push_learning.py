@@ -33,6 +33,8 @@
 import roslib; roslib.load_manifest('tabletop_pushing')
 from geometry_msgs.msg import Point
 from math import sin, cos, pi, sqrt, fabs
+import cv2
+import numpy
 
 _HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist'
 
@@ -56,7 +58,7 @@ class PushLearningAnalysis:
         self.io = PushLearningIO()
         self.compute_push_score = self.compute_push_error_xy
         # self.compute_push_score = self.compute_push_error_push_dist_diff
-        self.xy_hash_precision = 5.0
+        self.xy_hash_precision = 20.0 # bins/meter
 
     def read_in_push_trials(self, file_name):
         return self.io.read_in_data_file(file_name)
@@ -135,12 +137,22 @@ class PushLearningAnalysis:
         return best_pushes
 
     def visualize_push_choices(self, choices):
-        # TODO: Draw these on an image, color coded by choice
+        # TODO: Draw these on an image, color coded by push option
+        world_min_x = 0.2
+        world_max_x = 1.0
+        world_min_y = -0.5
+        world_max_y = 0.5
+        world_x_dist = world_max_x - world_min_x
+        world_y_dist = world_max_y - world_min_y
+        world_x_bins = world_x_dist*self.xy_hash_precision
+        world_y_bins = world_y_dist*self.xy_hash_precision
+        display = numpy.zeros((world_x_bins, world_y_bins))
         for c in choices:
             start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
             push_angle = self.hash_angle(c.push_angle)
             print 'Choice for (' + str(start_x) + ', ' + str(start_y) + ', ' +\
-                str(push_angle) + '):', c.push_opt
+                str(push_angle) + '):(' + str(c.push_opt) + ', ' + \
+                str(c.arm) + ')'
     #
     # Scoring Functions
     #
