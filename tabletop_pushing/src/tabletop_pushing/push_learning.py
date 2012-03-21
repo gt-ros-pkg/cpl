@@ -58,72 +58,43 @@ class PushLearningAnalysis:
         self.io = PushLearningIO()
         self.compute_push_score = self.compute_push_error_xy
         # self.compute_push_score = self.compute_push_error_push_dist_diff
-        self.xy_hash_precision = 20.0 # bins/meter
-
-    def read_in_push_trials(self, file_name):
-        return self.io.read_in_data_file(file_name)
-
-    def show_max_vectors(self):
-        pass
-
-    def group_trials(self, all_trials):
-        # Get error scores for each push
-        angle_map = {}
-        for t in all_trials:
-            t.score = self.compute_push_score(t)
-            angle_key = self.hash_angle(t.push_angle)
-            try:
-                angle_map[angle_key].append(t)
-            except KeyError:
-                angle_map[angle_key] = [t]
-            # print 'len(angle_map)', len(angle_map)
-            # print 'len(angle_map[angle_key])', len(angle_map[angle_key])
-        # TODO: Group different pushes by start centroid
-        groups = []
-        i = 0
-        for angle_key in angle_map:
-            x_map = {}
-            for t in angle_map[angle_key]:
-                x_key, y_key = self.hash_xy(t.c_x.x, t.c_x.y)
-                # Check if x_key exists
-                try:
-                    cur_y_map = x_map[x_key]
-                    # Check if y_key exists
-                    try:
-                        x_map[x_key][y_key].append(t)
-                    except KeyError:
-                        x_map[x_key][y_key] = [t]
-                except KeyError:
-                    y_map = {y_key:[t]}
-                    x_map[x_key] = y_map
-            # Flatten groups
-            for x_key in x_map:
-                for y_key in x_map[x_key]:
-                    groups.append(x_map[x_key][y_key])
-                    # print x_map[x_key][y_key][0]
-                    # print 'len(groups['+str(i)+'])', len(groups[i])
-                    i += 1
-            print 'len(groups)', len(groups)
-        return groups
-
-
-    def hash_angle(self, theta):
-        # Group different pushes by push_angle
-        # TODO: Discretize this
-        return theta
-
-    def hash_xy(self, x,y):
-        # Group different pushes by push_angle
-        x_prime = round(x*self.xy_hash_precision)/self.xy_hash_precision
-        y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
-        return (x_prime, y_prime)
+        self.xy_hash_precision = 5.0 # bins/meter
 
     def determine_best_pushes(self, file_name):
         all_trials = self.read_in_push_trials(file_name)
-        groups = self.group_trials(all_trials)
-        # TODO: Group multiple trials of same push at a given location
+        loc_groups = self.group_trials(all_trials)
+
+        # Group multiple trials of same push at a given location
+        groups = []
+        for i, group in enumerate(loc_groups):
+            push_opt_dict = {}
+            for j,t in enumerate(group):
+                opt_key = self.hash_push_opt(t)
+                try:
+                    push_opt_dict[opt_key].append(t)
+                except KeyError:
+                    push_opt_dict[opt_key] = [t]
+            # Average errors for each push key
+            mean_group = []
+            for opt_key in push_opt_dict:
+                mean_score = 0
+                for push in push_opt_dict[opt_key]:
+                    mean_score += push.score
+                mean_score = mean_score / float(len(push_opt_dict[opt_key]))
+                # Make a fake mean push
+                mean_push = PushTrial()
+                mean_push.score = mean_score
+                mean_push.c_x = Point(0,0,0)
+                mean_push.c_x.x, mean_push.c_x.y = self.hash_xy(
+                    push_opt_dict[opt_key][0].c_x.x,
+                    push_opt_dict[opt_key][0].c_x.y)
+                mean_push.push_angle = self.hash_angle(
+                    push_opt_dict[opt_key][0].push_angle)
+                mean_push.arm, mean_push.push_opt = self.unhash_opt_key(opt_key)
+                mean_group.append(mean_push)
+            groups.append(mean_group)
+
         # Choose best push for each (angle, centroid) group
-        #best_pushes = {}
         best_pushes = []
         for i, group in enumerate(groups):
             min_score = 200.0 # Meters
@@ -132,9 +103,44 @@ class PushLearningAnalysis:
                 if t.score < min_score:
                     min_score = t.score
                     min_score_push = t
-            # best_pushes[i] = min_score_push
             best_pushes.append(min_score_push)
         return best_pushes
+
+    def group_trials(self, all_trials):
+        # Get error scores for each push
+        # Group scored pushes by push angle
+        angle_dict = {}
+        for t in all_trials:
+            t.score = self.compute_push_score(t)
+            angle_key = self.hash_angle(t.push_angle)
+            try:
+                angle_dict[angle_key].append(t)
+            except KeyError:
+                angle_dict[angle_key] = [t]
+        # Group different pushes by start centroid
+        groups = []
+        i = 0
+        for angle_key in angle_dict:
+            x_dict = {}
+            for t in angle_dict[angle_key]:
+                x_key, y_key = self.hash_xy(t.c_x.x, t.c_x.y)
+                # Check if x_key exists
+                try:
+                    cur_y_dict = x_dict[x_key]
+                    # Check if y_key exists
+                    try:
+                        x_dict[x_key][y_key].append(t)
+                    except KeyError:
+                        x_dict[x_key][y_key] = [t]
+                except KeyError:
+                    y_dict = {y_key:[t]}
+                    x_dict[x_key] = y_dict
+            # Flatten groups
+            for x_key in x_dict:
+                for y_key in x_dict[x_key]:
+                    groups.append(x_dict[x_key][y_key])
+                    i += 1
+        return groups
 
     def visualize_push_choices(self, choices):
         # TODO: Draw these on an image, color coded by push option
@@ -146,13 +152,40 @@ class PushLearningAnalysis:
         world_y_dist = world_max_y - world_min_y
         world_x_bins = world_x_dist*self.xy_hash_precision
         world_y_bins = world_y_dist*self.xy_hash_precision
-        display = numpy.zeros((world_x_bins, world_y_bins))
+        # display = numpy.zeros((world_x_bins, world_y_bins))
         for c in choices:
             start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
             push_angle = self.hash_angle(c.push_angle)
             print 'Choice for (' + str(start_x) + ', ' + str(start_y) + ', ' +\
-                str(push_angle) + '):(' + str(c.push_opt) + ', ' + \
-                str(c.arm) + ')'
+                str(push_angle) + '): (' + str(c.arm) + ', ' + \
+                str(c.push_opt) + ') : ' + str(c.score)
+
+    #
+    # IO Functions
+    #
+    def read_in_push_trials(self, file_name):
+        return self.io.read_in_data_file(file_name)
+
+    #
+    # Hashing Functions
+    #
+    def hash_angle(self, theta):
+        # Group different pushes by push_angle
+        # TODO: Discretize this
+        return theta
+
+    def hash_xy(self, x,y):
+        # Group different pushes by push_angle
+        x_prime = round(x*self.xy_hash_precision)/self.xy_hash_precision
+        y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
+        return (x_prime, y_prime)
+
+    def hash_push_opt(self, push):
+        return push.arm+str(push.push_opt)
+
+    def unhash_opt_key(self, opt_key):
+        return (opt_key[0], int(opt_key[1]))
+
     #
     # Scoring Functions
     #
