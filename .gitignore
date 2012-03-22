@@ -9,3 +9,4 @@ _*.py
 *Result.msg
 *Goal.msg
 *.pyc
+*/CMakeFiles/*

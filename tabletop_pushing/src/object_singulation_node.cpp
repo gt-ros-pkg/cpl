@@ -1165,6 +1165,7 @@ class ObjectSingulation
     {
       Boundary b;
       b.assign(edges[i].begin(), edges[i].end());
+      boundaries.push_back(b);
     }
     return boundaries;
   }

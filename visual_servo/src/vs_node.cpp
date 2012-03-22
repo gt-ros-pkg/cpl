@@ -146,23 +146,25 @@ class VisualServoNode
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
   }
 
-
-
-    cv::Mat convertImageFrameToCameraFrame(cv::Mat in) 
+    cv::Mat transformTwist(cv::Mat in) 
     {
-      cv::Mat out  = cv::Mat::zeros(6,1,CV_32F);
-      if (in.rows != 6 || in.cols != 1)
+      cv::Mat out  = cv::Mat::zeros(3,1,CV_32F);
+      if (in.rows != 3 || in.cols != 1)
       { 
         return out;
       }
-      // XYZ in camera coords and robot control coord are different
-      out.at<float>(0,0) =  in.at<float>(2,0);
-      out.at<float>(1,0) = -in.at<float>(0,0);
-      out.at<float>(2,0) = -in.at<float>(1,0);
-      out.at<float>(3,0) =  in.at<float>(5,0);
-      out.at<float>(4,0) = -in.at<float>(3,0);
-      out.at<float>(5,0) = -in.at<float>(4,0);
+      out = k_inv_ * in;
       return out;
+    }
+
+
+    cv::Mat projectImageToPoint(cv::Point in) 
+    {
+      cv::Mat mIn  = cv::Mat(3,1,CV_32F);
+      mIn.at<float>(0,0) = in.x; 
+      mIn.at<float>(1,0) = in.y; 
+      mIn.at<float>(2,0) = 1; 
+      return k_inv_ * mIn;
     }
 
     bool getTwist(VisualServoTwist::Request &req, VisualServoTwist::Response &res)
@@ -251,8 +253,9 @@ class VisualServoNode
       {
         cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
         camera_initialized_ = true;
+        k_inv_ = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K)).inv();
+        k_inv_.convertTo(k_inv_, CV_32F);
       }
-
       /** Preparing the image **/             
       cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
       cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
@@ -330,24 +333,9 @@ class VisualServoNode
      **/
     std::vector<cv::Point> setDesiredPosition()
     {
+
       std::vector<cv::Point> desired; desired.clear();
       // Looking up the hand
-      cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
-          tape_hue_threshold_);
-      std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-      std::vector<cv::Point> pts = getMomentCoordinates(ms);
-
-      // in case we can't find the hand
-      if (pts.size() != 3){
-        ROS_WARN("Need to find the hand for reference. Retrying");
-        return desired;
-      }
-
-      // look up the position of these hands in pc
-      pcl::PointXYZ pt0 = cur_point_cloud_.at(pts.at(0).x, pts.at(0).y);
-      pcl::PointXYZ pt1 = cur_point_cloud_.at(pts.at(1).x, pts.at(1).y);
-      pcl::PointXYZ pt2 = cur_point_cloud_.at(pts.at(2).x, pts.at(2).y);
-
       // Setting the Desired Location of the wrist
       // Desired location: center of the screen
       pcl::PointXYZ origin = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2);
@@ -379,17 +367,15 @@ class VisualServoNode
         cv::Mat depth_frame, std::vector<cv::Point> pts) 
     {
       cv::Mat ret = cv::Mat::zeros(6,1, CV_32F);
-      if (pts.size() == 3){
-        cv::Mat error_mat = cv::Mat::zeros(6,1, CV_32F);
-
+      if (pts.size() == 3)
+      {
+        cv::Mat error_mat;;
         for (int i = 0; i < 3; i++) {
           // Error = Desired location in image - Current position in image
-          error_mat.at<float>(i*2,0) 	= pts.at(i).x - desired.at(i).x ; 
-          error_mat.at<float>(i*2+1,0)  = pts.at(i).y - desired.at(i).y ;
+          cv::Mat error = projectImageToPoint(pts.at(i)) - projectImageToPoint(desired.at(i)); 
+          error = error.rowRange(0,2); // taking just x and y, but no z
+          error_mat.push_back(error);
         }
-
-        // testing: buffing error seem to make velocity stable near the match 
-        // error_mat *= 10;
 
         cv::Mat im = getInteractionMatrix(depth_frame, pts);
 
@@ -414,9 +400,9 @@ class VisualServoNode
         }
         // Gain Matrix K
         cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
+        /*
         gain.at<float>(0,0) = 5e-2;
         gain.at<float>(1,1) = 5e-2;
-        /*
         gain.at<float>(2,2) = gain_vel_;
         gain.at<float>(3,3) = gain_rot_;
         gain.at<float>(4,4) = gain_rot_;
@@ -424,7 +410,6 @@ class VisualServoNode
          */
         // K x IIM x ERROR = TWIST
         ret = gain*(iim*error_mat);
-
 
 #ifdef DEBUG_MODE
 #ifdef PRINT_TWISTS
@@ -732,6 +717,7 @@ class VisualServoNode
     std::vector<cv::Point> desired_locations_;
     cv::Mat cur_twist_; 
     cv::Mat desired_jacobian_;
+    cv::Mat k_inv_;
 };
 
 int main(int argc, char ** argv)
