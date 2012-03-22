@@ -221,7 +221,6 @@ class TabletopExecutive:
         # Initialize push pose
         self.initialize_learning_push();
 
-        # TODO: Get angle and distance correctly...
         push_options = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP]
         arms = ['l', 'r']
         # NOTE: Should exit before reaching num_pushes, this is just a backup
