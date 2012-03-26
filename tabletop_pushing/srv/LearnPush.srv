@@ -3,4 +3,6 @@ bool analyze_previous
 float64 push_angle
 ---
 tabletop_pushing/PushVector push
+geometry_msgs/Vector3 moved
+geometry_msgs/Point centroid
 bool no_push

@@ -146,27 +146,6 @@ class VisualServoNode
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
   }
 
-    cv::Mat transformTwist(cv::Mat in) 
-    {
-      cv::Mat out  = cv::Mat::zeros(3,1,CV_32F);
-      if (in.rows != 3 || in.cols != 1)
-      { 
-        return out;
-      }
-      out = k_inv_ * in;
-      return out;
-    }
-
-
-    cv::Mat projectImageToPoint(cv::Point in) 
-    {
-      cv::Mat mIn  = cv::Mat(3,1,CV_32F);
-      mIn.at<float>(0,0) = in.x; 
-      mIn.at<float>(1,0) = in.y; 
-      mIn.at<float>(2,0) = 1; 
-      return k_inv_ * mIn;
-    }
-
     bool getTwist(VisualServoTwist::Request &req, VisualServoTwist::Response &res)
     {
       // Do not respond to service call when the node got no sensor callback
@@ -201,12 +180,12 @@ class VisualServoNode
 
       //cv::Mat temp = convertImageFrameToCameraFrame(twist); 
       cv::Mat temp = twist.clone(); 
-      
+
       // have to transform twist in camera frame to torso_lift_link
       tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
       tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));
       tf::StampedTransform transform; 
-      
+
       ros::Time now = ros::Time(0);
       try {
         tf::TransformListener listener;
@@ -240,12 +219,11 @@ class VisualServoNode
       return true;
     }
 
-    /*
-     * Experiment: visual servo
+    /**
      * Given a fixed engineered setting, we are taping robot hand with
      * three painter's tape and use those three features to do the image-based
      * visual servoing
-     **/
+     */
     void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
         const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     {
@@ -303,7 +281,7 @@ class VisualServoNode
       // if desired point is not initialized
       if (desired_locations_.size() != 3 || countNonZero(desired_jacobian_)==0) {
         desired_locations_ = setDesiredPosition();
-        desired_jacobian_ = getInteractionMatrix(cur_depth_frame_, desired_locations_);
+        desired_jacobian_ = getMeterInteractionMatrix(cur_depth_frame_, desired_locations_);
         // returned jacobian is null, which means we need to crap out
         if (desired_locations_.size() != 3 || countNonZero(desired_jacobian_) == 0) {
           ROS_WARN("Could not get Image Jacobian for Desired Location. Please re-arrange your setting and retry.");
@@ -371,6 +349,7 @@ class VisualServoNode
       {
         cv::Mat error_mat;;
         for (int i = 0; i < 3; i++) {
+<<<<<<< HEAD
           int error_term_ = 0;
 
           cv::Mat error = cv::Mat(2,1, CV_32F);
@@ -390,8 +369,15 @@ class VisualServoNode
                
           }
                   }
+=======
+          // Error = Desired location in image - Current position in image
+          cv::Mat error = projectImagePointToPoint(pts.at(i)) - projectImagePointToPoint(desired.at(i)); 
+          error = error.rowRange(0,2); // taking just x and y, but no z
+          error_mat.push_back(error);
+        }
+>>>>>>> bddd9348048c706fc2808bba7ed66d9f53038630
 
-        cv::Mat im = getInteractionMatrix(depth_frame, pts);
+        cv::Mat im = getMeterInteractionMatrix(depth_frame, pts);
 
         // if we can't compute interaction matrix, just make all twists 0
         if (countNonZero(im) == 0) {
@@ -418,10 +404,12 @@ class VisualServoNode
         gain.at<float>(0,0) = 1;
         gain.at<float>(1,1) = 1;
         /*
-        gain.at<float>(2,2) = gain_vel_;
-        gain.at<float>(3,3) = gain_rot_;
-        gain.at<float>(4,4) = gain_rot_;
-        gain.at<float>(5,5) = gain_rot_;
+           gain.at<float>(0,0) = 5e-2;
+           gain.at<float>(1,1) = 5e-2;
+           gain.at<float>(2,2) = gain_vel_;
+           gain.at<float>(3,3) = gain_rot_;
+           gain.at<float>(4,4) = gain_rot_;
+           gain.at<float>(5,5) = gain_rot_;
          */
         // K x IIM x ERROR = TWIST
         ret = gain*(iim*error_mat);
@@ -437,17 +425,49 @@ class VisualServoNode
       return ret;
     }
 
-    void printMatrix(cv::Mat_<double> in)
+    /**
+     * get the interaction matrix
+     * @param depth_frame  Need the depth information from Kinect for Z
+     * @param pts          Vector of feature points
+     * @return             Return the computed interaction Matrix (6 by 6)
+     */
+    cv::Mat getMeterInteractionMatrix(cv::Mat depth_frame, std::vector<cv::Point> &pts) 
     {
-      for (int i = 0; i < in.rows; i++) {
-        for (int j = 0; j < in.cols; j++) {
-          printf("%+.5f\t", in(i,j)); 
+      // interaction matrix, image jacobian
+      cv::Mat L = cv::Mat::zeros(6,6,CV_32F);
+      if (pts.size() == 3) {
+        for (int i = 0; i < 3; i++) {
+          cv::Mat xy = projectImagePointToPoint(pts.at(i));
+          int x = xy.at<float>(0,0);
+          int y = xy.at<float>(1,0);
+          float z = depth_frame.at<float>(y, x);
+          // float z = cur_point_cloud_.at(y,x).z;
+          int l = i * 2;
+          if (z <= 0 || isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
+          L.at<float>(l,0) = 1/z;   L.at<float>(l+1,0) = 0;
+          L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = 1/z;
+          L.at<float>(l,2) = -x/z;    L.at<float>(l+1,2) = -y/z;
+          L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = -(1 + pow(y,2));
+          L.at<float>(l,4) = (1+pow(x,2));  L.at<float>(l+1,4) = x*y;
+          L.at<float>(l,5) = -y;      L.at<float>(l+1,5) = x;
         }
-        printf("\n");
       }
+#ifdef DEBUG_MODE
+      //      ROS_DEBUG("Interaction");
+      //      printMatrix(L);
+      //      ROS_DEBUG("Inverse");
+      //      printMatrix(L.inv());
+      //      ROS_DEBUG("Pseudo");
+      //      printMatrix(pseudo);
+#endif
+      return L;
     }
 
-    cv::Mat getInteractionMatrix(cv::Mat depth_frame, std::vector<cv::Point> &pts) 
+    /**
+    * get the interaction matrix. However, one caveat is that the X and Y used for
+    * calculations are in pxiels.
+    */
+    cv::Mat getPixelInteractionMatrix(cv::Mat depth_frame, std::vector<cv::Point> &pts) 
     {
       // interaction matrix, image jacobian
       cv::Mat L = cv::Mat::zeros(6,6,CV_32F);
@@ -479,6 +499,14 @@ class VisualServoNode
       return L;
     }
 
+    /**
+     * Take three biggest moments of specific color and returns 
+     * the three biggest blobs or moments. This method assumes that
+     * the features are in QR code like configuration
+     * @param ms   All moments of color segmented
+     * @return     returns vectors of cv::Point. Ordered in specific way 
+     *             (1. top left, 2. top right, and 3. bottom left)
+     */
     std::vector<cv::Point> getMomentCoordinates(std::vector<cv::Moments> ms)
     {
       std::vector<cv::Point> ret;
@@ -541,12 +569,11 @@ class VisualServoNode
     } 
 
     /**
-     * findMoments: first, apply morphology to filter out noises and find contours around
+     * First, apply morphology to filter out noises and find contours around
      * possible features. Then, it returns the three largest moments
-     * Arg
-     * in: single channel image input
-     * Return
-     * three largest moment in the image
+     * @param in  single channel image input
+     * @param color_frame  need the original image for debugging and imshow
+     * @return    returns ALL moment of specific color in the image
      */
     std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame) 
     {
@@ -597,11 +624,10 @@ class VisualServoNode
     }
 
     /** 
-     * colorSegment
      * Very Basic Color Segmentation done in HSV space
      * Takes in Hue value and threshold as input to compute the distance in color space
-     * cv::Mat color_frame: color input from image
-     * Return: mask from the color segmentation 
+     * @param color_frame   color input from image
+     * @return  mask from the color segmentation 
      */
     cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
     {
@@ -630,9 +656,61 @@ class VisualServoNode
       return wm;
     }
 
+    /**************************** 
+     * Helper Methods
+     ****************************/
+    
     /** 
-     * Helper Method from Object_Singulation
+     * Print the cv::Mat to stdout
+     */
+    void printMatrix(cv::Mat_<double> in)
+    {
+      for (int i = 0; i < in.rows; i++) {
+        for (int j = 0; j < in.cols; j++) {
+          printf("%+.5f\t", in(i,j)); 
+        }
+        printf("\n");
+      }
+    }
+    /**
+     * transforms a point in pixels to meter using the inverse of 
+     * image intrinsic K
+     * @param in a point to be transformed
+     * @return returns meter value of the point in cv::Mat
      */ 
+    cv::Mat projectImagePointToPoint(cv::Point in) 
+    {
+      cv::Mat mIn  = cv::Mat(3,1,CV_32F);
+      mIn.at<float>(0,0) = in.x; 
+      mIn.at<float>(1,0) = in.y; 
+      mIn.at<float>(2,0) = 1; 
+      return k_inv_ * mIn;
+    }
+
+    /**
+     * transforms a cv::Mat in pixels to meter using the inverse 
+     * Image Intrinsic K
+     * @param in  cv::Mat input to be transformed
+     * @return    returns meter in cv::Mat
+     */ 
+    cv::Mat projectImageMatToPoint(cv::Mat in) 
+    {
+      cv::Mat out  = cv::Mat::zeros(3,1,CV_32F);
+      if (in.rows != 3 || in.cols != 1)
+      { 
+        return out;
+      }
+      out = k_inv_ * in;
+      return out;
+    }
+
+    /** 
+     * Transforms a point in Point Cloud to Image Frame (pixels)
+     * @param cur_point_pcl  The point to be transformed in pcl::PointXYZ
+     * @param point_frame    The frame that the PointCloud is in
+     * @param target_frame   To this frame
+     * @return               returns the pixel value of the PointCloud in image frame
+     */
     cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
         std::string point_frame, std::string target_frame)
     {

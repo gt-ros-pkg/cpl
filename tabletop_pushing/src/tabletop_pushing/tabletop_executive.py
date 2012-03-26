@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Software License Agreement (BSD License)
 #
-#  Copyright (c) 2011, Georgia Institute of Technology
+#  Copyright (c) 2012, Georgia Institute of Technology
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -37,22 +37,23 @@ import actionlib
 import hrl_pr2_lib.linear_move as lm
 import hrl_pr2_lib.pr2 as pr2
 import hrl_lib.tf_utils as tfu
-from geometry_msgs.msg import PoseStamped
 import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs
 import sys
+from push_learning import PushLearningIO, PushTrial
 
 GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
 OVERHEAD_PUSH = 2
 OVERHEAD_PULL = 3
+_OFFLINE = False
 
 class TabletopExecutive:
 
-    def __init__(self, use_fake_push_pose=False):
+    def __init__(self, use_singulation, use_learning):
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         # TODO: Determine workspace limits for max here
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
@@ -95,45 +96,58 @@ class TabletopExecutive:
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
                                             -0.27)
         # Setup service proxies
-        # Singulation Push proxy
-        self.singulation_push_pose_proxy = rospy.ServiceProxy(
-            'get_singulation_push_pose', SingulationPush)
-        self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
-                                                     GripperPush)
-        self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
+        if not _OFFLINE:
+            self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                          GripperPush)
-        self.gripper_post_push_proxy = rospy.ServiceProxy('gripper_post_push',
+            self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
+                                                             GripperPush)
+            self.gripper_post_push_proxy = rospy.ServiceProxy('gripper_post_push',
+                                                              GripperPush)
+            self.gripper_pre_sweep_proxy = rospy.ServiceProxy('gripper_pre_sweep',
+                                                              GripperPush)
+            self.gripper_sweep_proxy = rospy.ServiceProxy('gripper_sweep',
                                                           GripperPush)
-        self.gripper_pre_sweep_proxy = rospy.ServiceProxy('gripper_pre_sweep',
+            self.gripper_post_sweep_proxy = rospy.ServiceProxy('gripper_post_sweep',
+                                                               GripperPush)
+            self.overhead_pre_push_proxy = rospy.ServiceProxy('overhead_pre_push',
+                                                              GripperPush)
+            self.overhead_push_proxy = rospy.ServiceProxy('overhead_push',
                                                           GripperPush)
-        self.gripper_sweep_proxy = rospy.ServiceProxy('gripper_sweep',
-                                                      GripperPush)
-        self.gripper_post_sweep_proxy = rospy.ServiceProxy('gripper_post_sweep',
-                                                           GripperPush)
-        self.overhead_pre_push_proxy = rospy.ServiceProxy('overhead_pre_push',
+            self.overhead_post_push_proxy = rospy.ServiceProxy('overhead_post_push',
+                                                               GripperPush)
+            self.overhead_pre_pull_proxy = rospy.ServiceProxy('overhead_pre_pull',
+                                                              GripperPush)
+            self.overhead_pull_proxy = rospy.ServiceProxy('overhead_pull',
                                                           GripperPush)
-        self.overhead_push_proxy = rospy.ServiceProxy('overhead_push',
-                                                      GripperPush)
-        self.overhead_post_push_proxy = rospy.ServiceProxy('overhead_post_push',
-                                                           GripperPush)
-        self.overhead_pre_pull_proxy = rospy.ServiceProxy('overhead_pre_pull',
-                                                          GripperPush)
-        self.overhead_pull_proxy = rospy.ServiceProxy('overhead_pull',
-                                                      GripperPush)
-        self.overhead_post_pull_proxy = rospy.ServiceProxy('overhead_post_pull',
-                                                           GripperPush)
-        self.raise_and_look_proxy = rospy.ServiceProxy('raise_and_look',
-                                                       RaiseAndLook)
+            self.overhead_post_pull_proxy = rospy.ServiceProxy('overhead_post_pull',
+                                                               GripperPush)
+            self.raise_and_look_proxy = rospy.ServiceProxy('raise_and_look',
+                                                           RaiseAndLook)
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
-        # Bookkeeping fof fake pushes
-        self.use_fake_push_pose = use_fake_push_pose
-        self.push_count = 0
+
+        if use_singulation:
+            self.init_singulation()
+        if use_learning:
+            self.init_learning()
+
+    def init_singulation(self):
+        # Singulation Push proxy
+        self.singulation_push_vector_proxy = rospy.ServiceProxy(
+            'get_singulation_push_vector', SingulationPush)
+
+    def init_learning(self):
+        # Singulation Push proxy
+        # self.learn_data_out = file('/u/thermans/data/learn_out.txt', 'a')
+        self.learn_io = PushLearningIO()
+        self.learn_io.open_out_file('/u/thermans/data/learn_out.txt')
+        self.learning_push_vector_proxy = rospy.ServiceProxy(
+            'get_learning_push_vector', LearnPush)
 
     def run_singulation(self, num_pushes=1, use_guided=True):
         # Get table height and raise to that before anything else
         self.raise_and_look()
         # Initialize push pose
-        self.initialize_singulation_push_pose();
+        self.initialize_singulation_push_vector();
 
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
@@ -200,60 +214,136 @@ class TabletopExecutive:
             rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
                           ' objects')
 
-    def request_singulation_push(self, use_guided=True, which_arm='l'):
-        if (self.use_fake_push_pose):
-            return request_fake_singulation_push(which_arm)
-        pose_req = SingulationPush()
-        pose_req.use_guided = use_guided
-        pose_req.initialize = False
-        pose_req.no_push_calc = False
-        rospy.loginfo("Calling push pose service")
+    def run_learning(self, num_trials, push_angle, push_dist):
+        # Get table height and raise to that before anything else
+        if not _OFFLINE:
+            self.raise_and_look()
+        # Initialize push pose
+        self.initialize_learning_push();
+
+        # TODO: Get angle and distance correctly...
+        push_options = [GRIPPER_PUSH, OVERHEAD_PUSH, GRIPPER_SWEEP]
+        arms = ['l', 'r']
+        # NOTE: Should exit before reaching num_pushes, this is just a backup
+        rospy.loginfo('Place item at new initial pose')
+        for t in xrange(num_trials):
+            for arm in arms:
+                for push_opt in push_options:
+                    res = self.learning_trial(arm, int(push_opt), push_angle,
+                                              push_dist)
+                    if not res:
+                        self.finish_learning()
+                        return
+        self.finish_learning()
+        return
+
+    def finish_learning(self):
+        rospy.loginfo('Done with learning pushes and such.')
+        # self.learn_data_out.close()
+        self.learn_io.close_out_file()
+
+    def learning_trial(self, which_arm, push_opt, push_angle, push_dist):
+        code_in = raw_input('Reset item to inital pose and press <Enter> to continue: ')
+        if code_in.startswith('q'):
+            return False
+        push_vector_res = self.request_learning_push(push_angle)
+        if push_vector_res is None:
+            rospy.logwarn("push_vector_res is None. Exiting pushing");
+            return False
+        if push_vector_res.no_push:
+            rospy.loginfo("No push. Exiting pushing.");
+            return False
+        # Decide push based on the orientation returned
+        rospy.loginfo('Push start_point: (' +
+                      str(push_vector_res.push.start_point.x) + ', ' +
+                      str(push_vector_res.push.start_point.y) + ', ' +
+                      str(push_vector_res.push.start_point.z) + ')')
+        rospy.loginfo('Push angle: ' + str(push_vector_res.push.push_angle))
+        rospy.loginfo('Push dist: ' + str(push_dist))
+
+        if not _OFFLINE:
+            if push_opt == GRIPPER_PUSH:
+                self.gripper_push_object(push_dist, which_arm, push_vector_res.push)
+            if push_opt == GRIPPER_SWEEP:
+                self.sweep_object(push_dist, which_arm, push_vector_res.push)
+            if push_opt == OVERHEAD_PUSH:
+                self.overhead_push_object(push_dist, which_arm, push_vector_res.push)
+            if push_opt == OVERHEAD_PULL:
+                self.overhead_pull_object(push_dist, which_arm, push_vector_res.push)
+        rospy.loginfo('Done performing push behavior.')
+        analysis_res = self.request_learning_analysis()
+        rospy.loginfo('Done getting analysis response.')
+        rospy.loginfo('Push: ' + str(push_opt))
+        rospy.loginfo('Arm: ' + str(which_arm))
+        rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
+                      ', ' + str(push_vector_res.centroid.y) + ', ' +
+                      str(push_angle))
+        rospy.loginfo('Moved (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
+                       str(analysis_res.centroid.y) + ')')
+        # data_line = str(push_vector_res.centroid.x) + ' ' + \
+        #     str(push_vector_res.centroid.y) + ' ' + \
+        #     str(push_vector_res.centroid.z) + ' ' + str(push_angle) + ' ' +\
+        #     str(push_opt) + ' ' + str(which_arm) + ' ' + \
+        #     str(analysis_res.centroid.x) + ' ' + \
+        #     str(analysis_res.centroid.y) + ' ' + \
+        #     str(analysis_res.centroid.z) + '\n'
+        # self.learn_data_out.write(data_line)
+        self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
+                                 which_arm, analysis_res.centroid, push_dist)
+        return True
+
+    def request_singulation_push(self, use_guided=True):
+        push_vector_req = SingulationPushRequest()
+        push_vector_req.use_guided = use_guided
+        push_vector_req.initialize = False
+        push_vector_req.no_push_calc = False
+        rospy.loginfo("Calling singulation push vector service")
         try:
-            pose_res = self.singulation_push_pose_proxy(pose_req)
-            return pose_res
+            push_vector_res = self.singulation_push_vector_proxy(push_vector_req)
+            return push_vector_res
         except rospy.ServiceException, e:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_fake_singulation_push(self, which_arm):
-        pose_res = SingulationPushResponse()
-        push_opt = GRIPPER_PUSH
-        if push_opt == GRIPPER_PUSH:
-            pose_res = SingulationPushResponse()
-            pose_res.start_point.x = 0.5
-            pose_res.header.frame_id = '/torso_lift_link'
-            pose_res.header.stamp = rospy.Time(0)
-            if which_arm == 'l':
-                pose_res.start_point.y = 0.3 - self.push_count*0.15
-            else:
-                pose_res.start_point.y = -0.3 + self.push_count*0.15
-            pose_res.start_point.z = -0.22
-        elif push_opt == GRIPPER_SWEEP:
-            pose_res.header.frame_id = '/torso_lift_link'
-            pose_res.header.stamp = rospy.Time(0)
-            pose_res.start_point.x = 0.75
-            if which_arm == 'l':
-                pose_res.start_point.y = 0.05
-            else:
-                pose_res.start_point.y = -0.15
-            pose_res.start_point.z = -0.25
-        elif push_opt == OVERHEAD_PUSH:
-            pose_res.header.frame_id = '/torso_lift_link'
-            pose_res.header.stamp = rospy.Time(0)
-            pose_res.start_point.x = 0.7
-            pose_res.start_point.y = 0.0
-            pose_res.start_point.z = -0.25
-            pose_res.push_dist = 0.15
-            pose_res.push_angle = 0.75*pi
-        return pose_res
+    def request_learning_push(self, push_angle):
+        push_vector_req = LearnPushRequest()
+        push_vector_req.initialize = False
+        push_vector_req.analyze_previous = False
+        push_vector_req.push_angle = push_angle
+        rospy.loginfo("Calling learning push vector service")
+        try:
+            push_vector_res = self.learning_push_vector_proxy(push_vector_req)
+            return push_vector_res
+        except rospy.ServiceException, e:
+            rospy.logwarn("Service did not process request: %s"%str(e))
+            return None
 
-    def initialize_singulation_push_pose(self):
-        pose_req = SingulationPushRequest()
-        pose_req.initialize = True
-        pose_req.use_guided = True
-        pose_req.no_push_calc = False
-        rospy.loginfo('Initializing push pose service.')
-        self.singulation_push_pose_proxy(pose_req)
+    def request_learning_analysis(self):
+        push_vector_req = LearnPushRequest()
+        push_vector_req.initialize = False
+        push_vector_req.analyze_previous = True
+        rospy.loginfo("Calling learning push vector service")
+        try:
+            push_vector_res = self.learning_push_vector_proxy(push_vector_req)
+            return push_vector_res
+        except rospy.ServiceException, e:
+            rospy.logwarn("Service did not process request: %s"%str(e))
+            return None
+
+    def initialize_singulation_push_vector(self):
+        push_vector_req = SingulationPushRequest()
+        push_vector_req.initialize = True
+        push_vector_req.use_guided = True
+        push_vector_req.no_push_calc = False
+        rospy.loginfo('Initializing singulation push vector service.')
+        self.singulation_push_vector_proxy(push_vector_req)
+
+    def initialize_learning_push(self):
+        push_vector_req = LearnPushRequest()
+        push_vector_req.initialize = True
+        push_vector_req.analyze_previous = False
+        rospy.loginfo('Initializing learning push vector service.')
+        self.learning_push_vector_proxy(push_vector_req)
 
     def raise_and_look(self):
         table_req = LocateTableRequest()
@@ -414,6 +504,15 @@ class TabletopExecutive:
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
 if __name__ == '__main__':
-    node = TabletopExecutive(False)
-    node.run_singulation(50)
-    #node.run_singulation(100, False)
+    use_learning = False
+    use_singulation = True
+    use_guided = True
+    num_trials = 3
+    push_angle = 0.0 # radians
+    push_dist = 0.15 # meters
+    max_pushes = 50
+    node = TabletopExecutive(use_singulation, use_learning)
+    if use_singulation:
+        node.run_singulation(max_pushes, use_guided)
+    else:
+        node.run_learning(num_trials, push_angle, push_dist)

@@ -3,6 +3,7 @@ bool initialize
 bool no_push_calc
 ---
 # Replace with PushVector
+# tabletop_pushing/PushVector
 Header header
 geometry_msgs/Point start_point
 float64 push_angle
