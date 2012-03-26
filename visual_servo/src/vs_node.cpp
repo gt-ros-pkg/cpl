@@ -339,12 +339,12 @@ class VisualServoNode
       // Setting the Desired Location of the wrist
       // Desired location: center of the screen
       pcl::PointXYZ origin = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2);
-      origin.z += 0.1;
+      origin.z += 0.05;
       pcl::PointXYZ two = origin;
       pcl::PointXYZ three = origin;
 
       two.y -= 0.05; //sqrt(pow(pt0.x - pt1.x,2) + pow(pt0.y - pt1.y,2)); 
-      three.x -= 0.03;//sqrt(pow(pt0.x - pt2.x, 2) + pow(pt0.y - pt2.y, 2));
+      three.x -= 0.055;//sqrt(pow(pt0.x - pt2.x, 2) + pow(pt0.y - pt2.y, 2));
 
       // now we need to convert the position of these desired points that are in pc into the image location
       cv::Point p0 = projectPointIntoImage(origin, cur_point_cloud_.header.frame_id, cur_camera_header_.frame_id);
@@ -371,11 +371,25 @@ class VisualServoNode
       {
         cv::Mat error_mat;;
         for (int i = 0; i < 3; i++) {
-          // Error = Desired location in image - Current position in image
-          cv::Mat error = projectImageToPoint(pts.at(i)) - projectImageToPoint(desired.at(i)); 
-          error = error.rowRange(0,2); // taking just x and y, but no z
-          error_mat.push_back(error);
-        }
+          int error_term_ = 0;
+
+          cv::Mat error = cv::Mat(2,1, CV_32F);
+          switch (error_term_)
+          {
+            case 0: 
+              error.at<float>(0,0) = pts.at(i).x - desired.at(i).x; 
+              error.at<float>(1,0) = pts.at(i).y - desired.at(i).y; 
+              error_mat.push_back(error);
+              break;
+            case 1: 
+              // Error = Desired location in image - Current position in image
+              error = projectImageToPoint(pts.at(i)) - projectImageToPoint(desired.at(i)); 
+              error = error.rowRange(0,2); // taking just x and y, but no z
+              error_mat.push_back(error);
+              break;
+               
+          }
+                  }
 
         cv::Mat im = getInteractionMatrix(depth_frame, pts);
 
@@ -399,10 +413,11 @@ class VisualServoNode
             iim = 0.5*(temp.t() * temp).inv() * temp.t();
         }
         // Gain Matrix K
-        cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
+        //cv::Mat gain = cv::Mat::eye(6,6, CV_32F)* 2.3e2;
+        cv::Mat gain = cv::Mat::eye(6,6, CV_32F)* 1.2e2;
+        gain.at<float>(0,0) = 1;
+        gain.at<float>(1,1) = 1;
         /*
-        gain.at<float>(0,0) = 5e-2;
-        gain.at<float>(1,1) = 5e-2;
         gain.at<float>(2,2) = gain_vel_;
         gain.at<float>(3,3) = gain_rot_;
         gain.at<float>(4,4) = gain_rot_;
