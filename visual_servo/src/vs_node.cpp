@@ -139,8 +139,8 @@ class VisualServoNode
     n_private_.param("min_contour_size", min_contour_size_, 10.0);
 
     // others
-    n_private_.param("gain_vel", gain_vel_, 50e-3);
-    n_private_.param("gain_rot", gain_rot_, 1e-1);
+    n_private_.param("gain_vel", gain_vel_, 1.0);
+    n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_AVG);
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
@@ -311,7 +311,6 @@ class VisualServoNode
      **/
     std::vector<cv::Point> setDesiredPosition()
     {
-
       std::vector<cv::Point> desired; desired.clear();
       // Looking up the hand
       // Setting the Desired Location of the wrist
@@ -347,35 +346,40 @@ class VisualServoNode
       cv::Mat ret = cv::Mat::zeros(6,1, CV_32F);
       if (pts.size() == 3)
       {
-        cv::Mat error_mat;;
+        cv::Mat error_mat;
+        float e = 0;
         for (int i = 0; i < 3; i++) {
-<<<<<<< HEAD
-          int error_term_ = 0;
+          /*
+             int error_term_ = 0;
 
-          cv::Mat error = cv::Mat(2,1, CV_32F);
-          switch (error_term_)
-          {
-            case 0: 
-              error.at<float>(0,0) = pts.at(i).x - desired.at(i).x; 
-              error.at<float>(1,0) = pts.at(i).y - desired.at(i).y; 
-              error_mat.push_back(error);
-              break;
-            case 1: 
-              // Error = Desired location in image - Current position in image
-              error = projectImageToPoint(pts.at(i)) - projectImageToPoint(desired.at(i)); 
-              error = error.rowRange(0,2); // taking just x and y, but no z
-              error_mat.push_back(error);
-              break;
-               
+             cv::Mat error = cv::Mat(2,1, CV_32F);
+             switch (error_term_)
+             {
+             case 0: 
+             error.at<float>(0,0) = pts.at(i).x - desired.at(i).x; 
+             error.at<float>(1,0) = pts.at(i).y - desired.at(i).y; 
+             error_mat.push_back(error);
+             break;
+             case 1: 
+          // Error = Desired location in image - Current position in image
+          error = projectImageToPoint(pts.at(i)) - projectImageToPoint(desired.at(i)); 
+          error = error.rowRange(0,2); // taking just x and y, but no z
+          error_mat.push_back(error);
+          break;
+
           }
-                  }
-=======
+           */
           // Error = Desired location in image - Current position in image
           cv::Mat error = projectImagePointToPoint(pts.at(i)) - projectImagePointToPoint(desired.at(i)); 
           error = error.rowRange(0,2); // taking just x and y, but no z
           error_mat.push_back(error);
+          e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
         }
->>>>>>> bddd9348048c706fc2808bba7ed66d9f53038630
+        ROS_DEBUG("%f",sqrt(e));
+        if(sqrt(e) < 0.04)
+        {
+          return ret;
+        }
 
         cv::Mat im = getMeterInteractionMatrix(depth_frame, pts);
 
@@ -400,10 +404,10 @@ class VisualServoNode
         }
         // Gain Matrix K
         //cv::Mat gain = cv::Mat::eye(6,6, CV_32F)* 2.3e2;
-        cv::Mat gain = cv::Mat::eye(6,6, CV_32F)* 1.2e2;
+        cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
+        /*
         gain.at<float>(0,0) = 1;
         gain.at<float>(1,1) = 1;
-        /*
            gain.at<float>(0,0) = 5e-2;
            gain.at<float>(1,1) = 5e-2;
            gain.at<float>(2,2) = gain_vel_;
@@ -438,9 +442,12 @@ class VisualServoNode
       if (pts.size() == 3) {
         for (int i = 0; i < 3; i++) {
           cv::Mat xy = projectImagePointToPoint(pts.at(i));
-          int x = xy.at<float>(0,0);
-          int y = xy.at<float>(1,0);
-          float z = depth_frame.at<float>(y, x);
+          float x = xy.at<float>(0,0);
+          float y = xy.at<float>(1,0);
+          float z = depth_frame.at<float>(pts.at(i).x, pts.at(i).y);
+
+          ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
+
           // float z = cur_point_cloud_.at(y,x).z;
           int l = i * 2;
           if (z <= 0 || isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
