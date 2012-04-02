@@ -38,7 +38,7 @@
 #include <iostream>
 #include <sstream>
 
-#define DISPLAY_SALIENCY_MAPS
+// #define DISPLAY_SALIENCY_MAPS
 // #define DISPLAY_COLOR_MAPS
 // #define DISPLAY_GABOR_FILTERS
 
@@ -214,16 +214,13 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
   // Get the component color channels
   vector<Mat> channels;
   Mat to_split(frame.rows, frame.cols, CV_32FC3);
-  frame.convertTo(to_split, to_split.type());
-  to_split *= (1.0/255.0);
-
+  frame.convertTo(to_split, to_split.type(), 1.0/255.0);
   split(to_split, channels);
 
   // Get hue indepenednt intensity channel
   I = channels[R_INDEX]/3.0 + channels[G_INDEX]/3.0 + channels[B_INDEX]/3.0;
 
   float max_i = 0;
-
   for(int r = 0; r < I.rows; ++r)
   {
     for(int c = 0; c < I.cols; ++c)
@@ -424,8 +421,7 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
   //
   // Normalize and sum the O_bars
   //
-
-  Mat O_bar(I_bar.rows, I_bar.cols, I_bar.type(), 0);
+  Mat O_bar(I_bar.rows, I_bar.cols, I_bar.type(), 0.0);
   float O_max = 0;
 
   // Get the max of the o_bars
@@ -440,10 +436,10 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
       }
     }
   }
-
   for (int a = 0; a < N_; ++a)
   {
-    O_bar += normalize(O_bars[a], O_max);
+    cv::Mat norm_o_bar = normalize(O_bars[a], O_max);
+    O_bar += norm_o_bar;
   }
 
   //
@@ -479,7 +475,6 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
   cv::imshow("C bar", display_C_bar);
   cv::imshow("O bar", display_O_bar);
 #endif // DISPLAY_SALIENCY_MAPS
-
   return saliency_map;
 }
 
@@ -494,8 +489,7 @@ Mat CenterSurroundMapper::getIntensityMap(Mat& frame)
     // Get the component color channels
     vector<Mat> channels;
     Mat to_split(frame.rows, frame.cols, CV_32FC3);
-    frame.convertTo(to_split, to_split.type());
-    to_split *= (1.0/255.0);
+    frame.convertTo(to_split, to_split.type(), 1.0/255.0);
     split(to_split, channels);
     I = channels[R_INDEX]/3.0 + channels[G_INDEX]/3.0 + channels[B_INDEX]/3.0;
   }
@@ -572,8 +566,7 @@ Mat CenterSurroundMapper::getOrientationMap(Mat& frame)
     // Get the component color channels
     vector<Mat> channels;
     Mat to_split(frame.rows, frame.cols, CV_32FC3);
-    frame.convertTo(to_split, to_split.type());
-    to_split *= (1.0/255.0);
+    frame.convertTo(to_split, to_split.type(), 1.0/255.0);
     split(to_split, channels);
     I = channels[R_INDEX]/3.0 + channels[G_INDEX]/3.0 + channels[B_INDEX]/3.0;
   }
@@ -741,8 +734,7 @@ Mat CenterSurroundMapper::getColorMap(Mat& frame)
   // Get the component color channels
   vector<Mat> channels;
   Mat to_split(frame.rows, frame.cols, CV_32FC3);
-  frame.convertTo(to_split, to_split.type());
-  to_split *= (1.0/255.0);
+  frame.convertTo(to_split, to_split.type(), 1.0/255.0);
 
   split(to_split, channels);
 
