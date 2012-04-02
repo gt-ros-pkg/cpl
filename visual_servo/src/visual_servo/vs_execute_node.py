@@ -56,7 +56,7 @@ def cleanup():
 
 class VisualServoExecutionNode:
   def adjustVelocity(self, vel):
-    clip_vel = 0.2
+    clip_vel = 0.09
     ret = vel 
     if ret > clip_vel:
       ret = clip_vel

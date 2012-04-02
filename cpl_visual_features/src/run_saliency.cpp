@@ -53,12 +53,17 @@ int main(int argc, char** argv)
   srand(time(NULL));
   int count = 1;
   std::string path = "";
-
+  bool use_depth = false;
   if (argc > 1)
     path = argv[1];
 
   if (argc > 2)
     count = atoi(argv[2]);
+
+  if (argc > 3)
+  {
+    use_depth = true;
+  }
 
   CenterSurroundMapper csm(2,3,3,4);
 
@@ -66,6 +71,7 @@ int main(int argc, char** argv)
   {
     std::stringstream filepath;
     std::stringstream depth_filepath;
+    std::stringstream outpath;
     if (count == 1 && path != "")
     {
       filepath << path;
@@ -74,27 +80,51 @@ int main(int argc, char** argv)
     else if (path != "")
     {
       filepath << path << i << ".png";
+      if (use_depth)
+      {
+        depth_filepath << path << i << "_depth.png";
+        outpath << path << i << "_ic_depth.png";
+      }
+      else
+      {
+        outpath << path << i << "_ic.png";
+      }
     }
     else
     {
       //filepath << "/home/thermans/data/test_images/robot.jpg";
       filepath << "/home/thermans/data/test_images/saliency_test_frame.png";
       depth_filepath << "/home/thermans/data/test_images/saliency_test_depth_frame.png";
+      use_depth = true;
     }
 
     std::cout << "Image " << i << std::endl;
+    std::cout << "\tloc: " << filepath.str() << std::endl;
     Mat frame;
     frame = cv::imread(filepath.str());
-    Mat depth_frame;
-    depth_frame = cv::imread(depth_filepath.str());
     cv::imshow("frame", frame);
-    cv::imshow("depth", depth_frame);
+    Mat depth_frame;
+    if (use_depth)
+    {
+      std::cout << "\tdepth loc: " << depth_filepath.str() << std::endl;
+      depth_frame = cv::imread(depth_filepath.str(), CV_8UC1);
+      cv::imshow("depth", depth_frame);
+    }
+    cv::waitKey();
     try
     {
-      //Mat saliency_map = csm(frame, false);
-      Mat saliency_map = csm(frame, depth_frame);
+      Mat saliency_map;
+      if (use_depth)
+      {
+        saliency_map = csm(frame, depth_frame);
+      }
+      else
+      {
+        saliency_map = csm(frame, false);
+      }
       cv::imshow("saliency", saliency_map);
       cv::waitKey();
+      cv::imwrite(outpath.str(), saliency_map);
     }
     catch(cv::Exception e)
     {
