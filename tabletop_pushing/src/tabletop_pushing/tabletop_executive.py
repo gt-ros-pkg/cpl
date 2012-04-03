@@ -221,16 +221,16 @@ class TabletopExecutive:
     def run_learning(self, num_trials, push_angle, push_dist):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         arms = ['l', 'r']
-        # NOTE: Should exit before reaching num_pushes, this is just a backup
+        high_inits = [False, True]
         rospy.loginfo('Place item at new initial pose')
-        high_init = True
         for t in xrange(num_trials):
-            for arm in arms:
-                for push_opt in push_options:
-                    res = self.learning_trial(arm, int(push_opt), push_angle,
-                                              push_dist, high_init)
-                    if not res:
-                        return
+            for high_init in high_inits:
+                for arm in arms:
+                    for push_opt in push_options:
+                        res = self.learning_trial(arm, int(push_opt),push_angle,
+                                                  push_dist, high_init)
+                        if not res:
+                            return
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
@@ -505,7 +505,6 @@ if __name__ == '__main__':
     use_singulation = False
     use_guided = True
     num_trials = 3
-    push_angle = 0.0 # radians
     push_dist = 0.15 # meters
     max_pushes = 50
     num_push_angles = 8
@@ -513,10 +512,10 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
-        for i in xrange(num_push_angles):
+        for i in xrange(num_push_angles+1):
             if i == 0:
                 continue
-            push_angle = 0 + pi*(i+1)/float(num_push_angles)
+            push_angle = 0.0 + pi*i/float(num_push_angles)
             rospy.loginfo('Angle #' + str(i))
             rospy.loginfo('Push angle: ' + str(push_angle))
             node.run_learning(num_trials, push_angle, push_dist)

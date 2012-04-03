@@ -606,13 +606,11 @@ class TabletopPushNode:
                 robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
 
             # Rotate wrist before moving to position
-            rospy.loginfo('Rotating wrist for overhead push')
-            arm_pose = robot_arm.pose()
-            if request.left_arm:
-                arm_pose[-1] = wrist_yaw + 0.5*pi
-            else:
-                arm_pose[-1] = wrist_yaw - 0.5*pi
-            robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
+            # TODO: Figure this out using IK...
+            # rospy.loginfo('Rotating wrist for overhead push')
+            # arm_pose = robot_arm.pose()
+            # arm_pose[-1] = wrist_yaw
+            # robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
 
         orientation = tf.transformations.quaternion_from_euler(0.0, 0.5*pi,
                                                                wrist_yaw)
