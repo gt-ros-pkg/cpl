@@ -62,7 +62,7 @@ class PushLearningAnalysis:
         self.io = PushLearningIO()
         self.compute_push_score = self.compute_push_error_xy
         # self.compute_push_score = self.compute_push_error_push_dist_diff
-        self.xy_hash_precision = 5.0 # bins/meter
+        self.xy_hash_precision = 10.0 # bins/meter
 
     def determine_best_pushes(self, file_name):
         all_trials = self.read_in_push_trials(file_name)
