@@ -82,6 +82,34 @@ RIGHT_ARM_PULL_READY_JOINTS = np.matrix([[-0.42427649,
                                          -82.9984037,
                                          -1.64163257,
                                          54.8]]).T
+LEFT_ARM_HIGH_PUSH_READY_JOINTS = np.matrix([[0.42427649,
+                                              -0.34601608409943324,
+                                              1.43411927,
+                                              -2.11931035,
+                                              -15.78839978,
+                                              -1.64163257,
+                                              -17.2947453]]).T
+RIGHT_ARM_HIGH_PUSH_READY_JOINTS = np.matrix([[-0.42427649,
+                                                -0.34601608409943324,
+                                                -1.43411927,
+                                                -2.11931035,
+                                                15.78839978,
+                                                -1.64163257,
+                                                8.64421842e+01]]).T
+LEFT_ARM_HIGH_SWEEP_READY_JOINTS = np.matrix([[0.42427649,
+                                              -0.34601608409943324,
+                                               1.43411927,
+                                               -2.11931035,
+                                               -15.78839978,
+                                               -1.64163257,
+                                               -17.2947453]]).T
+RIGHT_ARM_HIGH_SWEEP_READY_JOINTS = np.matrix([[-0.42427649,
+                                                 -0.34601608409943324,
+                                                 -1.43411927,
+                                                 -2.11931035,
+                                                 15.78839978,
+                                                 -1.64163257,
+                                                 8.64421842e+01]]).T
 
 READY_POSE_MOVE_THRESH = 0.5
 
@@ -91,7 +119,7 @@ class TabletopPushNode:
         rospy.init_node('tabletop_push_node', log_level=rospy.DEBUG)
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.15)
         self.look_pt_x = rospy.get_param('~look_point_x', 0.45)
-        self.overhead_pull_z_start = rospy.get_param('~overhead_start_z', 0.05)
+        self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.05)
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
                                                    'openni_rgb_frame')
         self.default_torso_height = rospy.get_param('~default_torso_height',
@@ -287,11 +315,15 @@ class TabletopPushNode:
             push_arm = self.left_arm_move
             robot_arm = self.robot.left
             ready_joints = LEFT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = LEFT_ARM_HIGH_PUSH_READY_JOINTS
             which_arm = 'l'
         else:
             push_arm = self.right_arm_move
             robot_arm = self.robot.right
             ready_joints = RIGHT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = RIGHT_ARM_HIGH_PUSH_READY_JOINTS
             which_arm = 'r'
 
         if request.arm_init:
@@ -303,12 +335,26 @@ class TabletopPushNode:
                                                                wrist_yaw)
         pose = np.matrix([start_point.x, start_point.y, start_point.z])
         rot = np.matrix([orientation])
-
-        # Move to start pose
-        loc = [pose, rot]
-        push_arm.set_movement_mode_cart()
-        push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
-        rospy.loginfo('Done moving to start point')
+        if request.high_arm_init:
+            # Move to offset pose above the table
+            pose = np.matrix([start_point.x, start_point.y,
+                              self.high_arm_init_z])
+            loc = [pose, rot]
+            push_arm.set_movement_mode_cart()
+            push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
+            rospy.loginfo('Done moving to overhead start point')
+            # Lower arm to table
+            pose = np.matrix([start_point.x, start_point.y, start_point.z])
+            loc = [pose, rot]
+            push_arm.set_movement_mode_cart()
+            push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
+            rospy.loginfo('Done moving to start point')
+        else:
+            # Move to start pose
+            loc = [pose, rot]
+            push_arm.set_movement_mode_cart()
+            push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
+            rospy.loginfo('Done moving to start point')
         return response
 
     def gripper_post_push_action(self, request):
@@ -341,6 +387,19 @@ class TabletopPushNode:
             np.matrix([-push_dist, 0.0, 0.0]).T,
             stop='pressure', pressure=5000)
         rospy.loginfo('Done moving backwards')
+
+        if request.high_arm_init:
+            rospy.loginfo('Moving up to end point')
+            wrist_yaw = request.wrist_yaw
+            orientation = tf.transformations.quaternion_from_euler(0.0, 0.0,
+                                                                   wrist_yaw)
+            pose = np.matrix([start_point.x, start_point.y,
+                              self.high_arm_init_z])
+            rot = np.matrix([orientation])
+            loc = [pose, rot]
+            push_arm.set_movement_mode_cart()
+            push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
+            rospy.loginfo('Done moving up to end point')
 
         if request.arm_reset:
             self.reset_arm_pose(True, which_arm, request.high_arm_init)
@@ -528,14 +587,13 @@ class TabletopPushNode:
         if request.high_arm_init:
             # Move to offset pose above the table
             pose = np.matrix([start_point.x, start_point.y,
-                              self.overhead_pull_z_start])
+                              self.high_arm_init_z])
             loc = [pose, rot]
             push_arm.set_movement_mode_cart()
             push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
             rospy.loginfo('Done moving to overhead start point')
             # Lower arm to table
             pose = np.matrix([start_point.x, start_point.y, start_point.z])
-            rot = np.matrix([orientation])
             loc = [pose, rot]
             push_arm.set_movement_mode_cart()
             push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
@@ -597,7 +655,7 @@ class TabletopPushNode:
             orientation = tf.transformations.quaternion_from_euler(0.0, 0.5*pi,
                                                                    wrist_yaw)
             pose = np.matrix([start_point.x, start_point.y,
-                              self.overhead_pull_z_start])
+                              self.high_arm_init_z])
             rot = np.matrix([orientation])
             loc = [pose, rot]
             push_arm.set_movement_mode_cart()
@@ -667,7 +725,7 @@ class TabletopPushNode:
         orientation = tf.transformations.quaternion_from_euler(0.0, 0.5*pi,
                                                                wrist_yaw)
         pose = np.matrix([start_point.x, start_point.y,
-                          self.overhead_pull_z_start])
+                          self.high_arm_init_z])
         rot = np.matrix([orientation])
 
         # Rotate wrist before moving to position
@@ -729,7 +787,7 @@ class TabletopPushNode:
         orientation = tf.transformations.quaternion_from_euler(0.0, 0.5*pi,
                                                                wrist_yaw)
         pose = np.matrix([start_point.x, start_point.y,
-                          self.overhead_pull_z_start])
+                          self.high_arm_init_z])
         rot = np.matrix([orientation])
         loc = [pose, rot]
         push_arm.set_movement_mode_cart()
