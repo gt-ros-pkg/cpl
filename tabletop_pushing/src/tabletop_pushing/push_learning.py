@@ -35,6 +35,7 @@ from geometry_msgs.msg import Point
 from math import sin, cos, pi, sqrt, fabs
 import cv2
 import numpy
+import sys
 
 _HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist high_init push_time'
 
@@ -258,6 +259,9 @@ class PushLearningIO:
 if __name__ == '__main__':
     # TODO: Read command line arguments for data file and metric to use
     pla = PushLearningAnalysis()
-    best_pushes = pla.determine_best_pushes(
-        '/home/thermans/Dropbox/Data/choose_push/batch_out0.txt')
+    if len(sys.argv) > 1:
+        data_path = str(sys.argv[1])
+    else:
+        data_path = '/home/thermans/Dropbox/Data/choose_push/batch_out0.txt'
+    best_pushes = pla.determine_best_pushes(data_path)
     pla.visualize_push_choices(best_pushes)
