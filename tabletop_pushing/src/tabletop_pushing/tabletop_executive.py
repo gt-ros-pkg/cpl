@@ -44,6 +44,7 @@ from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs
 import sys
 from push_learning import PushLearningIO, PushTrial
+import time
 
 GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
@@ -255,6 +256,7 @@ class TabletopExecutive:
                       str(push_vector_res.push.start_point.z) + ')')
         rospy.loginfo('Push angle: ' + str(push_vector_res.push.push_angle))
         rospy.loginfo('Push dist: ' + str(push_dist))
+        start_time = time.time()
         if not _OFFLINE:
             if push_opt == GRIPPER_PUSH:
                 self.gripper_push_object(push_dist, which_arm,
@@ -268,11 +270,14 @@ class TabletopExecutive:
             if push_opt == OVERHEAD_PULL:
                 self.overhead_pull_object(push_dist, which_arm,
                                           push_vector_res.push, high_init)
+        push_time = time.time() - start_time
         rospy.loginfo('Done performing push behavior.')
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
         rospy.loginfo('Push: ' + str(push_opt))
         rospy.loginfo('Arm: ' + str(which_arm))
+        rospy.loginfo('High init: ' + str(high_init))
+        rospy.loginfo('Push time: ' + str(push_time) + 's')
         rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
                       ', ' + str(push_vector_res.centroid.y) + ', ' +
                       str(push_angle) +')')
@@ -280,7 +285,7 @@ class TabletopExecutive:
                        str(analysis_res.centroid.y) + ')')
         self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
                                  which_arm, analysis_res.centroid, push_dist,
-                                 high_init)
+                                 high_init, push_time)
         return True
 
     def request_singulation_push(self, use_guided=True):
@@ -514,8 +519,6 @@ if __name__ == '__main__':
         node.run_singulation(max_pushes, use_guided)
     else:
         for i in xrange(num_push_angles+1):
-            if i == 0:
-                continue
             push_angle = 0.0 + pi*i/float(num_push_angles)
             rospy.loginfo('Angle #' + str(i))
             rospy.loginfo('Push angle: ' + str(push_angle))

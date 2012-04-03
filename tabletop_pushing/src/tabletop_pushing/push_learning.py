@@ -36,7 +36,7 @@ from math import sin, cos, pi, sqrt, fabs
 import cv2
 import numpy
 
-_HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist'
+_HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist high_init push_time'
 
 class PushTrial:
     def __init__(self):
@@ -47,11 +47,12 @@ class PushTrial:
         self.arm = None
         self.push_dist = None
         self.high_init = 0
+        self.push_time = 0.0
         self.score = None
 
     def __str__(self):
         return str((self.c_x, self.push_angle, self.push_opt, self.arm,
-                    self.c_x_prime, self.push_dist, self.high_init))
+                    self.c_x_prime, self.push_dist, self.high_init, self.push_time))
 
 class PushLearningAnalysis:
 
@@ -212,7 +213,7 @@ class PushLearningIO:
         self.data_in = None
 
     def write_line(self, c_x, push_angle, push_opt, arm, c_x_prime, push_dist,
-                   high_init=False):
+                   high_init=False, push_time=0.0):
         if self.data_out is None:
             print 'ERROR: Attempting to write to file that has not been opened.'
             return
@@ -220,7 +221,7 @@ class PushLearningIO:
         data_line = str(c_x.x)+' '+str(c_x.y)+' '+str(c_x.z)+' '+\
             str(push_angle)+' '+str(push_opt)+' '+str(arm)+' '+\
             str(c_x_prime.x)+' '+str(c_x_prime.y)+' '+str(c_x_prime.z)+' '+\
-            str(push_dist)+' '+str(int(high_init))+'\n'
+            str(push_dist)+' '+str(int(high_init))+' '+str(push_time)+'\n'
         self.data_out.write(data_line)
 
     def parse_line(self, line):
@@ -237,6 +238,8 @@ class PushLearningIO:
         push.push_dist = float(l[9])
         if len(l) > 10:
             push.high_init = int(l[10])
+        if len(l) > 11:
+            push.push_time = float(l[11])
         return push
 
     def read_in_data_file(self, file_name):
