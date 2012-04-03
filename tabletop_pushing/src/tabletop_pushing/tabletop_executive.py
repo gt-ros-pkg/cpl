@@ -220,7 +220,6 @@ class TabletopExecutive:
 
     def run_learning(self, num_trials, push_angle, push_dist):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        # push_options = [OVERHEAD_PUSH]
         arms = ['l', 'r']
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         rospy.loginfo('Place item at new initial pose')
