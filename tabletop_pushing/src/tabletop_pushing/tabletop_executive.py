@@ -279,7 +279,8 @@ class TabletopExecutive:
         rospy.loginfo('Moved (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
                        str(analysis_res.centroid.y) + ')')
         self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
-                                 which_arm, analysis_res.centroid, push_dist)
+                                 which_arm, analysis_res.centroid, push_dist,
+                                 high_init)
         return True
 
     def request_singulation_push(self, use_guided=True):
