@@ -598,6 +598,22 @@ class TabletopPushNode:
             push_arm.set_movement_mode_ik()
             robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
 
+            if not request.high_arm_init:
+                # Rotate wrist before moving to position
+                rospy.loginfo('Rotating elbow for overhead push')
+                arm_pose = robot_arm.pose()
+                arm_pose[-3] =  wrist_pitch
+                robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
+
+            # Rotate wrist before moving to position
+            rospy.loginfo('Rotating wrist for overhead push')
+            arm_pose = robot_arm.pose()
+            if request.left_arm:
+                arm_pose[-1] = wrist_yaw + 0.5*pi
+            else:
+                arm_pose[-1] = wrist_yaw - 0.5*pi
+            robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
+
         orientation = tf.transformations.quaternion_from_euler(0.0, 0.5*pi,
                                                                wrist_yaw)
         pose = np.matrix([start_point.x, start_point.y, start_point.z])
@@ -618,13 +634,6 @@ class TabletopPushNode:
             push_arm.move_absolute(loc, stop='pressure', frame=push_frame)
             rospy.loginfo('Done moving to start point')
         else:
-            if request.arm_init:
-                # Rotate wrist before moving to position
-                rospy.loginfo('Rotating elbow for overhead push')
-                arm_pose = robot_arm.pose()
-                arm_pose[-3] =  wrist_pitch
-                robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
-
             # Move to offset pose
             loc = [pose, rot]
             push_arm.set_movement_mode_cart()
