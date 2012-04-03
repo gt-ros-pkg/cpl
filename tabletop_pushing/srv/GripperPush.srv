@@ -5,5 +5,6 @@ float64 wrist_yaw
 float64 desired_push_dist
 bool arm_init
 bool arm_reset
+bool high_arm_init
 ---
 float64 dist_pushed
