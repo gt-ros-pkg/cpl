@@ -18,7 +18,6 @@
   <depend package="tf_conversions"/>
   <depend package="cpl_visual_features"/>
   <depend package="cpl_superpixels"/>
-  <!-- <depend package="opencv2"/> -->
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
   <depend package="hrl_pr2_lib"/>
@@ -27,6 +26,7 @@
   <depend package="pr2_controllers_msgs"/>
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
+  <rosdep name="opencv2.3"/>
 </package>
 
 

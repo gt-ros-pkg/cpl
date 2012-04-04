@@ -16,16 +16,20 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-#find_package(opencv2)
+find_package(OpenCV REQUIRED)
 
 # Build the libraries
 rosbuild_add_library(cpl_visual_features_base
   src/features/gabor_filter_bank.cpp
   src/features/lm_filter_bank.cpp)
-
 rosbuild_add_library(cpl_visual_features_saliency src/saliency/center_surround.cpp)
 
 rosbuild_add_library(cpl_visual_features_motion src/motion/dense_lk.cpp src/motion/feature_tracker.cpp)
+
+# Link the libraries
+target_link_libraries(cpl_visual_features_base ${OpenCV_LIBRARIES})
+target_link_libraries(cpl_visual_features_saliency ${OpenCV_LIBRARIES})
+target_link_libraries(cpl_visual_features_motion ${OpenCV_LIBRARIES})
 
 # Build the executables
 rosbuild_add_executable(test_offline src/test_offline.cpp)
@@ -39,9 +43,9 @@ rosbuild_add_executable(train_sift_codebook src/sift_des_codebook_generation.cpp
 rosbuild_add_executable(saliency_depth_node src/depth_saliency_node.cpp)
 rosbuild_add_executable(feature_tracker src/feature_tracker.cpp)
 
-target_link_libraries(sliding_window cpl_visual_features_base cpl_visual_features_saliency)
-target_link_libraries(texture_test cpl_visual_features_base cpl_visual_features_saliency)
-target_link_libraries(train_textons cpl_visual_features_base cpl_visual_features_saliency)
+target_link_libraries(sliding_window cpl_visual_features_base cpl_visual_features_saliency ${OpenCV_LIBRARIES})
+target_link_libraries(texture_test cpl_visual_features_base cpl_visual_features_saliency ${OpenCV_LIBRARIES})
+target_link_libraries(train_textons cpl_visual_features_base cpl_visual_features_saliency ${OpenCV_LIBRARIES})
 target_link_libraries(run_saliency cpl_visual_features_base cpl_visual_features_saliency)
-target_link_libraries(saliency_depth_node cpl_visual_features_base cpl_visual_features_saliency)
-target_link_libraries(train_sift_codebook cpl_visual_features_base)
+target_link_libraries(saliency_depth_node cpl_visual_features_base cpl_visual_features_saliency ${OpenCV_LIBRARIES})
+target_link_libraries(train_sift_codebook cpl_visual_features_base ${OpenCV_LIBRARIES})
