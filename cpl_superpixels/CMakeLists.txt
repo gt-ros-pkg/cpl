@@ -16,7 +16,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-#find_package(opencv2)
+find_package(OpenCV REQUIRED)
 
 #uncomment if you have defined messages
 #rosbuild_genmsg()
@@ -25,6 +25,7 @@ rosbuild_gensrv()
 
 #common commands for building c++ executables and libraries
 rosbuild_add_library(cpl_superpixels_base src/segment.cpp)
+target_link_libraries(cpl_superpixels_base ${OpenCV_LIBRARIES})
 #target_link_libraries(${PROJECT_NAME} another_library)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
