@@ -408,6 +408,9 @@ class TabletopPushingPerceptionNode
     if (objs.size() == 0)
     {
       ROS_WARN_STREAM("No objects found");
+      res.centroid.x = 0.0;
+      res.centroid.y = 0.0;
+      res.centroid.z = 0.0;
       return res;
     }
     res.centroid.x = objs[chosen_idx].centroid[0];

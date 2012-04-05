@@ -246,11 +246,20 @@ class TabletopExecutive:
             for high_init in high_inits:
                 for arm in arms:
                     for push_opt in push_options:
-                        push_vector_res = self.request_learning_push(0.0,
-                                                                     push_dist,
-                                                                     True)
+                        get_push = True
+                        while get_push:
+                            push_vec = self.request_learning_push(0, push_dist,
+                                                                  True)
+                            if (push_vec.centroid.x == 0.0 and
+                                push_vec.centroid.y == 0.0 and
+                                push_vec.centroid.z == 0.0):
+                                code_in = raw_input('Reset obj and press <Enter>: ')
+                                if code_in.startswith('q'):
+                                    return
+                            else:
+                                get_push = False
                         res = self.learning_trial(arm, int(push_opt), high_init,
-                                                  push_vector_res)
+                                                  push_vec)
                         if not res:
                             return
 
@@ -480,7 +489,6 @@ class TabletopExecutive:
         push_req.high_arm_init = high_init
 
         rospy.loginfo("Calling pre overhead push service")
-        # TODO: Pass this in as a parameter
         pre_push_res = self.overhead_pre_push_proxy(push_req)
         rospy.loginfo("Calling overhead push service")
         push_res = self.overhead_push_proxy(push_req)
@@ -542,5 +550,5 @@ if __name__ == '__main__':
             push_angle = 0.0 + pi*i/float(num_push_angles)
             rospy.loginfo('Angle #' + str(i))
             rospy.loginfo('Push angle: ' + str(push_angle))
-            node.run_learning_collect(num_trials, push_angle, push_dist)
+            node.run_rand_learning_collect(num_trials, push_angle, push_dist)
         node.finish_learning()
