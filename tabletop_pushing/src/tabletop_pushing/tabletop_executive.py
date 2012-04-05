@@ -219,7 +219,7 @@ class TabletopExecutive:
             rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
                           ' objects')
 
-    def run_learning(self, num_trials, push_angle, push_dist):
+    def run_learning_collect(self, num_trials, push_angle, push_dist):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         arms = ['l', 'r']
         high_inits = [False, True]
@@ -228,8 +228,29 @@ class TabletopExecutive:
             for high_init in high_inits:
                 for arm in arms:
                     for push_opt in push_options:
-                        res = self.learning_trial(arm, int(push_opt),push_angle,
-                                                  push_dist, high_init)
+                        code_in = raw_input('Reset obj and press <Enter>: ')
+                        if code_in.startswith('q'):
+                            return
+                        push_vector_res = self.request_learning_push(push_angle,
+                                                                     push_dist)
+                        res = self.learning_trial(arm, int(push_opt), high_init,
+                                                  push_vector_res)
+                        if not res:
+                            return
+
+    def run_rand_learning_collect(self, num_trials, push_angle, push_dist):
+        push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
+        arms = ['l', 'r']
+        high_inits = [False, True]
+        for t in xrange(num_trials):
+            for high_init in high_inits:
+                for arm in arms:
+                    for push_opt in push_options:
+                        push_vector_res = self.request_learning_push(0.0,
+                                                                     push_dist,
+                                                                     True)
+                        res = self.learning_trial(arm, int(push_opt), high_init,
+                                                  push_vector_res)
                         if not res:
                             return
 
@@ -237,12 +258,9 @@ class TabletopExecutive:
         rospy.loginfo('Done with learning pushes and such.')
         self.learn_io.close_out_file()
 
-    def learning_trial(self, which_arm, push_opt, push_angle, push_dist,
-                       high_init):
-        code_in = raw_input('Reset item to inital pose and press <Enter> to continue: ')
-        if code_in.startswith('q'):
-            return False
-        push_vector_res = self.request_learning_push(push_angle)
+    def learning_trial(self, which_arm, push_opt, high_init, push_vector_res):
+        push_angle = push_vector_res.push.push_angle
+        push_dist = push_vector_res.push.push_dist
         if push_vector_res is None:
             rospy.logwarn("push_vector_res is None. Exiting pushing");
             return False
@@ -254,7 +272,7 @@ class TabletopExecutive:
                       str(push_vector_res.push.start_point.x) + ', ' +
                       str(push_vector_res.push.start_point.y) + ', ' +
                       str(push_vector_res.push.start_point.z) + ')')
-        rospy.loginfo('Push angle: ' + str(push_vector_res.push.push_angle))
+        rospy.loginfo('Push angle: ' + str(push_angle))
         rospy.loginfo('Push dist: ' + str(push_dist))
         start_time = time.time()
         if not _OFFLINE:
@@ -301,11 +319,13 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_learning_push(self, push_angle):
+    def request_learning_push(self, push_angle, push_dist, rand_angle=False):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
         push_vector_req.push_angle = push_angle
+        push_vector_req.push_dist = push_dist
+        push_vector_req.rand_angle = rand_angle
         rospy.loginfo("Calling learning push vector service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -522,5 +542,5 @@ if __name__ == '__main__':
             push_angle = 0.0 + pi*i/float(num_push_angles)
             rospy.loginfo('Angle #' + str(i))
             rospy.loginfo('Push angle: ' + str(push_angle))
-            node.run_learning(num_trials, push_angle, push_dist)
+            node.run_learning_collect(num_trials, push_angle, push_dist)
         node.finish_learning()

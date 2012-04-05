@@ -301,7 +301,7 @@ class TabletopPushingPerceptionNode
     if (autorun_pcl_segmentation_)
     {
       float rand_angle = randf()*2.0*M_PI-M_PI;
-      getPushVector(rand_angle);
+      getPushVector(rand_angle, true);
     }
 
     // Display junk
@@ -371,7 +371,7 @@ class TabletopPushingPerceptionNode
       }
       else
       {
-        res = getPushVector(req.push_angle);
+        res = getPushVector(req.push_angle, req.rand_angle);
         res.no_push = false;
       }
     }
@@ -385,7 +385,7 @@ class TabletopPushingPerceptionNode
     return true;
   }
 
-  LearnPush::Response getPushVector(double desired_push_angle)
+  LearnPush::Response getPushVector(double desired_push_angle, bool rand_angle)
   {
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
@@ -417,6 +417,12 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
+
+    if (rand_angle)
+    {
+      desired_push_angle = randf()*2.0*M_PI-M_PI;
+    }
+
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
@@ -539,6 +545,12 @@ class TabletopPushingPerceptionNode
     if (objs.size() == 0)
     {
       ROS_WARN_STREAM("No objects found");
+      res.moved.x = 0.0;
+      res.moved.y = 0.0;
+      res.moved.z = 0.0;
+      res.centroid.x = 0.0;
+      res.centroid.y = 0.0;
+      res.centroid.z = 0.0;
       return res;
     }
 
