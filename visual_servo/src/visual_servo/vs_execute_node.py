@@ -136,6 +136,7 @@ if __name__ == '__main__':
     node.initial_arm(cs)
 #    service = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
     
+    rospy.loginfo('Done initializing... Now advertise the Service')
     s = rospy.Service('move_arm', VisualServoTwist , handle_move_request)
     rospy.spin()
   
