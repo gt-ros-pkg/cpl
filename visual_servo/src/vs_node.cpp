@@ -285,6 +285,14 @@ class VisualServoNode
         cv::circle(cur_orig_color_frame_, desired_locations_.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
       }    
       cv::imshow("Output", cur_orig_color_frame_.clone());
+
+      double depth_max = 1.0;
+      cv::minMaxLoc(cur_depth_frame_, NULL, &depth_max);
+      cv::Mat depth_display = cur_depth_frame_.clone();
+      depth_display /= depth_max;
+      cv::imshow("input_depth", depth_display);
+
+
       cv::waitKey(display_wait_ms_);
 #endif
 
@@ -323,8 +331,15 @@ class VisualServoNode
       srv.request.twist.twist.angular.z =  out_rot.z()*gain_rot_;
 
 #ifdef PRINT_TWISTS
+      printf("Camera:\t");
       printMatrix(temp.t());
-      //printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", res.vx, res.vy, res.vz, res.wx, res.wy, res.wz);
+      printf("Torso:\t");
+      printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x,
+          srv.request.twist.twist.linear.y,
+          srv.request.twist.twist.linear.z,
+          srv.request.twist.twist.angular.x,
+          srv.request.twist.twist.angular.y,
+          srv.request.twist.twist.angular.z);
 #endif
       return srv;
     }
@@ -391,7 +406,7 @@ class VisualServoNode
           // RMS of error for termination condition
           e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
         }
-        ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f",sqrt(e), term_threshold_);
+        ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f)",sqrt(e), term_threshold_);
         // if RMS of error is less than a constant, just return 0
         if(sqrt(e) < term_threshold_)
         {
@@ -431,7 +446,7 @@ class VisualServoNode
 
 #ifdef DEBUG_MODE
 #ifdef PRINT_TWISTS
-        ROS_INFO("1. error matrix, 2. im frame twist, 3. torso frame twist");
+        printf("Error: \t");
         printMatrix((error_mat).t());
 #endif
 #endif
@@ -442,13 +457,14 @@ class VisualServoNode
 
     float getZValue(cv::Mat depth_frame, int x, int y)
     {
-      int frame_size = 3;
+      int frame_size = 5;
       float value = 0;
       int size = 0; 
       for (int i = 0; i < frame_size; i++) 
         for (int j = 0; j < frame_size; j++) 
         {
           float temp = depth_frame.at<float>(x-(int)(frame_size/2)+i, y-(int)(frame_size/2)+j);
+          // printf("[%d %d] %f\n", x-(int)(frame_size/2)+i, y-(int)(frame_size/2)+j, temp);
           if (!isnan(temp) && temp > 0) 
           {
             size++;
