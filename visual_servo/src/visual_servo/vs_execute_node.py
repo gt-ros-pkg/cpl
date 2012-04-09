@@ -36,6 +36,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import Twist
+
 from std_msgs.msg import Float64
 from trajectory_msgs.msg import JointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
@@ -71,37 +72,24 @@ class VisualServoExecutionNode:
     pub = rospy.Publisher('r_arm/command', JointTrajectory)
     msg = JointTrajectory()
     pts = JointTrajectoryPoint()
-    pts.positions = array('d', [-1.32734204881265387,
-                                      -0.64601608409943324,
-                                      -1.4620635485239604,
-                                      -1.2729772622637399,
-                                      -10.5123303230158518,
-                                      0.0570651396529178,
-                                      0.163787989862169])
+    pts.positions = array('d', [-1.32734204881265387, -0.64601608409943324, -1.4620635485239604,
+                                      -1.2729772622637399, -10.5123303230158518, 0.0570651396529178, 0.163787989862169])
     pts.time_from_start = rospy.Duration(3.0)
     msg.points = [pts]
-    msg.joint_names = ['r_shoulder_pan_joint', 'r_shoulder_lift_joint', 'r_upper_arm_roll_joint','r_elbow_flex_joint', 'r_forearm_roll_joint','r_wrist_flex_joint','r_wrist_roll_joint']
+    msg.joint_names = ['r_shoulder_pan_joint', 'r_shoulder_lift_joint', 'r_upper_arm_roll_joint',
+                       'r_elbow_flex_joint', 'r_forearm_roll_joint','r_wrist_flex_joint','r_wrist_roll_joint']
     pub.publish(msg)
     rospy.sleep(0.5)
     pub.publish(msg)
     rospy.sleep(3)
 
-    pts.positions = array('d', [-0.60, 0.1137, -1.60411927, -1.75,
-                                    -15.85, -1.282, -1.72])
+    pts.positions = array('d', [-0.60, 0.1137, -1.60411927, 
+                                -1.75, -15.85, -1.282, -1.72])
     msg.points = [pts]
     pub.publish(msg)
     rospy.sleep(0.5)
     pub.publish(msg)
-
-    rospy.loginfo('Waiting for Visual Servo Node Service')
-    rospy.wait_for_service('visual_servo_twist')
     
-  def move(self):
-    cs = ControllerSwitcher()
-    self.initial_arm(cs)
-    rospy.loginfo('Hooking up Service Proxy to the Visual Servo Twist')
-    service = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
-
     rospy.sleep(5) 
     cs.carefree_switch('r', '%s_cart', '$(find visual_servo)/params/rmc_cartTwist_params.yaml')
     rospy.sleep(0.5)
@@ -109,25 +97,24 @@ class VisualServoExecutionNode:
     pub.publish(zero)
     rospy.sleep(0.5)
     pub.publish(zero)
+
     
-    msg = Twist()    
-   
+  
+  def handle_move_request(req):
+    t = req.twist # service call
+    msg = Twist() # this is the message to the twist controller
     while not rospy.is_shutdown():
       try:
-        resp = service()
-        msg.linear.x = self.adjustVelocity(resp.vx)
-        msg.linear.y = self.adjustVelocity(resp.vy)
-        msg.linear.z = self.adjustVelocity(resp.vz)
-        msg.angular.x = self.adjustVelocity(resp.wx)
-        msg.angular.y = self.adjustVelocity(resp.wy)
-        msg.angular.z = self.adjustVelocity(resp.wz)
+        msg.linear.x = self.adjustVelocity(t.twist.linear.x)
+        msg.linear.y = self.adjustVelocity(t.twist.linear.y)
+        msg.linear.z = self.adjustVelocity(t.twist.linear.z)
+        msg.angular.x = self.adjustVelocity(t.twist.angular.x)
+        msg.angular.y = self.adjustVelocity(t.twist.angular.y)
+        msg.angular.z = self.adjustVelocity(t.twist.angular.z)
         rospy.loginfo('vx:%+.5f\tvy:%+.5f\tvz:%+.5f\twx:%+.5f\twy:%+.5f\twz:%+.5f', msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z)
         pub.publish(msg)
-        rospy.sleep(0.2) 
       except rospy.ServiceException, e:
-        pub.publish(zero)
-        rospy.sleep(0.2) 
-  
+        pub.publish(zero) 
 
 
 if __name__ == '__main__':
@@ -144,7 +131,14 @@ if __name__ == '__main__':
     zero.angular.y = 0.0
     zero.angular.z = 0.0
     rospy.on_shutdown(cleanup)
-    node.move()
+    
+    cs = ControllerSwitcher()
+    node.initial_arm(cs)
+#    service = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
+    
+    s = rospy.Service('move_arm', VisualServoTwist , handle_move_request)
+    rospy.spin()
+  
   except rospy.ROSInterruptException: pass
 
 

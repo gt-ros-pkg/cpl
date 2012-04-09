@@ -155,92 +155,7 @@ public:
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
   }
-  
-  /**
-   * The service callback
-   * @param req Request, empty for now
-   * @param res Response: TwistStamped Message
-   */
-  bool getTwist(VisualServoTwist::Request &req, VisualServoTwist::Response &res)
-  {
-    
-    // Do not respond to service call when the node got no sensor callback
-    if (!camera_initialized_)
-    {
-      return false;
-    }
-    
-    /** Main Logic **/
-    // segment color -> find contour -> moments
-    // -> reorder to recognize each point -> find error, interaction matrix, & twist
-    
-    // get all the blues 
-    cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
-                                     tape_hue_threshold_);
-    // find the three largest blues
-    std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-    
-    // order the blue tapes
-    std::vector<cv::Point> pts = getMomentCoordinates(ms);
-    
-    // compute the twist 
-    cv::Mat twist = computeTwist(desired_locations_, cur_color_frame_, cur_depth_frame_, pts);
-    
-#ifdef DEBUG_MODE
-    // put dots on the centroids of wrist
-    for (unsigned int i = 0; i < pts.size(); i++) 
-    {
-      cv::circle(cur_orig_color_frame_, pts.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
-    // put dots on the desired location
-    for (unsigned int i = 0; i < desired_locations_.size(); i++)
-    {
-      cv::circle(cur_orig_color_frame_, desired_locations_.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }    
-    cv::imshow("Output", cur_orig_color_frame_.clone());
-    cv::waitKey(display_wait_ms_);
-#endif
-    
-    cv::Mat temp = twist.clone(); 
-    
-    // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
-    tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
-    tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));
-    tf::StampedTransform transform; 
-    
-    ros::Time now = ros::Time(0);
-    try 
-    {
-      tf::TransformListener listener;
-      listener.waitForTransform(workspace_frame_, "/openni_rgb_optical_frame",  now, ros::Duration(1.0));
-      listener.lookupTransform(workspace_frame_, "/openni_rgb_optical_frame",  now, transform);
-    }
-    catch (tf::TransformException e)
-    {
-      // return 0 value in case of error so the arm stops
-      res.vx = 0; res.vy = 0.; res.vz = 0; res.wx= 0; res.wy = 0; res.wz = 0;
-      ROS_WARN_STREAM(e.what());
-      return true;
-    }
-    
-    // twist transformation
-    btVector3 out_rot = transform.getBasis() * twist_rot;
-    btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
-    
-    // multiple the velocity and rotation by gain defined in the parameter
-    res.vx =  out_vel.x()*gain_vel_;
-    res.vy =  out_vel.y()*gain_vel_;
-    res.vz =  out_vel.z()*gain_vel_;
-    res.wx =  out_rot.x()*gain_rot_;
-    res.wy =  out_rot.y()*gain_rot_;
-    res.wz =  out_rot.z()*gain_rot_;
-    
-#ifdef PRINT_TWISTS
-    printMatrix(temp.t());
-    printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", res.vx, res.vy, res.vz, res.wx, res.wy, res.wz);
-#endif
-    return true;
-  }
+
   
   /**
    * Called when Kinect information is avaiable. Refresh rate of about 100Hz 
@@ -313,31 +228,113 @@ public:
       // returned jacobian is null, which means we need to crap out
       if (desired_locations_.size() != 3) {
         ROS_WARN("Could not compute Desired Location. Please re-arrange your setting and retry.");
-        ros::Duration(0.5).sleep();        
+        return;
       }
       else if (jacobian_type_ == JACOBIAN_TYPE_AVG && countNonZero(desired_jacobian_) == 0) 
       {
         ROS_WARN("Could not get Image Jacobian for Desired Location. Please re-arrange your setting and retry.");
-        ros::Duration(0.5).sleep();
+        return;
       } 
       else 
       {
         // No error: advertise twist service
-        twistServer = n_.advertiseService("visual_servo_twist", &VisualServoNode::getTwist, this);
-        ROS_DEBUG("Ready to use the getTwist service");
+        
+        ros::NodeHandle n;
+        ros::ServiceClient client = n.serviceClient<visual_servo::VisualServoTwist>("move_arm");
+        if (client.call(getTwist())
+            {
+              ROS_INFO("Service Call Successfully executed");
+              
+            }
+            else {
+              ROS_WARN("Service Call NOT Successful");
+            }
+//        twistServer = n_.advertiseService("visual_servo_twist", &VisualServoNode::getTwist, this);
+//        ROS_DEBUG("Ready to use the getTwist service");
       }
     }
+  }   
+  
+  
+  visual_servo::VisualServoTwist getTwist()
+  {
+    visual_servo::VisualServoTwist srv;
+
+    /** Main Logic **/
+    // segment color -> find contour -> moments
+    // -> reorder to recognize each point -> find error, interaction matrix, & twist
+    
+    // get all the blues 
+    cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
+                                     tape_hue_threshold_);
+    // find the three largest blues
+    std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
+    
+    // order the blue tapes
+    std::vector<cv::Point> pts = getMomentCoordinates(ms);
+    
+    // compute the twist 
+    cv::Mat twist = computeTwist(desired_locations_, cur_color_frame_, cur_depth_frame_, pts);
     
 #ifdef DEBUG_MODE
+    // put dots on the centroids of wrist
+    for (unsigned int i = 0; i < pts.size(); i++) 
+    {
+      cv::circle(cur_orig_color_frame_, pts.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+    }
     // put dots on the desired location
-    for (unsigned int i = 0; i < desired_locations_.size(); i++) 
+    for (unsigned int i = 0; i < desired_locations_.size(); i++)
     {
       cv::circle(cur_orig_color_frame_, desired_locations_.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
-    cv::imshow("Raw+Goal", cur_orig_color_frame_.clone());
+    }    
+    cv::imshow("Output", cur_orig_color_frame_.clone());
     cv::waitKey(display_wait_ms_);
 #endif
-  }   
+    
+    cv::Mat temp = twist.clone(); 
+    
+    // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
+    tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
+    tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));
+    tf::StampedTransform transform; 
+    
+    ros::Time now = ros::Time(0);
+    try 
+    {
+      tf::TransformListener listener;
+      listener.waitForTransform(workspace_frame_, "/openni_rgb_optical_frame",  now, ros::Duration(1.0));
+      listener.lookupTransform(workspace_frame_, "/openni_rgb_optical_frame",  now, transform);
+    }
+    catch (tf::TransformException e)
+    {
+      // return 0 value in case of error so the arm stops
+      res.vx = 0; res.vy = 0.; res.vz = 0; res.wx= 0; res.wy = 0; res.wz = 0;
+      ROS_WARN_STREAM(e.what());
+      return true;
+    }
+    
+    // twist transformation
+    btVector3 out_rot = transform.getBasis() * twist_rot;
+    btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
+    
+    // multiple the velocity and rotation by gain defined in the parameter
+    
+    srv.request.twist.twist.linear.x = out_vel.x()*gain_vel_;
+    srv.request.twist.twist.linear.y = out_vel.y()*gain_vel_;
+    srv.request.twist.twist.linear.z =  out_vel.z()*gain_vel_;
+    srv.request.twist.twist.angular.x =  out_rot.x()*gain_rot_;
+    srv.request.twist.twist.angular.y =  out_rot.y()*gain_rot_;
+    srv.request.twist.twist.angular.z =  out_rot.z()*gain_rot_;
+    
+#ifdef PRINT_TWISTS
+    printMatrix(temp.t());
+    printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", res.vx, res.vy, res.vz, res.wx, res.wy, res.wz);
+#endif
+    return srv;
+  }
+  
+  
+  
   
   /**
    * Still in construction:
