@@ -279,6 +279,7 @@ class VisualServoNode
       {
         cv::circle(cur_orig_color_frame_, pts.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
       }
+ 
       // put dots on the desired location
       for (unsigned int i = 0; i < desired_locations_.size(); i++)
       {
@@ -290,7 +291,8 @@ class VisualServoNode
       cv::minMaxLoc(cur_depth_frame_, NULL, &depth_max);
       cv::Mat depth_display = cur_depth_frame_.clone();
       depth_display /= depth_max;
-      cv::imshow("input_depth", depth_display);
+    
+      //cv::imshow("input_depth", depth_display);
 
 
       cv::waitKey(display_wait_ms_);
@@ -398,7 +400,13 @@ class VisualServoNode
         {
           // Error terms have to be converted into meter 
           cv::Mat error = projectImagePointToPoint(pts.at(i)) 
-            - projectImagePointToPoint(desired.at(i)); 
+            - projectImagePointToPoint(desired.at(i));
+         
+          //printf("[%d, %d]:\t", pts.at(i).x, pts.at(i).y); 
+          //printMatrix(projectImagePointToPoint(pts.at(i)).t());
+          //printf("[%d, %d]:\t", desired.at(i).x, desired.at(i).y); 
+          //printMatrix(projectImagePointToPoint(desired.at(i)).t());
+ 
           // taking just x and y, but no z
           error = error.rowRange(0,2); 
           error_mat.push_back(error);
@@ -470,6 +478,7 @@ class VisualServoNode
             size++;
             value += temp;
           }
+
         }
       if (size == 0)
         return -1;
@@ -490,7 +499,7 @@ class VisualServoNode
           cv::Mat xy = projectImagePointToPoint(pts.at(i));
           float x = xy.at<float>(0,0);
           float y = xy.at<float>(1,0);
-          float z = getZValue(depth_frame, pts.at(i).x, pts.at(i).y);
+          float z = 0.6;//getZValue(depth_frame, pts.at(i).x, pts.at(i).y);
 
           ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
 
