@@ -243,6 +243,7 @@ class TabletopExecutive:
 
     def run_rand_learning_collect(self, num_trials, push_dist):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
+        # push_options = [OVERHEAD_PUSH]
         arms = ['l', 'r']
         high_inits = [True, False]
         for t in xrange(num_trials):

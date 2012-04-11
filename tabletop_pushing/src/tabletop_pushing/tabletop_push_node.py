@@ -42,7 +42,7 @@ from pr2_controllers_msgs.msg import *
 import tf
 import numpy as np
 from tabletop_pushing.srv import *
-from math import sin, cos, pi
+from math import sin, cos, pi, fabs
 import sys
 
 # Setup joints stolen from Kelsey's code.
@@ -575,7 +575,6 @@ class TabletopPushNode:
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
-        wrist_pitch = 0.5*pi
 
         if request.left_arm:
             push_arm = self.left_arm_move
@@ -584,6 +583,7 @@ class TabletopPushNode:
             if request.high_arm_init:
                 ready_joints = LEFT_ARM_PULL_READY_JOINTS
             which_arm = 'l'
+            wrist_pitch = 0.5*pi
         else:
             push_arm = self.right_arm_move
             robot_arm = self.robot.right
@@ -591,9 +591,10 @@ class TabletopPushNode:
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_PULL_READY_JOINTS
             which_arm = 'r'
+            wrist_pitch = -0.5*pi
 
-        orientation = tf.transformations.quaternion_from_euler(0.0, wrist_pitch,
-                                                               wrist_yaw)
+        orientation = tf.transformations.quaternion_from_euler(
+            0.0, fabs(wrist_pitch), wrist_yaw)
         pose = np.matrix([start_point.x, start_point.y, start_point.z])
         rot = np.matrix([orientation])
 
