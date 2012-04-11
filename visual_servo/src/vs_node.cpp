@@ -208,7 +208,7 @@ class VisualServoNode
       // focus only on the tabletop setting. do not care about anything far or too close
       color_frame.copyTo(cur_color_frame_, workspace_mask);
       cur_orig_color_frame_ = color_frame.clone();
-      depth_frame.copyTo(cur_depth_frame_, workspace_mask);
+      cur_depth_frame_ = depth_frame.clone();
       cur_point_cloud_ = cloud;
 
       // if desired point is not initialized
@@ -241,15 +241,11 @@ class VisualServoNode
       visual_servo::VisualServoTwist srv = getTwist();
       if (client.call(srv))
       {
-        ROS_INFO("Service Call Successfully executed");
 
       }
-      else {
-        ROS_WARN("Service Call NOT Successful");
+      else
+      {
       }
-      //        twistServer = n_.advertiseService("visual_servo_twist", &VisualServoNode::getTwist, this);
-      //        ROS_DEBUG("Ready to use the getTwist service");
-
     }   
 
 
@@ -292,7 +288,7 @@ class VisualServoNode
       cv::Mat depth_display = cur_depth_frame_.clone();
       depth_display /= depth_max;
     
-      //cv::imshow("input_depth", depth_display);
+      cv::imshow("input_depth", depth_display);
 
 
       cv::waitKey(display_wait_ms_);
@@ -327,8 +323,8 @@ class VisualServoNode
 
       srv.request.twist.twist.linear.x = out_vel.x()*gain_vel_;
       srv.request.twist.twist.linear.y = out_vel.y()*gain_vel_;
-      srv.request.twist.twist.linear.z =  out_vel.z()*gain_vel_;
-      srv.request.twist.twist.angular.x =  out_rot.x()*gain_rot_;
+      srv.request.twist.twist.linear.z =  out_vel.z()*gain_vel_*0.2;
+      srv.request.twist.twist.angular.x =  0*out_rot.x()*gain_rot_;
       srv.request.twist.twist.angular.y =  out_rot.y()*gain_rot_;
       srv.request.twist.twist.angular.z =  out_rot.z()*gain_rot_;
 
@@ -401,12 +397,12 @@ class VisualServoNode
           // Error terms have to be converted into meter 
           cv::Mat error = projectImagePointToPoint(pts.at(i)) 
             - projectImagePointToPoint(desired.at(i));
-         
-          //printf("[%d, %d]:\t", pts.at(i).x, pts.at(i).y); 
-          //printMatrix(projectImagePointToPoint(pts.at(i)).t());
-          //printf("[%d, %d]:\t", desired.at(i).x, desired.at(i).y); 
-          //printMatrix(projectImagePointToPoint(desired.at(i)).t());
- 
+          /* 
+          printf("P [%d, %d]:\t", pts.at(i).x, pts.at(i).y); 
+          printMatrix(projectImagePointToPoint(pts.at(i)).t());
+          printf("D [%d, %d]:\t", desired.at(i).x, desired.at(i).y); 
+          printMatrix(projectImagePointToPoint(desired.at(i)).t());
+          */ 
           // taking just x and y, but no z
           error = error.rowRange(0,2); 
           error_mat.push_back(error);
@@ -414,7 +410,8 @@ class VisualServoNode
           // RMS of error for termination condition
           e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
         }
-        ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f)",sqrt(e), term_threshold_);
+        // ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f)",sqrt(e), term_threshold_);
+
         // if RMS of error is less than a constant, just return 0
         if(sqrt(e) < term_threshold_)
         {
@@ -445,7 +442,7 @@ class VisualServoNode
             cv::Mat temp = desired_jacobian_ + im;
             iim = 0.5*(temp.t() * temp).inv() * temp.t();
         }
-
+        // printMatrix(iim);
         // Gain Matrix K
         cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
 
@@ -473,7 +470,7 @@ class VisualServoNode
         {
           float temp = depth_frame.at<float>(x-(int)(frame_size/2)+i, y-(int)(frame_size/2)+j);
           // printf("[%d %d] %f\n", x-(int)(frame_size/2)+i, y-(int)(frame_size/2)+j, temp);
-          if (!isnan(temp) && temp > 0) 
+          if (!isnan(temp) && temp > 0 && temp < 2.0) 
           {
             size++;
             value += temp;
@@ -494,22 +491,24 @@ class VisualServoNode
     {
       // interaction matrix, image jacobian
       cv::Mat L = cv::Mat::zeros(6,6,CV_32F);
+      float z = -1;
       if (pts.size() == 3) {
         for (int i = 0; i < 3; i++) {
           cv::Mat xy = projectImagePointToPoint(pts.at(i));
           float x = xy.at<float>(0,0);
           float y = xy.at<float>(1,0);
-          float z = 0.6;//getZValue(depth_frame, pts.at(i).x, pts.at(i).y);
+          if (z == -1)
+            z = getZValue(depth_frame, pts.at(i).x, pts.at(i).y);
 
           ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
 
           // float z = cur_point_cloud_.at(y,x).z;
           int l = i * 2;
-          if (z <= 0 || isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
+          if (isnan(z) || z < 1e-5) return cv::Mat::zeros(6,6, CV_32F);
           L.at<float>(l,0) = 1/z;   L.at<float>(l+1,0) = 0;
           L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = 1/z;
           L.at<float>(l,2) = -x/z;    L.at<float>(l+1,2) = -y/z;
-          L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = -(1 + pow(y,2));
+          L.at<float>(l,3) = -x*y;    L.at<float>(l+1,3) = -(1 + pow(y,2));
           L.at<float>(l,4) = (1+pow(x,2));  L.at<float>(l+1,4) = x*y;
           L.at<float>(l,5) = -y;      L.at<float>(l+1,5) = x;
         }
@@ -583,18 +582,28 @@ class VisualServoNode
         }
 
         // find the top left corner using distance scheme
-        double dist[3][3], lowest(1e6);
-        int one(-1);
-        for (int i = 0; i < 3; i++) {
-          for (int j = i; j < 3; j++) {
-            double temp = pow(centroids[j][0]- centroids[i][0],2) 
-              + pow(centroids[j][1]-centroids[i][1],2);
-            dist[i][j] = temp;
-            dist[j][i] = temp;
-          }
-          double score = dist[i][0] + dist[i][1] + dist[i][2];
-          if (score < lowest) {
-            lowest = score;
+        cv::Mat vect = cv::Mat::zeros(3,2, CV_32F); 
+        vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
+        vect.at<float>(0,1) = centroids[0][1] - centroids[1][1];
+        vect.at<float>(1,0) = centroids[0][0] - centroids[2][0];
+        vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
+        vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
+        vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];       
+       
+        double angle[3];
+        angle[0] = abs(vect.row(0).dot(vect.row(1))); 
+        angle[1] = abs(vect.row(0).dot(vect.row(2))); 
+        angle[2] = abs(vect.row(1).dot(vect.row(2))); 
+       
+        printMatrix(vect); 
+        double min = angle[0]; 
+        int one = 0;
+        for (int i = 0; i < 3; i++)
+        {
+          printf("[%d, %f]\n", i, angle[i]);
+          if (angle[i] < min)
+          {
+            min = angle[i];
             one = i;
           }
         }
@@ -741,8 +750,12 @@ class VisualServoNode
     cv::Mat projectImagePointToPoint(cv::Point in) 
     {
       // Camera intrinsic matrix
-      k_inv_ = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K)).inv();
-      k_inv_.convertTo(k_inv_, CV_32F);
+      cv::Mat k = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+      k.convertTo(k, CV_32F);
+      //k.at<float>(0,2) = 0;
+      //k.at<float>(1,2) = 0;
+
+      k_inv_ = k.inv();
 
       cv::Mat mIn  = cv::Mat(3,1,CV_32F);
       mIn.at<float>(0,0) = in.x; 
@@ -762,6 +775,8 @@ class VisualServoNode
       // Camera intrinsic matrix
       k_inv_ = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K)).inv();
       k_inv_.convertTo(k_inv_, CV_32F);
+
+   
 
       cv::Mat out  = cv::Mat::zeros(3,1,CV_32F);
 

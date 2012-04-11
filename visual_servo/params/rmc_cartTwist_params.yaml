@@ -4,7 +4,7 @@ r_cart:
   tip_name: r_gripper_tool_frame
   fb_trans:
     p: 20.5
-    i: 1.3
+    i: 2.0
     d: 0.0
     i_clamp: 1.0
   fb_rot:

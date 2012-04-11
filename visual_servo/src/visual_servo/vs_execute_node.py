@@ -100,13 +100,13 @@ class VisualServoExecutionNode:
     msg.points = [pts]
     msg.joint_names = ['r_shoulder_pan_joint', 'r_shoulder_lift_joint', 'r_upper_arm_roll_joint',
                        'r_elbow_flex_joint', 'r_forearm_roll_joint','r_wrist_flex_joint','r_wrist_roll_joint']
-    pub.publish(msg)
+    # pub.publish(msg)
     rospy.sleep(0.5)
-    pub.publish(msg)
+    # pub.publish(msg)
     rospy.sleep(3)
 
-    pts.positions = array('d', [-0.60, 0.1137, -1.60411927, 
-                                -1.75, -15.85, -1.282, -1.72])
+    pts.positions = array('d', [-0.750, +0.237, -1.60411927, 
+                                -2.25, -15.85, -1.282, -1.72])
     msg.points = [pts]
     pub.publish(msg)
     rospy.sleep(0.5)
