@@ -575,6 +575,7 @@ class TabletopPushNode:
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
+        wrist_pitch = 0.5*pi
 
         if request.left_arm:
             push_arm = self.left_arm_move
@@ -583,7 +584,6 @@ class TabletopPushNode:
             if request.high_arm_init:
                 ready_joints = LEFT_ARM_PULL_READY_JOINTS
             which_arm = 'l'
-            wrist_pitch = 0.5*pi
         else:
             push_arm = self.right_arm_move
             robot_arm = self.robot.right
@@ -591,7 +591,11 @@ class TabletopPushNode:
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_PULL_READY_JOINTS
             which_arm = 'r'
-            wrist_pitch = -0.5*pi
+
+        orientation = tf.transformations.quaternion_from_euler(0.0, wrist_pitch,
+                                                               wrist_yaw)
+        pose = np.matrix([start_point.x, start_point.y, start_point.z])
+        rot = np.matrix([orientation])
 
         if request.arm_init:
             rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
@@ -607,15 +611,10 @@ class TabletopPushNode:
 
             # Rotate wrist before moving to position
             # TODO: Figure this out using IK...
-            # rospy.loginfo('Rotating wrist for overhead push')
-            # arm_pose = robot_arm.pose()
-            # arm_pose[-1] = wrist_yaw
-            # robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
-
-        orientation = tf.transformations.quaternion_from_euler(0.0, 0.5*pi,
-                                                               wrist_yaw)
-        pose = np.matrix([start_point.x, start_point.y, start_point.z])
-        rot = np.matrix([orientation])
+            rospy.loginfo('Rotating wrist for overhead push')
+            arm_pose = robot_arm.pose()
+            arm_pose[-1] = wrist_yaw
+            robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
 
         if request.high_arm_init:
             # Move to offset pose above the table

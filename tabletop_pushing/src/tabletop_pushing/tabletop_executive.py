@@ -236,7 +236,7 @@ class TabletopExecutive:
                         push_vector_res = self.request_learning_push(push_angle,
                                                                      push_dist)
                         res = self.learning_trial(arm, int(push_opt), high_init,
-                                                  push_vector_res)
+                                                  push_vector_res, push_dist)
                         if not res:
                             return False
         return True
@@ -262,7 +262,7 @@ class TabletopExecutive:
                             else:
                                 get_push = False
                         res = self.learning_trial(arm, int(push_opt), high_init,
-                                                  push_vec)
+                                                  push_vec, push_dist)
                         if not res:
                             return
 
@@ -270,9 +270,11 @@ class TabletopExecutive:
         rospy.loginfo('Done with learning pushes and such.')
         self.learn_io.close_out_file()
 
-    def learning_trial(self, which_arm, push_opt, high_init, push_vector_res):
+    def learning_trial(self, which_arm, push_opt, high_init, push_vector_res,
+                       push_dist):
         push_angle = push_vector_res.push.push_angle
-        push_dist = push_vector_res.push.push_dist
+        # NOTE: Use commanded push distance not visually decided minimal distance
+        # push_dist = push_vector_res.push.push_dist
         if push_vector_res is None:
             rospy.logwarn("push_vector_res is None. Exiting pushing");
             return False
