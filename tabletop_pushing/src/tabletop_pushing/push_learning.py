@@ -209,8 +209,8 @@ class PushLearningAnalysis:
         # Draw line depicting the angle
         radius = 7
         end_point = (u+cos(c.push_angle)*radius, v+sin(c.push_angle)*radius)
-        cv2.circle(img, (u,v), radius, [0.0,0.0,0.0])
         cv2.line(img, (u,v), end_point, color)
+        cv2.circle(img, (u,v), radius, [0.0,0.0,0.0])
         return img
 
     #
