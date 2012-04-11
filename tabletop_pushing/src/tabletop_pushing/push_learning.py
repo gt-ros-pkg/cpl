@@ -192,11 +192,24 @@ class PushLearningAnalysis:
         v = P_i[1]/pow(2,num_downsamples)
         # Choose color by push type
         if c.arm == 'l':
-            color = [0.0, 255.0, 0.0]
+            if c.push_opt == 0: # Gripper push
+                color = [255.0, 0.0, 0.0] # Blue
+            elif c.push_opt == 1: # Sweep
+                color = [0.0, 255.0, 0.0] # Green
+            else: # Overhead push
+                color = [0.0, 0.0, 255.0] # Red
         else:
-            color = [0.0, 0.0, 255.0]
+            if c.push_opt == 0:# Gripper push
+                color = [255.0, 0.0, 255.0] # Magenta
+            elif c.push_opt == 1: # Sweep
+                color = [0.0, 255.0, 255.0] # Yellow
+            else: # Overhead push
+                color = [255.0, 255.0, 0.0] # Cyan
+
         # Draw line depicting the angle
-        end_point = (u+cos(c.push_angle)*5, v+sin(c.push_angle)*5)
+        radius = 7
+        end_point = (u+cos(c.push_angle)*radius, v+sin(c.push_angle)*radius)
+        cv2.circle(img, (u,v), radius, [0.0,0.0,0.0])
         cv2.line(img, (u,v), end_point, color)
         return img
 
