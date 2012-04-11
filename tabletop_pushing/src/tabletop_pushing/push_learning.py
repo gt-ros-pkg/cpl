@@ -34,7 +34,8 @@ import roslib; roslib.load_manifest('tabletop_pushing')
 from geometry_msgs.msg import Point
 from math import sin, cos, pi, sqrt, fabs
 import cv2
-import numpy
+import tf.transformations as tr
+import numpy as np
 import sys
 import rospy
 
@@ -64,6 +65,7 @@ class PushLearningAnalysis:
         self.compute_push_score = self.compute_push_error_xy
         # self.compute_push_score = self.compute_push_error_push_dist_diff
         self.xy_hash_precision = 10.0 # bins/meter
+        self.num_angle_bins = 8
 
     def determine_best_pushes(self, file_name):
         all_trials = self.read_in_push_trials(file_name)
@@ -148,7 +150,8 @@ class PushLearningAnalysis:
         return groups
 
     def visualize_push_choices(self, choices):
-        # TODO: Draw these on an image, color coded by push option
+        # load in image from dropbox folder
+        disp_img = cv2.imread('/home/thermans/Dropbox/Data/choose_push/test_disp.png')
         world_min_x = 0.2
         world_max_x = 1.0
         world_min_y = -0.5
@@ -157,13 +160,45 @@ class PushLearningAnalysis:
         world_y_dist = world_max_y - world_min_y
         world_x_bins = world_x_dist*self.xy_hash_precision
         world_y_bins = world_y_dist*self.xy_hash_precision
-        # display = numpy.zeros((world_x_bins, world_y_bins))
         for c in choices:
             start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
             push_angle = self.hash_angle(c.push_angle)
             rospy.loginfo('Choice for (' + str(start_x) + ', ' + str(start_y) +
                           ', ' + str(push_angle) + '): (' + str(c.arm) + ', ' +
                           str(c.push_opt) + ') : ' + str(c.score))
+            disp_img = self.draw_push_choice_on_image(c, disp_img)
+        cv2.imshow('Chosen pushes', disp_img)
+        cv2.waitKey()
+
+    def draw_push_choice_on_image(self, c, img):
+        # TODO: load in transform and camera parameters from saved info file
+        K = np.matrix([[525, 0, 319.5, 0.0],
+                       [0, 525, 239.5, 0.0],
+                       [0, 0, 1, 0.0]])
+        tl = np.asarray([-0.0115423, 0.441939, 0.263569])
+        q = np.asarray([0.693274, -0.685285, 0.157732, 0.157719])
+        num_downsamples = 1
+        # TODO: Save table height in trial data
+        table_height = -0.3
+        P_w = np.matrix([[c.c_x.x], [c.c_x.y], [table_height], [1.0]])
+        # Transform choice location into camera frame
+        T = (np.matrix(tr.translation_matrix(tl)) *
+             np.matrix(tr.quaternion_matrix(q)))
+        P_c = T*P_w
+        # Transform camera point into image frame
+        P_i = K*P_c
+        P_i = P_i / P_i[2]
+        u = P_i[0]/pow(2,num_downsamples)
+        v = P_i[1]/pow(2,num_downsamples)
+        # Choose color by push type
+        if c.arm == 'l':
+            color = [0.0, 255.0, 0.0]
+        else:
+            color = [0.0, 0.0, 255.0]
+        # Draw line depicting the angle
+        end_point = (u+cos(c.push_angle)*5, v+sin(c.push_angle)*5)
+        cv2.line(img, (u,v), end_point, color)
+        return img
 
     #
     # IO Functions
@@ -176,8 +211,9 @@ class PushLearningAnalysis:
     #
     def hash_angle(self, theta):
         # Group different pushes by push_angle
-        # TODO: Discretize this
-        return theta
+        bin = int((theta + pi)/(2.0*pi)*self.num_angle_bins)
+        bin = max(min(bin, self.num_angle_bins-1), 0)
+        return -pi+(2.0*pi)*float(bin)/self.num_angle_bins
 
     def hash_xy(self, x,y):
         # Group different pushes by push_angle

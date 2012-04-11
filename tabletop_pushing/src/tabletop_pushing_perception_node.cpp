@@ -226,6 +226,7 @@ class TabletopPushingPerceptionNode
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
       pcl_segmenter_->cam_info_ = cam_info_;
+      ROS_DEBUG_STREAM("Cam info: " << cam_info_);
     }
     // Convert images to OpenCV format
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
@@ -240,6 +241,16 @@ class TabletopPushingPerceptionNode
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
                           cloud.header.stamp, ros::Duration(0.5));
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+    // ROS_INFO_STREAM("Transformed point cloud");
+    // tf::StampedTransform transform;
+    // tf_->lookupTransform(cloud.header.frame_id, workspace_frame_, ros::Time(0),
+    //                      transform);
+    // tf::Vector3 trans = transform.getOrigin();
+    // tf::Quaternion rot = transform.getRotation();
+    // ROS_INFO_STREAM("Transform trans: (" << trans.x() << ", " << trans.y() <<
+    //                 ", " << trans.z() << ")");
+    // ROS_INFO_STREAM("Transform rot: (" << rot.x() << ", " << rot.y() <<
+    //                 ", " << rot.z() << ", " << rot.w() << ")");
 
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
