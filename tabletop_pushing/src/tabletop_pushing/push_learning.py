@@ -151,7 +151,7 @@ class PushLearningAnalysis:
 
     def visualize_push_choices(self, choices):
         # load in image from dropbox folder
-        disp_img = cv2.imread('/home/thermans/Dropbox/Data/choose_push/test_disp.png')
+        disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/test_disp.png')
         world_min_x = 0.2
         world_max_x = 1.0
         world_min_y = -0.5
@@ -168,6 +168,7 @@ class PushLearningAnalysis:
                           str(c.push_opt) + ') : ' + str(c.score))
             disp_img = self.draw_push_choice_on_image(c, disp_img)
         cv2.imshow('Chosen pushes', disp_img)
+        cv2.imwrite('/u/thermans/Desktop/push_learn_out.png', disp_img)
         cv2.waitKey()
 
     def draw_push_choice_on_image(self, c, img):
@@ -315,6 +316,6 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         data_path = str(sys.argv[1])
     else:
-        data_path = '/home/thermans/Dropbox/Data/choose_push/batch_out0.txt'
+        data_path = '/u/thermans/Dropbox/Data/choose_push/batch_out0.txt'
     best_pushes = pla.determine_best_pushes(data_path)
     pla.visualize_push_choices(best_pushes)
