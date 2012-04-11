@@ -139,7 +139,9 @@ class TabletopExecutive:
     def init_learning(self):
         # Singulation Push proxy
         self.learn_io = PushLearningIO()
-        self.learn_io.open_out_file('/u/thermans/data/learn_out.txt')
+        learn_file_name = '/u/thermans/data/learn_out.txt'
+        rospy.loginfo('Opening learn file: '+learn_file_name)
+        self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
         # Get table height and raise to that before anything else
@@ -236,12 +238,13 @@ class TabletopExecutive:
                         res = self.learning_trial(arm, int(push_opt), high_init,
                                                   push_vector_res)
                         if not res:
-                            return
+                            return False
+        return True
 
-    def run_rand_learning_collect(self, num_trials, push_angle, push_dist):
+    def run_rand_learning_collect(self, num_trials, push_dist):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         arms = ['l', 'r']
-        high_inits = [False, True]
+        high_inits = [True, False]
         for t in xrange(num_trials):
             for high_init in high_inits:
                 for arm in arms:
@@ -546,9 +549,5 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
-        for i in xrange(num_push_angles+1):
-            push_angle = 0.0 + pi*i/float(num_push_angles)
-            rospy.loginfo('Angle #' + str(i))
-            rospy.loginfo('Push angle: ' + str(push_angle))
-            node.run_rand_learning_collect(num_trials, push_angle, push_dist)
+        node.run_rand_learning_collect(num_trials, push_dist)
         node.finish_learning()

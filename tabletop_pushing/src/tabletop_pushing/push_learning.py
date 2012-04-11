@@ -36,6 +36,7 @@ from math import sin, cos, pi, sqrt, fabs
 import cv2
 import numpy
 import sys
+import rospy
 
 _HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist high_init push_time'
 
@@ -160,9 +161,9 @@ class PushLearningAnalysis:
         for c in choices:
             start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
             push_angle = self.hash_angle(c.push_angle)
-            print 'Choice for (' + str(start_x) + ', ' + str(start_y) + ', ' +\
-                str(push_angle) + '): (' + str(c.arm) + ', ' + \
-                str(c.push_opt) + ') : ' + str(c.score)
+            rospy.loginfo('Choice for (' + str(start_x) + ', ' + str(start_y) +
+                          ', ' + str(push_angle) + '): (' + str(c.arm) + ', ' +
+                          str(c.push_opt) + ') : ' + str(c.score))
 
     #
     # IO Functions
@@ -216,14 +217,16 @@ class PushLearningIO:
     def write_line(self, c_x, push_angle, push_opt, arm, c_x_prime, push_dist,
                    high_init=False, push_time=0.0):
         if self.data_out is None:
-            print 'ERROR: Attempting to write to file that has not been opened.'
+            rospy.logerr('Attempting to write to file that has not been opened.')
             return
+        rospy.loginfo('Writing output line.')
         # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
         data_line = str(c_x.x)+' '+str(c_x.y)+' '+str(c_x.z)+' '+\
             str(push_angle)+' '+str(push_opt)+' '+str(arm)+' '+\
             str(c_x_prime.x)+' '+str(c_x_prime.y)+' '+str(c_x_prime.z)+' '+\
             str(push_dist)+' '+str(int(high_init))+' '+str(push_time)+'\n'
         self.data_out.write(data_line)
+        self.data_out.flush()
 
     def parse_line(self, line):
         if line.startswith('#'):
@@ -252,6 +255,7 @@ class PushLearningIO:
     def open_out_file(self, file_name):
         self.data_out = file(file_name, 'a')
         self.data_out.write(_HEADER_LINE+'\n')
+        self.data_out.flush()
 
     def close_out_file(self):
         self.data_out.close()
