@@ -117,12 +117,10 @@ void constructDescriptors(std::vector<cv::Point>& samples,
         x2 = samples.at(m).x;
         y2 = samples.at(m).y;
 
-        radius = sqrt(pow(x1-x2,2) +
-                      pow(y1-y2,2));
+        radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
         radius = log(radius);
         radius /= max_radius;
-        theta = atan(fabs(y1-y2) /
-                     fabs(x1-x2));
+        theta = atan(fabs(y1-y2) / fabs(x1-x2));
         theta += M_PI/2;
         if (y1-y2 < 0)
         {
@@ -184,7 +182,7 @@ cv::Mat computeCostMatrix(std::vector< std::vector<float> >& descriptorsA,
 
   cv::Mat save_img;
   cost_matrix.convertTo(save_img, CV_8UC1, 255);
-  cv::imwrite("/home/thermans/Desktop/costmatrix.bmp", save_img);
+  cv::imwrite("/home/thermans/Desktop/cost_matrix.bmp", save_img);
 
   return cost_matrix;
 }
