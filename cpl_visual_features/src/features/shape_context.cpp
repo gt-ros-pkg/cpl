@@ -1,6 +1,8 @@
 #include <cpl_visual_features/features/shape_context.h>
 #include <math.h>
 
+namespace cpl_visual_features
+{
 void compareShapes(cv::Mat& imageA, cv::Mat& imageB)
 {
   cv::Mat edge_imageA(imageA.size(), imageA.type());
@@ -11,14 +13,12 @@ void compareShapes(cv::Mat& imageA, cv::Mat& imageB)
   cv::Canny(imageB, edge_imageB, 0.05, 0.5);
 
   // sample a subset of the edge pixels
-  std::vector<cv::Point> samplesA, samplesB;
-  samplePoints(edge_imageA, samplesA);
-  samplePoints(edge_imageB, samplesB);
+  std::vector<cv::Point> samplesA = samplePoints(edge_imageA);
+  std::vector<cv::Point> samplesB = samplePoints(edge_imageB);
 
   // construct shape descriptors for each sample
-  std::vector< std::vector<float> > descriptorsA, descriptorsB;
-  constructDescriptors(samplesA, descriptorsA);
-  constructDescriptors(samplesB, descriptorsB);
+  ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
+  ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
 
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB);
 
@@ -30,9 +30,9 @@ void compareShapes(cv::Mat& imageA, cv::Mat& imageB)
   // (uses code from http://www.magiclogic.com/assignment.html)
 }
 
-void samplePoints(cv::Mat& edge_image, std::vector<cv::Point>& samples)
+std::vector<cv::Point> samplePoints(cv::Mat& edge_image)
 {
-
+  std::vector<cv::Point> samples;
   std::vector<cv::Point> all_points;
   cv::Scalar pixel;
   for (int y=0; y < edge_image.rows; y++)
@@ -60,12 +60,12 @@ void samplePoints(cv::Mat& edge_image, std::vector<cv::Point>& samples)
       edge_image.at<uchar>(samples.back().y, samples.back().x) = 255;
     }
   }
-  return;
+  return samples;
 }
 
-void constructDescriptors(std::vector<cv::Point>& samples,
-                          std::vector< std::vector<float> >& descriptors)
+ShapeDescriptors constructDescriptors(std::vector<cv::Point>& samples)
 {
+  ShapeDescriptors descriptors;
   std::vector<float> descriptor;
   float max_radius = 0;
   float radius, theta;
@@ -135,11 +135,11 @@ void constructDescriptors(std::vector<cv::Point>& samples,
     descriptors.push_back(descriptor);
   }
 
-  return;
+  return descriptors;
 }
 
-cv::Mat computeCostMatrix(std::vector< std::vector<float> >& descriptorsA,
-                          std::vector< std::vector<float> >& descriptorsB)
+cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
+                          ShapeDescriptors& descriptorsB)
 {
   cv::Mat cost_matrix(descriptorsA.size(), descriptorsB.size(), CV_32FC1, 0.0f);
   float epsilonCost = 9e5;
@@ -186,3 +186,4 @@ cv::Mat computeCostMatrix(std::vector< std::vector<float> >& descriptorsA,
 
   return cost_matrix;
 }
+};

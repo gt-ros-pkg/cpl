@@ -1,4 +1,5 @@
 #include <cpl_visual_features/features/shape_context.h>
+using namespace cpl_visual_features;
 
 int main(int argc, char** argv)
 {

@@ -5,9 +5,14 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <vector>
+namespace cpl_visual_features
+{
+typedef std::vector<float> ShapeDescriptor;
+typedef std::vector<ShapeDescriptor> ShapeDescriptors;
+
 void compareShapes(cv::Mat& imageA, cv::Mat& imageB);
-void samplePoints(cv::Mat& edge_image, std::vector<cv::Point>& samples);
-void constructDescriptors(std::vector<cv::Point>& samples,
-                          std::vector< std::vector<float> >& descriptors);
+std::vector<cv::Point> samplePoints(cv::Mat& edge_image);
+ShapeDescriptors constructDescriptors(std::vector<cv::Point>& samples);
 cv::Mat computeCostMatrix(std::vector< std::vector<float> >& descriptorsA,
                           std::vector< std::vector<float> >& descriptorsB);
+};
