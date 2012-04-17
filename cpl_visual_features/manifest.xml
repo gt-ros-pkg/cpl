@@ -15,7 +15,7 @@
   <depend package="roslib"/>
   <rosdep name="opencv2.3"/>
   <export>
-    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lcpl_visual_features_base -lcpl_visual_features_saliency -lcpl_visual_features_motion" />
+    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lcpl_visual_features_base -lcpl_visual_features_saliency -lcpl_visual_features_motion -llap_copp" />
   </export>
 
 </package>

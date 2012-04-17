@@ -9,10 +9,17 @@ namespace cpl_visual_features
 {
 typedef std::vector<float> ShapeDescriptor;
 typedef std::vector<ShapeDescriptor> ShapeDescriptors;
+typedef std::vector<int> Path;
+typedef std::vector<cv::Point> Samples;
 
-void compareShapes(cv::Mat& imageA, cv::Mat& imageB);
+double compareShapes(cv::Mat& imageA, cv::Mat& imageB);
 std::vector<cv::Point> samplePoints(cv::Mat& edge_image);
-ShapeDescriptors constructDescriptors(std::vector<cv::Point>& samples);
-cv::Mat computeCostMatrix(std::vector< std::vector<float> >& descriptorsA,
-                          std::vector< std::vector<float> >& descriptorsB);
+ShapeDescriptors constructDescriptors(Samples& samples);
+cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
+                          ShapeDescriptors& descriptorsB);
+double getMinimumCostPath(cv::Mat& cost_matrix, Path& path);
+void displayMatch(cv::Mat& edge_imgA,
+                  std::vector<cv::Point>& samplesA,
+                  Samples& samplesB,
+                  Path& path);
 };
