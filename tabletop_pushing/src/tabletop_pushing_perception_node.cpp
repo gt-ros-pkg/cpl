@@ -74,6 +74,7 @@
 
 // cpl_visual_features
 #include <cpl_visual_features/helpers.h>
+#include <cpl_visual_features/features/shape_context.h>
 
 // tabletop_pushing
 #include <tabletop_pushing/LearnPush.h>
@@ -120,6 +121,32 @@ using tabletop_pushing::ProtoObject;
 using tabletop_pushing::ProtoObjects;
 using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
+
+class ObjectPushLearning
+{
+ public:
+  ObjectPushLearning()
+  {
+  }
+
+  void getObjectDistances()
+  {
+    // TODO: Pass in some representation of the object geometry for shape
+    // context
+    // TODO: call shape context code here.
+  }
+
+  void estimatePushDynamics()
+  {
+    // TODO: Have a function to estimate the simple dynamics of the model
+  }
+
+  void estimatePushError()
+  {
+    // TODO: Have a function to estimate the learned deviation function from the
+    // model
+  }
+};
 
 class TabletopPushingPerceptionNode
 {

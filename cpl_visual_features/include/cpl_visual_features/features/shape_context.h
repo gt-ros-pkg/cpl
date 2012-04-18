@@ -13,7 +13,8 @@ typedef std::vector<int> Path;
 typedef std::vector<cv::Point> Samples;
 
 double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images=false);
-std::vector<cv::Point> samplePoints(cv::Mat& edge_image, float percentage = 0.3);
+std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
+                                    float percentage = 0.3);
 ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int radius_bins = 5,
                                       unsigned int theta_bins = 12);
