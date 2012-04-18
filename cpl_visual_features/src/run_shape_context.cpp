@@ -1,4 +1,5 @@
 #include <cpl_visual_features/features/shape_context.h>
+#include <ros/ros.h>
 using namespace cpl_visual_features;
 
 int main(int argc, char** argv)
@@ -23,7 +24,8 @@ int main(int argc, char** argv)
   // convert from color to grayscale, needed by Canny
   cv::cvtColor(imageA, imageA1, CV_RGB2GRAY);
   cv::cvtColor(imageB, imageB1, CV_RGB2GRAY);
-  compareShapes(imageA1, imageB1);
+  float score = compareShapes(imageA1, imageB1);
+  ROS_INFO_STREAM("Object match with score: " << score);
 
   return 0;
 }
