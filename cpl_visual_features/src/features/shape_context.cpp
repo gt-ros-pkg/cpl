@@ -13,7 +13,8 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB)
   // do edge detection
   cv::Canny(imageA, edge_imageA, 0.05, 0.5);
   cv::Canny(imageB, edge_imageB, 0.05, 0.5);
-
+  cv::imwrite("/home/thermans/Desktop/edge_imageA_raw.bmp", edge_imageA);
+  cv::imwrite("/home/thermans/Desktop/edge_imageB_raw.bmp", edge_imageB);
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
   Samples samplesB = samplePoints(edge_imageB);
@@ -58,7 +59,7 @@ Samples samplePoints(cv::Mat& edge_image)
   edge_image = cv::Scalar(0);
 
   // subsample a percentage of all points
-  float percentage = 0.1;
+  float percentage = 0.3;
   int scale = 1 / percentage;
   for (unsigned int i=0; i < all_points.size(); i++)
   {
@@ -151,7 +152,7 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
   int mat_size = std::max(descriptorsA.size(), descriptorsB.size());
   cv::Mat cost_matrix(mat_size, mat_size, CV_32FC1, 0.0f);
   float epsilonCost = 9e5;
-  float cost, hi, hj;
+  float d_cost, hi, hj;
   ShapeDescriptor& descriptorA = descriptorsA.front();
   ShapeDescriptor& descriptorB = descriptorsB.front();
 
@@ -170,7 +171,7 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
     for (unsigned int j=0; j < descriptorsB.size(); j++)
     {
       descriptorB = descriptorsB.at(j);
-      cost = 0;
+      d_cost = 0;
 
       // compute cost between shape context i and j
       // using chi-squared test statistic
@@ -180,11 +181,11 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
         hj = descriptorB.at(k) / (descriptorsB.size() - 1); // normalized bin val
         if (hi + hj > 0)
         {
-          cost += pow(hi-hj, 2) / (hi + hj);
+          d_cost += pow(hi-hj, 2) / (hi + hj);
         }
       }
-      cost /= 2;
-      cost_matrix.at<float>(i,j) = cost;
+      d_cost /= 2;
+      cost_matrix.at<float>(i,j) = d_cost;
     }
   }
 
@@ -192,43 +193,44 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
   cost_matrix.convertTo(int_cost_matrix, CV_8UC1, 255);
   cv::imwrite("/home/thermans/Desktop/cost_matrix.bmp", int_cost_matrix);
 
-  //return cost_matrix;
-  return int_cost_matrix;
+  return cost_matrix;
+  // return int_cost_matrix;
 }
 
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
 {
   const int dim = cost_matrix.rows;
-  cost **cost_mat;
-  cost_mat = new cost*[dim];
+  LapCost **cost_mat;
+  cost_mat = new LapCost*[dim];
   for (int r = 0; r < dim; ++r)
   {
-    cost_mat[r] = new cost[dim];
+    cost_mat[r] = new LapCost[dim];
   }
   for (int r = 0; r < dim; ++r)
   {
     for (int c = 0; c < dim; ++c)
     {
-      cost_mat[r][c] = cost_matrix.at<uchar>(r,c);
+      cost_mat[r][c] = cost_matrix.at<float>(r,c);
     }
   }
-  row* rowsol;
-  col* colsol;
-  cost* u;
-  cost* v;
-  rowsol = new col[dim];
-  colsol = new row[dim];
-  u = new cost[dim];
-  v = new cost[dim];
-
-  cost lap_cost = lap(dim, cost_mat, rowsol, colsol, u, v);
+  LapRow* rowsol;
+  LapCol* colsol;
+  LapCost* u;
+  LapCost* v;
+  rowsol = new LapCol[dim];
+  colsol = new LapRow[dim];
+  u = new LapCost[dim];
+  v = new LapCost[dim];
+  // ROS_INFO_STREAM("Getting lap cost");
+  LapCost match_cost = lap(dim, cost_mat, rowsol, colsol, u, v);
+  // ROS_INFO_STREAM("Got lap cost");
   // checklap(dim, cost_mat, rowsol, colsol, u, v);
   for (int r = 0; r < dim; ++r)
   {
     int c = rowsol[r];
     path.push_back(c);
   }
-  return lap_cost;
+  return match_cost;
 }
 
 void displayMatch(cv::Mat& edge_imageA, Samples& samplesA, Samples& samplesB,
@@ -240,8 +242,9 @@ void displayMatch(cv::Mat& edge_imageA, Samples& samplesA, Samples& samplesB,
   {
     cv::Point start_point = samplesA[i];
     cv::Point end_point = samplesB[path[i]];
+    // TODO: Make this a parameter
     if (std::abs(start_point.x - end_point.x) +
-        std::abs(start_point.y - end_point.y) < 30)
+        std::abs(start_point.y - end_point.y) < 300)
     {
       cv::line(disp_img, start_point, end_point, cv::Scalar(255,255,255));
     }

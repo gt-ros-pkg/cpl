@@ -1,27 +1,32 @@
 /************************************************************************
-*
-*  lap.h
+ *
+ *  lap.h
    version 1.0 - 21 june 1996
    author  Roy Jonker, MagicLogic Optimization Inc.
 
    header file for LAP
-*
-**************************************************************************/
+   *
+   **************************************************************************/
+namespace cpl_visual_features
+{
 
 /*************** CONSTANTS  *******************/
 
-  #define BIG 100000
+#define BIG 100000
 
 /*************** TYPES      *******************/
 
-  typedef int row;
-  typedef int col;
-  typedef int cost;
+// TODO: Move into the namespace
+typedef int LapRow;
+typedef int LapCol;
+typedef float LapCost;
 
 /*************** FUNCTIONS  *******************/
 
-extern int lap(int dim, cost **assigncost,
-               int *rowsol, int *colsol, cost *u, cost *v);
+extern LapCost lap(int dim, LapCost **assigncost,
+                    LapCol *rowsol, LapRow *colsol, LapCost *u, LapCost *v);
 
-extern void checklap(int dim, int **assigncost,
-                     int *rowsol, int *colsol, int *u, int *v);
+extern void checklap(int dim, LapCost **assigncost,
+                     LapCol *rowsol, LapRow *colsol, LapCost *u,
+                     LapCost *v);
+};

@@ -21,12 +21,14 @@
 #include "gnrl.h"
 #include "lap.h"
 
-int lap(int dim,
-        cost **assigncost,
-        col *rowsol,
-        row *colsol,
-        cost *u,
-        cost *v)
+namespace cpl_visual_features
+{
+LapCost lap(int dim,
+             LapCost **assigncost,
+             LapCol *rowsol,
+             LapRow *colsol,
+             LapCost *u,
+             LapCost *v)
 
 // input:
 // dim        - problem size
@@ -40,15 +42,15 @@ int lap(int dim,
 
 {
   boolean unassignedfound;
-  row  i, imin, numfree = 0, prvnumfree, f, i0, k, freerow, *pred, *free;
-  col  j, j1, j2, endofpath, last, low, up, *collist, *matches;
-  cost min, h, umin, usubmin, v2, *d;
+  LapRow  i, imin, numfree = 0, prvnumfree, f, i0, k, freerow, *pred, *free;
+  LapCol  j, j1, j2, endofpath, last, low, up, *collist, *matches;
+  LapCost min, h, umin, usubmin, v2, *d;
 
-  free = new row[dim];       // list of unassigned rows.
-  collist = new col[dim];    // list of columns to be scanned in various ways.
-  matches = new col[dim];    // counts how many times a row could be assigned.
-  d = new cost[dim];         // 'cost-distance' in augmenting path calculation.
-  pred = new row[dim];       // row-predecessor of column in augmenting/alternating path.
+  free = new LapRow[dim];       // list of unassigned rows.
+  collist = new LapCol[dim];    // list of columns to be scanned in various ways.
+  matches = new LapCol[dim];    // counts how many times a row could be assigned.
+  d = new LapCost[dim];         // 'cost-distance' in augmenting path calculation.
+  pred = new LapRow[dim];       // row-predecessor of column in augmenting/alternating path.
 
   // init how many times a row will be assigned in the column reduction.
   for (i = 0; i < dim; i++)
@@ -280,7 +282,7 @@ int lap(int dim,
   }
 
   // calculate optimal cost.
-  cost lapcost = 0;
+  LapCost lapcost = 0;
   for (i = 0; i < dim; i++)
   {
     j = rowsol[i];
@@ -298,12 +300,12 @@ int lap(int dim,
   return lapcost;
 }
 
-void checklap(int dim, cost **assigncost,
-              col *rowsol, row *colsol, cost *u, cost *v)
+void checklap(int dim, LapCost **assigncost,
+              LapCol *rowsol, LapRow *colsol, LapCost *u, LapCost *v)
 {
-  row  i;
-  col  j;
-  cost lapcost = 0, redcost = 0;
+  LapRow  i;
+  LapCol  j;
+  LapCost lapcost = 0, redcost = 0;
   boolean *matched;
   char wait;
 
@@ -369,3 +371,4 @@ void checklap(int dim, cost **assigncost,
   delete[] matched;
   return;
 }
+};
