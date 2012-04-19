@@ -12,7 +12,8 @@ typedef std::vector<ShapeDescriptor> ShapeDescriptors;
 typedef std::vector<int> Path;
 typedef std::vector<cv::Point> Samples;
 
-double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images=false);
+double compareShapes(cv::Mat& imageA, cv::Mat& imageB,
+                     float epsilonCost = 9e5, bool write_images=false);
 std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
                                     float percentage = 0.3);
 ShapeDescriptors constructDescriptors(Samples& samples,
@@ -20,6 +21,7 @@ ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int theta_bins = 12);
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
+                          float epsilonCost = 9e5,
                           bool write_images=false);
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path);
 void displayMatch(cv::Mat& edge_imgA,

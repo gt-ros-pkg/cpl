@@ -10,8 +10,8 @@ int main(int argc, char** argv)
 
   if (argc < 3)
   {
-    imageA = cv::imread("/home/thermans/Desktop/video000.bmp");
-    imageB = cv::imread("/home/thermans/Desktop/video001.bmp");
+    imageA = cv::imread("/home/rahul/Desktop/video000.bmp");
+    imageB = cv::imread("/home/rahul/Desktop/video001.bmp");
   }
   else
   {
