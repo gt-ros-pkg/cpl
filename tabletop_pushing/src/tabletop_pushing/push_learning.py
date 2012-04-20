@@ -172,6 +172,10 @@ class PushLearningAnalysis:
         cv2.waitKey()
 
     def draw_push_choice_on_image(self, c, img):
+        # TODO: Double check where the bin centroid is
+        # c.c_x.x -= 0.5/self.xy_hash_precision
+        # c.c_x.y -= 0.5/self.xy_hash_precision
+
         # TODO: load in transform and camera parameters from saved info file
         K = np.matrix([[525, 0, 319.5, 0.0],
                        [0, 525, 239.5, 0.0],
