@@ -112,16 +112,16 @@ class PositionFeedbackPushNode:
         self.tf_listener = tf.TransformListener()
 
         # Set joint gains
+        self.cs = ControllerSwitcher()
         prefix = roslib.packages.get_pkg_dir('hrl_pr2_arms')+'/params/'
-        cs = ControllerSwitcher()
-        rospy.loginfo(cs.switch("r_arm_controller", "r_arm_controller",
-                                prefix + "pr2_arm_controllers_push.yaml"))
-        rospy.loginfo(cs.switch("l_arm_controller", "l_arm_controller",
-                                prefix + "pr2_arm_controllers_push.yaml"))
+        rospy.loginfo(self.cs.switch("r_arm_controller", "r_arm_controller",
+                                     prefix + "pr2_arm_controllers_push.yaml"))
+        rospy.loginfo(self.cs.switch("l_arm_controller", "l_arm_controller",
+                                     prefix + "pr2_arm_controllers_push.yaml"))
 
         # Setup arms
         rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False)
+        self.robot = pr2.PR2(self.tf_listener, arms=False, base=False)
 
     #
     # Initialization functions
@@ -292,6 +292,12 @@ class PositionFeedbackPushNode:
         self.init_arm_pose(True, which_arm='r')
         self.init_arm_pose(True, which_arm='l')
         rospy.loginfo('Done initializing arms')
+
+    def init_task_pushing(self):
+        self.cs.carefree_switch('r', '%s_cart_posture_push',
+                                '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+        self.cs.carefree_switch('l', '%s_cart_posture_push',
+                                '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
     #
     # Util Functions
     #
@@ -317,7 +323,31 @@ class PositionFeedbackPushNode:
         # self.print_pose()
         self.init_spine_pose()
         self.init_head_pose(self.head_pose_cam_frame)
-        self.init_arms()
+        # self.init_arms()
+        self.init_task_pushing()
+        # TODO: Move the arm...
+        l_arm_command_pub = rospy.Publisher('/l_cart_posture_push/command_pose',
+                                            PoseStamped)
+        rospy.loginfo('Waiting')
+        rospy.sleep(3.0)
+        rospy.loginfo('Publishing arm move -1')
+        # l_arm_command_pub.publish(set_pose)
+        for i in xrange(20):
+            rospy.sleep(0.5)
+            rospy.loginfo('Publishing arm move: ' + str(i))
+            set_pose = PoseStamped()
+            set_pose.header.frame_id = '/torso_lift_link'
+            set_pose.header.stamp = rospy.Time(0)
+            set_pose.pose.position.x =  0.5 + i*0.01
+            set_pose.pose.position.y = 0.0
+            set_pose.pose.position.z = 0.0
+            set_pose.pose.orientation.x = 0.0
+            set_pose.pose.orientation.y = 0.0
+            set_pose.pose.orientation.z = 0.0
+            set_pose.pose.orientation.w = 1.0
+            rospy.loginfo('set_pose: ' + str(set_pose))
+            l_arm_command_pub.publish(set_pose)
+        rospy.loginfo('Published arm move')
         rospy.spin()
 
 if __name__ == '__main__':
