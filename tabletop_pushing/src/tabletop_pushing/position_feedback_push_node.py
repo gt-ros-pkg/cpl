@@ -134,6 +134,7 @@ class PositionFeedbackPushNode:
         Move the arm to the initial pose to be out of the way for viewing the
         tabletop
         '''
+        # TODO: Don't use the hrl pr2 class for moving the arms at all
         if which_arm == 'l':
             robot_arm = self.robot.left
             robot_gripper = self.robot.left_gripper
@@ -159,6 +160,7 @@ class PositionFeedbackPushNode:
         Move the arm to the initial pose to be out of the way for viewing the
         tabletop
         '''
+        # TODO: Don't use the hrl pr2 class for moving the arms at all
         if which_arm == 'l':
             robot_arm = self.robot.left
             robot_gripper = self.robot.left_gripper
@@ -328,12 +330,9 @@ class PositionFeedbackPushNode:
         # TODO: Move the arm...
         l_arm_command_pub = rospy.Publisher('/l_cart_posture_push/command_pose',
                                             PoseStamped)
-        rospy.loginfo('Waiting')
-        rospy.sleep(3.0)
-        rospy.loginfo('Publishing arm move -1')
         # l_arm_command_pub.publish(set_pose)
-        for i in xrange(20):
-            rospy.sleep(0.5)
+        for i in xrange(30):
+            rospy.sleep(0.1)
             rospy.loginfo('Publishing arm move: ' + str(i))
             set_pose = PoseStamped()
             set_pose.header.frame_id = '/torso_lift_link'
@@ -341,12 +340,16 @@ class PositionFeedbackPushNode:
             set_pose.pose.position.x =  0.5 + i*0.01
             set_pose.pose.position.y = 0.0
             set_pose.pose.position.z = 0.0
-            set_pose.pose.orientation.x = 0.0
-            set_pose.pose.orientation.y = 0.0
-            set_pose.pose.orientation.z = 0.0
-            set_pose.pose.orientation.w = 1.0
-            rospy.loginfo('set_pose: ' + str(set_pose))
+            q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0,
+                                                         0.0)
+            set_pose.pose.orientation.x = q[0]
+            set_pose.pose.orientation.y = q[1]
+            set_pose.pose.orientation.z = q[2]
+            set_pose.pose.orientation.w = q[3]
             l_arm_command_pub.publish(set_pose)
+            rospy.loginfo('Desried pose: ' + str(set_pose.pose.position))
+            # TODO: Get current pose
+            # rospy.loginfo('Current pose: ',  set_pose.pose.position)
         rospy.loginfo('Published arm move')
         rospy.spin()
 
