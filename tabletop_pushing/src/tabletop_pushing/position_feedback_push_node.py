@@ -108,9 +108,9 @@ class PositionFeedbackPushNode:
                                                    'openni_rgb_frame')
         self.default_torso_height = rospy.get_param('~default_torso_height',
                                                     0.2)
-        self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.05)
+        self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.1)
+        self.init_arm_sleep_time = rospy.get_param('~init_arm_sleep_time', 2.0)
         self.tf_listener = tf.TransformListener()
-
         # Set joint gains
         self.cs = ControllerSwitcher()
         self.arm_mode = None
@@ -243,7 +243,9 @@ class PositionFeedbackPushNode:
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
-        start_pose.pose.position = request.start_point.point
+        start_pose.pose.position.x = request.start_point.point.x
+        start_pose.pose.position.y = request.start_point.point.y
+        start_pose.pose.position.z = request.start_point.point.z
         q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
@@ -252,18 +254,21 @@ class PositionFeedbackPushNode:
 
         self.switch_to_cart_controllers()
         if request.high_arm_init:
+            epsilon = 0.001
             # TODO: Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
+            rospy.loginfo('start_pose is now: ' + str(start_pose))
             push_arm_pub.publish(start_pose)
             # wait
-            rospy.sleep(5.0)
+            rospy.sleep(self.init_arm_sleep_time)
             rospy.loginfo('Done moving to overhead start point')
             # Change z to lower arm to table
             start_pose.pose.position.z = request.start_point.point.z
+            rospy.loginfo('start_pose is now: ' + str(start_pose))
         # Move to start pose
         push_arm_pub.publish(start_pose)
         # wait
-        rospy.sleep(2.0)
+        rospy.sleep(self.init_arm_sleep_time)
         rospy.loginfo('Done moving to start point')
         return response
 
@@ -400,14 +405,14 @@ class PositionFeedbackPushNode:
             self.cs.carefree_switch('r', '%s_cart_posture_push')
             self.cs.carefree_switch('l', '%s_cart_posture_push')
             self.arm_mode = 'cart_mode'
-            rospy.sleep(1.0)
+            rospy.sleep(0.5)
 
     def switch_to_joint_controllers(self):
         if self.arm_mode != 'joint_mode':
             self.cs.carefree_switch('r', '%s_arm_controller')
             self.cs.carefree_switch('l', '%s_arm_controller')
             self.arm_mode = 'joint_mode'
-            rospy.sleep(1.0)
+            rospy.sleep(0.5)
     #
     # Main Control Loop
     #

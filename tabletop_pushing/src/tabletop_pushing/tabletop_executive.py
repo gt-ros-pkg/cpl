@@ -546,21 +546,20 @@ class TabletopExecutive:
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
     def test_new_controller(self):
-        self.raise_and_look(request_table=False, init_arms=True)
+        # self.raise_and_look(request_table=False, init_arms=True)
         push_dist = 0.25
         which_arm = 'r'
         high_init = True
         push = PushVector()
         push.header.frame_id = '/torso_lift_link'
         push.header.stamp = rospy.Time(0)
-        push.push_angle = pi*0.25
+        push.push_angle = 0.0
         push.push_dist = push_dist
-        push.start_point.x = 0.6
-        push.start_point.y = -0.1
+        push.start_point.x = 0.7
+        push.start_point.y = 0.0
         push.start_point.z = -0.2
         self.gripper_push_object(push_dist, which_arm,
                                  push, high_init)
-
 
 if __name__ == '__main__':
     test_junk = True
