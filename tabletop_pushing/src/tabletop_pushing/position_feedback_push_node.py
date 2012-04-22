@@ -130,12 +130,18 @@ class PositionFeedbackPushNode:
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
                                                   GripperPush,
                                                   self.gripper_pre_push)
+        self.gripper_post_push_srv = rospy.Service('gripper_post_push',
+                                                   GripperPush,
+                                                   self.gripper_post_push)
+
         # self.gripper_pre_sweep_srv = rospy.Service('gripper_pre_sweep',
         #                                            GripperPush,
         #                                            self.gripper_pre_sweep)
         # self.overhead_pre_push_srv = rospy.Service('overhead_pre_push',
         #                                            GripperPush,
         #                                            self.overhead_pre_push)
+
+
         self.raise_and_look_serice = rospy.Service('raise_and_look',
                                                    RaiseAndLook,
                                                    self.raise_and_look_action)
@@ -195,6 +201,7 @@ class PositionFeedbackPushNode:
             else:
                 ready_joints = RIGHT_ARM_READY_JOINTS
             setup_joints = RIGHT_ARM_SETUP_JOINTS
+        self.switch_to_joint_controllers()
         ready_diff = np.linalg.norm(pr2.diff_arm_pose(robot_arm.pose(),
                                                       ready_joints))
 
@@ -216,6 +223,34 @@ class PositionFeedbackPushNode:
     #
     # Behavior functions
     #
+    def gripper_push_action(self, request):
+        response = GripperPushResponse()
+        push_frame = request.start_point.header.frame_id
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+        push_dist = request.desired_push_dist
+
+        if request.left_arm:
+            push_arm_pub = self.l_arm_cart_pub
+            ready_joints = LEFT_ARM_READY_JOINTS
+            which_arm = 'l'
+        else:
+            push_arm_pub = self.r_arm_cart_pub
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            which_arm = 'r'
+
+        # TODO: Add in pressure stuff
+        # push_arm.pressure_listener.rezero()
+
+        # Push in a straight line
+        rospy.loginfo('Pushing forward')
+        set_pose = self.get_gripper_push_pose(which_arm, push_dist)
+        push_arm_pub(set_pose)
+        rospy.loginfo('Done pushing forward')
+
+        response.dist_pushed = push_dist - pos_error
+        return response
+
     def gripper_pre_push(self, request):
         response = GripperPushResponse()
         push_frame = request.start_point.header.frame_id
@@ -229,17 +264,19 @@ class PositionFeedbackPushNode:
                 ready_joints = LEFT_ARM_HIGH_PUSH_READY_JOINTS
             which_arm = 'l'
             push_arm_pub = self.l_arm_cart_pub
+            robot_arm = self.robot.left
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_HIGH_PUSH_READY_JOINTS
             which_arm = 'r'
             push_arm_pub = self.r_arm_cart_pub
+            robot_arm = self.robot.right
 
         if request.arm_init:
-            # TODO: Figure out if we want this
-            pass
-            # rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
+            self.switch_to_joint_controllers()
+            robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
+            rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -257,14 +294,12 @@ class PositionFeedbackPushNode:
             epsilon = 0.001
             # TODO: Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
-            rospy.loginfo('start_pose is now: ' + str(start_pose))
             push_arm_pub.publish(start_pose)
             # wait
             rospy.sleep(self.init_arm_sleep_time)
             rospy.loginfo('Done moving to overhead start point')
             # Change z to lower arm to table
             start_pose.pose.position.z = request.start_point.point.z
-            rospy.loginfo('start_pose is now: ' + str(start_pose))
         # Move to start pose
         push_arm_pub.publish(start_pose)
         # wait
@@ -272,6 +307,60 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Done moving to start point')
         return response
 
+    def gripper_post_push(self, request):
+        response = GripperPushResponse()
+        push_frame = request.start_point.header.frame_id
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+        push_dist = request.desired_push_dist
+
+        if request.left_arm:
+            push_arm_pub = self.l_arm_cart_pub
+            ready_joints = LEFT_ARM_READY_JOINTS
+            which_arm = 'l'
+        else:
+            push_arm_pub = self.r_arm_cart_pub
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            which_arm = 'r'
+
+        # Retract in a straight line
+        # TODO: Switch to the new move relative here
+        # rospy.loginfo('Moving gripper up')
+        # push_arm.move_relative_gripper(
+        #     np.matrix([0.0, 0.0, self.gripper_raise_dist]).T,
+        #     stop='pressure', pressure=5000)
+        # rospy.loginfo('Done moving up')
+
+        # rospy.loginfo('Moving gripper backwards')
+        # push_arm.move_relative_gripper(
+        #     np.matrix([-push_dist, 0.0, 0.0]).T,
+        #     stop='pressure', pressure=5000)
+        # rospy.loginfo('Done moving backwards')
+
+
+        start_pose = PoseStamped()
+        start_pose.header = request.start_point.header
+        start_pose.pose.position.x = request.start_point.point.x
+        start_pose.pose.position.y = request.start_point.point.y
+        start_pose.pose.position.z = request.start_point.point.z
+        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
+        start_pose.pose.orientation.x = q[0]
+        start_pose.pose.orientation.y = q[1]
+        start_pose.pose.orientation.z = q[2]
+        start_pose.pose.orientation.w = q[3]
+
+        self.switch_to_cart_controllers()
+
+        if request.high_arm_init:
+            start_pose.pose.position.z = self.high_arm_init_z
+            rospy.loginfo('Moving up to end point')
+            push_arm_pub.publish(start_pose)
+            rospy.sleep(self.init_arm_sleep_time)
+            rospy.loginfo('Done moving up to end point')
+
+        if request.arm_reset:
+            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        return response
 
     def raise_and_look_action(self, request):
         '''

@@ -436,8 +436,8 @@ class TabletopExecutive:
         pre_push_res = self.gripper_pre_push_proxy(push_req)
         # rospy.loginfo("Calling gripper push service")
         # push_res = self.gripper_push_proxy(push_req)
-        # rospy.loginfo("Calling gripper post push service")
-        # post_push_res = self.gripper_post_push_proxy(push_req)
+        rospy.loginfo("Calling gripper post push service")
+        post_push_res = self.gripper_post_push_proxy(push_req)
 
     def sweep_object(self, push_dist, which_arm, push_vector, high_init=False):
         # Convert pose response to correct push request format
@@ -555,7 +555,7 @@ class TabletopExecutive:
         push.header.stamp = rospy.Time(0)
         push.push_angle = 0.0
         push.push_dist = push_dist
-        push.start_point.x = 0.7
+        push.start_point.x = 0.9
         push.start_point.y = 0.0
         push.start_point.z = -0.2
         self.gripper_push_object(push_dist, which_arm,
