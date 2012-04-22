@@ -33,7 +33,6 @@
 
 import roslib; roslib.load_manifest('tabletop_pushing')
 import rospy
-# import hrl_pr2_lib.linear_move as lm
 import hrl_pr2_lib.pr2 as pr2
 import hrl_lib.tf_utils as tfu
 from hrl_pr2_arms.pr2_controller_switcher import ControllerSwitcher
@@ -109,23 +108,43 @@ class PositionFeedbackPushNode:
                                                    'openni_rgb_frame')
         self.default_torso_height = rospy.get_param('~default_torso_height',
                                                     0.2)
+        self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.05)
         self.tf_listener = tf.TransformListener()
 
         # Set joint gains
         self.cs = ControllerSwitcher()
-        prefix = roslib.packages.get_pkg_dir('hrl_pr2_arms')+'/params/'
-        rospy.loginfo(self.cs.switch("r_arm_controller", "r_arm_controller",
-                                     prefix + "pr2_arm_controllers_push.yaml"))
-        rospy.loginfo(self.cs.switch("l_arm_controller", "l_arm_controller",
-                                     prefix + "pr2_arm_controllers_push.yaml"))
+        self.arm_mode = None
+        self.init_joint_controllers()
+        self.init_cart_controllers()
 
         # Setup arms
         rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=False, base=False)
+        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False,
+                             use_kinematics=False)
+        self.l_arm_cart_pub = rospy.Publisher(
+            '/l_cart_posture_push/command_pose', PoseStamped)
+        self.r_arm_cart_pub = rospy.Publisher(
+            '/r_cart_posture_push/command_pose', PoseStamped)
+
+        # Open callback services
+        self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
+                                                  GripperPush,
+                                                  self.gripper_pre_push)
+        # self.gripper_pre_sweep_srv = rospy.Service('gripper_pre_sweep',
+        #                                            GripperPush,
+        #                                            self.gripper_pre_sweep)
+        # self.overhead_pre_push_srv = rospy.Service('overhead_pre_push',
+        #                                            GripperPush,
+        #                                            self.overhead_pre_push)
+        self.raise_and_look_serice = rospy.Service('raise_and_look',
+                                                   RaiseAndLook,
+                                                   self.raise_and_look_action)
+
 
     #
     # Initialization functions
     #
+
     #
     # Arm pose initialization functions
     #
@@ -134,7 +153,6 @@ class PositionFeedbackPushNode:
         Move the arm to the initial pose to be out of the way for viewing the
         tabletop
         '''
-        # TODO: Don't use the hrl pr2 class for moving the arms at all
         if which_arm == 'l':
             robot_arm = self.robot.left
             robot_gripper = self.robot.left_gripper
@@ -146,13 +164,14 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             setup_joints = RIGHT_ARM_SETUP_JOINTS
 
-        rospy.loginfo('Moving %s_arm to setup pose' % which_arm)
-        robot_arm.set_pose(setup_joints, nsecs=2.0, block=True)
-        rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
-
+        self.switch_to_joint_controllers()
         rospy.loginfo('Closing %s_gripper' % which_arm)
         res = robot_gripper.close(block=True)
         rospy.loginfo('Closed %s_gripper' % which_arm)
+
+        rospy.loginfo('Moving %s_arm to setup pose' % which_arm)
+        robot_arm.set_pose(setup_joints, nsecs=2.0, block=True)
+        rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
     def reset_arm_pose(self, force_ready=False, which_arm='l',
                        high_arm_joints=False):
@@ -160,7 +179,6 @@ class PositionFeedbackPushNode:
         Move the arm to the initial pose to be out of the way for viewing the
         tabletop
         '''
-        # TODO: Don't use the hrl pr2 class for moving the arms at all
         if which_arm == 'l':
             robot_arm = self.robot.left
             robot_gripper = self.robot.left_gripper
@@ -177,15 +195,16 @@ class PositionFeedbackPushNode:
             else:
                 ready_joints = RIGHT_ARM_READY_JOINTS
             setup_joints = RIGHT_ARM_SETUP_JOINTS
-
         ready_diff = np.linalg.norm(pr2.diff_arm_pose(robot_arm.pose(),
                                                       ready_joints))
 
         # Choose to move to ready first, if it is closer, then move to init
-        if force_ready or ready_diff > READY_POSE_MOVE_THRESH:
+        moved_ready = False
+        if force_ready or ready_diff > READY_POSE_MOVE_THRESH or force_ready:
             rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
             robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
             rospy.loginfo('Moved %s_arm to ready pose' % which_arm)
+            moved_ready = True
         else:
             rospy.loginfo('Arm in ready pose')
 
@@ -194,17 +213,79 @@ class PositionFeedbackPushNode:
         robot_arm.set_pose(setup_joints, nsecs=1.5, block=True)
         rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
+    #
+    # Behavior functions
+    #
+    def gripper_pre_push(self, request):
+        response = GripperPushResponse()
+        push_frame = request.start_point.header.frame_id
+        rospy.loginfo('Have a request frame of: ' + str(push_frame));
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+        push_dist = request.desired_push_dist
+        if request.left_arm:
+            ready_joints = LEFT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = LEFT_ARM_HIGH_PUSH_READY_JOINTS
+            which_arm = 'l'
+            push_arm_pub = self.l_arm_cart_pub
+        else:
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = RIGHT_ARM_HIGH_PUSH_READY_JOINTS
+            which_arm = 'r'
+            push_arm_pub = self.r_arm_cart_pub
+
+        if request.arm_init:
+            # TODO: Figure out if we want this
+            pass
+            # rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
+
+        start_pose = PoseStamped()
+        start_pose.header = request.start_point.header
+        start_pose.pose.position = request.start_point.point
+        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
+        start_pose.pose.orientation.x = q[0]
+        start_pose.pose.orientation.y = q[1]
+        start_pose.pose.orientation.z = q[2]
+        start_pose.pose.orientation.w = q[3]
+
+        self.switch_to_cart_controllers()
+        if request.high_arm_init:
+            # TODO: Move to offset pose above the table
+            start_pose.pose.position.z = self.high_arm_init_z
+            push_arm_pub.publish(start_pose)
+            # wait
+            rospy.sleep(5.0)
+            rospy.loginfo('Done moving to overhead start point')
+            # Change z to lower arm to table
+            start_pose.pose.position.z = request.start_point.point.z
+        # Move to start pose
+        push_arm_pub.publish(start_pose)
+        # wait
+        rospy.sleep(2.0)
+        rospy.loginfo('Done moving to start point')
+        return response
+
+
     def raise_and_look_action(self, request):
         '''
         Service callback to raise the spine to a specific height relative to the
         table height and tilt the head so that the Kinect views the table
         '''
         if request.init_arms:
+            # TODO: Figure this out
             self.init_arms()
 
         if request.point_head_only:
             response = RaiseAndLookResponse()
             response.head_succeeded = self.init_head_pose(request.camera_frame)
+            return response
+
+        if not request.have_table_centroid:
+            response = RaiseAndLookResponse()
+            response.head_succeeded = self.init_head_pose(request.camera_frame)
+            self.init_spine_pose()
             return response
 
         # Get torso_lift_link position in base_link frame
@@ -270,7 +351,6 @@ class PositionFeedbackPushNode:
             response.head_succeeded = False
         return response
 
-
     def init_head_pose(self, camera_frame):
         look_pt = np.asmatrix([self.look_pt_x, 0.0, -self.torso_z_offset])
         rospy.loginfo('Point head at ' + str(look_pt))
@@ -295,26 +375,39 @@ class PositionFeedbackPushNode:
         self.init_arm_pose(True, which_arm='l')
         rospy.loginfo('Done initializing arms')
 
-    def init_task_pushing(self):
+    #
+    # Controller setup methods
+    #
+    def init_joint_controllers(self):
+        self.arm_mode = 'joint_mode'
+        prefix = roslib.packages.get_pkg_dir('hrl_pr2_arms')+'/params/'
+        rospy.loginfo('Setting right arm controller gains')
+        rospy.loginfo(self.cs.switch("r_arm_controller", "r_arm_controller",
+                                     prefix + "pr2_arm_controllers_push.yaml"))
+        rospy.loginfo('Setting left arm controller gains')
+        rospy.loginfo(self.cs.switch("l_arm_controller", "l_arm_controller",
+                                     prefix + "pr2_arm_controllers_push.yaml"))
+
+    def init_cart_controllers(self):
+        self.arm_mode = 'cart_mode'
         self.cs.carefree_switch('r', '%s_cart_posture_push',
                                 '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
         self.cs.carefree_switch('l', '%s_cart_posture_push',
                                 '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
-    #
-    # Util Functions
-    #
-    def print_pose(self):
-        pose = self.robot.left.pose()
-        rospy.loginfo('Left arm pose: ' + str(pose))
-        cart_pose = self.left_arm_move.arm_obj.pose_cartesian_tf()
-        rospy.loginfo('Left Cart_position: ' + str(cart_pose[0]))
-        rospy.loginfo('Left Cart_orientation: ' + str(cart_pose[1]))
-        cart_pose = self.right_arm_move.arm_obj.pose_cartesian_tf()
-        pose = self.robot.right.pose()
-        rospy.loginfo('Right arm pose: ' + str(pose))
-        rospy.loginfo('Right Cart_position: ' + str(cart_pose[0]))
-        rospy.loginfo('Right Cart_orientation: ' + str(cart_pose[1]))
 
+    def switch_to_cart_controllers(self):
+        if self.arm_mode != 'cart_mode':
+            self.cs.carefree_switch('r', '%s_cart_posture_push')
+            self.cs.carefree_switch('l', '%s_cart_posture_push')
+            self.arm_mode = 'cart_mode'
+            rospy.sleep(1.0)
+
+    def switch_to_joint_controllers(self):
+        if self.arm_mode != 'joint_mode':
+            self.cs.carefree_switch('r', '%s_arm_controller')
+            self.cs.carefree_switch('l', '%s_arm_controller')
+            self.arm_mode = 'joint_mode'
+            rospy.sleep(1.0)
     #
     # Main Control Loop
     #
@@ -322,35 +415,10 @@ class PositionFeedbackPushNode:
         '''
         Main control loop for the node
         '''
-        # self.print_pose()
         self.init_spine_pose()
         self.init_head_pose(self.head_pose_cam_frame)
-        # self.init_arms()
-        self.init_task_pushing()
-        # TODO: Move the arm...
-        l_arm_command_pub = rospy.Publisher('/l_cart_posture_push/command_pose',
-                                            PoseStamped)
-        # l_arm_command_pub.publish(set_pose)
-        for i in xrange(30):
-            rospy.sleep(0.1)
-            rospy.loginfo('Publishing arm move: ' + str(i))
-            set_pose = PoseStamped()
-            set_pose.header.frame_id = '/torso_lift_link'
-            set_pose.header.stamp = rospy.Time(0)
-            set_pose.pose.position.x =  0.5 + i*0.01
-            set_pose.pose.position.y = 0.0
-            set_pose.pose.position.z = 0.0
-            q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0,
-                                                         0.0)
-            set_pose.pose.orientation.x = q[0]
-            set_pose.pose.orientation.y = q[1]
-            set_pose.pose.orientation.z = q[2]
-            set_pose.pose.orientation.w = q[3]
-            l_arm_command_pub.publish(set_pose)
-            rospy.loginfo('Desried pose: ' + str(set_pose.pose.position))
-            # TODO: Get current pose
-            # rospy.loginfo('Current pose: ',  set_pose.pose.position)
-        rospy.loginfo('Published arm move')
+        self.init_arms()
+        rospy.loginfo('Done initializing feedback pushing node.')
         rospy.spin()
 
 if __name__ == '__main__':

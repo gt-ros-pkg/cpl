@@ -376,9 +376,10 @@ class TabletopExecutive:
         rospy.loginfo('Initializing learning push vector service.')
         self.learning_push_vector_proxy(push_vector_req)
 
-    def raise_and_look(self):
-        table_req = LocateTableRequest()
-        table_req.recalculate = True
+    def raise_and_look(self, request_table=True, init_arms=False):
+        if request_table:
+            table_req = LocateTableRequest()
+            table_req.recalculate = True
         raise_req = RaiseAndLookRequest()
         raise_req.point_head_only = True
         raise_req.camera_frame = 'openni_rgb_frame'
@@ -388,34 +389,38 @@ class TabletopExecutive:
         raise_req.init_arms = True
         rospy.loginfo("Moving head and arms")
         raise_res = self.raise_and_look_proxy(raise_req)
-        try:
-            rospy.loginfo("Getting table pose")
-            table_res = self.table_proxy(table_req);
-        except rospy.ServiceException, e:
-            rospy.logwarn("Service did not process request: %s"%str(e))
-            return
-        if not table_res.found_table:
-            return
-        raise_req.table_centroid = table_res.table_centroid
+        if request_table:
+            raise_req.have_table_centroid = True
+            try:
+                rospy.loginfo("Getting table pose")
+                table_res = self.table_proxy(table_req);
+            except rospy.ServiceException, e:
+                rospy.logwarn("Service did not process request: %s"%str(e))
+                return
+            if not table_res.found_table:
+                return
+            raise_req.table_centroid = table_res.table_centroid
+        else:
+            raise_req.have_table_centroid = False
 
         # TODO: Make sure this requested table_centroid is valid
 
         rospy.loginfo("Raising spine");
         raise_req.point_head_only = False
-        raise_req.init_arms = False
+        raise_req.init_arms = init_arms
         raise_res = self.raise_and_look_proxy(raise_req)
 
-    def gripper_push_object(self, push_dist, which_arm, pose_res,
+    def gripper_push_object(self, push_dist, which_arm, push_vector,
                             high_init=False):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
-        push_req.start_point.header = pose_res.header
-        push_req.start_point.point = pose_res.start_point
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
         push_req.arm_init = True
         push_req.arm_reset = True
 
         # Use the sent wrist yaw
-        wrist_yaw = pose_res.push_angle
+        wrist_yaw = push_vector.push_angle
         push_req.wrist_yaw = wrist_yaw
         push_req.desired_push_dist = push_dist + abs(self.gripper_x_offset)
 
@@ -429,35 +434,35 @@ class TabletopExecutive:
 
         rospy.loginfo("Calling gripper pre push service")
         pre_push_res = self.gripper_pre_push_proxy(push_req)
-        rospy.loginfo("Calling gripper push service")
-        push_res = self.gripper_push_proxy(push_req)
-        rospy.loginfo("Calling gripper post push service")
-        post_push_res = self.gripper_post_push_proxy(push_req)
+        # rospy.loginfo("Calling gripper push service")
+        # push_res = self.gripper_push_proxy(push_req)
+        # rospy.loginfo("Calling gripper post push service")
+        # post_push_res = self.gripper_post_push_proxy(push_req)
 
-    def sweep_object(self, push_dist, which_arm, pose_res, high_init=False):
+    def sweep_object(self, push_dist, which_arm, push_vector, high_init=False):
         # Convert pose response to correct push request format
         sweep_req = GripperPushRequest()
         sweep_req.left_arm = (which_arm == 'l')
         sweep_req.right_arm = not sweep_req.left_arm
 
         # if sweep_req.left_arm:
-        if pose_res.push_angle > 0:
+        if push_vector.push_angle > 0:
             y_offset_dir = -1
         else:
             y_offset_dir = +1
 
         # Correctly set the wrist yaw
-        if pose_res.push_angle > 0.0:
-            wrist_yaw = pose_res.push_angle - pi/2
+        if push_vector.push_angle > 0.0:
+            wrist_yaw = push_vector.push_angle - pi/2
         else:
-            wrist_yaw = pose_res.push_angle + pi/2
+            wrist_yaw = push_vector.push_angle + pi/2
         sweep_req.wrist_yaw = wrist_yaw
         sweep_req.desired_push_dist = -y_offset_dir*(self.sweep_y_offset +
                                                      push_dist)
 
         # Set offset in x y, based on distance
-        sweep_req.start_point.header = pose_res.header
-        sweep_req.start_point.point = pose_res.start_point
+        sweep_req.start_point.header = push_vector.header
+        sweep_req.start_point.point = push_vector.start_point
         sweep_req.start_point.point.x += self.sweep_x_offset
         sweep_req.start_point.point.y += y_offset_dir*self.sweep_y_offset
         sweep_req.start_point.point.z = self.sweep_start_z
@@ -472,17 +477,17 @@ class TabletopExecutive:
         rospy.loginfo("Calling gripper post sweep service")
         post_sweep_res = self.gripper_post_sweep_proxy(sweep_req)
 
-    def overhead_push_object(self, push_dist, which_arm, pose_res,
+    def overhead_push_object(self, push_dist, which_arm, push_vector,
                              high_init=False):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
-        push_req.start_point.header = pose_res.header
-        push_req.start_point.point = pose_res.start_point
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
         push_req.arm_init = True
         push_req.arm_reset = True
 
         # Correctly set the wrist yaw
-        wrist_yaw = pose_res.push_angle
+        wrist_yaw = push_vector.push_angle
         push_req.wrist_yaw = wrist_yaw
         push_req.desired_push_dist = push_dist
 
@@ -501,16 +506,16 @@ class TabletopExecutive:
         rospy.loginfo("Calling post overhead push service")
         post_push_res = self.overhead_post_push_proxy(push_req)
 
-    def overhead_pull_object(self, push_dist, which_arm, pose_res,
+    def overhead_pull_object(self, push_dist, which_arm, push_vector,
                              high_init=True):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
-        push_req.start_point.header = pose_res.header
-        push_req.start_point.point = pose_res.start_point
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
         push_req.arm_init = True
         push_req.arm_reset = True
 
-        wrist_yaw = pose_res.push_angle
+        wrist_yaw = push_vector.push_angle
         # Correctly set the wrist yaw
         while wrist_yaw < -pi*0.5:
             wrist_yaw += pi
@@ -540,8 +545,26 @@ class TabletopExecutive:
         rospy.loginfo("Calling post overhead pull service")
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
+    def test_new_controller(self):
+        self.raise_and_look(request_table=False, init_arms=True)
+        push_dist = 0.25
+        which_arm = 'r'
+        high_init = True
+        push = PushVector()
+        push.header.frame_id = '/torso_lift_link'
+        push.header.stamp = rospy.Time(0)
+        push.push_angle = pi*0.25
+        push.push_dist = push_dist
+        push.start_point.x = 0.6
+        push.start_point.y = -0.1
+        push.start_point.z = -0.2
+        self.gripper_push_object(push_dist, which_arm,
+                                 push, high_init)
+
+
 if __name__ == '__main__':
-    use_learning = True
+    test_junk = True
+    use_learning = False
     use_singulation = False
     use_guided = True
     num_trials = 3
@@ -551,6 +574,8 @@ if __name__ == '__main__':
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
+    elif test_junk:
+        node.test_new_controller()
     else:
         node.run_rand_learning_collect(num_trials, push_dist)
         node.finish_learning()
