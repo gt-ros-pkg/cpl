@@ -130,6 +130,8 @@ class PositionFeedbackPushNode:
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
                                                   GripperPush,
                                                   self.gripper_pre_push)
+        self.gripper_push_srv = rospy.Service('gripper_push', GripperPush,
+                                              self.gripper_push)
         self.gripper_post_push_srv = rospy.Service('gripper_post_push',
                                                    GripperPush,
                                                    self.gripper_post_push)
@@ -215,15 +217,38 @@ class PositionFeedbackPushNode:
         else:
             rospy.loginfo('Arm in ready pose')
 
-
         rospy.loginfo('Moving %s_arm to setup pose' % which_arm)
         robot_arm.set_pose(setup_joints, nsecs=1.5, block=True)
         rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
+    def init_head_pose(self, camera_frame):
+        look_pt = np.asmatrix([self.look_pt_x, 0.0, -self.torso_z_offset])
+        rospy.loginfo('Point head at ' + str(look_pt))
+        head_res = self.robot.head.look_at(look_pt,
+                                           'torso_lift_link',
+                                           camera_frame)
+        if head_res:
+            rospy.loginfo('Succeeded in pointing head')
+            return True
+        else:
+            rospy.loginfo('Failed to point head')
+            return False
+
+    def init_spine_pose(self):
+        rospy.loginfo('Setting spine height to '+str(self.default_torso_height))
+        self.robot.torso.set_pose(self.default_torso_height)
+        new_torso_position = np.asarray(self.robot.torso.pose()).ravel()[0]
+        rospy.loginfo('New spine height is ' + str(new_torso_position))
+
+    def init_arms(self):
+        self.init_arm_pose(True, which_arm='r')
+        self.init_arm_pose(True, which_arm='l')
+        rospy.loginfo('Done initializing arms')
+
     #
     # Behavior functions
     #
-    def gripper_push_action(self, request):
+    def gripper_push(self, request):
         response = GripperPushResponse()
         push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
@@ -244,11 +269,24 @@ class PositionFeedbackPushNode:
 
         # Push in a straight line
         rospy.loginfo('Pushing forward')
-        set_pose = self.get_gripper_push_pose(which_arm, push_dist)
-        push_arm_pub(set_pose)
+        end_pose = PoseStamped()
+        end_pose.header = request.start_point.header
+        end_pose.pose.position.x = request.start_point.point.x
+        end_pose.pose.position.y = request.start_point.point.y
+        end_pose.pose.position.z = request.start_point.point.z
+        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
+        end_pose.pose.orientation.x = q[0]
+        end_pose.pose.orientation.y = q[1]
+        end_pose.pose.orientation.z = q[2]
+        end_pose.pose.orientation.w = q[3]
+        # end_pose = self.get_gripper_push_pose(which_arm, push_dist)
+        end_pose.pose.position.x += cos(wrist_yaw)*push_dist
+        end_pose.pose.position.y += sin(wrist_yaw)*push_dist
+        push_arm_pub.publish(end_pose)
+        rospy.sleep(0.5)
         rospy.loginfo('Done pushing forward')
 
-        response.dist_pushed = push_dist - pos_error
+        # response.dist_pushed = push_dist - pos_error
         return response
 
     def gripper_pre_push(self, request):
@@ -336,7 +374,6 @@ class PositionFeedbackPushNode:
         #     np.matrix([-push_dist, 0.0, 0.0]).T,
         #     stop='pressure', pressure=5000)
         # rospy.loginfo('Done moving backwards')
-
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -445,30 +482,6 @@ class PositionFeedbackPushNode:
             response.head_succeeded = False
         return response
 
-    def init_head_pose(self, camera_frame):
-        look_pt = np.asmatrix([self.look_pt_x, 0.0, -self.torso_z_offset])
-        rospy.loginfo('Point head at ' + str(look_pt))
-        head_res = self.robot.head.look_at(look_pt,
-                                           'torso_lift_link',
-                                           camera_frame)
-        if head_res:
-            rospy.loginfo('Succeeded in pointing head')
-            return True
-        else:
-            rospy.loginfo('Failed to point head')
-            return False
-
-    def init_spine_pose(self):
-        rospy.loginfo('Setting spine height to '+str(self.default_torso_height))
-        self.robot.torso.set_pose(self.default_torso_height)
-        new_torso_position = np.asarray(self.robot.torso.pose()).ravel()[0]
-        rospy.loginfo('New spine height is ' + str(new_torso_position))
-
-    def init_arms(self):
-        self.init_arm_pose(True, which_arm='r')
-        self.init_arm_pose(True, which_arm='l')
-        rospy.loginfo('Done initializing arms')
-
     #
     # Controller setup methods
     #
@@ -502,6 +515,19 @@ class PositionFeedbackPushNode:
             self.cs.carefree_switch('l', '%s_arm_controller')
             self.arm_mode = 'joint_mode'
             rospy.sleep(0.5)
+
+    #
+    # Transform methods
+    #
+    def get_gripper_push_pose(which_arm, push_dist):
+        set_pose = PoseStamped()
+        set_pose.header.frame_id = '/torso_lift_link'
+        set_pose.header.stamp = rospy.Time(0)
+        # TODO: Get current pose
+        # set_pose.pose
+        # TODO: Add forward direction in tool frame
+
+        return set_pose
     #
     # Main Control Loop
     #

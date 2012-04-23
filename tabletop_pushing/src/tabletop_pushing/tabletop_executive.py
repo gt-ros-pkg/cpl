@@ -186,6 +186,7 @@ class TabletopExecutive:
             else:
                 push_opt = GRIPPER_PUSH
 
+            push_opt = GRIPPER_PUSH
             # TODO: Make this a function
             # Choose arm
             if (fabs(pose_res.start_point.y) > self.use_same_side_y_thresh or
@@ -434,8 +435,8 @@ class TabletopExecutive:
 
         rospy.loginfo("Calling gripper pre push service")
         pre_push_res = self.gripper_pre_push_proxy(push_req)
-        # rospy.loginfo("Calling gripper push service")
-        # push_res = self.gripper_push_proxy(push_req)
+        rospy.loginfo("Calling gripper push service")
+        push_res = self.gripper_push_proxy(push_req)
         rospy.loginfo("Calling gripper post push service")
         post_push_res = self.gripper_post_push_proxy(push_req)
 
@@ -553,7 +554,7 @@ class TabletopExecutive:
         push = PushVector()
         push.header.frame_id = '/torso_lift_link'
         push.header.stamp = rospy.Time(0)
-        push.push_angle = 0.0
+        push.push_angle = pi*0.25
         push.push_dist = push_dist
         push.start_point.x = 0.9
         push.start_point.y = 0.0
@@ -562,9 +563,8 @@ class TabletopExecutive:
                                  push, high_init)
 
 if __name__ == '__main__':
-    test_junk = True
     use_learning = False
-    use_singulation = False
+    use_singulation = True
     use_guided = True
     num_trials = 3
     push_dist = 0.15 # meters
@@ -573,8 +573,6 @@ if __name__ == '__main__':
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
-    elif test_junk:
-        node.test_new_controller()
     else:
         node.run_rand_learning_collect(num_trials, push_dist)
         node.finish_learning()
