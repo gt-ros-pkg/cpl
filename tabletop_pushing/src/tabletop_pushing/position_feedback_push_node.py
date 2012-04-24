@@ -172,20 +172,16 @@ class PositionFeedbackPushNode:
         tabletop
         '''
         if which_arm == 'l':
-            robot_arm = self.robot.left
             robot_gripper = self.robot.left_gripper
             ready_joints = LEFT_ARM_READY_JOINTS
             setup_joints = LEFT_ARM_SETUP_JOINTS
         else:
-            robot_arm = self.robot.right
             robot_gripper = self.robot.right_gripper
             ready_joints = RIGHT_ARM_READY_JOINTS
             setup_joints = RIGHT_ARM_SETUP_JOINTS
 
-        self.switch_to_joint_controllers()
-
         rospy.loginfo('Moving %s_arm to setup pose' % which_arm)
-        robot_arm.set_pose(setup_joints, nsecs=2.0, block=True)
+        self.set_arm_joint_pose(setup_joints, which_arm)
         rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
         rospy.loginfo('Closing %s_gripper' % which_arm)
@@ -215,22 +211,19 @@ class PositionFeedbackPushNode:
             else:
                 ready_joints = RIGHT_ARM_READY_JOINTS
             setup_joints = RIGHT_ARM_SETUP_JOINTS
-        self.switch_to_joint_controllers()
         ready_diff = np.linalg.norm(pr2.diff_arm_pose(robot_arm.pose(),
                                                       ready_joints))
 
         # Choose to move to ready first, if it is closer, then move to init
-        moved_ready = False
-        if force_ready or ready_diff > READY_POSE_MOVE_THRESH or force_ready:
+        if force_ready or ready_diff > READY_POSE_MOVE_THRESH:
             rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
-            robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
             rospy.loginfo('Moved %s_arm to ready pose' % which_arm)
-            moved_ready = True
         else:
             rospy.loginfo('Arm in ready pose')
 
         rospy.loginfo('Moving %s_arm to setup pose' % which_arm)
-        robot_arm.set_pose(setup_joints, nsecs=1.5, block=True)
+        self.set_arm_joint_pose(setup_joints, which_arm, nsecs=1.5)
         rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
     def init_head_pose(self, camera_frame):
@@ -262,7 +255,6 @@ class PositionFeedbackPushNode:
     #
     def gripper_push(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -282,9 +274,9 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Pushing forward')
         end_pose = PoseStamped()
         end_pose.header = request.start_point.header
-        end_pose.pose.position.x = request.start_point.point.x
-        end_pose.pose.position.y = request.start_point.point.y
-        end_pose.pose.position.z = request.start_point.point.z
+        end_pose.pose.position.x = start_point.x
+        end_pose.pose.position.y = start_point.y
+        end_pose.pose.position.z = start_point.z
         q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
         end_pose.pose.orientation.x = q[0]
         end_pose.pose.orientation.y = q[1]
@@ -301,8 +293,6 @@ class PositionFeedbackPushNode:
 
     def gripper_pre_push(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
-        rospy.loginfo('Have a request frame of: ' + str(push_frame));
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -320,15 +310,14 @@ class PositionFeedbackPushNode:
             robot_arm = self.robot.right
 
         if request.arm_init:
-            self.switch_to_joint_controllers()
-            robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
             rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
-        start_pose.pose.position.x = request.start_point.point.x
-        start_pose.pose.position.y = request.start_point.point.y
-        start_pose.pose.position.z = request.start_point.point.z
+        start_pose.pose.position.x = start_point.x
+        start_pose.pose.position.y = start_point.y
+        start_pose.pose.position.z = start_point.z
         q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
@@ -339,10 +328,10 @@ class PositionFeedbackPushNode:
             epsilon = 0.001
             # TODO: Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
-            self.move_to_cart_pose(end_pose, which_arm)
+            self.move_to_cart_pose(start_pose, which_arm)
             rospy.loginfo('Done moving to overhead start point')
             # Change z to lower arm to table
-            start_pose.pose.position.z = request.start_point.point.z
+            start_pose.pose.position.z = start_point.z
         # Move to start pose
         self.move_to_cart_pose(start_pose, which_arm)
         rospy.loginfo('Done moving to start point')
@@ -350,7 +339,6 @@ class PositionFeedbackPushNode:
 
     def gripper_post_push(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -379,9 +367,9 @@ class PositionFeedbackPushNode:
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
-        start_pose.pose.position.x = request.start_point.point.x
-        start_pose.pose.position.y = request.start_point.point.y
-        start_pose.pose.position.z = request.start_point.point.z
+        start_pose.pose.position.x = start_point.x
+        start_pose.pose.position.y = start_point.y
+        start_pose.pose.position.z = start_point.z
         q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
@@ -400,7 +388,6 @@ class PositionFeedbackPushNode:
 
     def gripper_sweep(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -423,9 +410,9 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Sweeping in')
         end_pose = PoseStamped()
         end_pose.header = request.start_point.header
-        end_pose.pose.position.x = request.start_point.point.x
-        end_pose.pose.position.y = request.start_point.point.y
-        end_pose.pose.position.z = request.start_point.point.z
+        end_pose.pose.position.x = start_point.x
+        end_pose.pose.position.y = start_point.y
+        end_pose.pose.position.z = start_point.z
         q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0, wrist_yaw)
         end_pose.pose.orientation.x = q[0]
         end_pose.pose.orientation.y = q[1]
@@ -441,7 +428,6 @@ class PositionFeedbackPushNode:
 
     def gripper_pre_sweep(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -463,9 +449,9 @@ class PositionFeedbackPushNode:
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
-        start_pose.pose.position.x = request.start_point.point.x
-        start_pose.pose.position.y = request.start_point.point.y
-        start_pose.pose.position.z = request.start_point.point.z
+        start_pose.pose.position.x = start_point.x
+        start_pose.pose.position.y = start_point.y
+        start_pose.pose.position.z = start_point.z
         q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
@@ -474,20 +460,19 @@ class PositionFeedbackPushNode:
 
         if request.arm_init:
             rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
-            self.switch_to_joint_controllers()
-            robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
             # Rotate wrist before moving to position
             rospy.loginfo('Rotating wrist for sweep')
             arm_pose = robot_arm.pose()
             arm_pose[-1] =  wrist_roll
-            robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
+            self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
         if request.high_arm_init:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
             rospy.loginfo('Done moving to overhead start point')
             # Lower arm to table
-            start_pose.pose.position.z = request.start_point.point.z
+            start_pose.pose.position.z = start_point.z
         self.move_to_cart_pose(start_pose, which_arm)
         rospy.loginfo('Done moving to start point')
 
@@ -495,17 +480,14 @@ class PositionFeedbackPushNode:
 
     def gripper_post_sweep(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
 
         if request.left_arm:
-            robot_arm = self.robot.left
             ready_joints = LEFT_ARM_READY_JOINTS
             which_arm = 'l'
         else:
-            robot_arm = self.robot.right
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
@@ -527,9 +509,9 @@ class PositionFeedbackPushNode:
             wrist_yaw = request.wrist_yaw
             end_pose = PoseStamped()
             end_pose.header = request.start_point.header
-            end_pose.pose.position.x = request.start_point.point.x
-            end_pose.pose.position.y = request.start_point.point.y
-            end_pose.pose.position.z = request.start_point.point.z
+            end_pose.pose.position.x = start_point.x
+            end_pose.pose.position.y = start_point.y
+            end_pose.pose.position.z = start_point.z
             q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0, wrist_yaw)
             end_pose.pose.orientation.x = q[0]
             end_pose.pose.orientation.y = q[1]
@@ -544,20 +526,17 @@ class PositionFeedbackPushNode:
 
     def overhead_push_action(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
 
         if request.left_arm:
             push_arm = self.left_arm_move
-            robot_arm = self.robot.left
             ready_joints = LEFT_ARM_READY_JOINTS
             which_arm = 'l'
             wrist_pitch = 0.5*pi
         else:
             push_arm = self.right_arm_move
-            robot_arm = self.robot.right
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
             wrist_pitch = -0.5*pi
@@ -573,15 +552,13 @@ class PositionFeedbackPushNode:
         response.dist_pushed = push_dist - pos_error
         return response
 
-    def overhead_pre_push_action(self, request):
+    def overhead_pre_push(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
 
         if request.left_arm:
-            push_arm = self.left_arm_move
             robot_arm = self.robot.left
             ready_joints = LEFT_ARM_READY_JOINTS
             if request.high_arm_init:
@@ -589,7 +566,6 @@ class PositionFeedbackPushNode:
             which_arm = 'l'
             wrist_pitch = 0.5*pi
         else:
-            push_arm = self.right_arm_move
             robot_arm = self.robot.right
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
@@ -605,21 +581,21 @@ class PositionFeedbackPushNode:
         if request.arm_init:
             rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
             push_arm.set_movement_mode_ik()
-            robot_arm.set_pose(ready_joints, nsecs=1.5, block=True)
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
 
             if not request.high_arm_init:
                 # Rotate wrist before moving to position
                 rospy.loginfo('Rotating elbow for overhead push')
                 arm_pose = robot_arm.pose()
                 arm_pose[-3] =  wrist_pitch
-                robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
+                self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
 
             # Rotate wrist before moving to position
             # TODO: Figure this out using IK...
             rospy.loginfo('Rotating wrist for overhead push')
             arm_pose = robot_arm.pose()
             arm_pose[-1] = wrist_yaw
-            robot_arm.set_pose(arm_pose, nsecs=1.0, block=True)
+            self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
 
         if request.high_arm_init:
             # Move to offset pose above the table
@@ -646,14 +622,12 @@ class PositionFeedbackPushNode:
 
     def overhead_post_push_action(self, request):
         response = GripperPushResponse()
-        push_frame = request.start_point.header.frame_id
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
 
         if request.left_arm:
             push_arm = self.left_arm_move
-            robot_arm = self.robot.left
             ready_joints = LEFT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = LEFT_ARM_PULL_READY_JOINTS
@@ -661,7 +635,6 @@ class PositionFeedbackPushNode:
             wrist_pitch = 0.5*pi
         else:
             push_arm = self.right_arm_move
-            robot_arm = self.robot.right
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_PULL_READY_JOINTS
@@ -782,10 +755,14 @@ class PositionFeedbackPushNode:
     #
     # Controller wrapper methods
     #
+    def set_arm_joint_pose(self, joint_pose, which_arm, nsecs=2.0):
+        self.switch_to_joint_controllers()
+        if which_arm == 'l':
+            self.robot.left.set_pose(joint_pose, nsecs, block=True)
+        else:
+            self.robot.right.set_pose(joint_pose, nsecs, block=True)
 
-    # TODO: do same with moving joint space?
-
-    def move_to_cart_pose(self, pose, which_arm):
+    def move_to_cart_pose(self, pose, which_arm, sleep_time=None):
         self.switch_to_cart_controllers()
         if which_arm == 'l':
             self.l_arm_cart_pub.publish(pose)
