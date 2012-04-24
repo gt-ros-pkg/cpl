@@ -84,7 +84,7 @@ class TabletopExecutive:
         self.sweep_y_offset = rospy.get_param('~gripper_sweep_start_y_offset',
                                               0.03)
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z',
-                                              -0.22)
+                                              -0.25)
 
         self.overhead_x_offset = rospy.get_param('~overhead_push_start_x_offset',
                                                  0.00)
@@ -186,7 +186,8 @@ class TabletopExecutive:
             else:
                 push_opt = GRIPPER_PUSH
 
-            push_opt = GRIPPER_PUSH
+            # push_opt = GRIPPER_PUSH
+            # push_opt = GRIPPER_SWEEP
             # TODO: Make this a function
             # Choose arm
             if (fabs(pose_res.start_point.y) > self.use_same_side_y_thresh or
