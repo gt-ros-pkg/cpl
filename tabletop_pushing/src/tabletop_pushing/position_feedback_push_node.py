@@ -153,6 +153,9 @@ class PositionFeedbackPushNode:
         self.overhead_pre_push_srv = rospy.Service('overhead_pre_push',
                                                    GripperPush,
                                                    self.overhead_pre_push)
+        self.overhead_push_srv = rospy.Service('overhead_push',
+                                               GripperPush,
+                                               self.overhead_push)
         self.overhead_post_push_srv = rospy.Service('overhead_post_push',
                                                    GripperPush,
                                                    self.overhead_post_push)
@@ -284,7 +287,6 @@ class PositionFeedbackPushNode:
         end_pose.pose.orientation.y = q[1]
         end_pose.pose.orientation.z = q[2]
         end_pose.pose.orientation.w = q[3]
-        # end_pose = self.get_gripper_push_pose(which_arm, push_dist)
         end_pose.pose.position.x += cos(wrist_yaw)*push_dist
         end_pose.pose.position.y += sin(wrist_yaw)*push_dist
         self.move_to_cart_pose(end_pose, which_arm)
@@ -520,32 +522,45 @@ class PositionFeedbackPushNode:
             self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
-    def overhead_push_action(self, request):
+    def overhead_push(self, request):
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
 
         if request.left_arm:
-            push_arm = self.left_arm_move
-            ready_joints = LEFT_ARM_READY_JOINTS
             which_arm = 'l'
             wrist_pitch = 0.5*pi
         else:
-            push_arm = self.right_arm_move
-            ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
             wrist_pitch = -0.5*pi
 
-        push_arm.pressure_listener.rezero()
+        # TODO: Fix this
+        # push_arm.pressure_listener.rezero()
 
-        rospy.loginfo('Pushing forward')
-        r, pos_error = push_arm.move_relative_gripper(
-            np.matrix([0.0, 0.0, push_dist]).T,
-            stop='pressure', pressure=5000)
+        # rospy.loginfo('Pushing forward')
+        # r, pos_error = push_arm.move_relative_gripper(
+        #     np.matrix([0.0, 0.0, push_dist]).T,
+        #     stop='pressure', pressure=5000)
+        # rospy.loginfo('Pushing forward')
+        end_pose = PoseStamped()
+        end_pose.header = request.start_point.header
+        end_pose.pose.position.x = start_point.x
+        end_pose.pose.position.y = start_point.y
+        end_pose.pose.position.z = start_point.z
+        q = tf.transformations.quaternion_from_euler(0.0, fabs(wrist_pitch),
+                                                     wrist_yaw)
+        end_pose.pose.orientation.x = q[0]
+        end_pose.pose.orientation.y = q[1]
+        end_pose.pose.orientation.z = q[2]
+        end_pose.pose.orientation.w = q[3]
+        end_pose.pose.position.x += cos(wrist_yaw)*push_dist
+        end_pose.pose.position.y += sin(wrist_yaw)*push_dist
+        self.move_to_cart_pose(end_pose, which_arm)
         rospy.loginfo('Done pushing forward')
 
-        response.dist_pushed = push_dist - pos_error
+        # TODO: Add this back in
+        # response.dist_pushed = push_dist - pos_error
         return response
 
     def overhead_pre_push(self, request):
@@ -574,7 +589,6 @@ class PositionFeedbackPushNode:
         start_pose.pose.position.z = start_point.z
         q = tf.transformations.quaternion_from_euler(0.0, fabs(wrist_pitch),
                                                      wrist_yaw)
-
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
         start_pose.pose.orientation.z = q[2]
@@ -593,10 +607,10 @@ class PositionFeedbackPushNode:
 
             # Rotate wrist before moving to position
             # TODO: Figure this out using IK...
-            rospy.loginfo('Rotating wrist for overhead push')
-            arm_pose = self.get_arm_joint_pose(which_arm)
-            arm_pose[-1] = wrist_yaw
-            self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+            # rospy.loginfo('Rotating wrist for overhead push')
+            # arm_pose = self.get_arm_joint_pose(which_arm)
+            # arm_pose[-1] = wrist_yaw
+            # self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
 
         if request.high_arm_init:
             # Move to offset pose above the table

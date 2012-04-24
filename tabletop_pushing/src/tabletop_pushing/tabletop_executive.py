@@ -77,7 +77,7 @@ class TabletopExecutive:
         self.gripper_y_offset = rospy.get_param('~gripper_push_start_x_offset',
                                                 0.0)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z',
-                                                -0.25)
+                                                -0.30)
 
         self.sweep_x_offset = rospy.get_param('~gripper_sweep_start_x_offset',
                                               -0.01)
@@ -91,7 +91,7 @@ class TabletopExecutive:
         self.overhead_y_offset = rospy.get_param('~overhead_push_start_x_offset',
                                                  0.00)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.25)
+                                                 -0.22)
         self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
                                                 0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
@@ -187,6 +187,7 @@ class TabletopExecutive:
                 push_opt = GRIPPER_PUSH
 
             # push_opt = GRIPPER_PUSH
+            # push_opt = OVERHEAD_PUSH
             # push_opt = GRIPPER_SWEEP
             # TODO: Make this a function
             # Choose arm
