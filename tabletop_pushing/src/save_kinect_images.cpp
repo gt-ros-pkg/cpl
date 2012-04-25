@@ -54,6 +54,7 @@
 #include <pcl/common/eigen.h>
 #include <pcl/common/centroid.h>
 #include <pcl/io/io.h>
+#include <pcl/io/pcd_io.h>
 #include <pcl_ros/transforms.h>
 #include <pcl/ros/conversions.h>
 #include <pcl/ModelCoefficients.h>
@@ -88,21 +89,21 @@ typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
 
-class TabletopPushingPerceptionNode
+class DataCollectNode
 {
  public:
-  TabletopPushingPerceptionNode(ros::NodeHandle &n) :
+  DataCollectNode(ros::NodeHandle &n) :
       n_(n), n_private_("~"),
       image_sub_(n, "color_image_topic", 1),
       depth_sub_(n, "depth_image_topic", 1),
       cloud_sub_(n, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
-      camera_initialized_(false), callback_count_(0)
+      camera_initialized_(false), save_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     // Get parameters from the server
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
-    n_private_.param("use_displays", use_displays_, true);
+    n_private_.param("save_all", save_all_, false);
 
     std::string output_path_def = "~";
     n_private_.param("img_output_path", base_output_path_, output_path_def);
@@ -113,9 +114,10 @@ class TabletopPushingPerceptionNode
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_,
                      default_workspace_frame);
+    n_private_.param("max_depth", max_depth_, 4.0);
 
     // Setup ros node connections
-    sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
+    sync_.registerCallback(&DataCollectNode::sensorCallback,
                            this);
   }
 
@@ -137,23 +139,6 @@ class TabletopPushingPerceptionNode
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
-    // Transform point cloud into the correct frame and convert to PCL struct
-    XYZPointCloud cloud;
-    pcl::fromROSMsg(*cloud_msg, cloud);
-    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-                          cloud.header.stamp, ros::Duration(0.5));
-    pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
-    // ROS_INFO_STREAM("Transformed point cloud");
-    // tf::StampedTransform transform;
-    // tf_->lookupTransform(cloud.header.frame_id, workspace_frame_, ros::Time(0),
-    //                      transform);
-    // tf::Vector3 trans = transform.getOrigin();
-    // tf::Quaternion rot = transform.getRotation();
-    // ROS_INFO_STREAM("Transform trans: (" << trans.x() << ", " << trans.y() <<
-    //                 ", " << trans.z() << ")");
-    // ROS_INFO_STREAM("Transform rot: (" << rot.x() << ", " << rot.y() <<
-    //                 ", " << rot.z() << ", " << rot.w() << ")");
-
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
     {
@@ -169,19 +154,27 @@ class TabletopPushingPerceptionNode
     }
 
     // color_frame, depth_frame
-    if (use_displays_)
-    {
-      cv::imshow("color", color_frame);
-      cv::imshow("depth", depth_frame);
-      cv::waitKey(display_wait_ms_);
-    }
     std::stringstream color_out;
     std::stringstream depth_out;
-    color_out << base_output_path_ << "/color" << callback_count_ << ".png";
-    depth_out << base_output_path_ << "/depth" << callback_count_ << ".png";
-    cv::imwrite(color_out.str(), color_frame);
-    cv::imwrite(depth_out.str(), depth_frame);
-    callback_count_++;
+    color_out << base_output_path_ << "/color" << save_count_ << ".png";
+    depth_out << base_output_path_ << "/depth" << save_count_ << ".png";
+    cv::Mat depth_save_img(depth_frame.size(), CV_16UC1);
+    depth_frame.convertTo(depth_save_img, CV_16UC1, 65535/max_depth_);
+    cv::imshow("color", color_frame);
+    cv::imshow("depth", depth_save_img);
+    char c = cv::waitKey(display_wait_ms_);
+
+    ROS_INFO_STREAM("Writting image number " << save_count_);
+    if (c == 's' || save_all_)
+    {
+      cv::imwrite(color_out.str(), color_frame);
+      cv::imwrite(depth_out.str(), depth_save_img);
+      // save point cloud to disk
+      std::stringstream cloud_out;
+      cloud_out << base_output_path_ << "/cloud" << save_count_ << ".pcd";
+      pcl::io::savePCDFile(cloud_out.str(), *cloud_msg);
+      save_count_++;
+    }
   }
 
   /**
@@ -206,23 +199,23 @@ class TabletopPushingPerceptionNode
   sensor_msgs::CvBridge bridge_;
   shared_ptr<tf::TransformListener> tf_;
   int display_wait_ms_;
-  bool use_displays_;
+  bool save_all_;
   std::string base_output_path_;
   std::string cam_info_topic_;
   std::string workspace_frame_;
   bool camera_initialized_;
-  int callback_count_;
+  int save_count_;
+  double max_depth_;
 };
 
 int main(int argc, char ** argv)
 {
   int seed = time(NULL);
   srand(seed);
-  std::cout << "Rand seed is: " << seed << std::endl;
-  ros::init(argc, argv, "tabletop_pushing_perception_node");
+  ros::init(argc, argv, "data_node");
   ros::NodeHandle n;
-  TabletopPushingPerceptionNode perception_node(n);
-  perception_node.spin();
+  DataCollectNode data_node(n);
+  data_node.spin();
   return 0;
 }
 
