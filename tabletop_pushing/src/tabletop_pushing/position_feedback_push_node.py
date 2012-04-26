@@ -38,6 +38,7 @@ import hrl_lib.tf_utils as tfu
 from hrl_pr2_arms.pr2_controller_switcher import ControllerSwitcher
 from geometry_msgs.msg import PoseStamped
 from pr2_controllers_msgs.msg import *
+from pr2_manipulation_controllers.msg import *
 import tf
 import numpy as np
 from tabletop_pushing.srv import *
@@ -131,6 +132,20 @@ class PositionFeedbackPushNode:
             '/l_cart_posture_push/command_pose', PoseStamped)
         self.r_arm_cart_pub = rospy.Publisher(
             '/r_cart_posture_push/command_pose', PoseStamped)
+        rospy.Subscriber('/l_cart_posture_push/state', JTTaskControllerState,
+                         self.l_arm_cart_state_callback)
+        rospy.Subscriber('/r_cart_posture_push/state', JTTaskControllerState,
+                         self.r_arm_cart_state_callback)
+
+        # State Info
+        self.l_arm_pose = None
+        self.l_arm_x_err = None
+        self.l_arm_xd = None
+        self.l_arm_F = None
+        self.r_arm_pose = None
+        self.r_arm_x_err = None
+        self.r_arm_xd = None
+        self.r_arm_F = None
 
         # Open callback services
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
@@ -161,7 +176,6 @@ class PositionFeedbackPushNode:
         self.overhead_post_push_srv = rospy.Service('overhead_post_push',
                                                    GripperPush,
                                                    self.overhead_post_push)
-
 
         self.raise_and_look_serice = rospy.Service('raise_and_look',
                                                    RaiseAndLook,
@@ -747,6 +761,17 @@ class PositionFeedbackPushNode:
         pose_error = 0
         return (r, pose_error)
 
+    def l_arm_cart_state_callback(self, state_msg):
+        self.l_arm_pose = state_msg.X
+        self.l_arm_x_err = state_msg.x_err
+        self.l_arm_xd = state_msg.xd
+        self.l_arm_F = state_msg.F
+
+    def r_arm_cart_state_callback(self, state_msg):
+        self.r_arm_pose = state_msg.X
+        self.r_arm_x_err = state_msg.x_err
+        self.r_arm_xd = state_msg.xd
+        self.r_arm_F = state_msg.F
 
     #
     # Controller setup methods
