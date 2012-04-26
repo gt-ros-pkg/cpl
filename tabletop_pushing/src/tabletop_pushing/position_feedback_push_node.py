@@ -112,6 +112,8 @@ class PositionFeedbackPushNode:
                                                     0.2)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.1)
         self.init_arm_sleep_time = rospy.get_param('~init_arm_sleep_time', 2.0)
+        self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
+                                                  0.05)
         self.post_controller_switch_sleep = 0.5
 
         # Set joint gains
@@ -271,31 +273,12 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
-        # TODO: Add in pressure stuff
-        # push_arm.pressure_listener.rezero()
-
-        # TODO: Fix this
-        # Push in a straight line
-        rospy.loginfo('Pushing forward')
-        # end_pose = PoseStamped()
-        # end_pose.header = request.start_point.header
-        # end_pose.pose.position.x = start_point.x
-        # end_pose.pose.position.y = start_point.y
-        # end_pose.pose.position.z = start_point.z
-        # q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
-        # end_pose.pose.orientation.x = q[0]
-        # end_pose.pose.orientation.y = q[1]
-        # end_pose.pose.orientation.z = q[2]
-        # end_pose.pose.orientation.w = q[3]
-        # end_pose.pose.position.x += cos(wrist_yaw)*push_dist
-        # end_pose.pose.position.y += sin(wrist_yaw)*push_dist
-        # self.move_to_cart_pose(end_pose, which_arm)
         rospy.loginfo('Pushing forward')
         r, pos_error = self.move_relative_gripper(
             np.matrix([push_dist, 0.0, 0.0]).T, which_arm)
         rospy.loginfo('Done pushing forward')
 
-        # response.dist_pushed = push_dist - pos_error
+        response.dist_pushed = push_dist - pos_error
         return response
 
     def gripper_pre_push(self, request):
@@ -355,20 +338,14 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
-        # TODO: Fix this
         # Retract in a straight line
-        # TODO: Switch to the new move relative here
-        # rospy.loginfo('Moving gripper up')
-        # push_arm.move_relative_gripper(
-        #     np.matrix([0.0, 0.0, self.gripper_raise_dist]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Done moving up')
-
-        # rospy.loginfo('Moving gripper backwards')
-        # push_arm.move_relative_gripper(
-        #     np.matrix([-push_dist, 0.0, 0.0]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Done moving backwards')
+        rospy.loginfo('Moving gripper up')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, self.gripper_raise_dist]).T, which_arm)
+        rospy.loginfo('Moving gripper backwards')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([-push_dist, 0.0, 0.0]).T, which_arm)
+        rospy.loginfo('Done moving backwards')
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -383,9 +360,9 @@ class PositionFeedbackPushNode:
 
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
-            rospy.loginfo('Moving up to end point')
+            rospy.loginfo('Moving up to initial point')
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.loginfo('Done moving up to end point')
+            rospy.loginfo('Done moving up to initial point')
 
         if request.arm_reset:
             self.reset_arm_pose(True, which_arm, request.high_arm_init)
@@ -410,20 +387,9 @@ class PositionFeedbackPushNode:
         # NOTE: because of the wrist roll orientation, +Z at the gripper
         # equates to negative Y in the torso_lift_link at 0.0 yaw
         # So we flip the push_dist to make things look like one would expect
-        rospy.loginfo('Sweeping in')
-        end_pose = PoseStamped()
-        end_pose.header = request.start_point.header
-        end_pose.pose.position.x = start_point.x
-        end_pose.pose.position.y = start_point.y
-        end_pose.pose.position.z = start_point.z
-        q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0, wrist_yaw)
-        end_pose.pose.orientation.x = q[0]
-        end_pose.pose.orientation.y = q[1]
-        end_pose.pose.orientation.z = q[2]
-        end_pose.pose.orientation.w = q[3]
-        end_pose.pose.position.x += cos(wrist_yaw+0.5*pi)*push_dist
-        end_pose.pose.position.y += sin(wrist_yaw+0.5*pi)*push_dist
-        self.move_to_cart_pose(end_pose, which_arm)
+        rospy.loginfo('Sweeping gripper in')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
         rospy.loginfo('Done sweeping in')
 
         # response.dist_pushed = push_dist - pos_error
@@ -492,18 +458,13 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
-        # TODO: Fix this
-        # rospy.loginfo('Moving gripper up')
-        # push_arm.move_relative_gripper(
-        #     np.matrix([0.0, self.gripper_raise_dist, 0.0]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Done moving up')
-
-        # rospy.loginfo('Sweeping outward')
-        # push_arm.move_relative_gripper(
-        #     np.matrix([0.0, 0.0, (push_dist)]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Done sweeping outward')
+        rospy.loginfo('Moving gripper up')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([0.0, self.gripper_raise_dist, 0.0]).T, which_arm)
+        rospy.loginfo('Sweeping gripper outward')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, push_dist]).T, which_arm)
+        rospy.loginfo('Done sweeping outward')
 
         if request.high_arm_init:
             rospy.loginfo('Moving up to end point')
@@ -539,35 +500,13 @@ class PositionFeedbackPushNode:
             wrist_pitch = -0.5*pi
 
         # TODO: Fix this
-        # push_arm.pressure_listener.rezero()
-
-        # rospy.loginfo('Pushing forward')
-        # r, pos_error = push_arm.move_relative_gripper(
-        #     np.matrix([0.0, 0.0, push_dist]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Pushing forward')
         rospy.loginfo('Pushing forward')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, 0.0, push_dist]).T, which_arm)
-
-        # end_pose = PoseStamped()
-        # end_pose.header = request.start_point.header
-        # end_pose.pose.position.x = start_point.x
-        # end_pose.pose.position.y = start_point.y
-        # end_pose.pose.position.z = start_point.z
-        # q = tf.transformations.quaternion_from_euler(0.0, fabs(wrist_pitch),
-        #                                              wrist_yaw)
-        # end_pose.pose.orientation.x = q[0]
-        # end_pose.pose.orientation.y = q[1]
-        # end_pose.pose.orientation.z = q[2]
-        # end_pose.pose.orientation.w = q[3]
-        # end_pose.pose.position.x += cos(wrist_yaw)*push_dist
-        # end_pose.pose.position.y += sin(wrist_yaw)*push_dist
-        # self.move_to_cart_pose(end_pose, which_arm)
         rospy.loginfo('Done pushing forward')
 
         # TODO: Add this back in
-        # response.dist_pushed = push_dist - pos_error
+        response.dist_pushed = push_dist - pos_error
         return response
 
     def overhead_pre_push(self, request):
@@ -652,16 +591,14 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             wrist_pitch = -0.5*pi
 
-        # rospy.loginfo('Moving gripper up')
-        # push_arm.move_relative_gripper(
-        #     np.matrix([-self.gripper_raise_dist, 0.0, 0.0]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Done moving up')
-        # rospy.loginfo('Pushing reverse')
-        # push_arm.move_relative_gripper(
-        #     np.matrix([0.0, 0.0, -push_dist]).T,
-        #     stop='pressure', pressure=5000)
-        # rospy.loginfo('Done pushing reverse')
+        rospy.loginfo('Moving gripper up')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([-self.gripper_raise_dist, 0.0, 0.0]).T, which_arm)
+        rospy.loginfo('Done moving up')
+        rospy.loginfo('Pushing reverse')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
+        rospy.loginfo('Done pushing reverse')
 
         if request.high_arm_init:
             rospy.loginfo('Moving up to end point')
@@ -792,6 +729,7 @@ class PositionFeedbackPushNode:
 
     def move_relative_gripper(self, rel_push_vector, which_arm,
                               stop='pressure', pressure=5000):
+        # push_arm.pressure_listener.rezero()
         rel_pose = PoseStamped()
         rel_pose.header.stamp = rospy.Time(0)
         rel_pose.header.frame_id = which_arm + '_gripper_tool_frame'
