@@ -565,8 +565,8 @@ class TabletopExecutive:
                                  push, high_init)
 
 if __name__ == '__main__':
-    use_learning = False
-    use_singulation = True
+    use_learning = True
+    use_singulation = False
     use_guided = True
     num_trials = 3
     push_dist = 0.15 # meters

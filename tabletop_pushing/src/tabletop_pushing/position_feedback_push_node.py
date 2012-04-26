@@ -277,19 +277,22 @@ class PositionFeedbackPushNode:
         # TODO: Fix this
         # Push in a straight line
         rospy.loginfo('Pushing forward')
-        end_pose = PoseStamped()
-        end_pose.header = request.start_point.header
-        end_pose.pose.position.x = start_point.x
-        end_pose.pose.position.y = start_point.y
-        end_pose.pose.position.z = start_point.z
-        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
-        end_pose.pose.orientation.x = q[0]
-        end_pose.pose.orientation.y = q[1]
-        end_pose.pose.orientation.z = q[2]
-        end_pose.pose.orientation.w = q[3]
-        end_pose.pose.position.x += cos(wrist_yaw)*push_dist
-        end_pose.pose.position.y += sin(wrist_yaw)*push_dist
-        self.move_to_cart_pose(end_pose, which_arm)
+        # end_pose = PoseStamped()
+        # end_pose.header = request.start_point.header
+        # end_pose.pose.position.x = start_point.x
+        # end_pose.pose.position.y = start_point.y
+        # end_pose.pose.position.z = start_point.z
+        # q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
+        # end_pose.pose.orientation.x = q[0]
+        # end_pose.pose.orientation.y = q[1]
+        # end_pose.pose.orientation.z = q[2]
+        # end_pose.pose.orientation.w = q[3]
+        # end_pose.pose.position.x += cos(wrist_yaw)*push_dist
+        # end_pose.pose.position.y += sin(wrist_yaw)*push_dist
+        # self.move_to_cart_pose(end_pose, which_arm)
+        rospy.loginfo('Pushing forward')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([push_dist, 0.0, 0.0]).T, which_arm)
         rospy.loginfo('Done pushing forward')
 
         # response.dist_pushed = push_dist - pos_error
@@ -543,20 +546,24 @@ class PositionFeedbackPushNode:
         #     np.matrix([0.0, 0.0, push_dist]).T,
         #     stop='pressure', pressure=5000)
         # rospy.loginfo('Pushing forward')
-        end_pose = PoseStamped()
-        end_pose.header = request.start_point.header
-        end_pose.pose.position.x = start_point.x
-        end_pose.pose.position.y = start_point.y
-        end_pose.pose.position.z = start_point.z
-        q = tf.transformations.quaternion_from_euler(0.0, fabs(wrist_pitch),
-                                                     wrist_yaw)
-        end_pose.pose.orientation.x = q[0]
-        end_pose.pose.orientation.y = q[1]
-        end_pose.pose.orientation.z = q[2]
-        end_pose.pose.orientation.w = q[3]
-        end_pose.pose.position.x += cos(wrist_yaw)*push_dist
-        end_pose.pose.position.y += sin(wrist_yaw)*push_dist
-        self.move_to_cart_pose(end_pose, which_arm)
+        rospy.loginfo('Pushing forward')
+        r, pos_error = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, push_dist]).T, which_arm)
+
+        # end_pose = PoseStamped()
+        # end_pose.header = request.start_point.header
+        # end_pose.pose.position.x = start_point.x
+        # end_pose.pose.position.y = start_point.y
+        # end_pose.pose.position.z = start_point.z
+        # q = tf.transformations.quaternion_from_euler(0.0, fabs(wrist_pitch),
+        #                                              wrist_yaw)
+        # end_pose.pose.orientation.x = q[0]
+        # end_pose.pose.orientation.y = q[1]
+        # end_pose.pose.orientation.z = q[2]
+        # end_pose.pose.orientation.w = q[3]
+        # end_pose.pose.position.x += cos(wrist_yaw)*push_dist
+        # end_pose.pose.position.y += sin(wrist_yaw)*push_dist
+        # self.move_to_cart_pose(end_pose, which_arm)
         rospy.loginfo('Done pushing forward')
 
         # TODO: Add this back in
@@ -783,11 +790,21 @@ class PositionFeedbackPushNode:
             self.r_arm_cart_pub.publish(pose)
         rospy.sleep(self.init_arm_sleep_time)
 
-    def move_relative_gripper(self, push_vector, which_arm,
+    def move_relative_gripper(self, rel_push_vector, which_arm,
                               stop='pressure', pressure=5000):
-        # TODO: get current arm pose
-        # TODO: Get transformed location by push_vector
-        # TODO: move arm to 
+        rel_pose = PoseStamped()
+        rel_pose.header.stamp = rospy.Time(0)
+        rel_pose.header.frame_id = which_arm + '_gripper_tool_frame'
+        rel_pose.pose.position.x = float(rel_push_vector[0])
+        rel_pose.pose.position.y = float(rel_push_vector[1])
+        rel_pose.pose.position.z = float(rel_push_vector[2])
+        rel_pose.pose.orientation.x = 0
+        rel_pose.pose.orientation.y = 0
+        rel_pose.pose.orientation.z = 0
+        rel_pose.pose.orientation.w = 1.0
+        self.move_to_cart_pose(rel_pose, which_arm)
+
+        # TODO: Query arm pose and return error
         r = 0
         pose_error = 0
         return (r, pose_error)
