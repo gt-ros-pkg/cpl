@@ -73,11 +73,11 @@ class TabletopExecutive:
         # TODO: Replace these parameters with learned / perceived values
         # The offsets should be removed and learned implicitly
         self.gripper_x_offset = rospy.get_param('~gripper_push_start_x_offset',
-                                                -0.05)
+                                                -0.02)
         self.gripper_y_offset = rospy.get_param('~gripper_push_start_x_offset',
                                                 0.0)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z',
-                                                -0.30)
+                                                -0.25)
 
         self.sweep_x_offset = rospy.get_param('~gripper_sweep_start_x_offset',
                                               -0.01)
@@ -246,7 +246,7 @@ class TabletopExecutive:
 
     def run_rand_learning_collect(self, num_trials, push_dist):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        # push_options = [OVERHEAD_PUSH]
+        # push_options = [GRIPPER_PUSH]
         arms = ['l', 'r']
         high_inits = [True, False]
         for t in xrange(num_trials):

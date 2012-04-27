@@ -112,9 +112,17 @@ class PositionFeedbackPushNode:
         self.default_torso_height = rospy.get_param('~default_torso_height',
                                                     0.2)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.1)
-        self.init_arm_sleep_time = rospy.get_param('~init_arm_sleep_time', 2.0)
+        self.init_arm_sleep_time = rospy.get_param('~init_arm_sleep_time', 1.5)
+        self.refresh_sleep_time = rospy.get_param('~refresh_sleep_time', 0.1)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
+        self.pose_reached_linear_thresh = rospy.get_param('~linear_thresh',
+                                                          0.03)
+        self.pose_reached_angular_thresh  = rospy.get_param('~angular_thresh',
+                                                            0.2)
+        self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
+        self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
+
         self.post_controller_switch_sleep = 0.5
 
         # Set joint gains
@@ -140,11 +148,12 @@ class PositionFeedbackPushNode:
         # State Info
         self.l_arm_pose = None
         self.l_arm_x_err = None
-        self.l_arm_xd = None
+        self.l_arm_x_d = None
         self.l_arm_F = None
+
         self.r_arm_pose = None
         self.r_arm_x_err = None
-        self.r_arm_xd = None
+        self.r_arm_x_d = None
         self.r_arm_F = None
 
         # Open callback services
@@ -320,14 +329,13 @@ class PositionFeedbackPushNode:
         start_pose.pose.position.x = start_point.x
         start_pose.pose.position.y = start_point.y
         start_pose.pose.position.z = start_point.z
-        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
+        q = tf.transformations.quaternion_from_euler(0.1, 0.0, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
 
         if request.high_arm_init:
-            epsilon = 0.001
             # TODO: Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
@@ -565,13 +573,6 @@ class PositionFeedbackPushNode:
                 arm_pose[-3] =  wrist_pitch
                 self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
 
-            # Rotate wrist before moving to position
-            # TODO: Figure this out using IK...
-            # rospy.loginfo('Rotating wrist for overhead push')
-            # arm_pose = self.get_arm_joint_pose(which_arm)
-            # arm_pose[-1] = wrist_yaw
-            # self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
-
         if request.high_arm_init:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
@@ -735,11 +736,35 @@ class PositionFeedbackPushNode:
 
     def move_to_cart_pose(self, pose, which_arm):
         self.switch_to_cart_controllers()
+        q = 0
         if which_arm == 'l':
             self.l_arm_cart_pub.publish(pose)
         else:
             self.r_arm_cart_pub.publish(pose)
         rospy.sleep(self.init_arm_sleep_time)
+
+    def arm_moving_cart(self, which_arm):
+        if which_arm == 'l':
+            x_err = self.l_arm_x_err
+            x_d = self.l_arm_x_d
+        else:
+            x_err = self.r_arm_x_err
+            x_d = self.r_arm_x_d
+
+        arm_far = (fabs(x_err.linear.x) > self.pose_reached_linear_thresh or
+                   fabs(x_err.linear.y) > self.pose_reached_linear_thresh or
+                   fabs(x_err.linear.z) > self.pose_reached_linear_thresh or
+                   fabs(x_err.angular.x) > self.pose_reached_angular_thresh or
+                   fabs(x_err.angular.y) > self.pose_reached_angular_thresh or
+                   fabs(x_err.angular.z) > self.pose_reached_angular_thresh)
+        moving = (fabs(x_d.linear.x) > self.still_moving_velocity or
+                  fabs(x_d.linear.y) > self.still_moving_velocity or
+                  fabs(x_d.linear.z) > self.still_moving_velocity or
+                  fabs(x_d.angular.x) > self.still_moving_angular_velocity or
+                  fabs(x_d.angular.y) > self.still_moving_angular_velocity or
+                  fabs(x_d.angular.z) > self.still_moving_angular_velocity)
+
+        return (moving or arm_far)
 
     def move_relative_gripper(self, rel_push_vector, which_arm,
                               stop='pressure', pressure=5000):
@@ -762,15 +787,19 @@ class PositionFeedbackPushNode:
         return (r, pose_error)
 
     def l_arm_cart_state_callback(self, state_msg):
-        self.l_arm_pose = state_msg.X
-        self.l_arm_x_err = state_msg.x_err
-        self.l_arm_xd = state_msg.xd
+        x_err = state_msg.x_err
+        x_d = state_msg.xd
+        self.l_arm_pose = state_msg.x
+        self.l_arm_x_err = x_err
+        self.l_arm_x_d = x_d
         self.l_arm_F = state_msg.F
 
     def r_arm_cart_state_callback(self, state_msg):
-        self.r_arm_pose = state_msg.X
+        x_err = state_msg.x_err
+        x_d = state_msg.xd
+        self.r_arm_pose = state_msg.x
         self.r_arm_x_err = state_msg.x_err
-        self.r_arm_xd = state_msg.xd
+        self.r_arm_x_d = state_msg.xd
         self.r_arm_F = state_msg.F
 
     #
@@ -785,6 +814,7 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Setting left arm controller gains')
         self.cs.switch("l_arm_controller", "l_arm_controller",
                        prefix + "pr2_arm_controllers_push.yaml")
+        rospy.sleep(self.post_controller_switch_sleep)
 
     def init_cart_controllers(self):
         self.arm_mode = 'cart_mode'
@@ -792,6 +822,7 @@ class PositionFeedbackPushNode:
                                 '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
         self.cs.carefree_switch('l', '%s_cart_posture_push',
                                 '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+        rospy.sleep(self.post_controller_switch_sleep)
 
     def switch_to_cart_controllers(self):
         if self.arm_mode != 'cart_mode':
@@ -826,8 +857,8 @@ class PositionFeedbackPushNode:
         '''
         Main control loop for the node
         '''
-        self.init_spine_pose()
-        self.init_head_pose(self.head_pose_cam_frame)
+        # self.init_spine_pose()
+        # self.init_head_pose(self.head_pose_cam_frame)
         self.init_arms()
         rospy.loginfo('Done initializing feedback pushing node.')
         rospy.spin()
