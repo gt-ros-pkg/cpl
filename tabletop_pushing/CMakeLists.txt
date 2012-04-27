@@ -35,5 +35,7 @@ rosbuild_add_executable(tabletop_pushing_perception_node src/tabletop_pushing_pe
 target_link_libraries(tabletop_pushing_perception_node point_cloud_segmentation)
 target_link_libraries(tabletop_pushing_perception_node ${OpenCV_LIBRARIES})
 rosbuild_add_executable(object_singulation_node src/object_singulation_node.cpp)
+rosbuild_add_executable(save_kinect_data src/save_kinect_images.cpp)
 target_link_libraries(object_singulation_node point_cloud_segmentation)
 target_link_libraries(object_singulation_node ${OpenCV_LIBRARIES})
+target_link_libraries(save_kinect_data ${OpenCV_LIBRARIES})
