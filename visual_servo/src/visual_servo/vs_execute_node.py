@@ -55,16 +55,38 @@ def cleanup():
   rospy.sleep(0.5)
   pub.publish(zero)
 
-class VisualServoExecutionNode:
-  def adjustVelocity(self, vel):
-    clip_vel = 0.09
-    ret = vel 
-    if ret > clip_vel:
-      ret = clip_vel
-    elif -ret > clip_vel:
-      ret = -clip_vel
-    return -ret 
+def adjustVelocity(vel):
+ clip_vel = 0.09
+ ret = vel 
+ if ret > clip_vel:
+   ret = clip_vel
+ elif -ret > clip_vel:
+   ret = -clip_vel
+ return ret 
 
+
+ 
+def handle_move_request(req):
+    pub = rospy.Publisher('r_cart/command', Twist)
+    t = req.twist # service call
+    msg = Twist() # this is the message to the twist controller
+    try:
+      msg.linear.x = adjustVelocity(t.twist.linear.x)
+      msg.linear.y = adjustVelocity(t.twist.linear.y)
+      msg.linear.z = adjustVelocity(t.twist.linear.z)
+      msg.angular.x = adjustVelocity(t.twist.angular.x)
+      msg.angular.y = adjustVelocity(t.twist.angular.y)
+      msg.angular.z = adjustVelocity(t.twist.angular.z)
+      rospy.loginfo('vx:%+.5f\tvy:%+.5f\tvz:%+.5f\twx:%+.5f\twy:%+.5f\twz:%+.5f', msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z)
+      pub.publish(msg)
+    except rospy.ServiceException, e:
+      pub.publish(zero)
+
+    return VisualServoTwistResponse()
+         
+
+
+class VisualServoExecutionNode:
   def initial_arm(self, cs):
     rospy.loginfo('Setting to Initial msg...')
     cs.carefree_switch('r', '%s_arm', '$(find visual_servo)/params/rmc_joint_trajectory_params.yaml' )
@@ -78,13 +100,13 @@ class VisualServoExecutionNode:
     msg.points = [pts]
     msg.joint_names = ['r_shoulder_pan_joint', 'r_shoulder_lift_joint', 'r_upper_arm_roll_joint',
                        'r_elbow_flex_joint', 'r_forearm_roll_joint','r_wrist_flex_joint','r_wrist_roll_joint']
-    pub.publish(msg)
+    # pub.publish(msg)
     rospy.sleep(0.5)
-    pub.publish(msg)
+    # pub.publish(msg)
     rospy.sleep(3)
 
-    pts.positions = array('d', [-0.60, 0.1137, -1.60411927, 
-                                -1.75, -15.85, -1.282, -1.72])
+    pts.positions = array('d', [-0.750, +0.237, -1.60411927, 
+                                -2.25, -15.85, -1.282, -1.72])
     msg.points = [pts]
     pub.publish(msg)
     rospy.sleep(0.5)
@@ -100,22 +122,6 @@ class VisualServoExecutionNode:
 
     
   
-  def handle_move_request(req):
-    t = req.twist # service call
-    msg = Twist() # this is the message to the twist controller
-    while not rospy.is_shutdown():
-      try:
-        msg.linear.x = self.adjustVelocity(t.twist.linear.x)
-        msg.linear.y = self.adjustVelocity(t.twist.linear.y)
-        msg.linear.z = self.adjustVelocity(t.twist.linear.z)
-        msg.angular.x = self.adjustVelocity(t.twist.angular.x)
-        msg.angular.y = self.adjustVelocity(t.twist.angular.y)
-        msg.angular.z = self.adjustVelocity(t.twist.angular.z)
-        rospy.loginfo('vx:%+.5f\tvy:%+.5f\tvz:%+.5f\twx:%+.5f\twy:%+.5f\twz:%+.5f', msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z)
-        pub.publish(msg)
-      except rospy.ServiceException, e:
-        pub.publish(zero) 
-
 
 if __name__ == '__main__':
   try:
