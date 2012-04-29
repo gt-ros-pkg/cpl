@@ -113,7 +113,9 @@ class PositionFeedbackPushNode:
                                                     0.2)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.1)
         self.init_arm_sleep_time = rospy.get_param('~init_arm_sleep_time', 1.5)
-        self.refresh_sleep_time = rospy.get_param('~refresh_sleep_time', 0.1)
+        self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
+        self.arm_done_moving_count_thresh = rospy.get_param(
+            '~not_moving_count_thresh', 10)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
         self.pose_reached_linear_thresh = rospy.get_param('~linear_thresh',
@@ -741,7 +743,16 @@ class PositionFeedbackPushNode:
             self.l_arm_cart_pub.publish(pose)
         else:
             self.r_arm_cart_pub.publish(pose)
-        rospy.sleep(self.init_arm_sleep_time)
+        arm_not_moving_count = 0
+        r = rospy.Rate(self.move_cart_check_hz)
+        while arm_not_moving_count < self.arm_done_moving_count_thresh:
+            if self.arm_moving_cart(which_arm):
+                arm_not_moving_count += 1
+                rospy.loginfo('Updated not moving count to: ' +
+                              str(arm_not_moving_count))
+            else:
+                arm_not_moving_count = 0
+            r.sleep()
 
     def arm_moving_cart(self, which_arm):
         if which_arm == 'l':
@@ -751,12 +762,12 @@ class PositionFeedbackPushNode:
             x_err = self.r_arm_x_err
             x_d = self.r_arm_x_d
 
-        arm_far = (fabs(x_err.linear.x) > self.pose_reached_linear_thresh or
-                   fabs(x_err.linear.y) > self.pose_reached_linear_thresh or
-                   fabs(x_err.linear.z) > self.pose_reached_linear_thresh or
-                   fabs(x_err.angular.x) > self.pose_reached_angular_thresh or
-                   fabs(x_err.angular.y) > self.pose_reached_angular_thresh or
-                   fabs(x_err.angular.z) > self.pose_reached_angular_thresh)
+        # arm_far = (fabs(x_err.linear.x) > self.pose_reached_linear_thresh or
+        #            fabs(x_err.linear.y) > self.pose_reached_linear_thresh or
+        #            fabs(x_err.linear.z) > self.pose_reached_linear_thresh or
+        #            fabs(x_err.angular.x) > self.pose_reached_angular_thresh or
+        #            fabs(x_err.angular.y) > self.pose_reached_angular_thresh or
+        #            fabs(x_err.angular.z) > self.pose_reached_angular_thresh)
         moving = (fabs(x_d.linear.x) > self.still_moving_velocity or
                   fabs(x_d.linear.y) > self.still_moving_velocity or
                   fabs(x_d.linear.z) > self.still_moving_velocity or
@@ -764,7 +775,7 @@ class PositionFeedbackPushNode:
                   fabs(x_d.angular.y) > self.still_moving_angular_velocity or
                   fabs(x_d.angular.z) > self.still_moving_angular_velocity)
 
-        return (moving or arm_far)
+        return moving
 
     def move_relative_gripper(self, rel_push_vector, which_arm,
                               stop='pressure', pressure=5000):
