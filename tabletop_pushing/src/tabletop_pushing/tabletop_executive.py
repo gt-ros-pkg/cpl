@@ -244,18 +244,21 @@ class TabletopExecutive:
                             return False
         return True
 
-    def run_rand_learning_collect(self, num_trials, push_dist):
+    def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0):
+        # push_angle = pi*0.25
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         # push_options = [GRIPPER_PUSH]
         arms = ['l', 'r']
-        high_inits = [True, False]
+        high_inits = [False, True]
         for t in xrange(num_trials):
             for high_init in high_inits:
                 for arm in arms:
                     for push_opt in push_options:
                         get_push = True
                         while get_push:
-                            push_vec = self.request_learning_push(0, push_dist,
+                            push_vec = self.request_learning_push(push_angle,
+                                                                  push_dist,
+                                                                  # False)
                                                                   True)
                             if (push_vec.centroid.x == 0.0 and
                                 push_vec.centroid.y == 0.0 and

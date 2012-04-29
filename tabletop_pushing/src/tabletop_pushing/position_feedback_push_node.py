@@ -120,8 +120,10 @@ class PositionFeedbackPushNode:
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
         self.arm_done_moving_count_thresh = rospy.get_param(
             '~not_moving_count_thresh', 30)
-        self.post_move_count_thresh = rospy.get_param(
-            '~post_move_count_thresh', 10)
+        self.post_move_count_thresh = rospy.get_param('~post_move_count_thresh',
+                                                      10)
+        self.pre_push_count_thresh = rospy.get_param('~pre_push_count_thresh',
+                                                      50)
         self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
         self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
 
@@ -346,7 +348,8 @@ class PositionFeedbackPushNode:
             # Change z to lower arm to table
             start_pose.pose.position.z = start_point.z
         # Move to start pose
-        self.move_to_cart_pose(start_pose, which_arm)
+        self.move_to_cart_pose(start_pose, which_arm,
+                               self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
         return response
 
@@ -467,7 +470,8 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
-        self.move_to_cart_pose(start_pose, which_arm)
+        self.move_to_cart_pose(start_pose, which_arm,
+                               self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
 
         return response
@@ -589,7 +593,8 @@ class PositionFeedbackPushNode:
             start_pose.pose.position.z = start_point.z
 
         # Move to offset pose
-        self.move_to_cart_pose(start_pose, which_arm)
+        self.move_to_cart_pose(start_pose, which_arm,
+                               self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
 
         return response
