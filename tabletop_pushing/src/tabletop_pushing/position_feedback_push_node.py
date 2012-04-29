@@ -113,9 +113,11 @@ class PositionFeedbackPushNode:
                                                     0.2)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.1)
         self.init_arm_sleep_time = rospy.get_param('~init_arm_sleep_time', 1.5)
+        self.post_controller_switch_sleep = rospy.get_param(
+            '~arm_switch_sleep_time', 0.75)
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
         self.arm_done_moving_count_thresh = rospy.get_param(
-            '~not_moving_count_thresh', 10)
+            '~not_moving_count_thresh', 75)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
         self.pose_reached_linear_thresh = rospy.get_param('~linear_thresh',
@@ -124,8 +126,6 @@ class PositionFeedbackPushNode:
                                                             0.2)
         self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
         self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
-
-        self.post_controller_switch_sleep = 0.5
 
         # Set joint gains
         self.arm_mode = None
@@ -142,6 +142,10 @@ class PositionFeedbackPushNode:
             '/l_cart_posture_push/command_pose', PoseStamped)
         self.r_arm_cart_pub = rospy.Publisher(
             '/r_cart_posture_push/command_pose', PoseStamped)
+        # self.l_arm_cart_posture_pub = rospy.Publisher(
+        #     '/l_cart_posture_push/command_posture', PoseStamped)
+        # self.r_arm_cart_posture_pub = rospy.Publisher(
+        #     '/r_cart_posture_push/command_posture', PoseStamped)
         rospy.Subscriber('/l_cart_posture_push/state', JTTaskControllerState,
                          self.l_arm_cart_state_callback)
         rospy.Subscriber('/r_cart_posture_push/state', JTTaskControllerState,
@@ -370,7 +374,6 @@ class PositionFeedbackPushNode:
         r, pos_error = self.move_relative_gripper(
             np.matrix([-push_dist, 0.0, 0.0]).T, which_arm)
         rospy.loginfo('Done moving backwards')
-
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
         start_pose.pose.position.x = start_point.x
@@ -497,7 +500,7 @@ class PositionFeedbackPushNode:
             end_pose.header = request.start_point.header
             end_pose.pose.position.x = start_point.x
             end_pose.pose.position.y = start_point.y
-            end_pose.pose.position.z = start_point.z
+            end_pose.pose.position.z = self.high_arm_init_z
             q = tf.transformations.quaternion_from_euler(0.5*pi, 0.0, wrist_yaw)
             end_pose.pose.orientation.x = q[0]
             end_pose.pose.orientation.y = q[1]
@@ -624,7 +627,7 @@ class PositionFeedbackPushNode:
             end_pose.header = request.start_point.header
             end_pose.pose.position.x = start_point.x
             end_pose.pose.position.y = start_point.y
-            end_pose.pose.position.z = start_point.z
+            end_pose.pose.position.z = self.high_arm_init_z
             q = tf.transformations.quaternion_from_euler(0.0, 0.5*pi, wrist_yaw)
             end_pose.pose.orientation.x = q[0]
             end_pose.pose.orientation.y = q[1]
@@ -746,10 +749,8 @@ class PositionFeedbackPushNode:
         arm_not_moving_count = 0
         r = rospy.Rate(self.move_cart_check_hz)
         while arm_not_moving_count < self.arm_done_moving_count_thresh:
-            if self.arm_moving_cart(which_arm):
+            if not self.arm_moving_cart(which_arm):
                 arm_not_moving_count += 1
-                rospy.loginfo('Updated not moving count to: ' +
-                              str(arm_not_moving_count))
             else:
                 arm_not_moving_count = 0
             r.sleep()
@@ -798,6 +799,7 @@ class PositionFeedbackPushNode:
         return (r, pose_error)
 
     def l_arm_cart_state_callback(self, state_msg):
+        # rospy.loginfo('Updated arm state info!')
         x_err = state_msg.x_err
         x_d = state_msg.xd
         self.l_arm_pose = state_msg.x
@@ -868,8 +870,8 @@ class PositionFeedbackPushNode:
         '''
         Main control loop for the node
         '''
-        # self.init_spine_pose()
-        # self.init_head_pose(self.head_pose_cam_frame)
+        self.init_spine_pose()
+        self.init_head_pose(self.head_pose_cam_frame)
         self.init_arms()
         rospy.loginfo('Done initializing feedback pushing node.')
         rospy.spin()
