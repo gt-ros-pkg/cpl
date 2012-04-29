@@ -80,18 +80,18 @@ class TabletopExecutive:
                                                 -0.25)
 
         self.sweep_x_offset = rospy.get_param('~gripper_sweep_start_x_offset',
-                                              -0.01)
+                                              0.0) # -0.03)
         self.sweep_y_offset = rospy.get_param('~gripper_sweep_start_y_offset',
                                               0.03)
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z',
-                                              -0.25)
+                                              -0.22)
 
         self.overhead_x_offset = rospy.get_param('~overhead_push_start_x_offset',
                                                  0.00)
         self.overhead_y_offset = rospy.get_param('~overhead_push_start_x_offset',
                                                  0.00)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.22)
+                                                 -0.25)
         self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
                                                 0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
@@ -460,7 +460,7 @@ class TabletopExecutive:
         else:
             wrist_yaw = push_vector.push_angle + pi/2
         sweep_req.wrist_yaw = wrist_yaw
-        sweep_req.desired_push_dist = -y_offset_dir*(self.sweep_y_offset +
+        sweep_req.desired_push_dist = -y_offset_dir*(abs(self.sweep_y_offset) +
                                                      push_dist)
 
         # Set offset in x y, based on distance
