@@ -461,7 +461,8 @@ class TabletopPushingPerceptionNode
 
     if (rand_angle)
     {
-      desired_push_angle = randf()*2.0*M_PI-M_PI;
+      // desired_push_angle = randf()*2.0*M_PI-M_PI;
+      desired_push_angle = randf()*M_PI-0.5*M_PI;
     }
 
     // Set basic push information

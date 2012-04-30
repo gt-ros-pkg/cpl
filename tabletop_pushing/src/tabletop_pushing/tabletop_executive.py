@@ -41,7 +41,7 @@ import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import sin, cos, pi, fabs
+from math import sin, cos, pi, fabs, sqrt
 import sys
 from push_learning import PushLearningIO, PushTrial
 import time
@@ -245,9 +245,9 @@ class TabletopExecutive:
         return True
 
     def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0):
-        # push_angle = pi*0.25
-        push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        # push_options = [GRIPPER_PUSH]
+        push_angle = pi*0.25
+        # push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
+        push_options = [GRIPPER_PUSH]
         arms = ['l', 'r']
         high_inits = [False, True]
         for t in xrange(num_trials):
@@ -320,8 +320,11 @@ class TabletopExecutive:
         rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
                       ', ' + str(push_vector_res.centroid.y) + ', ' +
                       str(push_angle) +')')
-        rospy.loginfo('Moved (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
+        rospy.loginfo('New (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
                        str(analysis_res.centroid.y) + ')')
+        rospy.loginfo('Delta (X,Y): (' + str(analysis_res.moved.x) + ', ' +
+                       str(analysis_res.moved.y) + '): ' +
+                      str(sqrt(analysis_res.moved.x**2 + analysis_res.moved.y**2)))
         self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
                                  which_arm, analysis_res.centroid, push_dist,
                                  high_init, push_time)

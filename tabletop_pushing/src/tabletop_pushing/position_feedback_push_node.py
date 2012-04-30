@@ -34,6 +34,7 @@
 import roslib; roslib.load_manifest('tabletop_pushing')
 import rospy
 import hrl_pr2_lib.pr2 as pr2
+import hrl_pr2_lib.pressure_listener as pl
 import hrl_lib.tf_utils as tfu
 from hrl_pr2_arms.pr2_controller_switcher import ControllerSwitcher
 from geometry_msgs.msg import PoseStamped
@@ -43,7 +44,7 @@ from pr2_manipulation_controllers.msg import *
 import tf
 import numpy as np
 from tabletop_pushing.srv import *
-from math import sin, cos, pi, fabs
+from math import sin, cos, pi, fabs, sqrt
 import sys
 
 # Setup joints stolen from Kelsey's code.
@@ -100,6 +101,17 @@ RIGHT_ARM_HIGH_PUSH_READY_JOINTS = np.matrix([[-0.42427649,
 LEFT_ARM_HIGH_SWEEP_READY_JOINTS = LEFT_ARM_HIGH_PUSH_READY_JOINTS
 RIGHT_ARM_HIGH_SWEEP_READY_JOINTS = RIGHT_ARM_HIGH_PUSH_READY_JOINTS
 
+_POSTURES = {
+    'off': [],
+    'mantis': [0, 1, 0,  -1, 3.14, -1, 3.14],
+    'elbowupr': [-0.79,0,-1.6,  9999, 9999, 9999, 9999],
+    'elbowupl': [0.79,0,1.6 , 9999, 9999, 9999, 9999],
+    'old_elbowupr': [-0.79,0,-1.6, -0.79,3.14, -0.79,5.49],
+    'old_elbowupl': [0.79,0,1.6, -0.79,3.14, -0.79,5.49],
+    'elbowdownr': [-0.028262077316910873, 1.2946342642324222, -0.25785640577652386, -1.5498884526859626, -31.278913849571776, -1.0527644894829107, -1.8127318367654268],
+    'elbowdownl': [-0.0088195719039858515, 1.2834828245284853, 0.20338442004843196, -1.5565279256852611, -0.096340012666916802, -1.0235018652439782, 1.7990893054129216]
+}
+
 class PositionFeedbackPushNode:
 
     def __init__(self):
@@ -125,7 +137,8 @@ class PositionFeedbackPushNode:
         self.pre_push_count_thresh = rospy.get_param('~pre_push_count_thresh',
                                                       50)
         self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
-        self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
+        self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.005)
+        self.default_pressure_limit = rospy.get_param('~pressure_limit', 5000)
 
         # Set joint gains
         self.arm_mode = None
@@ -146,6 +159,10 @@ class PositionFeedbackPushNode:
             '/l_cart_posture_push/command_posture', Float64MultiArray)
         self.r_arm_cart_posture_pub = rospy.Publisher(
             '/r_cart_posture_push/command_posture', Float64MultiArray)
+        self.l_pressure_listener = pl.PressureListener(
+            '/pressure/l_gripper_motor', self.default_pressure_limit)
+        self.r_pressure_listener = pl.PressureListener(
+            '/pressure/r_gripper_motor', self.default_pressure_limit)
         rospy.Subscriber('/l_cart_posture_push/state', JTTaskControllerState,
                          self.l_arm_cart_state_callback)
         rospy.Subscriber('/r_cart_posture_push/state', JTTaskControllerState,
@@ -195,8 +212,6 @@ class PositionFeedbackPushNode:
         self.raise_and_look_serice = rospy.Service('raise_and_look',
                                                    RaiseAndLook,
                                                    self.raise_and_look)
-
-
     #
     # Initialization functions
     #
@@ -302,9 +317,12 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
-        rospy.loginfo('Pushing forward ' + str(push_dist) + 'cm')
-        r, pos_error = self.move_relative_gripper(
-            np.matrix([push_dist, 0.0, 0.0]).T, which_arm)
+        rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
+        # r, pos_error = self.move_relative_gripper(
+        #     np.matrix([push_dist, 0.0, 0.0]).T, which_arm)
+        r, pos_error = self.move_relative_torso(
+            np.matrix([cos(wrist_yaw)*push_dist,
+                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
         rospy.loginfo('Done pushing forward')
 
         response.dist_pushed = push_dist - pos_error
@@ -335,7 +353,7 @@ class PositionFeedbackPushNode:
         start_pose.pose.position.x = start_point.x
         start_pose.pose.position.y = start_point.y
         start_pose.pose.position.z = start_point.z
-        q = tf.transformations.quaternion_from_euler(0.1, 0.0, wrist_yaw)
+        q = tf.transformations.quaternion_from_euler(0.0, -0.1, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
         start_pose.pose.orientation.z = q[2]
@@ -412,12 +430,11 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
             wrist_roll = 0.0
-        # push_arm.pressure_listener.rezero()
 
         # NOTE: because of the wrist roll orientation, +Z at the gripper
         # equates to negative Y in the torso_lift_link at 0.0 yaw
         # So we flip the push_dist to make things look like one would expect
-        rospy.loginfo('Sweeping gripper in ' + str(push_dist) + 'cm')
+        rospy.loginfo('Sweeping gripper in ' + str(push_dist) + 'm')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
         rospy.loginfo('Done sweeping in')
@@ -533,7 +550,7 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             wrist_pitch = -0.5*pi
 
-        rospy.loginfo('Pushing forward ' + str(push_dist) + 'cm')
+        rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, 0.0, push_dist]).T, which_arm)
         rospy.loginfo('Done pushing forward')
@@ -756,9 +773,11 @@ class PositionFeedbackPushNode:
         if which_arm == 'l':
             self.l_arm_cart_pub.publish(pose)
             posture_pub = self.l_arm_cart_posture_pub
+            # posture = 'old_elbowupl'
         else:
             self.r_arm_cart_pub.publish(pose)
             posture_pub = self.r_arm_cart_posture_pub
+            # posture = 'old_elbowupr'
         arm_not_moving_count = 0
         r = rospy.Rate(self.move_cart_check_hz)
         while arm_not_moving_count < done_moving_count_thresh:
@@ -774,8 +793,20 @@ class PositionFeedbackPushNode:
             # rospy.loginfo('joints: ' + str(joints))
             # rospy.loginfo('len(joints): ' + str(len(joints)))
             m = Float64MultiArray(data=joints)
+            # m = Float64MultiArray(data=_POSTURES[posture])
             posture_pub.publish(m)
             r.sleep()
+
+        # Query arm pose and return error
+        if which_arm == 'l':
+            r = self.l_arm_x_err
+        else:
+            r = self.r_arm_x_err
+        # rospy.loginfo('Move relative gripper error: ' + str(r))
+        pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
+        rospy.loginfo('Move cart gripper error dist: ' + str(pos_error))
+        return (r, pos_error)
+
 
     def arm_moving_cart(self, which_arm):
         if which_arm == 'l':
@@ -797,10 +828,14 @@ class PositionFeedbackPushNode:
     def move_relative_gripper(self, rel_push_vector, which_arm,
                               stop='pressure', pressure=5000,
                               move_cart_count_thresh=None):
-        # TODO: push_arm.pressure_listener.rezero()
+        if which_arm == 'l':
+            self.l_pressure_listener.rezero()
+        else:
+            self.r_pressure_listener.rezero()
+
         rel_pose = PoseStamped()
         rel_pose.header.stamp = rospy.Time(0)
-        rel_pose.header.frame_id = which_arm + '_gripper_tool_frame'
+        rel_pose.header.frame_id = '/'+which_arm + '_gripper_tool_frame'
         rel_pose.pose.position.x = float(rel_push_vector[0])
         rel_pose.pose.position.y = float(rel_push_vector[1])
         rel_pose.pose.position.z = float(rel_push_vector[2])
@@ -808,12 +843,28 @@ class PositionFeedbackPushNode:
         rel_pose.pose.orientation.y = 0
         rel_pose.pose.orientation.z = 0
         rel_pose.pose.orientation.w = 1.0
-        self.move_to_cart_pose(rel_pose, which_arm, move_cart_count_thresh)
+        return self.move_to_cart_pose(rel_pose, which_arm,
+                                      move_cart_count_thresh)
 
-        # TODO: Query arm pose and return error
-        r = 0
-        pose_error = 0
-        return (r, pose_error)
+    def move_relative_torso(self, rel_push_vector, which_arm,
+                            stop='pressure', pressure=5000,
+                            move_cart_count_thresh=None):
+        if which_arm == 'l':
+            cur_pose = self.l_arm_pose
+        else:
+            cur_pose = self.r_arm_pose
+        rel_pose = PoseStamped()
+        rel_pose.header.stamp = rospy.Time(0)
+        rel_pose.header.frame_id = '/torso_lift_link'
+        rel_pose.pose.position.x = cur_pose.pose.position.x + \
+            float(rel_push_vector[0])
+        rel_pose.pose.position.y = cur_pose.pose.position.y + \
+            float(rel_push_vector[1])
+        rel_pose.pose.position.z = cur_pose.pose.position.z + \
+            float(rel_push_vector[2])
+        rel_pose.pose.orientation = cur_pose.pose.orientation
+        return self.move_to_cart_pose(rel_pose, which_arm,
+                                      move_cart_count_thresh)
 
     def l_arm_cart_state_callback(self, state_msg):
         # rospy.loginfo('Updated arm state info!')
