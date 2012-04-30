@@ -138,7 +138,8 @@ class PositionFeedbackPushNode:
                                                       50)
         self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
         self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.005)
-        self.default_pressure_limit = rospy.get_param('~pressure_limit', 5000)
+        self.pressure_safety_limit = rospy.get_param('~pressure_limit',
+                                                     2000)
 
         # Set joint gains
         self.arm_mode = None
@@ -160,9 +161,9 @@ class PositionFeedbackPushNode:
         self.r_arm_cart_posture_pub = rospy.Publisher(
             '/r_cart_posture_push/command_posture', Float64MultiArray)
         self.l_pressure_listener = pl.PressureListener(
-            '/pressure/l_gripper_motor', self.default_pressure_limit)
+            '/pressure/l_gripper_motor', self.pressure_safety_limit)
         self.r_pressure_listener = pl.PressureListener(
-            '/pressure/r_gripper_motor', self.default_pressure_limit)
+            '/pressure/r_gripper_motor', self.pressure_safety_limit)
         rospy.Subscriber('/l_cart_posture_push/state', JTTaskControllerState,
                          self.l_arm_cart_state_callback)
         rospy.Subscriber('/r_cart_posture_push/state', JTTaskControllerState,
@@ -765,7 +766,8 @@ class PositionFeedbackPushNode:
         else:
             self.robot.right.set_pose(joint_pose, nsecs, block=True)
 
-    def move_to_cart_pose(self, pose, which_arm, done_moving_count_thresh=None):
+    def move_to_cart_pose(self, pose, which_arm,
+                          done_moving_count_thresh=None, pressure=1000):
         if done_moving_count_thresh is None:
             done_moving_count_thresh = self.arm_done_moving_count_thresh
         self.switch_to_cart_controllers()
@@ -774,35 +776,42 @@ class PositionFeedbackPushNode:
             self.l_arm_cart_pub.publish(pose)
             posture_pub = self.l_arm_cart_posture_pub
             # posture = 'old_elbowupl'
+            pl = self.l_pressure_listener
         else:
             self.r_arm_cart_pub.publish(pose)
             posture_pub = self.r_arm_cart_posture_pub
             # posture = 'old_elbowupr'
+            pl = self.r_pressure_listener
+
         arm_not_moving_count = 0
         r = rospy.Rate(self.move_cart_check_hz)
+        pl.rezero()
+        pl.set_threshold(pressure)
         while arm_not_moving_count < done_moving_count_thresh:
             # TODO: Add pressure sensor check herex
             if not self.arm_moving_cart(which_arm):
                 arm_not_moving_count += 1
             else:
                 arm_not_moving_count = 0
-            # TODO: Command posture
+            # Command posture
             joints = self.get_arm_joint_pose(which_arm)
             joints = joints.tolist()
             joints = [j[0] for j in joints]
-            # rospy.loginfo('joints: ' + str(joints))
-            # rospy.loginfo('len(joints): ' + str(len(joints)))
             m = Float64MultiArray(data=joints)
             # m = Float64MultiArray(data=_POSTURES[posture])
             posture_pub.publish(m)
+            if pl.check_safety_threshold():
+                rospy.loginfo('Exceeded pressure safety thresh!')
+                break
+            if pl.check_threshold():
+                rospy.loginfo('Exceeded pressure contact thresh...')
             r.sleep()
 
-        # Query arm pose and return error
+        # Return pose error
         if which_arm == 'l':
             r = self.l_arm_x_err
         else:
             r = self.r_arm_x_err
-        # rospy.loginfo('Move relative gripper error: ' + str(r))
         pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
         rospy.loginfo('Move cart gripper error dist: ' + str(pos_error))
         return (r, pos_error)
@@ -826,13 +835,7 @@ class PositionFeedbackPushNode:
         return moving
 
     def move_relative_gripper(self, rel_push_vector, which_arm,
-                              stop='pressure', pressure=5000,
-                              move_cart_count_thresh=None):
-        if which_arm == 'l':
-            self.l_pressure_listener.rezero()
-        else:
-            self.r_pressure_listener.rezero()
-
+                              move_cart_count_thresh=None, pressure=1000):
         rel_pose = PoseStamped()
         rel_pose.header.stamp = rospy.Time(0)
         rel_pose.header.frame_id = '/'+which_arm + '_gripper_tool_frame'
@@ -844,11 +847,10 @@ class PositionFeedbackPushNode:
         rel_pose.pose.orientation.z = 0
         rel_pose.pose.orientation.w = 1.0
         return self.move_to_cart_pose(rel_pose, which_arm,
-                                      move_cart_count_thresh)
+                                      move_cart_count_thresh, pressure)
 
     def move_relative_torso(self, rel_push_vector, which_arm,
-                            stop='pressure', pressure=5000,
-                            move_cart_count_thresh=None):
+                            move_cart_count_thresh=None, pressure=1000):
         if which_arm == 'l':
             cur_pose = self.l_arm_pose
         else:
@@ -864,7 +866,7 @@ class PositionFeedbackPushNode:
             float(rel_push_vector[2])
         rel_pose.pose.orientation = cur_pose.pose.orientation
         return self.move_to_cart_pose(rel_pose, which_arm,
-                                      move_cart_count_thresh)
+                                      move_cart_count_thresh, pressure)
 
     def l_arm_cart_state_callback(self, state_msg):
         # rospy.loginfo('Updated arm state info!')
