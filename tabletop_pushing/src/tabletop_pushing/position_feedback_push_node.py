@@ -461,8 +461,8 @@ class PositionFeedbackPushNode:
         else:
             push_angle = wrist_yaw - pi*0.5
         r, pos_error = self.move_relative_torso(
-            np.matrix([cos(wrist_yaw)*push_dist,
-                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+            np.matrix([cos(push_angle)*push_dist,
+                       sin(push_angle)*push_dist, 0.0]).T, which_arm)
 
         rospy.loginfo('Done sweeping in')
 

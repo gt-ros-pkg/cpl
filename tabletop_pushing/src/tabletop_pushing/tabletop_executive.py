@@ -465,7 +465,7 @@ class TabletopExecutive:
         else:
             wrist_yaw = push_vector.push_angle + pi/2
         sweep_req.wrist_yaw = wrist_yaw
-        sweep_req.desired_push_dist = -y_offset_dir*abs(self.sweep_y_offset)
+        sweep_req.desired_push_dist = -y_offset_dir*push_dist
 
         # Set offset in x y, based on distance
         sweep_req.start_point.header = push_vector.header
