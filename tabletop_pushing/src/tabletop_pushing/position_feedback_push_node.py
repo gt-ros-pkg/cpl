@@ -900,6 +900,83 @@ class PositionFeedbackPushNode:
         return self.move_to_cart_pose(rel_pose, which_arm,
                                       move_cart_count_thresh, pressure)
 
+    def move_to_cart_pose_epc(self, pose, which_arm, pressure=1000,
+                              time_step=0.1):
+        self.switch_to_cart_controllers()
+        q = 0
+        if which_arm == 'l':
+            self.l_arm_cart_pub.publish(pose)
+            posture_pub = self.l_arm_cart_posture_pub
+            posture = 'elbowupl'
+            pl = self.l_pressure_listener
+        else:
+            self.r_arm_cart_pub.publish(pose)
+            posture_pub = self.r_arm_cart_posture_pub
+            posture = 'elbowupr'
+            pl = self.r_pressure_listener
+
+        def move_line_eq_gen(cep):
+            pass
+
+       stop, ea = self.epc_motion(move_line_eq_gen, time_step, which_arm,
+                                  control_function=self.move_cart_eq)
+
+        # Return pose error
+        if which_arm == 'l':
+            r = self.l_arm_x_err
+        else:
+            r = self.r_arm_x_err
+        pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
+        rospy.loginfo('Move cart epc gripper error dist: ' + str(pos_error))
+        return (r, pos_error)
+
+    ##
+    # @param equi_pt_generator: function that returns stop, ea  where ea:
+    #                           equilibrium angles and  stop: string which is ''
+    #                           for epc motion to continue
+    # @param rapid_call_func: called in the time between calls to the
+    #                         equi_pt_generator can be used for logging, safety
+    #                         etc.  returns string which is '' for epc motion
+    #                         to continue
+    # @param time_step: time between successive calls to equi_pt_generator
+    # @param which_arm: the arm to use
+    # @param arg_list - list of arguments to be passed to the equi_pt_generator
+    # @return stop (the string which has the reason why the epc
+    #               motion stopped.), ea (last commanded equilibrium angles)
+    def epc_motion(self, equi_pt_generator, time_step, which_arm, arg_list,
+                   rapid_call_func=None, control_function=None,
+                   control_rate=0.01):
+
+        stop, ea = equi_pt_generator(*arg_list)
+        t_end = rospy.get_time()
+        while stop == '':
+            if rospy.is_shutdown():
+                stop = 'rospy shutdown'
+                continue
+            t_end += time_step
+            #self.robot.set_jointangles(arm, ea)
+            #import pdb; pdb.set_trace()
+            control_function(arm, *ea)
+
+            # self.robot.step() this should be within the rapid_call_func for the meka arms.
+            t1 = rospy.get_time()
+            while t1<t_end:
+                if rapid_call_func != None:
+                    stop = rapid_call_func(arm)
+                    if stop != '':
+                        break
+                #self.robot.step() this should be within the rapid_call_func for the meka arms
+                rospy.sleep(control_rate)
+                t1 = rospy.get_time()
+
+            if stop == '':
+                stop, ea = equi_pt_generator(*arg_list)
+            if stop == 'reset timing':
+                stop = ''
+                t_end = rospy.get_time()
+
+        return stop, ea
+
     def l_arm_cart_state_callback(self, state_msg):
         # rospy.loginfo('Updated l_arm state info!')
         x_err = state_msg.x_err
