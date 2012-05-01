@@ -456,6 +456,10 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Sweeping gripper in ' + str(push_dist) + 'm')
         # r, pos_error = self.move_relative_gripper(
         #     np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
+        if wrist_yaw > -pi*0.5:
+            push_angle = wrist_yaw + pi*0.5
+        else:
+            push_angle = wrist_yaw - pi*0.5
         r, pos_error = self.move_relative_torso(
             np.matrix([cos(wrist_yaw)*push_dist,
                        sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)

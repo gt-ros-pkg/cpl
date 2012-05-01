@@ -13,7 +13,7 @@ r_cart_jinv_push:
       p: 20.0
       d: 1.2
   joints:
-    r_shoulder_pan_joint:   {p: 2400.0, d: 18.0, ff: 3.33, p_clamp: 0.087}
+    r_shoulder_pan_joint:   {p: 1400.0, d: 18.0, ff: 3.33, p_clamp: 0.087}
     r_shoulder_lift_joint:  {p: 1200.0, d: 10.0, ff: 1.16, p_clamp: 0.087}
     r_upper_arm_roll_joint: {p: 1000.0, d: 6.0,  ff: 0.1,  p_clamp: 0.087}
     r_elbow_flex_joint:     {p: 700.0,  d: 4.0,  ff: 0.25,  p_clamp: 0.087}
@@ -38,7 +38,7 @@ l_cart_jinv_push:
       p: 20.0
       d: 1.2
   joints:
-    l_shoulder_pan_joint:   {p: 2400.0, d: 18.0, ff: 3.33, p_clamp: 0.087}
+    l_shoulder_pan_joint:   {p: 1400.0, d: 18.0, ff: 3.33, p_clamp: 0.087}
     l_shoulder_lift_joint:  {p: 1200.0, d: 10.0, ff: 1.16, p_clamp: 0.087}
     l_upper_arm_roll_joint: {p: 1000.0, d: 6.0,  ff: 0.1,  p_clamp: 0.087}
     l_elbow_flex_joint:     {p: 700.0,  d: 4.0,  ff: 0.25,  p_clamp: 0.087}
