@@ -178,7 +178,8 @@ class TabletopExecutive:
             # TODO: Make this a function
             # Choose push behavior
             if fabs(pose_res.push_angle) > self.use_pull_angle_thresh:
-                push_opt = OVERHEAD_PULL
+                #push_opt = OVERHEAD_PULL
+                push_opt = OVERHEAD_PUSH
             elif pose_res.start_point.x < self.use_overhead_x_thresh:
                 push_opt = OVERHEAD_PUSH
             elif fabs(pose_res.push_angle) > self.use_sweep_angle_thresh:
@@ -210,11 +211,11 @@ class TabletopExecutive:
             push_dist = max(min(push_dist, self.max_push_dist),
                             self.min_push_dist)
             if push_opt == GRIPPER_PUSH:
-                self.gripper_push_object(push_dist, which_arm, pose_res)
+                self.gripper_push_object(push_dist, which_arm, pose_res, True)
             if push_opt == GRIPPER_SWEEP:
-                self.sweep_object(push_dist, which_arm, pose_res)
+                self.sweep_object(push_dist, which_arm, pose_res, True)
             if push_opt == OVERHEAD_PUSH:
-                self.overhead_push_object(push_dist, which_arm, pose_res)
+                self.overhead_push_object(push_dist, which_arm, pose_res, True)
             if push_opt == OVERHEAD_PULL:
                 self.overhead_pull_object(push_dist, which_arm, pose_res)
             rospy.loginfo('Done performing push behavior.\n')
@@ -571,8 +572,8 @@ class TabletopExecutive:
                                  push, high_init)
 
 if __name__ == '__main__':
-    use_learning = True
-    use_singulation = False
+    use_learning = False
+    use_singulation = True
     use_guided = True
     num_trials = 3
     push_dist = 0.15 # meters

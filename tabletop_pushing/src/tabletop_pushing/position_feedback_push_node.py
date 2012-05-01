@@ -137,17 +137,19 @@ class PositionFeedbackPushNode:
         self.pre_push_count_thresh = rospy.get_param('~pre_push_count_thresh',
                                                       50)
         self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
-        self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.005)
+        self.still_moving_angular_velocity = rospy.get_param('~angular_vel_thresh',
+                                                             0.005)
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
-        # Setup cartesian controller parameters
         self.use_jinv = rospy.get_param('~use_jinv', True)
+
+        # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
             self.controller_state_msg = JinvTeleopControllerState
         else:
             self.base_cart_controller_name = '_cart_transpose_push'
-            controller_state = JTTaskControllerState
+            self.controller_state_msg = JTTaskControllerState
 
         # Set joint gains
         self.arm_mode = None
@@ -568,8 +570,12 @@ class PositionFeedbackPushNode:
             wrist_pitch = -0.5*pi
 
         rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
-        r, pos_error = self.move_relative_gripper(
-            np.matrix([0.0, 0.0, push_dist]).T, which_arm)
+        # r, pos_error = self.move_relative_gripper(
+        #     np.matrix([0.0, 0.0, push_dist]).T, which_arm)
+        r, pos_error = self.move_relative_torso(
+            np.matrix([cos(wrist_yaw)*push_dist,
+                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+
         rospy.loginfo('Done pushing forward')
 
         # TODO: Add this back in
@@ -791,12 +797,12 @@ class PositionFeedbackPushNode:
         if which_arm == 'l':
             self.l_arm_cart_pub.publish(pose)
             posture_pub = self.l_arm_cart_posture_pub
-            # posture = 'old_elbowupl'
+            posture = 'elbowupl'
             pl = self.l_pressure_listener
         else:
             self.r_arm_cart_pub.publish(pose)
             posture_pub = self.r_arm_cart_posture_pub
-            # posture = 'old_elbowupr'
+            posture = 'elbowupr'
             pl = self.r_pressure_listener
 
         arm_not_moving_count = 0
@@ -813,8 +819,8 @@ class PositionFeedbackPushNode:
             joints = self.get_arm_joint_pose(which_arm)
             joints = joints.tolist()
             joints = [j[0] for j in joints]
-            m = Float64MultiArray(data=joints)
-            # m = Float64MultiArray(data=_POSTURES[posture])
+            # m = Float64MultiArray(data=joints)
+            m = Float64MultiArray(data=_POSTURES[posture])
             posture_pub.publish(m)
 
             if pl.check_safety_threshold():

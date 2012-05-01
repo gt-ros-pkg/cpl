@@ -273,7 +273,7 @@ class PushLearningIO:
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
-        rospy.loginfo('Writing output line.')
+        rospy.loginfo('Writing output line.\n')
         # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
         data_line = str(c_x.x)+' '+str(c_x.y)+' '+str(c_x.z)+' '+\
             str(push_angle)+' '+str(push_opt)+' '+str(arm)+' '+\
