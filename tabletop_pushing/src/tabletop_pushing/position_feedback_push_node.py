@@ -140,6 +140,14 @@ class PositionFeedbackPushNode:
         self.still_moving_angular_velocity = rospy.get_param('~moving_vel_thresh', 0.005)
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
+        # Setup cartesian controller parameters
+        self.use_jinv = rospy.get_param('~use_jinv', True)
+        if self.use_jinv:
+            self.base_cart_controller_name = '_cart_jinv_push'
+            self.controller_state_msg = JinvTeleopControllerState
+        else:
+            self.base_cart_controller_name = '_cart_transpose_push'
+            controller_state = JTTaskControllerState
 
         # Set joint gains
         self.arm_mode = None
@@ -152,22 +160,30 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Creating pr2 object')
         self.robot = pr2.PR2(self.tf_listener, arms=True, base=False,
                              use_kinematics=False)
+
         self.l_arm_cart_pub = rospy.Publisher(
-            '/l_cart_posture_push/command_pose', PoseStamped)
+            '/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)
         self.r_arm_cart_pub = rospy.Publisher(
-            '/r_cart_posture_push/command_pose', PoseStamped)
+            '/r'+self.base_cart_controller_name+'/command_pose', PoseStamped)
         self.l_arm_cart_posture_pub = rospy.Publisher(
-            '/l_cart_posture_push/command_posture', Float64MultiArray)
+            '/l'+self.base_cart_controller_name+'/command_posture',
+            Float64MultiArray)
         self.r_arm_cart_posture_pub = rospy.Publisher(
-            '/r_cart_posture_push/command_posture', Float64MultiArray)
+            '/r'+self.base_cart_controller_name+'/command_posture',
+            Float64MultiArray)
+
+        rospy.Subscriber('/l'+self.base_cart_controller_name+'/state',
+                         self.controller_state_msg,
+                         self.l_arm_cart_state_callback)
+        rospy.Subscriber('/r'+self.base_cart_controller_name+'/state',
+                         self.controller_state_msg,
+                         self.r_arm_cart_state_callback)
+
         self.l_pressure_listener = pl.PressureListener(
             '/pressure/l_gripper_motor', self.pressure_safety_limit)
         self.r_pressure_listener = pl.PressureListener(
             '/pressure/r_gripper_motor', self.pressure_safety_limit)
-        rospy.Subscriber('/l_cart_posture_push/state', JTTaskControllerState,
-                         self.l_arm_cart_state_callback)
-        rospy.Subscriber('/r_cart_posture_push/state', JTTaskControllerState,
-                         self.r_arm_cart_state_callback)
+
 
         # State Info
         self.l_arm_pose = None
@@ -800,6 +816,7 @@ class PositionFeedbackPushNode:
             m = Float64MultiArray(data=joints)
             # m = Float64MultiArray(data=_POSTURES[posture])
             posture_pub.publish(m)
+
             if pl.check_safety_threshold():
                 rospy.loginfo('Exceeded pressure safety thresh!')
                 break
@@ -869,7 +886,7 @@ class PositionFeedbackPushNode:
                                       move_cart_count_thresh, pressure)
 
     def l_arm_cart_state_callback(self, state_msg):
-        # rospy.loginfo('Updated arm state info!')
+        # rospy.loginfo('Updated l_arm state info!')
         x_err = state_msg.x_err
         x_d = state_msg.xd
         self.l_arm_pose = state_msg.x
@@ -901,16 +918,23 @@ class PositionFeedbackPushNode:
 
     def init_cart_controllers(self):
         self.arm_mode = 'cart_mode'
-        self.cs.carefree_switch('r', '%s_cart_posture_push',
-                                '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
-        self.cs.carefree_switch('l', '%s_cart_posture_push',
-                                '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+        if self.use_jinv:
+            self.cs.carefree_switch('r', '%s'+self.base_cart_controller_name,
+                                    '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+            self.cs.carefree_switch('l', '%s'+self.base_cart_controller_name,
+                                    '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+        else:
+            self.cs.carefree_switch('r', '%s'+self.base_cart_controller_name,
+                                    '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+            self.cs.carefree_switch('l', '%s'+self.base_cart_controller_name,
+                                    '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+
         rospy.sleep(self.post_controller_switch_sleep)
 
     def switch_to_cart_controllers(self):
         if self.arm_mode != 'cart_mode':
-            self.cs.carefree_switch('r', '%s_cart_posture_push')
-            self.cs.carefree_switch('l', '%s_cart_posture_push')
+            self.cs.carefree_switch('r', '%s'+self.base_cart_controller_name)
+            self.cs.carefree_switch('l', '%s'+self.base_cart_controller_name)
             self.arm_mode = 'cart_mode'
             rospy.sleep(self.post_controller_switch_sleep)
 
@@ -931,6 +955,7 @@ class PositionFeedbackPushNode:
         self.init_spine_pose()
         self.init_head_pose(self.head_pose_cam_frame)
         self.init_arms()
+        self.switch_to_cart_controllers()
         rospy.loginfo('Done initializing feedback pushing node.')
         rospy.spin()
 
