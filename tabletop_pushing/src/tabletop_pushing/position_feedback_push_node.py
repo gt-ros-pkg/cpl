@@ -454,8 +454,12 @@ class PositionFeedbackPushNode:
         # equates to negative Y in the torso_lift_link at 0.0 yaw
         # So we flip the push_dist to make things look like one would expect
         rospy.loginfo('Sweeping gripper in ' + str(push_dist) + 'm')
-        r, pos_error = self.move_relative_gripper(
-            np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
+        # r, pos_error = self.move_relative_gripper(
+        #     np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
+        r, pos_error = self.move_relative_torso(
+            np.matrix([cos(wrist_yaw)*push_dist,
+                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+
         rospy.loginfo('Done sweeping in')
 
         # response.dist_pushed = push_dist - pos_error
@@ -828,6 +832,7 @@ class PositionFeedbackPushNode:
                 break
             if pl.check_threshold():
                 rospy.loginfo('Exceeded pressure contact thresh...')
+                # TODO: Let something know?
             r.sleep()
 
         # Return pose error

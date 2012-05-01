@@ -73,11 +73,11 @@ class TabletopExecutive:
         # TODO: Replace these parameters with learned / perceived values
         # The offsets should be removed and learned implicitly
         self.gripper_x_offset = rospy.get_param('~gripper_push_start_x_offset',
-                                                -0.02)
+                                                -0.03)
         self.gripper_y_offset = rospy.get_param('~gripper_push_start_x_offset',
                                                 0.0)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z',
-                                                -0.25)
+                                                -0.22)
 
         self.sweep_x_offset = rospy.get_param('~gripper_sweep_start_x_offset',
                                               0.0) # -0.03)
@@ -87,7 +87,7 @@ class TabletopExecutive:
                                               -0.22)
 
         self.overhead_x_offset = rospy.get_param('~overhead_push_start_x_offset',
-                                                 0.00)
+                                                 -0.02)
         self.overhead_y_offset = rospy.get_param('~overhead_push_start_x_offset',
                                                  0.00)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
@@ -245,10 +245,9 @@ class TabletopExecutive:
                             return False
         return True
 
-    def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0):
-        # push_angle = pi*0.25
+    def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0,
+                                  rand_angle=True):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        # push_options = [GRIPPER_PUSH]
         arms = ['l', 'r']
         high_inits = [True, False]
         for t in xrange(num_trials):
@@ -259,8 +258,7 @@ class TabletopExecutive:
                         while get_push:
                             push_vec = self.request_learning_push(push_angle,
                                                                   push_dist,
-                                                                  # False)
-                                                                  True)
+                                                                  rand_angle)
                             if (push_vec.centroid.x == 0.0 and
                                 push_vec.centroid.y == 0.0 and
                                 push_vec.centroid.z == 0.0):
@@ -432,7 +430,7 @@ class TabletopExecutive:
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
         push_req.wrist_yaw = wrist_yaw
-        push_req.desired_push_dist = push_dist + abs(self.gripper_x_offset)
+        push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
         push_req.start_point.point.x += self.gripper_x_offset*cos(wrist_yaw)
@@ -467,8 +465,7 @@ class TabletopExecutive:
         else:
             wrist_yaw = push_vector.push_angle + pi/2
         sweep_req.wrist_yaw = wrist_yaw
-        sweep_req.desired_push_dist = -y_offset_dir*(abs(self.sweep_y_offset) +
-                                                     push_dist)
+        sweep_req.desired_push_dist = -y_offset_dir*abs(self.sweep_y_offset)
 
         # Set offset in x y, based on distance
         sweep_req.start_point.header = push_vector.header
@@ -533,7 +530,7 @@ class TabletopExecutive:
             wrist_yaw -= pi
         push_req.wrist_yaw = wrist_yaw
         # Add offset distance to push to compensate
-        push_req.desired_push_dist = push_dist + self.pull_dist_offset
+        push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
         rospy.loginfo('Pre pull offset (x,y): (' +
@@ -572,16 +569,19 @@ class TabletopExecutive:
                                  push, high_init)
 
 if __name__ == '__main__':
-    use_learning = False
-    use_singulation = True
+    use_learning = True
+    use_singulation = False
     use_guided = True
     num_trials = 3
     push_dist = 0.15 # meters
+    push_angle = 0.0 # radians
+    rand_angle = True
     max_pushes = 50
     num_push_angles = 8
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
-        node.run_rand_learning_collect(num_trials, push_dist)
+        node.run_rand_learning_collect(num_trials, push_dist, push_angle,
+                                       rand_angle)
         node.finish_learning()
