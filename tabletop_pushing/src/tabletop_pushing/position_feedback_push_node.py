@@ -118,15 +118,15 @@ class PositionFeedbackPushNode:
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
 
         # Setup parameters
-        self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.15)
-        self.look_pt_x = rospy.get_param('~look_point_x', 0.45)
+        self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
+        self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
                                                    'openni_rgb_frame')
         self.default_torso_height = rospy.get_param('~default_torso_height',
-                                                    0.2)
+                                                    0.3)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
-        self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.1)
+        self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
@@ -142,7 +142,7 @@ class PositionFeedbackPushNode:
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
         self.use_jinv = rospy.get_param('~use_jinv', True)
-
+        self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
@@ -286,15 +286,15 @@ class PositionFeedbackPushNode:
 
         # Choose to move to ready first, if it is closer, then move to init
         if force_ready or ready_diff > READY_POSE_MOVE_THRESH:
-            rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
             self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
-            rospy.loginfo('Moved %s_arm to ready pose' % which_arm)
+            rospy.logdebug('Moved %s_arm to ready pose' % which_arm)
         else:
-            rospy.loginfo('Arm in ready pose')
+            rospy.logdebug('Arm in ready pose')
 
-        rospy.loginfo('Moving %s_arm to setup pose' % which_arm)
+        rospy.logdebug('Moving %s_arm to setup pose' % which_arm)
         self.set_arm_joint_pose(setup_joints, which_arm, nsecs=1.5)
-        rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
+        rospy.logdebug('Moved %s_arm to setup pose' % which_arm)
 
     def init_head_pose(self, camera_frame):
         look_pt = np.asmatrix([self.look_pt_x, 0.0, -self.torso_z_offset])
@@ -342,7 +342,7 @@ class PositionFeedbackPushNode:
         r, pos_error = self.move_relative_torso(
             np.matrix([cos(wrist_yaw)*push_dist,
                        sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
-        rospy.loginfo('Done pushing forward')
+        rospy.logdebug('Done pushing forward')
 
         response.dist_pushed = push_dist - pos_error
         return response
@@ -365,7 +365,7 @@ class PositionFeedbackPushNode:
 
         if request.arm_init:
             self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
-            rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -381,7 +381,7 @@ class PositionFeedbackPushNode:
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.loginfo('Done moving to overhead start point')
+            rospy.logdebug('Done moving to overhead start point')
             # Change z to lower arm to table
             start_pose.pose.position.z = start_point.z
         # Move to start pose
@@ -404,11 +404,11 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
 
         # Retract in a straight line
-        rospy.loginfo('Moving gripper up')
+        rospy.logdebug('Moving gripper up')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, 0.0, self.gripper_raise_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
-        rospy.loginfo('Moving gripper backwards')
+        rospy.logdebug('Moving gripper backwards')
         r, pos_error = self.move_relative_gripper(
             np.matrix([-push_dist, 0.0, 0.0]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
@@ -426,7 +426,7 @@ class PositionFeedbackPushNode:
 
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
-            rospy.loginfo('Moving up to initial point')
+            rospy.logdebug('Moving up to initial point')
             self.move_to_cart_pose(start_pose, which_arm,
                                    self.post_move_count_thresh)
             rospy.loginfo('Done moving up to initial point')
@@ -464,7 +464,7 @@ class PositionFeedbackPushNode:
             np.matrix([cos(push_angle)*push_dist,
                        sin(push_angle)*push_dist, 0.0]).T, which_arm)
 
-        rospy.loginfo('Done sweeping in')
+        rospy.logdebug('Done sweeping in')
 
         # response.dist_pushed = push_dist - pos_error
         return response
@@ -500,10 +500,10 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.arm_init:
-            rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
             self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
             # Rotate wrist before moving to position
-            rospy.loginfo('Rotating wrist for sweep')
+            rospy.logdebug('Rotating wrist for sweep')
             arm_pose = self.get_arm_joint_pose(which_arm)
             arm_pose[-1] =  wrist_roll
             self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
@@ -511,7 +511,7 @@ class PositionFeedbackPushNode:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.loginfo('Done moving to overhead start point')
+            rospy.logdebug('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
         self.move_to_cart_pose(start_pose, which_arm,
@@ -533,18 +533,18 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
-        rospy.loginfo('Moving gripper up')
+        rospy.logdebug('Moving gripper up')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, self.gripper_raise_dist, 0.0]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
-        rospy.loginfo('Sweeping gripper outward')
+        rospy.logdebug('Sweeping gripper outward')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, 0.0, push_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done sweeping outward')
 
         if request.high_arm_init:
-            rospy.loginfo('Moving up to end point')
+            rospy.logdebug('Moving up to end point')
             wrist_yaw = request.wrist_yaw
             end_pose = PoseStamped()
             end_pose.header = request.start_point.header
@@ -584,7 +584,7 @@ class PositionFeedbackPushNode:
             np.matrix([cos(wrist_yaw)*push_dist,
                        sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
 
-        rospy.loginfo('Done pushing forward')
+        rospy.logdebug('Done pushing forward')
 
         # TODO: Add this back in
         response.dist_pushed = push_dist - pos_error
@@ -622,12 +622,12 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.arm_init:
-            rospy.loginfo('Moving %s_arm to ready pose' % which_arm)
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
             self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
 
             if not request.high_arm_init:
                 # Rotate wrist before moving to position
-                rospy.loginfo('Rotating elbow for overhead push')
+                rospy.logdebug('Rotating elbow for overhead push')
                 arm_pose = self.get_arm_joint_pose(which_arm)
                 arm_pose[-3] =  wrist_pitch
                 self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
@@ -636,7 +636,7 @@ class PositionFeedbackPushNode:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.loginfo('Done moving to overhead start point')
+            rospy.logdebug('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
 
@@ -666,19 +666,19 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             wrist_pitch = -0.5*pi
 
-        rospy.loginfo('Moving gripper up')
+        rospy.logdebug('Moving gripper up')
         r, pos_error = self.move_relative_gripper(
             np.matrix([-self.gripper_raise_dist, 0.0, 0.0]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
-        rospy.loginfo('Done moving up')
-        rospy.loginfo('Pushing reverse')
+        rospy.logdebug('Done moving up')
+        rospy.logdebug('Pushing reverse')
         r, pos_error = self.move_relative_gripper(
             np.matrix([0.0, 0.0, -push_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done pushing reverse')
 
         if request.high_arm_init:
-            rospy.loginfo('Moving up to end point')
+            rospy.logdebug('Moving up to end point')
             wrist_yaw = request.wrist_yaw
             end_pose = PoseStamped()
             end_pose.header = request.start_point.header
@@ -729,10 +729,10 @@ class PositionFeedbackPushNode:
         table_z = table_base.pose.position.z
         goal_lift_link_z = table_z + self.torso_z_offset
         lift_link_delta_z = goal_lift_link_z - lift_link_z
-        # rospy.loginfo('Torso height (m): ' + str(lift_link_z))
-        rospy.loginfo('Table height (m): ' + str(table_z))
-        rospy.loginfo('Torso goal height (m): ' + str(goal_lift_link_z))
-        # rospy.loginfo('Torso delta (m): ' + str(lift_link_delta_z))
+        # rospy.logdebug('Torso height (m): ' + str(lift_link_z))
+        rospy.logdebug('Table height (m): ' + str(table_z))
+        rospy.logdebug('Torso goal height (m): ' + str(goal_lift_link_z))
+        # rospy.logdebug('Torso delta (m): ' + str(lift_link_delta_z))
 
         # Set goal height based on passed on table height
         # TODO: Set these better
@@ -742,20 +742,20 @@ class PositionFeedbackPushNode:
         torso_goal_position = current_torso_position + lift_link_delta_z
         torso_goal_position = (max(min(torso_max, torso_goal_position),
                                    torso_min))
-        # rospy.loginfo('Moving torso to ' + str(torso_goal_position))
+        # rospy.logdebug('Moving torso to ' + str(torso_goal_position))
         # Multiply by 2.0, because of units of spine
         self.robot.torso.set_pose(torso_goal_position)
 
-        # rospy.loginfo('Got torso client result')
+        # rospy.logdebug('Got torso client result')
         new_torso_position = np.asarray(self.robot.torso.pose()).ravel()[0]
-        # rospy.loginfo('New torso position is: ' + str(new_torso_position))
+        # rospy.logdebug('New torso position is: ' + str(new_torso_position))
 
         # Get torso_lift_link position in base_link frame
         (new_trans, rot) = self.tf_listener.lookupTransform('/base_link',
                                                             '/torso_lift_link',
                                                             rospy.Time(0))
         new_lift_link_z = new_trans[2]
-        # rospy.loginfo('New Torso height (m): ' + str(new_lift_link_z))
+        # rospy.logdebug('New Torso height (m): ' + str(new_lift_link_z))
         # tabletop position in base_link frame
         new_table_base = self.tf_listener.transformPose('/base_link',
                                                         request.table_centroid)
@@ -767,7 +767,7 @@ class PositionFeedbackPushNode:
         look_pt = np.asmatrix([self.look_pt_x,
                                0.0,
                                -self.torso_z_offset])
-        rospy.loginfo('Point head at ' + str(look_pt))
+        rospy.logdebug('Point head at ' + str(look_pt))
         head_res = self.robot.head.look_at(look_pt,
                                            request.table_centroid.header.frame_id,
                                            request.camera_frame)
@@ -827,12 +827,14 @@ class PositionFeedbackPushNode:
             joints = self.get_arm_joint_pose(which_arm)
             joints = joints.tolist()
             joints = [j[0] for j in joints]
-            # m = Float64MultiArray(data=joints)
-            m = Float64MultiArray(data=_POSTURES[posture])
+            if self.use_cur_joint_posture:
+                m = Float64MultiArray(data=joints)
+            else:
+                m = Float64MultiArray(data=_POSTURES[posture])
             posture_pub.publish(m)
 
             if pl.check_safety_threshold():
-                rospy.loginfo('Exceeded pressure safety thresh!')
+                rospy.loginfo('Exceeded pressure safety thresh!\n')
                 break
             if pl.check_threshold():
                 rospy.loginfo('Exceeded pressure contact thresh...')
@@ -845,7 +847,7 @@ class PositionFeedbackPushNode:
         else:
             r = self.r_arm_x_err
         pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
-        rospy.loginfo('Move cart gripper error dist: ' + str(pos_error))
+        rospy.loginfo('Move cart gripper error dist: ' + str(pos_error)+'\n')
         return (r, pos_error)
 
 
@@ -900,82 +902,82 @@ class PositionFeedbackPushNode:
         return self.move_to_cart_pose(rel_pose, which_arm,
                                       move_cart_count_thresh, pressure)
 
-    def move_to_cart_pose_epc(self, pose, which_arm, pressure=1000,
-                              time_step=0.1):
-        self.switch_to_cart_controllers()
-        q = 0
-        if which_arm == 'l':
-            self.l_arm_cart_pub.publish(pose)
-            posture_pub = self.l_arm_cart_posture_pub
-            posture = 'elbowupl'
-            pl = self.l_pressure_listener
-        else:
-            self.r_arm_cart_pub.publish(pose)
-            posture_pub = self.r_arm_cart_posture_pub
-            posture = 'elbowupr'
-            pl = self.r_pressure_listener
+    # def move_to_cart_pose_epc(self, pose, which_arm, pressure=1000,
+    #                           time_step=0.1):
+    #     self.switch_to_cart_controllers()
+    #     q = 0
+    #     if which_arm == 'l':
+    #         self.l_arm_cart_pub.publish(pose)
+    #         posture_pub = self.l_arm_cart_posture_pub
+    #         posture = 'elbowupl'
+    #         pl = self.l_pressure_listener
+    #     else:
+    #         self.r_arm_cart_pub.publish(pose)
+    #         posture_pub = self.r_arm_cart_posture_pub
+    #         posture = 'elbowupr'
+    #         pl = self.r_pressure_listener
 
-        def move_line_eq_gen(cep):
-            pass
+    #     def move_line_eq_gen(cep):
+    #         pass
 
-       stop, ea = self.epc_motion(move_line_eq_gen, time_step, which_arm,
-                                  control_function=self.move_cart_eq)
+    #    stop, ea = self.epc_motion(move_line_eq_gen, time_step, which_arm,
+    #                               control_function=self.move_cart_eq)
 
-        # Return pose error
-        if which_arm == 'l':
-            r = self.l_arm_x_err
-        else:
-            r = self.r_arm_x_err
-        pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
-        rospy.loginfo('Move cart epc gripper error dist: ' + str(pos_error))
-        return (r, pos_error)
+    #     # Return pose error
+    #     if which_arm == 'l':
+    #         r = self.l_arm_x_err
+    #     else:
+    #         r = self.r_arm_x_err
+    #     pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
+    #     rospy.loginfo('Move cart epc gripper error dist: ' + str(pos_error))
+    #     return (r, pos_error)
 
-    ##
-    # @param equi_pt_generator: function that returns stop, ea  where ea:
-    #                           equilibrium angles and  stop: string which is ''
-    #                           for epc motion to continue
-    # @param rapid_call_func: called in the time between calls to the
-    #                         equi_pt_generator can be used for logging, safety
-    #                         etc.  returns string which is '' for epc motion
-    #                         to continue
-    # @param time_step: time between successive calls to equi_pt_generator
-    # @param which_arm: the arm to use
-    # @param arg_list - list of arguments to be passed to the equi_pt_generator
-    # @return stop (the string which has the reason why the epc
-    #               motion stopped.), ea (last commanded equilibrium angles)
-    def epc_motion(self, equi_pt_generator, time_step, which_arm, arg_list,
-                   rapid_call_func=None, control_function=None,
-                   control_rate=0.01):
+    # ##
+    # # @param equi_pt_generator: function that returns stop, ea  where ea:
+    # #                           equilibrium angles and  stop: string which is ''
+    # #                           for epc motion to continue
+    # # @param rapid_call_func: called in the time between calls to the
+    # #                         equi_pt_generator can be used for logging, safety
+    # #                         etc.  returns string which is '' for epc motion
+    # #                         to continue
+    # # @param time_step: time between successive calls to equi_pt_generator
+    # # @param which_arm: the arm to use
+    # # @param arg_list - list of arguments to be passed to the equi_pt_generator
+    # # @return stop (the string which has the reason why the epc
+    # #               motion stopped.), ea (last commanded equilibrium angles)
+    # def epc_motion(self, equi_pt_generator, time_step, which_arm, arg_list,
+    #                rapid_call_func=None, control_function=None,
+    #                control_rate=0.01):
 
-        stop, ea = equi_pt_generator(*arg_list)
-        t_end = rospy.get_time()
-        while stop == '':
-            if rospy.is_shutdown():
-                stop = 'rospy shutdown'
-                continue
-            t_end += time_step
-            #self.robot.set_jointangles(arm, ea)
-            #import pdb; pdb.set_trace()
-            control_function(arm, *ea)
+    #     stop, ea = equi_pt_generator(*arg_list)
+    #     t_end = rospy.get_time()
+    #     while stop == '':
+    #         if rospy.is_shutdown():
+    #             stop = 'rospy shutdown'
+    #             continue
+    #         t_end += time_step
+    #         #self.robot.set_jointangles(arm, ea)
+    #         #import pdb; pdb.set_trace()
+    #         control_function(arm, *ea)
 
-            # self.robot.step() this should be within the rapid_call_func for the meka arms.
-            t1 = rospy.get_time()
-            while t1<t_end:
-                if rapid_call_func != None:
-                    stop = rapid_call_func(arm)
-                    if stop != '':
-                        break
-                #self.robot.step() this should be within the rapid_call_func for the meka arms
-                rospy.sleep(control_rate)
-                t1 = rospy.get_time()
+    #         # self.robot.step() this should be within the rapid_call_func for the meka arms.
+    #         t1 = rospy.get_time()
+    #         while t1<t_end:
+    #             if rapid_call_func != None:
+    #                 stop = rapid_call_func(arm)
+    #                 if stop != '':
+    #                     break
+    #             #self.robot.step() this should be within the rapid_call_func for the meka arms
+    #             rospy.sleep(control_rate)
+    #             t1 = rospy.get_time()
 
-            if stop == '':
-                stop, ea = equi_pt_generator(*arg_list)
-            if stop == 'reset timing':
-                stop = ''
-                t_end = rospy.get_time()
+    #         if stop == '':
+    #             stop, ea = equi_pt_generator(*arg_list)
+    #         if stop == 'reset timing':
+    #             stop = ''
+    #             t_end = rospy.get_time()
 
-        return stop, ea
+    #     return stop, ea
 
     def l_arm_cart_state_callback(self, state_msg):
         # rospy.loginfo('Updated l_arm state info!')
