@@ -942,18 +942,20 @@ class PositionFeedbackPushNode:
             error_dist = sqrt(arm_error_x**2 + arm_error_y**2)
 
             # TODO: Check moved passed point
-            moved_passed = ((start_x > desired_x and cur_x < desired_x) or
-                            (start_x < desired_x and cur_x > desired_x) or
-                            (start_y > desired_y and cur_y < desired_y) or
-                            (start_y < desired_y and cur_y > desired_y))
-            stop = (error_dist < converged_epsilon or moved_passed)
-
+            if error_dist < converged_epsilon:
+                stop = 'converged'
+            elif (((start_x > desired_x and cur_x < desired_x) or
+                   (start_x < desired_x and cur_x > desired_x)) and
+                  ((start_y > desired_y and cur_y < desired_y) or
+                   (start_y < desired_y and cur_y > desired_y))):
+                stop = 'moved_passed'
+            else:
+                stop = ''
             return (stop, ep)
 
         return self.move_to_cart_pose_epc(desired_pose, which_arm,
                                           move_epc_generator,
                                           move_cart_count_thresh, pressure)
-
 
     def move_to_cart_pose_epc(self, desired_pose, which_arm, ep_gen,
                               done_moving_count_thresh=None, pressure=1000,
@@ -1004,10 +1006,10 @@ class PositionFeedbackPushNode:
 
             # Determine new equilibrium point
             stop, ep = ep_gen(ep, which_arm)
-            if stop:
-                rospy.loginfo('Reached goal pose.\n')
+            if stop != '':
+                rospy.loginfo('Reached goal pose: ' + stop + '\n')
                 break
-
+        self.stop_moving_cart(which_arm)
         # Return pose error
         if which_arm == 'l':
             arm_error = self.l_arm_x_err
@@ -1017,6 +1019,12 @@ class PositionFeedbackPushNode:
                           arm_error.linear.z**2)
         rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
         return (arm_error, error_dist)
+
+    def stop_moving_cart(self, which_arm):
+        if which_arm == 'l':
+            self.l_arm_cart_pub.publish(self.l_arm_pose)
+        else:
+            self.r_arm_cart_pub.publish(self.r_arm_pose)
 
     def get_desired_posture(self, which_arm):
         if which_arm == 'l':

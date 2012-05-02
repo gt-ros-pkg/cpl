@@ -255,10 +255,10 @@ class TabletopExecutive:
         for t in xrange(num_trials):
             for high_init in high_inits:
                 for arm in arms:
-                    if arm == 'l':
-                        push_angle = -push_angle_in
-                    else:
-                        push_angle = push_angle_in
+                    # if arm == 'l':
+                    #     push_angle = -push_angle_in
+                    # else:
+                    #     push_angle = push_angle_in
                     for push_opt in push_options:
                         get_push = True
                         first = True
@@ -583,7 +583,7 @@ if __name__ == '__main__':
     num_trials = 3
     push_dist = 0.15 # meters
     push_angle = 0.5*pi # radians
-    rand_angle = False
+    rand_angle = True
     max_pushes = 50
     num_push_angles = 8
     node = TabletopExecutive(use_singulation, use_learning)
