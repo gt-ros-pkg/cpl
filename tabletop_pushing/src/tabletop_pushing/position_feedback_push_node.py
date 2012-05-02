@@ -132,6 +132,8 @@ class PositionFeedbackPushNode:
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
         self.arm_done_moving_count_thresh = rospy.get_param(
             '~not_moving_count_thresh', 30)
+        self.arm_done_moving_epc_count_thresh = rospy.get_param(
+            '~not_moving_epc_count_thresh', 60)
         self.post_move_count_thresh = rospy.get_param('~post_move_count_thresh',
                                                       10)
         self.pre_push_count_thresh = rospy.get_param('~pre_push_count_thresh',
@@ -337,14 +339,16 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
 
         rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
-        # r, pos_error = self.move_relative_gripper(
+        # pose_err, err_dist = self.move_relative_gripper(
         #     np.matrix([push_dist, 0.0, 0.0]).T, which_arm)
-        r, pos_error = self.move_relative_torso(
-            np.matrix([cos(wrist_yaw)*push_dist,
-                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
-        rospy.logdebug('Done pushing forward')
+        # pose_err, err_dist = self.move_relative_torso(
+        #     np.matrix([cos(wrist_yaw)*push_dist,
+        #                sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+        pose_err, err_dist = self.move_relative_torso_epc(wrist_yaw, push_dist,
+                                                          which_arm)
+        rospy.loginfo('Done pushing forward')
 
-        response.dist_pushed = push_dist - pos_error
+        response.dist_pushed = push_dist - err_dist
         return response
 
     def gripper_pre_push(self, request):
@@ -405,11 +409,11 @@ class PositionFeedbackPushNode:
 
         # Retract in a straight line
         rospy.logdebug('Moving gripper up')
-        r, pos_error = self.move_relative_gripper(
+        pose_err, err_dist = self.move_relative_gripper(
             np.matrix([0.0, 0.0, self.gripper_raise_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.logdebug('Moving gripper backwards')
-        r, pos_error = self.move_relative_gripper(
+        pose_err, err_dist = self.move_relative_gripper(
             np.matrix([-push_dist, 0.0, 0.0]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done moving backwards')
@@ -454,19 +458,21 @@ class PositionFeedbackPushNode:
         # equates to negative Y in the torso_lift_link at 0.0 yaw
         # So we flip the push_dist to make things look like one would expect
         rospy.loginfo('Sweeping gripper in ' + str(push_dist) + 'm')
-        # r, pos_error = self.move_relative_gripper(
+        # pose_err, err_dist = self.move_relative_gripper(
         #     np.matrix([0.0, 0.0, -push_dist]).T, which_arm)
         if wrist_yaw > -pi*0.5:
             push_angle = wrist_yaw + pi*0.5
         else:
             push_angle = wrist_yaw - pi*0.5
-        r, pos_error = self.move_relative_torso(
-            np.matrix([cos(push_angle)*push_dist,
-                       sin(push_angle)*push_dist, 0.0]).T, which_arm)
+        # pose_err, err_dist = self.move_relative_torso(
+        #     np.matrix([cos(push_angle)*push_dist,
+        #                sin(push_angle)*push_dist, 0.0]).T, which_arm)
+        pose_err, err_dist = self.move_relative_torso_epc(push_angle, push_dist,
+                                                          which_arm)
 
         rospy.logdebug('Done sweeping in')
 
-        # response.dist_pushed = push_dist - pos_error
+        # response.dist_pushed = push_dist - err_dist
         return response
 
     def gripper_pre_sweep(self, request):
@@ -534,11 +540,11 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
 
         rospy.logdebug('Moving gripper up')
-        r, pos_error = self.move_relative_gripper(
+        pose_err, err_dist = self.move_relative_gripper(
             np.matrix([0.0, self.gripper_raise_dist, 0.0]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.logdebug('Sweeping gripper outward')
-        r, pos_error = self.move_relative_gripper(
+        pose_err, err_dist = self.move_relative_gripper(
             np.matrix([0.0, 0.0, push_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done sweeping outward')
@@ -578,16 +584,18 @@ class PositionFeedbackPushNode:
             wrist_pitch = -0.5*pi
 
         rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
-        # r, pos_error = self.move_relative_gripper(
+        # pose_err, err_dist = self.move_relative_gripper(
         #     np.matrix([0.0, 0.0, push_dist]).T, which_arm)
-        r, pos_error = self.move_relative_torso(
-            np.matrix([cos(wrist_yaw)*push_dist,
-                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+        # pose_err, err_dist = self.move_relative_torso(
+        #     np.matrix([cos(wrist_yaw)*push_dist,
+        #                sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+        pose_err, err_dist = self.move_relative_torso_epc(wrist_yaw, push_dist,
+                                                          which_arm)
 
         rospy.logdebug('Done pushing forward')
 
         # TODO: Add this back in
-        response.dist_pushed = push_dist - pos_error
+        response.dist_pushed = push_dist - err_dist
         return response
 
     def overhead_pre_push(self, request):
@@ -667,12 +675,12 @@ class PositionFeedbackPushNode:
             wrist_pitch = -0.5*pi
 
         rospy.logdebug('Moving gripper up')
-        r, pos_error = self.move_relative_gripper(
+        pose_err, err_dist = self.move_relative_gripper(
             np.matrix([-self.gripper_raise_dist, 0.0, 0.0]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.logdebug('Done moving up')
         rospy.logdebug('Pushing reverse')
-        r, pos_error = self.move_relative_gripper(
+        pose_err, err_dist = self.move_relative_gripper(
             np.matrix([0.0, 0.0, -push_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done pushing reverse')
@@ -801,16 +809,13 @@ class PositionFeedbackPushNode:
         if done_moving_count_thresh is None:
             done_moving_count_thresh = self.arm_done_moving_count_thresh
         self.switch_to_cart_controllers()
-        q = 0
         if which_arm == 'l':
             self.l_arm_cart_pub.publish(pose)
             posture_pub = self.l_arm_cart_posture_pub
-            posture = 'elbowupl'
             pl = self.l_pressure_listener
         else:
             self.r_arm_cart_pub.publish(pose)
             posture_pub = self.r_arm_cart_posture_pub
-            posture = 'elbowupr'
             pl = self.r_pressure_listener
 
         arm_not_moving_count = 0
@@ -818,19 +823,12 @@ class PositionFeedbackPushNode:
         pl.rezero()
         pl.set_threshold(pressure)
         while arm_not_moving_count < done_moving_count_thresh:
-            # TODO: Add pressure sensor check herex
             if not self.arm_moving_cart(which_arm):
                 arm_not_moving_count += 1
             else:
                 arm_not_moving_count = 0
             # Command posture
-            joints = self.get_arm_joint_pose(which_arm)
-            joints = joints.tolist()
-            joints = [j[0] for j in joints]
-            if self.use_cur_joint_posture:
-                m = Float64MultiArray(data=joints)
-            else:
-                m = Float64MultiArray(data=_POSTURES[posture])
+            m = self.get_desired_posture(which_arm)
             posture_pub.publish(m)
 
             if pl.check_safety_threshold():
@@ -843,12 +841,13 @@ class PositionFeedbackPushNode:
 
         # Return pose error
         if which_arm == 'l':
-            r = self.l_arm_x_err
+            arm_error = self.l_arm_x_err
         else:
-            r = self.r_arm_x_err
-        pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
-        rospy.loginfo('Move cart gripper error dist: ' + str(pos_error)+'\n')
-        return (r, pos_error)
+            arm_error = self.r_arm_x_err
+        error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
+                         arm_error.linear.z**2)
+        rospy.logdebug('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        return (arm_error, error_dist)
 
 
     def arm_moving_cart(self, which_arm):
@@ -902,85 +901,139 @@ class PositionFeedbackPushNode:
         return self.move_to_cart_pose(rel_pose, which_arm,
                                       move_cart_count_thresh, pressure)
 
-    # def move_to_cart_pose_epc(self, pose, which_arm, pressure=1000,
-    #                           time_step=0.1):
-    #     self.switch_to_cart_controllers()
-    #     q = 0
-    #     if which_arm == 'l':
-    #         self.l_arm_cart_pub.publish(pose)
-    #         posture_pub = self.l_arm_cart_posture_pub
-    #         posture = 'elbowupl'
-    #         pl = self.l_pressure_listener
-    #     else:
-    #         self.r_arm_cart_pub.publish(pose)
-    #         posture_pub = self.r_arm_cart_posture_pub
-    #         posture = 'elbowupr'
-    #         pl = self.r_pressure_listener
+    def move_relative_torso_epc(self, push_angle, push_dist, which_arm,
+                                move_cart_count_thresh=None, pressure=1000):
+        delta_x = cos(push_angle)*push_dist
+        delta_y = sin(push_angle)*push_dist
+        move_x = cos(push_angle)
+        move_y = cos(push_angle)
+        if which_arm == 'l':
+            start_pose = self.l_arm_pose
+        else:
+            start_pose = self.r_arm_pose
+        desired_pose = PoseStamped()
+        desired_pose.header.stamp = rospy.Time(0)
+        desired_pose.header.frame_id = '/torso_lift_link'
+        desired_pose.pose.position.x = start_pose.pose.position.x + delta_x
+        desired_pose.pose.position.y = start_pose.pose.position.y + delta_y
+        desired_pose.pose.position.z = start_pose.pose.position.z
+        desired_pose.pose.orientation = start_pose.pose.orientation
 
-    #     def move_line_eq_gen(cep):
-    #         pass
+        desired_x = desired_pose.pose.position.x
+        desired_y = desired_pose.pose.position.y
 
-    #    stop, ea = self.epc_motion(move_line_eq_gen, time_step, which_arm,
-    #                               control_function=self.move_cart_eq)
+        start_x = start_pose.pose.position.x
+        start_y = start_pose.pose.position.y
 
-    #     # Return pose error
-    #     if which_arm == 'l':
-    #         r = self.l_arm_x_err
-    #     else:
-    #         r = self.r_arm_x_err
-    #     pos_error = sqrt(r.linear.x**2 + r.linear.y**2 + r.linear.z**2)
-    #     rospy.loginfo('Move cart epc gripper error dist: ' + str(pos_error))
-    #     return (r, pos_error)
+        def move_epc_generator(cur_ep, which_arm, converged_epsilon=0.01):
+            ep = cur_ep
+            ep.header.stamp = rospy.Time(0)
+            step_size = 0.001
+            ep.pose.position.x += step_size*move_x
+            ep.pose.position.y += step_size*move_y
+            if which_arm == 'l':
+                cur_pose = self.l_arm_pose
+            else:
+                cur_pose = self.r_arm_pose
+            cur_x = cur_pose.pose.position.x
+            cur_y = cur_pose.pose.position.y
+            arm_error_x = desired_x - cur_x
+            arm_error_y = desired_y - cur_y
+            error_dist = sqrt(arm_error_x**2 + arm_error_y**2)
 
-    # ##
-    # # @param equi_pt_generator: function that returns stop, ea  where ea:
-    # #                           equilibrium angles and  stop: string which is ''
-    # #                           for epc motion to continue
-    # # @param rapid_call_func: called in the time between calls to the
-    # #                         equi_pt_generator can be used for logging, safety
-    # #                         etc.  returns string which is '' for epc motion
-    # #                         to continue
-    # # @param time_step: time between successive calls to equi_pt_generator
-    # # @param which_arm: the arm to use
-    # # @param arg_list - list of arguments to be passed to the equi_pt_generator
-    # # @return stop (the string which has the reason why the epc
-    # #               motion stopped.), ea (last commanded equilibrium angles)
-    # def epc_motion(self, equi_pt_generator, time_step, which_arm, arg_list,
-    #                rapid_call_func=None, control_function=None,
-    #                control_rate=0.01):
+            # TODO: Check moved passed point
+            moved_passed = ((start_x > desired_x and cur_x < desired_x) or
+                            (start_x < desired_x and cur_x > desired_x) or
+                            (start_y > desired_y and cur_y < desired_y) or
+                            (start_y < desired_y and cur_y > desired_y))
+            stop = (error_dist < converged_epsilon or moved_passed)
 
-    #     stop, ea = equi_pt_generator(*arg_list)
-    #     t_end = rospy.get_time()
-    #     while stop == '':
-    #         if rospy.is_shutdown():
-    #             stop = 'rospy shutdown'
-    #             continue
-    #         t_end += time_step
-    #         #self.robot.set_jointangles(arm, ea)
-    #         #import pdb; pdb.set_trace()
-    #         control_function(arm, *ea)
+            return (stop, ep)
 
-    #         # self.robot.step() this should be within the rapid_call_func for the meka arms.
-    #         t1 = rospy.get_time()
-    #         while t1<t_end:
-    #             if rapid_call_func != None:
-    #                 stop = rapid_call_func(arm)
-    #                 if stop != '':
-    #                     break
-    #             #self.robot.step() this should be within the rapid_call_func for the meka arms
-    #             rospy.sleep(control_rate)
-    #             t1 = rospy.get_time()
+        return self.move_to_cart_pose_epc(desired_pose, which_arm,
+                                          move_epc_generator,
+                                          move_cart_count_thresh, pressure)
 
-    #         if stop == '':
-    #             stop, ea = equi_pt_generator(*arg_list)
-    #         if stop == 'reset timing':
-    #             stop = ''
-    #             t_end = rospy.get_time()
 
-    #     return stop, ea
+    def move_to_cart_pose_epc(self, desired_pose, which_arm, ep_gen,
+                              done_moving_count_thresh=None, pressure=1000,
+                              exit_on_contact=False):
+        if done_moving_count_thresh is None:
+            done_moving_count_thresh = self.arm_done_moving_epc_count_thresh
+
+        if which_arm == 'l':
+            pose_pub = self.l_arm_cart_pub
+            posture_pub = self.l_arm_cart_posture_pub
+            pl = self.l_pressure_listener
+        else:
+            pose_pub = self.r_arm_cart_pub
+            posture_pub = self.r_arm_cart_posture_pub
+            pl = self.r_pressure_listener
+
+        self.switch_to_cart_controllers()
+
+        arm_not_moving_count = 0
+        r = rospy.Rate(self.move_cart_check_hz)
+        pl.rezero()
+        pl.set_threshold(pressure)
+
+        ep = desired_pose
+        while True:
+            if not self.arm_moving_cart(which_arm):
+                arm_not_moving_count += 1
+            else:
+                arm_not_moving_count = 0
+
+            if arm_not_moving_count > done_moving_count_thresh:
+                rospy.loginfo('Exiting do to no movement!')
+                break
+            if pl.check_safety_threshold():
+                rospy.loginfo('Exceeded pressure safety thresh!')
+                break
+            if pl.check_threshold():
+                rospy.loginfo('Exceeded pressure contact thresh...')
+                if exit_on_contact:
+                    break
+
+            # Command posture
+            m = self.get_desired_posture(which_arm)
+            posture_pub.publish(m)
+            # Command pose
+            pose_pub.publish(ep)
+            r.sleep()
+
+            # Determine new equilibrium point
+            stop, ep = ep_gen(ep, which_arm)
+            if stop:
+                rospy.loginfo('Reached goal pose.\n')
+                break
+
+        # Return pose error
+        if which_arm == 'l':
+            arm_error = self.l_arm_x_err
+        else:
+            arm_error = self.r_arm_x_err
+        error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
+                          arm_error.linear.z**2)
+        rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        return (arm_error, error_dist)
+
+    def get_desired_posture(self, which_arm):
+        if which_arm == 'l':
+            posture = 'elbowupl'
+        else:
+            posture = 'elbowupr'
+
+        joints = self.get_arm_joint_pose(which_arm)
+        joints = joints.tolist()
+        joints = [j[0] for j in joints]
+        if self.use_cur_joint_posture:
+            m = Float64MultiArray(data=joints)
+        else:
+            m = Float64MultiArray(data=_POSTURES[posture])
+        return m
 
     def l_arm_cart_state_callback(self, state_msg):
-        # rospy.loginfo('Updated l_arm state info!')
         x_err = state_msg.x_err
         x_d = state_msg.xd
         self.l_arm_pose = state_msg.x

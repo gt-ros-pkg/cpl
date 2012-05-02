@@ -248,25 +248,33 @@ class TabletopExecutive:
     def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0,
                                   rand_angle=True):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
+        # push_options = [GRIPPER_PUSH]
         arms = ['l', 'r']
         high_inits = [True, False]
+        push_angle_in = push_angle
         for t in xrange(num_trials):
             for high_init in high_inits:
                 for arm in arms:
+                    if arm == 'l':
+                        push_angle = -push_angle_in
+                    else:
+                        push_angle = push_angle_in
                     for push_opt in push_options:
                         get_push = True
+                        first = True
                         while get_push:
                             push_vec = self.request_learning_push(push_angle,
                                                                   push_dist,
                                                                   rand_angle)
                             if (push_vec.centroid.x == 0.0 and
                                 push_vec.centroid.y == 0.0 and
-                                push_vec.centroid.z == 0.0):
+                                push_vec.centroid.z == 0.0 or first):
                                 code_in = raw_input('Reset obj and press <Enter>: ')
                                 if code_in.startswith('q'):
                                     return
                             else:
                                 get_push = False
+                            first = False
                         res = self.learning_trial(arm, int(push_opt), high_init,
                                                   push_vec, push_dist)
                         if not res:
@@ -574,8 +582,8 @@ if __name__ == '__main__':
     use_guided = True
     num_trials = 3
     push_dist = 0.15 # meters
-    push_angle = 0.0 # radians
-    rand_angle = True
+    push_angle = 0.5*pi # radians
+    rand_angle = False
     max_pushes = 50
     num_push_angles = 8
     node = TabletopExecutive(use_singulation, use_learning)
