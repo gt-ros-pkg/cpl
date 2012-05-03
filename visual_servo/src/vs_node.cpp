@@ -178,8 +178,17 @@ public:
     n_private_.param("desired_wx", sim_desired_wx_, 0.0);
     n_private_.param("desired_wy", sim_desired_wy_, 0.0);
     n_private_.param("desired_wz", sim_desired_wz_, 0.0); 
-       
+
+    n_private_.param("camera_x", sim_camera_x_, 0.0);
+    n_private_.param("camera_y", sim_camera_y_, 0.0);
+    n_private_.param("camera_z", sim_camera_z_, 0.8);
+    n_private_.param("camera_wx", sim_camera_wx_, 0.0);
+    n_private_.param("camera_wy", sim_camera_wy_, 0.0);
+    n_private_.param("camera_wz", sim_camera_wz_, 0.0); 
+
+    n_private_.param("sim_noise_z", sim_noise_z_, 0.0); 
     n_private_.param("sim_time", sim_time_, 20.0); 
+    n_private_.param("feature_size", sim_feature_size_, 3); 
     std::vector<VSXYZ> desired, hand; 
     std::vector<pcl::PointXYZ> o; 
     VSXYZ q, d; 
@@ -191,21 +200,31 @@ public:
     printf("t,x,y,z,wx,wy,wz,e\n");
 
 #if SIMULATION == 0 // single
-    for (float t = 0; t < sim_time_; t += 0.1)
-    {
-      simulateTransform(&hand, o, q);
-      cv::Mat twist = computeTwist(desired, hand);
-      simulateMoveHand(&q, twist, 0.1);
-      // simulatePrintPoint(q);
-      simulatePrintPoints(hand);
-      // printMatrix(twist.t());
-      printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,", t,
-          q.workspace.x, q.workspace.y, q.workspace.z,
-          q.workspace_angular.x, q.workspace_angular.y, q.workspace_angular.z);
-      float error = simulateGetError(d, q);
-      printf("%.3f\n", error);
-
-    }
+    
+    //unsigned int errors = 0;
+    //for (int i = 0; i < 100; i++)
+    //{
+      //simulateInit(&desired, &hand, &o, &q, &d);
+      for (float t = 0; t < sim_time_; t += 0.1)
+      {
+        simulateTransform(&hand, o, q);
+        cv::Mat twist = computeTwist(desired, hand);
+        simulateMoveHand(&q, twist, 0.1);
+        // simulatePrintPoint(q);
+         simulatePrintPoints(hand);
+        // printMatrix(twist.t());
+        float error = simulateGetError(d, q);
+        printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,", t,
+            q.workspace.x, q.workspace.y, q.workspace.z,
+            q.workspace_angular.x, q.workspace_angular.y, q.workspace_angular.z);
+        printf("%.3f\n", error);
+      }
+      //float error = simulateGetError(d, q);
+      //printf("%.3f\n", error);
+      //if (error > 0.3)
+       // errors++;
+    //}
+    // ROS_INFO("Error Percentage: %d\n", errors);
 #elif SIMULATION == 1 // batch simulation
     unsigned int count = 0;
     unsigned int total = 0;
@@ -275,6 +294,11 @@ public:
 
   void simulateMoveHand(VSXYZ *q, cv::Mat vel, float deltaT)
   {
+    vel = vel * deltaT * 1.2;
+    /*
+    cv::Mat twist_ang = vel.rowRange(3,6);
+    cv::Mat twist_lin = vel.rowRange(0,3);
+    */
     // vel is in the camera frame. we need to change it to the torso frame
     /*
     printMatrix(vel.t());
@@ -288,20 +312,27 @@ public:
     vel.at<float>(1,0) = n.at<float>(1,0);
     vel.at<float>(2,0) = n.at<float>(2,0);
      */
+    cv::Mat Rt = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+        sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
 
+    cv::Mat basis = Rt.rowRange(0, 3).colRange(0, 3);
+    // transform.getBasis() * twist_rot;
+    cv::Mat twist_ang = (basis * vel.rowRange(3,6));
+    cv::Mat twist_lin = (basis * vel.rowRange(0,3)+ Rt.colRange(3,4).rowRange(0,3).cross(vel.rowRange(3,6)));
+    
     pcl::PointXYZ p = (*q).workspace;
-    vel = vel * deltaT * 1.2;
-    p.x = p.x + vel.at<float>(0,0);
-    p.y = p.y + vel.at<float>(1,0);
-    p.z = p.z + vel.at<float>(2,0);
+    p.x = p.x + twist_lin.at<float>(0,0);
+    p.y = p.y + twist_lin.at<float>(1,0);
+    p.z = p.z + twist_lin.at<float>(2,0);
+    // need to limit where the hand can go (esp in z direction)
     if (p.z < 0.30)
       p.z = 0.30;
     (*q).workspace = p;
 
     pcl::PointXYZ a = (*q).workspace_angular;
-    a.x = simulateGetAngle(a.x + vel.at<float>(3,0));
-    a.y = simulateGetAngle(a.y + vel.at<float>(4,0));
-    a.z = simulateGetAngle(a.z + vel.at<float>(5,0));
+    a.x = simulateGetAngle(a.x + twist_ang.at<float>(0,0));
+    a.y = simulateGetAngle(a.y + twist_ang.at<float>(1,0));
+    a.z = simulateGetAngle(a.z + twist_ang.at<float>(2,0));
     (*q).workspace_angular = a;
     return;
   }
@@ -353,8 +384,11 @@ public:
     K.at<float>(1,2) = 239.50;
 
     // feature location in any frame
+    // features
+    
     (*o).push_back(pcl::PointXYZ(0.0, 0.0, 0.0)); 
-    (*o).push_back(pcl::PointXYZ(0.1, 0.0, 0.0)); 
+    if (sim_feature_size_ == 4)
+      (*o).push_back(pcl::PointXYZ(0.1, 0.0, 0.0)); 
     (*o).push_back(pcl::PointXYZ(0.2, 0.0, 0.0)); 
     (*o).push_back(pcl::PointXYZ(0.0, 0.2, 0.0)); 
 
@@ -374,29 +408,39 @@ public:
     (*hand).clear();
     simulateTransform(hand, *o, *q); 
   }
- 
+  
+  cv::Mat simulateGetRotationMatrix(float tx, float ty, float tz, float x, float y, float z) 
+  {
+    cv::Mat R = cv::Mat::eye(4,4,CV_32F);
+    // build rotation matrix
+    // Z-Y-X Euler Angle implementation
+    R.at<float>(0,0) = cos(z)*cos(y); 
+    R.at<float>(0,1) = cos(z)*sin(y)*sin(x) - sin(z)*cos(x); 
+    R.at<float>(0,2) = cos(z)*sin(y)*cos(x) + sin(z)*sin(x);     
+    R.at<float>(1,0) = sin(z)*cos(y); 
+    R.at<float>(1,1) = sin(z)*sin(y)*sin(x) + cos(z)*cos(x); 
+    R.at<float>(1,2) = sin(z)*sin(y)*cos(x) - cos(z)*sin(x); 
+    
+    R.at<float>(2,0) = -sin(y); 
+    R.at<float>(2,1) = cos(y)*sin(x); 
+    R.at<float>(2,2) = cos(y)*cos(x);
+    
+    R.at<float>(0,3) = tx;
+    R.at<float>(1,3) = ty;
+    R.at<float>(2,3) = tz;
+    return R; 
+  }
   void simulateTransform(std::vector<VSXYZ>* hand, std::vector<pcl::PointXYZ> o, VSXYZ q)
   {
-    // build rotation matrix
-    pcl::PointXYZ a = q.workspace_angular;
-    // Z-Y-X Euler Angle implementation
-    cv::Mat R = cv::Mat::eye(4,4,CV_32F);
-    R.at<float>(0,0) = cos(a.z)*cos(a.y); 
-    R.at<float>(0,1) = cos(a.z)*sin(a.y)*sin(a.x) - sin(a.z)*cos(a.x); 
-    R.at<float>(0,2) = cos(a.z)*sin(a.y)*cos(a.x) + sin(a.z)*sin(a.x);     
-    R.at<float>(1,0) = sin(a.z)*cos(a.y); 
-    R.at<float>(1,1) = sin(a.z)*sin(a.y)*sin(a.x) + cos(a.z)*cos(a.x); 
-    R.at<float>(1,2) = sin(a.z)*sin(a.y)*cos(a.x) - cos(a.z)*sin(a.x); 
-    
-    R.at<float>(2,0) = -sin(a.y); 
-    R.at<float>(2,1) = cos(a.y)*sin(a.x); 
-    R.at<float>(2,2) = cos(a.y)*cos(a.x);
-    
     pcl::PointXYZ t = q.workspace;
-    R.at<float>(0,3) = t.x;
-    R.at<float>(1,3) = t.y;
-    R.at<float>(2,3) = t.z;
-    float tempZ = -1;
+    pcl::PointXYZ a = q.workspace_angular;
+    cv::Mat R = simulateGetRotationMatrix(t.x, t.y, t.z, a.x, a.y, a.z);   
+    /*
+    // == P
+    cv::Mat R2 = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+      sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
+      */
+    // camera translation matrix
     // apply the transform
     for (unsigned int i = 0; i < o.size(); i++)
     {
@@ -406,21 +450,21 @@ public:
       T.at<float>(1,0) = p.y;
       T.at<float>(2,0) = p.z;
       T.at<float>(3,0) = 1;
-      
+      // sadly, the workspace coordinate is in the 'torso lift link', not the camera 
+      //T = (pseudoInverse(R2) *R) * T;
       T = R * T;
       p.x = T.at<float>(0,0);
       p.y = T.at<float>(1,0);
       p.z = T.at<float>(2,0);
 
       // noise can be only 10% of the real value
-
-      if (tempZ < 0)
+      if (sim_noise_z_ > 0)
       {
-        float random = (rand() % 10000)/10000.0 * p.z/5 - (p.z/10);
-        printf("z-noise:%f\n", random);
-        tempZ = p.z;// + random;
+        float random = (rand() % 10000)/10000.0 * p.z*sim_noise_z_/100 -
+        p.z*2*sim_noise_z_/100;
+        p.z = p.z + random;
       }
-      p.z = tempZ;
+
       if ((*hand).size() == o.size())
         (*hand).at(i) = convertFrom3DPointToVSXYZ(p);  
       else 
@@ -644,82 +688,76 @@ public:
   cv::Mat computeTwist(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
   {
     cv::Mat ret = cv::Mat::zeros(6,1, CV_32F);
-    if (pts.size() == 3)
-    {
-      cv::Mat error_mat;
-      float e = 0;
-      
-      // for all three features,
-      for (int i = 0; i < 3; i++) 
-      {
-        // Error terms have to be converted into meter 
-        cv::Mat error = cv::Mat::zeros(2,1, CV_32F);
-        error.at<float>(0,0) = (pts.at(i)).camera.x - (desired.at(i)).camera.x;
-        error.at<float>(1,0) = (pts.at(i)).camera.y - (desired.at(i)).camera.y;
-        /*
-        printf("P [%d, %d]:\t", pts.at(i).x, pts.at(i).y); 
-        printMatrix(projectImagePointToPoint(pts.at(i)).t());
-        printf("D [%d, %d]:\t", desired.at(i).x, desired.at(i).y); 
-        printMatrix(projectImagePointToPoint(desired.at(i)).t());
-        */
-        // taking just x and y, but no z
-        error_mat.push_back(error);
-        
-        // RMS of error for termination condition
-        e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
-      }
-      // ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f)",sqrt(e), term_threshold_);
-     
-      /* 
-      // if RMS of error is less than a constant, just return 0
-      if(sqrt(e) < term_threshold_)
-      {
-        return ret;
-      }
-      */
-      cv::Mat im = getMeterInteractionMatrix(pts);
-      //printMatrix(error_mat.t());
-      //printMatrix(im);
-      
-      
-      // if we can't compute interaction matrix, just make all twists 0
-      if (countNonZero(im) == 0)
-      {
-        return ret;
-      }
-      
-      // inverting the matrix (3 approaches)
-      cv::Mat iim;
-      switch (jacobian_type_) 
-      {
-        case JACOBIAN_TYPE_INV:
-          iim = (im).inv();
-          break;
-        case JACOBIAN_TYPE_PSEUDO:
-          iim = pseudoInverse(im);
-          break;
-        default: 
-          // JACOBIAN_TYPE_AVG
-          // We use specific way shown on visual servo by Chaumette 2006
+    //if (pts.size() == 3)
+    // return ret;
+    cv::Mat error_mat;
+    float e = 0;
 
-          cv::Mat temp = desired_jacobian_ + im;
-          iim = 0.5 * pseudoInverse(temp);
-      }
-      // printMatrix(iim);
-      // Gain Matrix K
-      cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
-      
-      // K x IIM x ERROR = TWIST
-      ret = gain*(iim*error_mat);
-      
+    // for all three features,
+    for (int i = 0; i < (int)pts.size(); i++) 
+    {
+      // Error terms have to be converted into meter 
+      cv::Mat error = cv::Mat::zeros(2,1, CV_32F);
+      error.at<float>(0,0) = (pts.at(i)).camera.x - (desired.at(i)).camera.x;
+      error.at<float>(1,0) = (pts.at(i)).camera.y - (desired.at(i)).camera.y;
+      /*
+         printf("P [%d, %d]:\t", pts.at(i).x, pts.at(i).y); 
+         printMatrix(projectImagePointToPoint(pts.at(i)).t());
+         printf("D [%d, %d]:\t", desired.at(i).x, desired.at(i).y); 
+         printMatrix(projectImagePointToPoint(desired.at(i)).t());
+       */
+      // taking just x and y, but no z
+      error_mat.push_back(error);
+
+      // RMS of error for termination condition
+      e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
+    }
+    // ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f)",sqrt(e), term_threshold_);
+
+    /* 
+    // if RMS of error is less than a constant, just return 0
+    if(sqrt(e) < term_threshold_)
+    {
+    return ret;
+    }
+     */
+    cv::Mat im = getMeterInteractionMatrix(pts);
+    // if we can't compute interaction matrix, just make all twists 0
+    if (countNonZero(im) == 0)
+    {
+      return ret;
+    }
+
+    // inverting the matrix (3 approaches)
+    cv::Mat iim;
+    switch (jacobian_type_) 
+    {
+      case JACOBIAN_TYPE_INV:
+        iim = (im).inv();
+        break;
+      case JACOBIAN_TYPE_PSEUDO:
+        iim = pseudoInverse(im);
+        break;
+      default: 
+        // JACOBIAN_TYPE_AVG
+        // We use specific way shown on visual servo by Chaumette 2006
+
+        cv::Mat temp = desired_jacobian_ + im;
+        iim = 0.5 * pseudoInverse(temp);
+    }
+    // printMatrix(iim);
+    // Gain Matrix K
+    cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
+
+    // K x IIM x ERROR = TWIST
+    ret = gain*(iim*error_mat);
+
 #ifdef DEBUG_MODE
 #ifdef PRINT_TWISTS
-      // printf("Error: \t");
-      // printMatrix((error_mat).t());
+    // printf("Error: \t");
+    // printMatrix((error_mat).t());
 #endif
 #endif
-      
-    }
     return ret;
   }
   
@@ -761,27 +799,28 @@ public:
    */
   cv::Mat getMeterInteractionMatrix(std::vector<VSXYZ> &pts) 
   {
+    int size = (int)pts.size();
     // interaction matrix, image jacobian
-    cv::Mat L = cv::Mat::zeros(6,6,CV_32F);
-    if (pts.size() == 3) {
-      for (int i = 0; i < 3; i++) {
-        pcl::PointXYZ xyz= pts.at(i).camera;
-        float x = xyz.x;
-        float y = xyz.y;
-        float z = xyz.z;
+    cv::Mat L = cv::Mat::zeros(size*2, 6,CV_32F);
+    //if (pts.size() != 3) 
+    //  return L;
+    for (int i = 0; i < size; i++) {
+      pcl::PointXYZ xyz= pts.at(i).camera;
+      float x = xyz.x;
+      float y = xyz.y;
+      float z = xyz.z;
 #ifdef DEBUG_MODE
-        // ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
+      // ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
 #endif
-        // float z = cur_point_cloud_.at(y,x).z;
-        int l = i * 2;
-        if (isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
-        L.at<float>(l,0) = -1/z;   L.at<float>(l+1,0) = 0;
-        L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = -1/z;
-        L.at<float>(l,2) = x/z;    L.at<float>(l+1,2) = y/z;
-        L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = (1 + pow(y,2));
-        L.at<float>(l,4) = -(1+pow(x,2));  L.at<float>(l+1,4) = -x*y;
-        L.at<float>(l,5) = y;      L.at<float>(l+1,5) = -x;
-      }
+      // float z = cur_point_cloud_.at(y,x).z;
+      int l = i * 2;
+      if (isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
+      L.at<float>(l,0) = -1/z;   L.at<float>(l+1,0) = 0;
+      L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = -1/z;
+      L.at<float>(l,2) = x/z;    L.at<float>(l+1,2) = y/z;
+      L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = (1 + pow(y,2));
+      L.at<float>(l,4) = -(1+pow(x,2));  L.at<float>(l+1,4) = -x*y;
+      L.at<float>(l,5) = y;      L.at<float>(l+1,5) = -x;
     }
 #ifdef DEBUG_MODE
     //      ROS_DEBUG("Interaction");
@@ -909,8 +948,11 @@ public:
     t.at<float>(0,0) = in_c.x;
     t.at<float>(1,0) = in_c.y;
     t.at<float>(2,0) = in_c.z;
+    // == P
+    cv::Mat R = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+      sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
     // camera translation matrix
-    t = P * t;
+    t = pseudoInverse(R) * t;
     in_c.x = t.at<float>(0,0);
     in_c.y = t.at<float>(1,0);
     in_c.z = t.at<float>(2,0);
@@ -1166,7 +1208,7 @@ protected:
   std_msgs::Header cur_camera_header_;
   std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
-  
+
   bool have_depth_data_;
   int display_wait_ms_;
   int num_downsamples_;
@@ -1174,7 +1216,7 @@ protected:
   bool camera_initialized_;
   std::string cam_info_topic_;
   int tracker_count_;
-  
+
   // filtering 
   double min_workspace_x_;
   double max_workspace_x_;
@@ -1205,23 +1247,31 @@ protected:
   double term_threshold_;
 #ifdef SIMULATION
   // simulation
- double sim_hand_x_;
- double sim_hand_y_;
- double sim_hand_z_;
- double sim_hand_wx_;
- double sim_hand_wy_;
- double sim_hand_wz_;
- 
- double sim_desired_x_;
- double sim_desired_y_;
- double sim_desired_z_;
- double sim_desired_wx_;
- double sim_desired_wy_;
- double sim_desired_wz_;
- 
- double sim_time_;
+  double sim_hand_x_;
+  double sim_hand_y_;
+  double sim_hand_z_;
+  double sim_hand_wx_;
+  double sim_hand_wy_;
+  double sim_hand_wz_;
 
- cv::Mat P;
+  double sim_desired_x_;
+  double sim_desired_y_;
+  double sim_desired_z_;
+  double sim_desired_wx_;
+  double sim_desired_wy_;
+  double sim_desired_wz_;
+  
+  double sim_camera_x_;
+  double sim_camera_y_;
+  double sim_camera_z_;
+  double sim_camera_wx_;
+  double sim_camera_wy_;
+  double sim_camera_wz_; 
+
+  double sim_time_;
+  int sim_feature_size_;
+  double sim_noise_z_;
+  cv::Mat P;
 #endif
 };
 
