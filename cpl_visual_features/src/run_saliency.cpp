@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 
     else if (path != "")
     {
-      filepath << path << i << ".png";
+      filepath << path << "color" << i << ".png";
       if (use_depth)
       {
         depth_filepath << path << i << "_depth.png";
@@ -87,7 +87,16 @@ int main(int argc, char** argv)
       }
       else
       {
-        outpath << path << i << "_ic.png";
+        outpath << path << "result_base/img_";
+        if (i > 9)
+        {
+          outpath << "00";
+        }
+        else
+        {
+          outpath << "000";
+        }
+       outpath << i << "_itti.png";
       }
     }
     else
@@ -102,6 +111,7 @@ int main(int argc, char** argv)
     std::cout << "\tloc: " << filepath.str() << std::endl;
     Mat frame;
     frame = cv::imread(filepath.str());
+    // Mat frame;
     cv::imshow("frame", frame);
     Mat depth_frame;
     if (use_depth)
@@ -110,7 +120,7 @@ int main(int argc, char** argv)
       depth_frame = cv::imread(depth_filepath.str(), CV_8UC1);
       cv::imshow("depth", depth_frame);
     }
-    cv::waitKey();
+    cv::waitKey(3);
     try
     {
       Mat saliency_map;
@@ -123,7 +133,7 @@ int main(int argc, char** argv)
         saliency_map = csm(frame, false);
       }
       cv::imshow("saliency", saliency_map);
-      cv::waitKey();
+      cv::waitKey(3);
       cv::imwrite(outpath.str(), saliency_map);
     }
     catch(cv::Exception e)
