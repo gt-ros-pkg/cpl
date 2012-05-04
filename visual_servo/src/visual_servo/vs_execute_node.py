@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Software License Agreement (BSD License)
 #
-#  Copyright (c) 2011, Georgia Institute of Technology
+#  Copyright (c) 2012, Georgia Institute of Technology
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -56,7 +56,7 @@ def cleanup():
   pub.publish(zero)
 
 def adjustVelocity(vel):
- clip_vel = 0.09
+ clip_vel = 0.12
  ret = vel 
  if ret > clip_vel:
    ret = clip_vel
@@ -77,7 +77,7 @@ def handle_move_request(req):
       msg.angular.x = adjustVelocity(t.twist.angular.x)
       msg.angular.y = adjustVelocity(t.twist.angular.y)
       msg.angular.z = adjustVelocity(t.twist.angular.z)
-      rospy.loginfo('vx:%+.5f\tvy:%+.5f\tvz:%+.5f\twx:%+.5f\twy:%+.5f\twz:%+.5f', msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z)
+      rospy.loginfo('vx:%+.5f vy:%+.5f vz:%+.5f wx:%+.5f wy:%+.5f wz:%+.5f', msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z)
       pub.publish(msg)
     except rospy.ServiceException, e:
       pub.publish(zero)
@@ -120,9 +120,6 @@ class VisualServoExecutionNode:
     rospy.sleep(0.5)
     pub.publish(zero)
 
-    
-  
-
 if __name__ == '__main__':
   try:
     node = VisualServoExecutionNode()
@@ -143,7 +140,7 @@ if __name__ == '__main__':
 #    service = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
     
     rospy.loginfo('Done initializing... Now advertise the Service')
-    s = rospy.Service('move_arm', VisualServoTwist , handle_move_request)
+    s = rospy.Service('movearm', VisualServoTwist , handle_move_request)
     rospy.spin()
   
   except rospy.ROSInterruptException: pass

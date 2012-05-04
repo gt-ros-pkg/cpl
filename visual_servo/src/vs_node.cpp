@@ -87,7 +87,6 @@
 #include <visual_servo/VisualServoTwist.h>
 
 #define DEBUG_MODE 0
-#define PRINT_TWISTS 1
 
 #define JACOBIAN_TYPE_INV 1
 #define JACOBIAN_TYPE_PSEUDO 2
@@ -297,26 +296,24 @@ public:
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
       camera_initialized_ = true;
       // No error: advertise twist service
-      ros::NodeHandle n;
-      ros::ServiceClient client = n.serviceClient<visual_servo::VisualServoTwist>("move_arm");
-    }
+    } 
     /** Preparing the image **/             
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-    
+
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
-    
+
     XYZPointCloud cloud; 
     pcl::fromROSMsg(*cloud_msg, cloud);
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-                          cloud.header.stamp, ros::Duration(0.5));
+        cloud.header.stamp, ros::Duration(0.5));
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
     prev_camera_header_ = cur_camera_header_;
     cur_camera_header_ = img_msg->header;
-    
+
     cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
-                           cv::Scalar(255));
+        cv::Scalar(255));
     // Black out pixels in color and depth images outside of workspace
     // As well as outside of the crop window
     for (int r = 0; r < color_frame.rows; ++r)
@@ -341,8 +338,7 @@ public:
     cur_orig_color_frame_ = color_frame.clone();
     cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
-    
-    
+
     // initialize the desired points 
     // (it's set only once in the program lifecycle)
     if (desired_locations_.size() != 3 || (jacobian_type_ == JACOBIAN_TYPE_AVG && countNonZero(desired_jacobian_)==0) ) 
@@ -353,6 +349,7 @@ public:
       if (jacobian_type_ == JACOBIAN_TYPE_AVG )
         desired_jacobian_ = getMeterInteractionMatrix(desired_locations_);
     }
+
     // error in getting desired location or jacobian 
     if (desired_locations_.size() != 3) {
       ROS_WARN("Could not compute Desired Location. Please re-arrange your setting and retry.");
@@ -363,6 +360,10 @@ public:
       ROS_WARN("Could not get Image Jacobian for Desired Location. Please re-arrange your setting and retry.");
       return;
     } 
+    
+    ros::NodeHandle n;
+    ros::ServiceClient client = n.serviceClient<visual_servo::VisualServoTwist>("movearm");
+    
     // compute the twist if everything is good to go
     visual_servo::VisualServoTwist srv = getTwist();    
     if (client.call(srv))
@@ -373,6 +374,7 @@ public:
     {
       // on failure
     }
+
   }   
   
   
@@ -396,6 +398,17 @@ public:
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
     
+    for (unsigned int i = 0; i < desired_locations_.size(); i++)
+    {
+      cv::Point p = desired_locations_.at(i).image;
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+      p = features.at(i).image;
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+    }
+    cv::imshow("in", cur_orig_color_frame_); 
+    cv::waitKey(display_wait_ms_);
+
+
     // compute the twist (output is in optical frame) 
     cv::Mat twist = computeTwist(desired_locations_, features);
     cv::Mat temp = twist.clone(); 
@@ -423,13 +436,14 @@ public:
     btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
     
     // multiple the velocity and rotation by gain defined in the parameter
-    srv.request.twist.twist.linear.x = out_vel.x()*gain_vel_;
+    srv.request.twist.twist.linear.x = out_vel.x()*gain_vel_*1.2;
     srv.request.twist.twist.linear.y = out_vel.y()*gain_vel_;
     srv.request.twist.twist.linear.z =  out_vel.z()*gain_vel_;
     srv.request.twist.twist.angular.x =  out_rot.x()*gain_rot_;
     srv.request.twist.twist.angular.y =  out_rot.y()*gain_rot_;
     srv.request.twist.twist.angular.z =  out_rot.z()*gain_rot_;
     
+//#define PRINT_TWISTS 1
 #ifdef PRINT_TWISTS
     printf("Camera:\t");
     printMatrix(temp.t());
@@ -457,7 +471,7 @@ public:
     // Desired location: center of the screen
     std::vector<pcl::PointXYZ> pts; pts.clear();
     pcl::PointXYZ origin = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2);
-    origin.z += 0.05;
+    origin.z += 0.10;
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
     two.y -= 0.05; 
@@ -651,12 +665,12 @@ public:
       angle[1] = abs(vect.row(0).dot(vect.row(2))); 
       angle[2] = abs(vect.row(1).dot(vect.row(2))); 
       
-      printMatrix(vect); 
+      // printMatrix(vect); 
       double min = angle[0]; 
       int one = 0;
       for (int i = 0; i < 3; i++)
       {
-        printf("[%d, %f]\n", i, angle[i]);
+        // printf("[%d, %f]\n", i, angle[i]);
         if (angle[i] < min)
         {
           min = angle[i];
@@ -808,8 +822,6 @@ public:
   } 
   
   
-  
-  
   /**
    * First, apply morphology to filter out noises and find contours around
    * possible features. Then, it returns the three largest moments
@@ -846,11 +858,7 @@ public:
         }
       }
     }
-#ifdef DEBUG_MODE
-    cv::drawContours(cur_orig_color_frame_, contours, -1,  cv::Scalar(50,225,255), 2);
-    //cv::imshow("in", in); 
-    //cv::imshow("open", open.clone());   
-#endif
+
     return moments;
   }
   
@@ -972,6 +980,11 @@ public:
   cv::Point projectPointIntoImage(PointStamped cur_point,
                                   std::string target_frame)
   {
+    if (K.rows == 0 || K.cols == 0) {
+      // Camera intrinsic matrix
+      K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+      K.convertTo(K, CV_32F);
+    }
     cv::Point img_loc;
     try
     {
