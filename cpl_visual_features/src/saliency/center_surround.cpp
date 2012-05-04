@@ -130,17 +130,17 @@ Mat CenterSurroundMapper::operator()(Mat& frame, bool use_gradient)
   }
 
 
-  Mat scaled;
-  scaled = scaleMap(saliency_map);
-
+  Mat scaled = scaleMap(saliency_map);
+  Mat display_scaled = upSampleResponse(scaled, min_delta_, frame.size());
 #ifdef DISPLAY_SALIENCY_MAPS
   if (use_gradient)
     cv::imshow("Top Down map", gradient_map);
   cv::imshow("Saliency", scaled);
+  cv::imshow("Map", saliency_map);
   cv::waitKey();
 #endif // DISPLAY_SALIENCY_MAPS
 
-  return scaled;
+  return display_scaled;
 }
 
 
@@ -175,12 +175,11 @@ Mat CenterSurroundMapper::operator()(Mat& frame, Mat& depth_map)
                   normalize(depth_o, bar_max)*0.125);
   Mat scaled;
   scaled = scaleMap(saliency_map);
-
+  Mat display_scaled = upSampleResponse(scaled, min_delta_, frame.size());
 #ifdef DISPLAY_SALIENCY_MAPS
   Mat display_fs = upSampleResponse(frame_saliency, min_delta_, frame.size());
   Mat display_i = upSampleResponse(depth_i, min_delta_, frame.size());
   Mat display_o = upSampleResponse(depth_o, min_delta_, frame.size());
-  Mat display_scaled = upSampleResponse(scaled, min_delta_, frame.size());
   cv::imshow("Frame Saliency", display_fs);
   cv::imshow("Depth i", display_i);
   cv::imshow("Depth o", display_o);
@@ -188,7 +187,7 @@ Mat CenterSurroundMapper::operator()(Mat& frame, Mat& depth_map)
   // cv::waitKey();
 #endif // DISPLAY_SALIENCY_MAPS
 
-  return scaled;
+  return display_scaled;
 }
 
 //
@@ -396,7 +395,40 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
   {
     // Test for max value for normalization
     I_cs[i] = normalize(I_cs[i], I_max);
-    C_cs.push_back(normalize(RG_cs[i], C_max) + normalize(BY_cs[i], C_max));
+    cv::Mat rg_norm = normalize(RG_cs[i], C_max);
+    cv::Mat by_norm = normalize(BY_cs[i], C_max);
+    //C_cs.push_back(normalize(RG_cs[i], C_max) + normalize(BY_cs[i], C_max));
+    cv::Mat c_csi = rg_norm + by_norm;
+    C_cs.push_back(c_csi);
+    // double min_val = 0;
+    // double max_val = 0;
+    // cv::minMaxLoc(rg_norm, &min_val, &max_val);
+    // std::cout << "rg_norm Min_val: " << min_val << std::endl;
+    // std::cout << "rg_norm Max_val: " << max_val << std::endl;
+    // cv::minMaxLoc(by_norm, &min_val, &max_val);
+    // std::cout << "by_norm Min_val: " << min_val << std::endl;
+    // std::cout << "by_norm Max_val: " << max_val << std::endl;
+    // cv::minMaxLoc(RG_cs[i], &min_val, &max_val);
+    // std::cout << "RG_cs[i] Min_val: " << min_val << std::endl;
+    // std::cout << "RG_cs[i] Max_val: " << max_val << std::endl;
+    // cv::minMaxLoc(BY_cs[i], &min_val, &max_val);
+    // std::cout << "BY_cs[i] Min_val: " << min_val << std::endl;
+    // std::cout << "BY_cs[i] Max_val: " << max_val << std::endl;
+    // cv::minMaxLoc(C_cs[i], &min_val, &max_val);
+    // std::cout << "C_cs[i] Min_val: " << min_val << std::endl;
+    // std::cout << "C_cs[i] Max_val: " << max_val << std::endl;
+
+    // cv::imshow("RG_cs[i]", RG_cs[i]);
+    // cv::imshow("BY_cs[i]", BY_cs[i]);
+    // cv::imshow("RG_norm", rg_norm);
+    // cv::imshow("BY_norm", by_norm);
+    // cv::imshow("C_cs[i]", C_cs[i]);
+    // char c;
+    // do
+    // {
+    //   c = cv::waitKey();
+    // } while (c != 'n');
+
     for (int a = 0; a < N_; ++a)
     {
       O_theta_cs[a][i] = normalize(O_theta_cs[a][i], O_theta_max[a]);
@@ -460,6 +492,7 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
         bar_max = O_bar.at<float>(r,c);
     }
   }
+  std::cout << "Bar max: " << bar_max << std::endl;
 
   // Build the saliency map as the combination of the feature maps
   Mat saliency_map(I_bar.rows, I_bar.cols, CV_32FC1);
@@ -471,9 +504,24 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
   Mat display_I_bar = upSampleResponse(I_bar, min_delta_, frame.size());
   Mat display_C_bar = upSampleResponse(C_bar, min_delta_, frame.size());
   Mat display_O_bar = upSampleResponse(O_bar, min_delta_, frame.size());
-  cv::imshow("I bar", display_I_bar);
+  cv::imshow("C bar small", C_bar);
+  // cv::imshow("I bar", display_I_bar);
   cv::imshow("C bar", display_C_bar);
   cv::imshow("O bar", display_O_bar);
+  double min_val = 0;
+  double max_val = 0;
+  cv::minMaxLoc(display_O_bar, &min_val, &max_val);
+  std::cout << "O_bar Min_val: " << min_val << std::endl;
+  std::cout << "O_bar Max_val: " << max_val << std::endl;
+  cv::minMaxLoc(display_C_bar, &min_val, &max_val);
+  std::cout << "C_bar Min_val: " << min_val << std::endl;
+  std::cout << "C_bar Max_val: " << max_val << std::endl;
+  cv::minMaxLoc(display_I_bar, &min_val, &max_val);
+  std::cout << "I_bar Min_val: " << min_val << std::endl;
+  std::cout << "I_bar Max_val: " << max_val << std::endl;
+  cv::minMaxLoc(saliency_map, &min_val, &max_val);
+  std::cout << "sal_map Min_val: " << min_val << std::endl;
+  std::cout << "sal_map Max_val: " << max_val << std::endl;
 #endif // DISPLAY_SALIENCY_MAPS
   return saliency_map;
 }
@@ -943,8 +991,14 @@ Mat CenterSurroundMapper::normalize(Mat& map, float M)
     }
   }
 
+  if (cur_max_val == 0)
+  {
+    cur_max_val = M;
+  }
+
   Mat normalized = map * (M/float(cur_max_val));
-  float thresh = M*0.20;
+  // float thresh = M*0.20;
+  float thresh = 0;
 
   // Find the local maxima
   vector<float> maxima;
