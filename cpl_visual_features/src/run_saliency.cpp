@@ -67,8 +67,15 @@ int main(int argc, char** argv)
 
   CenterSurroundMapper csm(2,3,3,4);
 
+  // std::vector<int> is;
+  // is.push_back(74);
+  // is.push_back(70);
+  // is.push_back(18);
+  // is.push_back(10);
+  // for (int k = 0; k < is.size(); k++)
   for (int i = 0; i < count; i++)
   {
+    // int i = is[k];
     std::stringstream filepath;
     std::stringstream depth_filepath;
     std::stringstream outpath;
@@ -79,11 +86,11 @@ int main(int argc, char** argv)
 
     else if (path != "")
     {
-      filepath << path << "color" << i << ".png";
+      filepath << path << "color" << std::max(i,0) << ".png";
       if (use_depth)
       {
-        depth_filepath << path << i << "_depth.png";
-        outpath << path << i << "_ic_depth.png";
+        depth_filepath << path << std::max(i,0) << "_depth.png";
+        outpath << path << std::max(i,0) << "_ic_depth.png";
       }
       else
       {
@@ -96,7 +103,7 @@ int main(int argc, char** argv)
         {
           outpath << "000";
         }
-       outpath << i << "_itti.png";
+        outpath << std::max(i,0) << "_itti.png";
       }
     }
     else
@@ -124,6 +131,7 @@ int main(int argc, char** argv)
     try
     {
       Mat saliency_map;
+      bool max_zero = true;
       if (use_depth)
       {
         saliency_map = csm(frame, depth_frame);
@@ -133,7 +141,12 @@ int main(int argc, char** argv)
         saliency_map = csm(frame, false);
       }
       cv::imshow("saliency", saliency_map);
+      double max_val = 0;
+      double min_val= 0;
+      cv::minMaxLoc(saliency_map, &min_val, &max_val);
+      max_zero = (max_val == 0);
       cv::waitKey(3);
+      // TODO: crop before writing
       cv::imwrite(outpath.str(), saliency_map);
     }
     catch(cv::Exception e)
