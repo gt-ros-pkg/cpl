@@ -153,13 +153,16 @@ class ObjectTracker25D
  protected:
   typedef std::vector<float> FeatureVector;
  public:
-  ObjectTracker25D()
+  ObjectTracker25D(int fast_thresh=9) : fast_thresh_(fast_thresh)
   {
   }
 
   void initTracks(cv::Mat& frame, XYZPointCloud& cloud)
   {
-    // TODO: Extract feature points located on the objcet of interest
+    std::vector<cv::KeyPoint> key_points;
+    cv::FAST(frame, key_points, fast_thresh_);
+    // TODO: Determine which points lie on the object and extract their 3D locations
+    // TODO: Extract features for those points on the object
   }
 
   void updateTracks(cv::Mat& frame, XYZPointCloud& cloud)
@@ -171,6 +174,7 @@ class ObjectTracker25D
   }
 
  protected:
+  int fast_thresh_;
   std::vector<FeatureVector> features_;
 };
 
