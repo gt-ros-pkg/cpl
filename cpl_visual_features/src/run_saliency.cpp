@@ -140,13 +140,20 @@ int main(int argc, char** argv)
       {
         saliency_map = csm(frame, false);
       }
+      // TODO: crop before writing
+      cv::Rect crop_rect(10, 30, 591, 431);
+      std::cout << "crop_rect.x " << crop_rect.x << std::endl;
+      std::cout << "crop_rect.y " << crop_rect.y << std::endl;
+      std::cout << "crop_rect.width " << crop_rect.width << std::endl;
+      std::cout << "crop_rect.height " << crop_rect.height << std::endl;
+      cv::Mat cropped_map = saliency_map(crop_rect);
       cv::imshow("saliency", saliency_map);
+      cv::imshow("saliency cropped", cropped_map);
       double max_val = 0;
       double min_val= 0;
-      cv::minMaxLoc(saliency_map, &min_val, &max_val);
+      cv::minMaxLoc(cropped_map, &min_val, &max_val);
       max_zero = (max_val == 0);
       cv::waitKey(3);
-      // TODO: crop before writing
       cv::imwrite(outpath.str(), saliency_map);
     }
     catch(cv::Exception e)
