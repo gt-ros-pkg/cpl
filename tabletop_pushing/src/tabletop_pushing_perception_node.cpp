@@ -148,6 +148,32 @@ class ObjectPushLearning
   }
 };
 
+class ObjectTracker25D
+{
+ protected:
+  typedef std::vector<float> FeatureVector;
+ public:
+  ObjectTracker25D()
+  {
+  }
+
+  void initTracks(cv::Mat& frame, XYZPointCloud& cloud)
+  {
+    // TODO: Extract feature points located on the objcet of interest
+  }
+
+  void updateTracks(cv::Mat& frame, XYZPointCloud& cloud)
+  {
+    // TODO: Extract Features
+    // TODO: Match to current set
+    // TODO: Estimate rigid body motion
+    // TODO: Update model
+  }
+
+ protected:
+  std::vector<FeatureVector> features_;
+};
+
 class TabletopPushingPerceptionNode
 {
  public:
