@@ -194,9 +194,10 @@ public:
     VSXYZ q, d; 
     simulateInit(&desired, &hand, &o, &q, &d);
     printf("--- initial ---\n");
+    simulatePrintPoint(d);
+    simulatePrintPoint(q);
     simulatePrintPoints(desired);
     simulatePrintPoints(hand);
-    simulatePrintPoint(q);
     printf("t,x,y,z,wx,wy,wz,e\n");
 
 #if SIMULATION == 0 // single
@@ -211,7 +212,8 @@ public:
         cv::Mat twist = computeTwist(desired, hand);
         simulateMoveHand(&q, twist, 0.1);
         // simulatePrintPoint(q);
-         simulatePrintPoints(hand);
+        // simulatePrintPoints(desired);
+        // simulatePrintPoints(hand);
         // printMatrix(twist.t());
         float error = simulateGetError(d, q);
         printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,", t,
@@ -288,8 +290,8 @@ public:
     e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2) + pow(dp.z - qp.z, 2); 
     dp = d.workspace_angular;
     qp = q.workspace_angular;
-    e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2) + pow(dp.z - qp.z, 2);    
-    return e;
+    //e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2) + pow(dp.z - qp.z, 2);    
+    return sqrt(e);
   }
 
   void simulateMoveHand(VSXYZ *q, cv::Mat vel, float deltaT)
@@ -321,22 +323,24 @@ public:
     cv::Mat twist_lin = (basis * vel.rowRange(0,3)+ Rt.colRange(3,4).rowRange(0,3).cross(vel.rowRange(3,6)));
     
     pcl::PointXYZ p = (*q).workspace;
-    p.x = p.x + twist_lin.at<float>(0,0);
-    p.y = p.y + twist_lin.at<float>(1,0);
-    p.z = p.z + twist_lin.at<float>(2,0);
+    p.x = p.x + twistlim(twist_lin.at<float>(0,0));
+    p.y = p.y + twistlim(twist_lin.at<float>(1,0));
+    p.z = p.z + twistlim(twist_lin.at<float>(2,0));
     // need to limit where the hand can go (esp in z direction)
     if (p.z < 0.30)
       p.z = 0.30;
     (*q).workspace = p;
 
     pcl::PointXYZ a = (*q).workspace_angular;
-    a.x = simulateGetAngle(a.x + twist_ang.at<float>(0,0));
-    a.y = simulateGetAngle(a.y + twist_ang.at<float>(1,0));
-    a.z = simulateGetAngle(a.z + twist_ang.at<float>(2,0));
+    a.x = simulateGetAngle(a.x + twistlim(twist_ang.at<float>(0,0)));
+    a.y = simulateGetAngle(a.y + twistlim(twist_ang.at<float>(1,0)));
+    a.z = simulateGetAngle(a.z + twistlim(twist_ang.at<float>(2,0)));
     (*q).workspace_angular = a;
     return;
   }
-
+  float twistlim(float a) {
+    return a > 1.0 ? 1.0 : a < -1.0 ? -1.0 : a;
+  }
 #define H_PI 1.5707f
   float simulateGetAngle(float i) 
   {
@@ -372,9 +376,6 @@ public:
   }
   void simulateInit(std::vector<VSXYZ>* desired, std::vector<VSXYZ>* hand, std::vector<pcl::PointXYZ>* o, VSXYZ* q, VSXYZ* d)
   {
-    // support translational first
-    P = cv::Mat::eye(4,4, CV_32F);
-    P.at<float>(1, 3) = 0.5;
 
     // orthographic camera intrinsics
     K = cv::Mat::eye(3,3, CV_32F); 
@@ -713,7 +714,7 @@ public:
       e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
     }
     // ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f)",sqrt(e), term_threshold_);
-
+    // printMatrix(error_mat.t());
     /* 
     // if RMS of error is less than a constant, just return 0
     if(sqrt(e) < term_threshold_)
@@ -745,13 +746,13 @@ public:
         cv::Mat temp = desired_jacobian_ + im;
         iim = 0.5 * pseudoInverse(temp);
     }
-    // printMatrix(iim);
+
     // Gain Matrix K
     cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
-
     // K x IIM x ERROR = TWIST
     ret = gain*(iim*error_mat);
-
+    // printMatrix(iim);
+    // printMatrix(error_mat.t());
 #ifdef DEBUG_MODE
 #ifdef PRINT_TWISTS
     // printf("Error: \t");
@@ -937,29 +938,34 @@ public:
     in.at<float>(2,0));
   }
    
-  // this is for the simulation purpose. does not do accurate TF
   VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
   {
+    // [X,Y,Z] -> [u,v] -> [x,y,z]
     VSXYZ ret;
-    // assume the 3d point is in optical frame
-
+    
+    // 3D point in world frame
     pcl::PointXYZ in_c = in;
+
+    // temporary to apply the transformation
     cv::Mat t = cv::Mat::ones(4,1, CV_32F);
     t.at<float>(0,0) = in_c.x;
     t.at<float>(1,0) = in_c.y;
     t.at<float>(2,0) = in_c.z;
-    // == P
     cv::Mat R = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
       sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
-    // camera translation matrix
-    t = pseudoInverse(R) * t;
+    
+    // apply the rotation
+    t = R.inv() * t;
     in_c.x = t.at<float>(0,0);
     in_c.y = t.at<float>(1,0);
     in_c.z = t.at<float>(2,0);
-
+    
+    // really doesn't matter which frame they are in. ignored for now.
     cv::Point img = projectPointIntoImage(in_c, "/openni_rgb_optical_frame", "/openni_rgb_optical_frame");
     cv::Mat temp = projectImagePointToPoint(img);
-    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), in.z);// getZValue(depth_frame, img.x, img.y));
+
+    float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
+    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
     
     ret.image = img;
     // for simpler simulator, this will be the same
