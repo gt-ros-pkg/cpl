@@ -179,6 +179,8 @@ class ObjectTracker25D
  protected:
   int fast_thresh_;
   std::vector<FeatureVector> features_;
+  pcl::PointXYZ centroid_;
+  // TODO: Track bounding box that we grow for search space?
   cv::SURF surf_;
 };
 
