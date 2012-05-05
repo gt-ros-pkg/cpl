@@ -153,16 +153,19 @@ class ObjectTracker25D
  protected:
   typedef std::vector<float> FeatureVector;
  public:
-  ObjectTracker25D(int fast_thresh=9) : fast_thresh_(fast_thresh)
+  ObjectTracker25D(int fast_thresh=9) : fast_thresh_(fast_thresh), surf_()
   {
   }
 
   void initTracks(cv::Mat& frame, XYZPointCloud& cloud)
   {
+    cv::Mat mask(frame.size(), CV_8UC1, cv::Scalar(255));
     std::vector<cv::KeyPoint> key_points;
     cv::FAST(frame, key_points, fast_thresh_);
     // TODO: Determine which points lie on the object and extract their 3D locations
     // TODO: Extract features for those points on the object
+    FeatureVector raw_descriptors;
+    surf_(frame, mask, key_points, raw_descriptors, true);
   }
 
   void updateTracks(cv::Mat& frame, XYZPointCloud& cloud)
@@ -176,6 +179,7 @@ class ObjectTracker25D
  protected:
   int fast_thresh_;
   std::vector<FeatureVector> features_;
+  cv::SURF surf_;
 };
 
 class TabletopPushingPerceptionNode
