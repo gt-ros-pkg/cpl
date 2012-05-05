@@ -497,8 +497,9 @@ XYZPointCloud PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in)
  *
  * @return Image containing the projected objects
  */
-cv::Mat PointCloudSegmentation::projectProtoObjectsIntoImage(ProtoObjects& objs, cv::Size img_size,
-                                     std::string target_frame)
+cv::Mat PointCloudSegmentation::projectProtoObjectsIntoImage(ProtoObjects& objs,
+                                                             cv::Size img_size,
+                                                             std::string target_frame)
 {
   cv::Mat obj_img(img_size, CV_8UC1, cv::Scalar(0));
   for (unsigned int i = 0; i < objs.size(); ++i)
