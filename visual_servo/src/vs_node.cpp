@@ -484,13 +484,14 @@ public:
   cv::Mat computeTwist(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
   {
     cv::Mat ret = cv::Mat::zeros(6,1, CV_32F);
-    //if (pts.size() == 3)
-    // return ret;
+    // for only current experiment
+    if (pts.size() != 3)
+     return ret;
     cv::Mat error_mat;
     float e = 0;
-
+    int size = (int)(pts.size() > desired.size() ? desired.size() : pts.size());
     // for all three features,
-    for (int i = 0; i < (int)pts.size(); i++) 
+    for (int i = 0; i < size; i++) 
     {
       // Error terms have to be converted into meter 
       cv::Mat error = cv::Mat::zeros(2,1, CV_32F);
