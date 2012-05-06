@@ -177,6 +177,7 @@ class ObjectTracker25D
     }
     FeatureVectors feats = extractFeatures(in_frame, obj_mask);
     // TODO: Match to current object set
+    // TODO: Display matches and individual tracks
     // TODO: Extract 3D locations of points
     // TODO: Estimate rigid body motion
     // TODO: Update model
@@ -214,7 +215,7 @@ class ObjectTracker25D
     // Extract descriptors for those points on the object
     FeatureVector raw_descriptors;
     surf_(bw_frame, obj_mask, key_points, raw_descriptors, true);
-    // TODO: Populate feature vectors and key point locations
+    // Populate feature vectors and key point locations
     const int descriptor_length = float(raw_descriptors.size()) /
         key_points.size();
     FeatureVectors feats;
@@ -231,6 +232,7 @@ class ObjectTracker25D
     cv::Mat disp_img;
     cv::drawKeypoints(in_frame, key_points, disp_img, cv::Scalar(0,255,0));
     cv::imshow("Featue tracks", disp_img);
+    // TODO: Return combined features and key point class instances
     return feats;
   }
 
