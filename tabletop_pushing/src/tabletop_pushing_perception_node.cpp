@@ -154,8 +154,9 @@ class ObjectTracker25D
   typedef std::vector<float> FeatureVector;
   typedef std::vector<FeatureVector> FeatureVectors;
  public:
-  ObjectTracker25D(int fast_thresh=9) :
-      initialized_(false), fast_thresh_(fast_thresh), surf_(), frame_count_(0)
+  ObjectTracker25D(int fast_thresh=9, bool extended_feature=true) :
+      initialized_(false), fast_thresh_(fast_thresh),
+      surf_(0.05, 4, 2, extended_feature), frame_count_(0)
   {
   }
 
@@ -214,7 +215,15 @@ class ObjectTracker25D
     FeatureVector raw_descriptors;
     surf_(bw_frame, obj_mask, key_points, raw_descriptors, true);
     // TODO: Populate feature vectors and key point locations
+    const int descriptor_length = float(raw_descriptors.size()) /
+        key_points.size();
     FeatureVectors feats;
+    for (int i = 0; i < key_points.size(); ++i)
+    {
+      for (int j = 0; j < descriptor_length; ++j)
+      {
+      }
+    }
 
     cv::Mat disp_img;
     cv::drawKeypoints(in_frame, key_points, disp_img, cv::Scalar(0,255,0));
