@@ -220,9 +220,12 @@ class ObjectTracker25D
     FeatureVectors feats;
     for (int i = 0; i < key_points.size(); ++i)
     {
+      FeatureVector f;
       for (int j = 0; j < descriptor_length; ++j)
       {
+        f.push_back(raw_descriptors[i*descriptor_length + j]);
       }
+      feats.push_back(f);
     }
 
     cv::Mat disp_img;
