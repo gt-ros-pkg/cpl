@@ -196,6 +196,8 @@ class ObjectTracker25D
     {
       bw_frame = in_frame;
     }
+    // TODO: Compare points returned to extracting features from pre-masked
+    // image
     std::vector<cv::KeyPoint> key_points;
     cv::FAST(bw_frame, key_points, fast_thresh_);
 
