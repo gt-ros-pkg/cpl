@@ -65,7 +65,7 @@ int main(int argc, char** argv)
     use_depth = true;
   }
 
-  CenterSurroundMapper csm(2,3,3,4);
+  CenterSurroundMapper csm(2,4,3,4);
 
   // std::vector<int> is;
   // is.push_back(74);
@@ -153,8 +153,8 @@ int main(int argc, char** argv)
       double min_val= 0;
       cv::minMaxLoc(cropped_map, &min_val, &max_val);
       max_zero = (max_val == 0);
-      cv::waitKey(3);
-      cv::imwrite(outpath.str(), saliency_map);
+      cv::waitKey(0);
+      cv::imwrite(outpath.str(), cropped_map);
     }
     catch(cv::Exception e)
     {
