@@ -210,34 +210,52 @@ class ObjectTracker25D
   void initTracks(cv::Mat& in_frame, cv::Mat& obj_mask, XYZPointCloud& cloud)
   {
     // Update current points and descriptors
+    // cv::Mat fake_mask(obj_mask.size(), CV_8UC1, cv::Scalar(255));
+    // cur_all_keys_ = extractFeatures(in_frame, fake_mask, cloud);
+    // prev_all_keys_ = cur_all_keys_;
+
     init_obj_keys_ = extractFeatures(in_frame, obj_mask, cloud);
     cur_obj_keys_ = init_obj_keys_;
     prev_obj_keys_ = init_obj_keys_;
+
     // TODO: Create bounding box for volume estimation in tracking
     initialized_ = true;
     frame_count_ = 0;
   }
 
-  void updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask, XYZPointCloud& cloud)
+  pcl::PointXYZ updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                             XYZPointCloud& cloud)
   {
     if (!initialized_)
     {
-      return initTracks(in_frame, obj_mask, cloud);
+      initTracks(in_frame, obj_mask, cloud);
+      pcl::PointXYZ unmoved(0.0,0.0,0.0);
+      return unmoved;
     }
     prev_obj_keys_ = cur_obj_keys_;
     // Get current features
     KeyPoints extracted_points = extractFeatures(in_frame, obj_mask, cloud);
     // Match to current object set
-    KeyPoints matches = matchObjectFeatures(extracted_points);
-    // TODO: Estimate rigid body motion?
+    KeyPoints obj_matches = matchFeatures(extracted_points, prev_obj_keys_);
+
+    // Display matches and individual tracks
+    drawMatches(in_frame, obj_matches, "-obj");
+
+    // cur_all_keys_ = extracted_points;
+    // KeyPoints all_matches = matchFeatures(extracted_points, prev_all_keys_);
+    // prev_all_keys_ = cur_all_keys_;
+    // drawMatches(in_frame, all_matches, "-all");
+
+    // TODO: Estimate rigid body motion from all points and parse / add more
+    // from the set of all features
 
     // Update model
-    cur_obj_keys_ = matches;
-    // Display matches and individual tracks
-    drawMatches(in_frame, matches);
+    cur_obj_keys_ = obj_matches;
 
-    // TODO: Return something?
     frame_count_++;
+    // TODO: Return estimated motion vector
+    pcl::PointXYZ moved;
+    return moved;
   }
 
   KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
@@ -304,41 +322,39 @@ class ObjectTracker25D
     return obj_key_points;
   }
 
-  KeyPoints matchObjectFeatures(KeyPoints& extracted)
+  KeyPoints matchFeatures(KeyPoints& extracted, KeyPoints& previous)
   {
-    // TODO: ProSAC of object model / rigid body transform
     KeyPoints matched;
     int null_count = 0;
-    // Match extracted against prev_obj_keys_;
-    for (unsigned int i = 0; i < prev_obj_keys_.size(); ++i)
+    // Match extracted against previous;
+    for (unsigned int i = 0; i < previous.size(); ++i)
     {
-      int match_idx = ratioTest(prev_obj_keys_[i], extracted, ratio_threshold_,
+      int match_idx = ratioTest(previous[i], extracted, ratio_threshold_,
                                 match_score_threshold_);
       // NOTE: Ignore bad matches
       if (match_idx < 0)
       {
         KeyPoint null;
         matched.push_back(null);
-        matched[i].descriptor_ = prev_obj_keys_[i].descriptor_;
+        matched[i].descriptor_ = previous[i].descriptor_;
         null_count++;
       }
       else
       {
         KeyPoint match = extracted[match_idx];
-        // NOTE: Greedy matching
-        // extracted.erase(extracted.begin() + match_idx);
-        match.updateVelocities(prev_obj_keys_[i]);
+        match.updateVelocities(previous[i]);
         matched.push_back(match);
       }
     }
-    ROS_INFO_STREAM("prev_obj_keys_.size(): " << prev_obj_keys_.size());
+    // TODO: ProSAC of object model / rigid body transform
+    ROS_INFO_STREAM("previous.size(): " << previous.size());
     ROS_INFO_STREAM("matched_.size(): " << matched.size());
     ROS_INFO_STREAM("extracted.size(): " << extracted.size());
     ROS_INFO_STREAM("null count = " << null_count);
     return matched;
   }
 
-  void drawMatches(cv::Mat& in_frame, KeyPoints& matches)
+  void drawMatches(cv::Mat& in_frame, KeyPoints& matches, std::string append="")
   {
     cv::Mat disp_img;
     in_frame.copyTo(disp_img);
@@ -348,7 +364,9 @@ class ObjectTracker25D
                matches[i].point2D_ + matches[i].delta2D_, cv::Scalar(0,255,0));
       cv::circle(disp_img, matches[i].point2D_, 4, cv::Scalar(0,255,0));
     }
-    cv::imshow("Tracker 2.5D Matches", disp_img);
+    std::stringstream title;
+    title << "Tracker 2.5D Matches" << append;
+    cv::imshow(title.str(), disp_img);
   }
 
   int ratioTest(KeyPoint& a, KeyPoints& bList, double ratio_threshold = 0.5,
@@ -743,8 +761,9 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized())
     {
-      cv::Mat obj_mask(disp_img.size(), CV_8UC1, cv::Scalar(255));
-      obj_tracker_->updateTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
+      //cv::Mat obj_mask(disp_img.size(), CV_8UC1, cv::Scalar(255));
+      obj_tracker_->updateTracks(cur_color_frame_, cur_workspace_mask_,
+                                 cur_point_cloud_);
     }
     else
     {

@@ -52,7 +52,7 @@
 
     <param name="obj_tracker_ratio_threshold" value="0.5" type="double"/>
     <param name="obj_tracker_score_threshold" value="0.75" type="double"/>
-    <param name="obj_tracker_fast_threshold" value="9" type="int"/>
+    <param name="obj_tracker_fast_threshold" value="12" type="int"/>
     <param name="obj_tracker_extended_feats" value="true" type="bool"/>
   </node>
 </launch>
