@@ -148,23 +148,72 @@ class ObjectPushLearning
   }
 };
 
+struct Tracker25DKeyPoint
+{
+  typedef std::vector<float> FeatureVector;
+  Tracker25DKeyPoint() : point2D_(NULL_X, NULL_Y)
+  {
+  }
+
+  Tracker25DKeyPoint(cv::Point point2D, pcl::PointXYZ point3D,
+                     FeatureVector descriptor) :
+      point2D_(point2D), point3D_(point3D), descriptor_(descriptor),
+      delta2D_(0,0), delta3D_(0,0,0)
+  {
+  }
+
+  void updateVelocities(Tracker25DKeyPoint prev)
+  {
+    if (prev.point2D_.x == NULL_X && prev.point2D_.x == NULL_Y)
+    {
+      delta2D_.x = 0;
+      delta2D_.y = 0;
+      delta3D_.x = 0;
+      delta3D_.y = 0;
+      delta3D_.z = 0;
+      return;
+    }
+    delta2D_ = point2D_ - prev.point2D_;
+    delta3D_.x = point3D_.x - prev.point3D_.y;
+    delta3D_.y = point3D_.y - prev.point3D_.y;
+    delta3D_.z = point3D_.z - prev.point3D_.z;
+  }
+  static const int NULL_X = -1;
+  static const int NULL_Y = -1;
+  cv::Point point2D_;
+  pcl::PointXYZ point3D_;
+  FeatureVector descriptor_;
+  cv::Point delta2D_;
+  pcl::PointXYZ delta3D_;
+};
+
 class ObjectTracker25D
 {
  protected:
-  typedef std::vector<float> FeatureVector;
+  typedef std::vector<Tracker25DKeyPoint> KeyPoints;
+  typedef Tracker25DKeyPoint KeyPoint;
+  typedef Tracker25DKeyPoint::FeatureVector FeatureVector;
   typedef std::vector<FeatureVector> FeatureVectors;
+
  public:
-  ObjectTracker25D(int fast_thresh=9, bool extended_feature=true) :
-      initialized_(false), fast_thresh_(fast_thresh),
-      surf_(0.05, 4, 2, extended_feature), frame_count_(0)
+  ObjectTracker25D(int num_downsamples = 0,
+                   double ratio_thresh=0.5, double match_thresh=128,
+                   int fast_thresh=9, bool extended_feature=true) :
+      num_downsamples_(num_downsamples), initialized_(false),
+      fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
+      ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
+      frame_count_(0)
   {
+    upscale_ = std::pow(2,num_downsamples_);
   }
 
   void initTracks(cv::Mat& in_frame, cv::Mat& obj_mask, XYZPointCloud& cloud)
   {
-    FeatureVectors feats = extractFeatures(in_frame, obj_mask);
+    // Update current points and descriptors
+    init_obj_keys_ = extractFeatures(in_frame, obj_mask, cloud);
+    cur_obj_keys_ = init_obj_keys_;
+    prev_obj_keys_ = init_obj_keys_;
     // TODO: Create bounding box for volume estimation in tracking
-    // TODO: Update current points and descriptors
     initialized_ = true;
     frame_count_ = 0;
   }
@@ -175,17 +224,24 @@ class ObjectTracker25D
     {
       return initTracks(in_frame, obj_mask, cloud);
     }
-    FeatureVectors feats = extractFeatures(in_frame, obj_mask);
-    // TODO: Match to current object set
-    // TODO: Display matches and individual tracks
-    // TODO: Extract 3D locations of points
-    // TODO: Estimate rigid body motion
-    // TODO: Update model
+    prev_obj_keys_ = cur_obj_keys_;
+    // Get current features
+    KeyPoints extracted_points = extractFeatures(in_frame, obj_mask, cloud);
+    // Match to current object set
+    KeyPoints matches = matchObjectFeatures(extracted_points);
+    // TODO: Estimate rigid body motion?
+
+    // Update model
+    cur_obj_keys_ = matches;
+    // Display matches and individual tracks
+    drawMatches(in_frame, matches);
+
     // TODO: Return something?
     frame_count_++;
   }
 
-  FeatureVectors extractFeatures(cv::Mat& in_frame, cv::Mat obj_mask)
+  KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
+                            XYZPointCloud& cloud)
   {
     cv::Mat bw_frame(in_frame.size(), CV_8UC1);
     if (in_frame.channels() == 3)
@@ -220,6 +276,7 @@ class ObjectTracker25D
     // Populate feature vectors and key point locations
     const int descriptor_length = float(raw_descriptors.size()) /
         key_points.size();
+    KeyPoints obj_key_points;
     FeatureVectors feats;
     for (int i = 0; i < key_points.size(); ++i)
     {
@@ -228,25 +285,144 @@ class ObjectTracker25D
       {
         f.push_back(raw_descriptors[i*descriptor_length + j]);
       }
+      // Extract 3D locations of points
+      KeyPoint k(key_points[i].pt, getPoint3D(key_points[i].pt, cloud), f);
+      obj_key_points.push_back(k);
       feats.push_back(f);
     }
 
     cv::Mat disp_img;
     cv::drawKeypoints(in_frame, key_points, disp_img, cv::Scalar(0,255,0));
-    cv::imshow("Featue tracks", disp_img);
-    // TODO: Return combined features and key point class instances
-    return feats;
+    if (!initialized_)
+    {
+      cv::imshow("Initial Features", disp_img);
+    }
+    else
+    {
+      cv::imshow("Extracted Features", disp_img);
+    }
+    return obj_key_points;
   }
 
-  const bool isInitialized() const { return initialized_;  }
+  KeyPoints matchObjectFeatures(KeyPoints& extracted)
+  {
+    // TODO: ProSAC of object model / rigid body transform
+    KeyPoints matched;
+    int null_count = 0;
+    // Match extracted against prev_obj_keys_;
+    for (unsigned int i = 0; i < prev_obj_keys_.size(); ++i)
+    {
+      int match_idx = ratioTest(prev_obj_keys_[i], extracted, ratio_threshold_,
+                                match_score_threshold_);
+      // NOTE: Ignore bad matches
+      if (match_idx < 0)
+      {
+        KeyPoint null;
+        matched.push_back(null);
+        matched[i].descriptor_ = prev_obj_keys_[i].descriptor_;
+        null_count++;
+      }
+      else
+      {
+        KeyPoint match = extracted[match_idx];
+        // NOTE: Greedy matching
+        // extracted.erase(extracted.begin() + match_idx);
+        match.updateVelocities(prev_obj_keys_[i]);
+        matched.push_back(match);
+      }
+    }
+    ROS_INFO_STREAM("prev_obj_keys_.size(): " << prev_obj_keys_.size());
+    ROS_INFO_STREAM("matched_.size(): " << matched.size());
+    ROS_INFO_STREAM("extracted.size(): " << extracted.size());
+    ROS_INFO_STREAM("null count = " << null_count);
+    return matched;
+  }
+
+  void drawMatches(cv::Mat& in_frame, KeyPoints& matches)
+  {
+    cv::Mat disp_img;
+    in_frame.copyTo(disp_img);
+    for (unsigned int i = 0; i < matches.size(); ++i)
+    {
+      cv::line(disp_img, matches[i].point2D_,
+               matches[i].point2D_ + matches[i].delta2D_, cv::Scalar(0,255,0));
+      cv::circle(disp_img, matches[i].point2D_, 4, cv::Scalar(0,255,0));
+    }
+    cv::imshow("Tracker 2.5D Matches", disp_img);
+  }
+
+  int ratioTest(KeyPoint& a, KeyPoints& bList, double ratio_threshold = 0.5,
+                double match_threshold=1.0)
+  {
+    double best_score = 1000000;
+    double second_best = 1000000;
+    int best_index = -1;
+
+    for (unsigned int b = 0; b < bList.size(); ++b) {
+      double score = 0;
+      score = SSD(a.descriptor_, bList[b].descriptor_);
+
+      if (score < best_score) {
+        second_best = best_score;
+        best_score = score;
+        best_index = b;
+      } else if (score < second_best) {
+        second_best = score;
+      }
+    }
+    if ( second_best == 0 ||
+         best_score / second_best > ratio_threshold) {
+      best_index = -1;
+    }
+    if ( best_score > match_threshold) {
+      best_index = -1;
+    }
+    return best_index;
+  }
+
+  double SSD(FeatureVector& a, FeatureVector& b)
+  {
+    double diff = 0;
+
+    for (unsigned int i = 0; i < a.size(); ++i) {
+      float delta = a[i] - b[i];
+      diff += delta*delta;
+    }
+
+    return diff;
+  }
+
+  pcl::PointXYZ getPoint3D(cv::Point pt, XYZPointCloud& cloud) const
+  {
+    // Compensate for downsampling
+    return cloud.at(pt.x*upscale_, pt.y*upscale_);
+  }
+
+  //
+  // Getters & Setters
+  //
+  bool isInitialized() const { return initialized_;  }
+
+  void setNumDownsamples(int num_downsamples)
+  {
+    num_downsamples_ = num_downsamples;
+    upscale_ = std::pow(2,num_downsamples_);
+  }
 
  protected:
+  int num_downsamples_;
   bool initialized_;
   int fast_thresh_;
-  std::vector<FeatureVector> features_;
-  pcl::PointXYZ centroid_;
+  KeyPoints init_obj_keys_;
+  KeyPoints prev_obj_keys_;
+  KeyPoints cur_obj_keys_;
+  KeyPoints prev_all_keys_;
+  KeyPoints cur_all_keys_;
   cv::SURF surf_;
+  double ratio_threshold_;
+  double match_score_threshold_;
   int frame_count_;
+  int upscale_;
 };
 
 class TabletopPushingPerceptionNode
@@ -260,7 +436,7 @@ class TabletopPushingPerceptionNode
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      callback_count_(0), obj_tracker_()
+      callback_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -332,6 +508,20 @@ class TabletopPushingPerceptionNode
                      pcl_segmenter_->icp_max_cor_dist_, 1.0);
     n_private_.param("icp_ransac_thresh",
                      pcl_segmenter_->icp_ransac_thresh_, 0.015);
+
+    double ratio_thresh;
+    double match_score_thresh;
+    int fast_thresh;
+    bool extended_feats;
+    n_private_.param("obj_tracker_ratio_threshold", ratio_thresh, 0.5);
+    n_private_.param("obj_tracker_score_threshold", match_score_thresh, 128.0);
+    n_private_.param("obj_tracker_fast_threshold", fast_thresh, 9);
+    n_private_.param("obj_tracker_extended_feats", extended_feats, true);
+    // Initialize classes requiring parameters
+    obj_tracker_ = shared_ptr<ObjectTracker25D>(
+        new ObjectTracker25D(num_downsamples_, ratio_thresh,
+                             match_score_thresh, fast_thresh,
+                             extended_feats));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -532,6 +722,7 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getPushVector(double desired_push_angle, bool rand_angle)
   {
+
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
@@ -550,23 +741,22 @@ class TabletopPushingPerceptionNode
       }
     }
 
-    // NOTE: object image has i+1 for object ids
-    // Create object mask
-    cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
-    cv::Mat obj_mask;
-    cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
-    cv::dilate(obj_mask_raw, obj_mask, element);
-    cv::erode(obj_mask, obj_mask, element);
-    cv::imshow("obj_mask: raw", obj_mask_raw);
-    cv::imshow("obj_mask: closed", obj_mask);
-
-    if (obj_tracker_.isInitialized())
+    if (obj_tracker_->isInitialized())
     {
-      obj_tracker_.updateTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
+      cv::Mat obj_mask(disp_img.size(), CV_8UC1, cv::Scalar(255));
+      obj_tracker_->updateTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
     }
     else
     {
-      obj_tracker_.initTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
+      // NOTE: disp_image has i+1 for object ids
+      cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
+      cv::Mat obj_mask;
+      cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
+      cv::dilate(obj_mask_raw, obj_mask, element);
+      cv::erode(obj_mask, obj_mask, element);
+      cv::imshow("obj_mask: raw", obj_mask_raw);
+      cv::imshow("obj_mask: closed", obj_mask);
+      obj_tracker_->initTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
     }
 
     LearnPush::Response res;
@@ -888,7 +1078,7 @@ class TabletopPushingPerceptionNode
   int record_count_;
   int callback_count_;
   Eigen::Vector4f prev_centroid_;
-  ObjectTracker25D obj_tracker_;
+  shared_ptr<ObjectTracker25D> obj_tracker_;
 };
 
 int main(int argc, char ** argv)
