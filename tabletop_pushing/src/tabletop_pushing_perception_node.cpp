@@ -722,11 +722,11 @@ class TabletopPushingPerceptionNode
     cur_camera_header_ = img_msg->header;
     pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
 
-    // if (obj_tracker_.isInitialized())
-    // {
-    //   cv::Mat obj_mask(color_frame_down.size(), CV_8UC1, cv::Scalar(255));
-    //   obj_tracker_.updateTracks(color_frame_down, obj_mask, cloud);
-    // }
+    if (obj_tracker_->isInitialized())
+    {
+      obj_tracker_->updateTracks(cur_color_frame_, cur_workspace_mask_,
+                                 cur_point_cloud_);
+    }
 
     // Debug stuff
     if (autorun_pcl_segmentation_)
@@ -837,13 +837,9 @@ class TabletopPushingPerceptionNode
       }
     }
 
-    if (obj_tracker_->isInitialized())
-    {
-      //cv::Mat obj_mask(disp_img.size(), CV_8UC1, cv::Scalar(255));
-      obj_tracker_->updateTracks(cur_color_frame_, cur_workspace_mask_,
-                                 cur_point_cloud_);
-    }
-    else
+
+
+    if (!obj_tracker_->isInitialized())
     {
       // NOTE: disp_image has i+1 for object ids
       cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
