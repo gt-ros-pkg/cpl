@@ -978,7 +978,9 @@ class PositionFeedbackPushNode:
         r = rospy.Rate(self.move_cart_check_hz)
         pl.rezero()
         pl.set_threshold(pressure)
-
+        rospy.Time()
+        timeout = 5
+        timeout_at = rospy.get_time() + timeout
         ep = desired_pose
         while True:
             if not self.arm_moving_cart(which_arm):
@@ -996,7 +998,10 @@ class PositionFeedbackPushNode:
                 rospy.loginfo('Exceeded pressure contact thresh...')
                 if exit_on_contact:
                     break
-
+            if timeout_at < rospy.get_time():
+                rospy.loginfo('Exceeded time to move EPC!')
+                stop = 'timed out'
+                break
             # Command posture
             m = self.get_desired_posture(which_arm)
             posture_pub.publish(m)
