@@ -59,6 +59,7 @@
 #include <pcl_ros/transforms.h>
 #include <pcl/ros/conversions.h>
 #include <pcl/ModelCoefficients.h>
+#include <pcl/registration/transformation_estimation_svd.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
@@ -115,7 +116,8 @@ typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
-
+typedef pcl::registration::TransformationEstimationSVD<pcl::PointXYZ, pcl::PointXYZ>
+TransformEstimator;
 using tabletop_pushing::PointCloudSegmentation;
 using tabletop_pushing::ProtoObject;
 using tabletop_pushing::ProtoObjects;
@@ -177,6 +179,15 @@ struct Tracker25DKeyPoint
     delta3D_.x = point3D_.x - prev.point3D_.y;
     delta3D_.y = point3D_.y - prev.point3D_.y;
     delta3D_.z = point3D_.z - prev.point3D_.z;
+  }
+
+  pcl::PointXYZ getPrevious3DPoint()
+  {
+    pcl::PointXYZ prev;
+    prev.x = point3D_.x - delta3D_.x;
+    prev.y = point3D_.y - delta3D_.y;
+    prev.z = point3D_.z - delta3D_.z;
+    return prev;
   }
   static const int NULL_X = -1;
   static const int NULL_Y = -1;
@@ -251,11 +262,9 @@ class ObjectTracker25D
 
     // Update model
     cur_obj_keys_ = obj_matches;
-
     frame_count_++;
-    // TODO: Return estimated motion vector
-    pcl::PointXYZ moved;
-    return moved;
+
+    return estimateMotionVector(obj_matches);
   }
 
   KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
@@ -354,21 +363,72 @@ class ObjectTracker25D
     return matched;
   }
 
-  void drawMatches(cv::Mat& in_frame, KeyPoints& matches, std::string append="")
+  pcl::PointXYZ estimateMotionVector(KeyPoints& tracks)
   {
-    cv::Mat disp_img;
-    in_frame.copyTo(disp_img);
-    for (unsigned int i = 0; i < matches.size(); ++i)
+    XYZPointCloud current_pts;
+    XYZPointCloud previous_pts;
+    current_pts.width = tracks.size();
+    current_pts.height = 1;
+    current_pts.is_dense = false;
+    current_pts.resize(current_pts.width*current_pts.height);
+    previous_pts.width = tracks.size();
+    previous_pts.height = 1;
+    previous_pts.is_dense = false;
+    previous_pts.resize(previous_pts.width*previous_pts.height);
+    std::vector<int> current_idx;
+    std::vector<int> previous_idx;
+    for(unsigned int i=0; i < tracks.size(); ++i)
     {
-      cv::line(disp_img, matches[i].point2D_,
-               matches[i].point2D_ + matches[i].delta2D_, cv::Scalar(0,255,0));
-      cv::circle(disp_img, matches[i].point2D_, 4, cv::Scalar(0,255,0));
+      current_pts.points[i] = tracks[i].point3D_;
+      previous_pts.points[i] = tracks[i].getPrevious3DPoint();
+      ROS_INFO_STREAM("Current pt3D: " << previous_pts.points[i]);
+      ROS_INFO_STREAM("Previous pt3D: " << previous_pts.points[i]);
+      if (tracks[i].point2D_.x == Tracker25DKeyPoint::NULL_X ||
+          tracks[i].point2D_.y == Tracker25DKeyPoint::NULL_Y)
+      {
+      }
+      else
+      {
+        current_idx.push_back(i);
+        previous_idx.push_back(i);
+      }
     }
-    std::stringstream title;
-    title << "Tracker 2.5D Matches" << append;
-    cv::imshow(title.str(), disp_img);
+
+    // TODO: Add RANSAC selection here
+    bool bad_fit = false;
+    while (bad_fit)
+    {
+      // TODO: Choose 2 random indices
+      // TODO: Compute exact transform with random pts (not SVD)!
+      // TODO: Check error for other points in indces
+      // TODO: Determine number in support
+      // TODO: Save if support is larger
+    }
+    // TODO: Estimate final transform with least squares
+    Eigen::Matrix4f transform = estimateTransform(previous_pts, current_pts,
+                                                  previous_idx, current_idx);
+
+    ROS_INFO_STREAM("Best guess transform is: " << transform);
+    pcl::PointXYZ best_guess;
+    return best_guess;
   }
 
+  Eigen::Matrix4f estimateTransform(XYZPointCloud& previous_pts,
+                                    XYZPointCloud& current_pts,
+                                    std::vector<int>& previous_indices,
+                                    std::vector<int>& current_indices)
+  {
+    TransformEstimator estimator;
+    Eigen::Matrix4f transform;
+    estimator.estimateRigidTransformation(previous_pts, previous_indices,
+                                          current_pts, current_indices,
+                                          transform);
+    return transform;
+  }
+
+  //
+  // Helper functions
+  //
   int ratioTest(KeyPoint& a, KeyPoints& bList, double ratio_threshold = 0.5,
                 double match_threshold=1.0)
   {
@@ -414,6 +474,24 @@ class ObjectTracker25D
   {
     // Compensate for downsampling
     return cloud.at(pt.x*upscale_, pt.y*upscale_);
+  }
+
+  //
+  // I/O Functions
+  //
+  void drawMatches(cv::Mat& in_frame, KeyPoints& matches, std::string append="")
+  {
+    cv::Mat disp_img;
+    in_frame.copyTo(disp_img);
+    for (unsigned int i = 0; i < matches.size(); ++i)
+    {
+      cv::line(disp_img, matches[i].point2D_,
+               matches[i].point2D_ + matches[i].delta2D_, cv::Scalar(0,255,0));
+      cv::circle(disp_img, matches[i].point2D_, 4, cv::Scalar(0,255,0));
+    }
+    std::stringstream title;
+    title << "Tracker 2.5D Matches" << append;
+    cv::imshow(title.str(), disp_img);
   }
 
   //
