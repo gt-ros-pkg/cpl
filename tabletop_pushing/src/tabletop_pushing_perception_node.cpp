@@ -381,8 +381,6 @@ class ObjectTracker25D
     {
       current_pts.points[i] = tracks[i].point3D_;
       previous_pts.points[i] = tracks[i].getPrevious3DPoint();
-      ROS_INFO_STREAM("Current pt3D: " << previous_pts.points[i]);
-      ROS_INFO_STREAM("Previous pt3D: " << previous_pts.points[i]);
       if (tracks[i].point2D_.x == Tracker25DKeyPoint::NULL_X ||
           tracks[i].point2D_.y == Tracker25DKeyPoint::NULL_Y)
       {
@@ -391,6 +389,8 @@ class ObjectTracker25D
       {
         current_idx.push_back(i);
         previous_idx.push_back(i);
+        ROS_INFO_STREAM("Current pt3D: " << previous_pts.points[i]);
+        ROS_INFO_STREAM("Previous pt3D: " << previous_pts.points[i]);
       }
     }
 
@@ -839,7 +839,7 @@ class TabletopPushingPerceptionNode
 
 
 
-    if (!obj_tracker_->isInitialized())
+    // if (!obj_tracker_->isInitialized())
     {
       // NOTE: disp_image has i+1 for object ids
       cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
