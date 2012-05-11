@@ -153,7 +153,8 @@ class ObjectPushLearning
 struct Tracker25DKeyPoint
 {
   typedef std::vector<float> FeatureVector;
-  Tracker25DKeyPoint() : point2D_(NULL_X, NULL_Y)
+  Tracker25DKeyPoint() : point2D_(NULL_X, NULL_Y), point3D_(0.0,0.0,0.0),
+                         delta2D_(0,0), delta3D_(0.0,0.0,0.0)
   {
   }
 
@@ -170,13 +171,13 @@ struct Tracker25DKeyPoint
     {
       delta2D_.x = 0;
       delta2D_.y = 0;
-      delta3D_.x = 0;
-      delta3D_.y = 0;
-      delta3D_.z = 0;
+      delta3D_.x = 0.0;
+      delta3D_.y = 0.0;
+      delta3D_.z = 0.0;
       return;
     }
     delta2D_ = point2D_ - prev.point2D_;
-    delta3D_.x = point3D_.x - prev.point3D_.y;
+    delta3D_.x = point3D_.x - prev.point3D_.x;
     delta3D_.y = point3D_.y - prev.point3D_.y;
     delta3D_.z = point3D_.z - prev.point3D_.z;
   }
@@ -220,6 +221,7 @@ class ObjectTracker25D
 
   void initTracks(cv::Mat& in_frame, cv::Mat& obj_mask, XYZPointCloud& cloud)
   {
+    initialized_ = false;
     // Update current points and descriptors
     // cv::Mat fake_mask(obj_mask.size(), CV_8UC1, cv::Scalar(255));
     // cur_all_keys_ = extractFeatures(in_frame, fake_mask, cloud);
@@ -355,11 +357,6 @@ class ObjectTracker25D
         matched.push_back(match);
       }
     }
-    // TODO: ProSAC of object model / rigid body transform
-    ROS_INFO_STREAM("previous.size(): " << previous.size());
-    ROS_INFO_STREAM("matched_.size(): " << matched.size());
-    ROS_INFO_STREAM("extracted.size(): " << extracted.size());
-    ROS_INFO_STREAM("null count = " << null_count);
     return matched;
   }
 
@@ -385,12 +382,48 @@ class ObjectTracker25D
           tracks[i].point2D_.y == Tracker25DKeyPoint::NULL_Y)
       {
       }
+      else if (isnan(tracks[i].point3D_.x) || isnan(tracks[i].point3D_.y) || isnan(tracks[i].point3D_.z) )
+      {
+        // // TODO: Look if any points in the downsampled neighborhood have values
+        // ROS_ERROR_STREAM("Nan in point: " << tracks[i].point3D_);
+        // ROS_ERROR_STREAM("2D point: " << tracks[i].point2D_);
+        // ROS_ERROR_STREAM("2D delta: " << tracks[i].delta2D_);
+        // ROS_ERROR_STREAM("3D delta: " << tracks[i].delta3D_);
+      }
+      else if (isnan(previous_pts.points[i].x) ||
+               isnan(previous_pts.points[i].y) ||
+               isnan(previous_pts.points[i].z))
+      {
+        // // TODO: Look if any points in the downsampled neighborhood have values
+        // ROS_ERROR_STREAM("Nan in prev point: " << previous_pts.points[i]);
+        // ROS_ERROR_STREAM("3D point: " << tracks[i].point3D_);
+        // ROS_ERROR_STREAM("2D point: " << tracks[i].point2D_);
+        // ROS_ERROR_STREAM("2D delta: " << tracks[i].delta2D_);
+        // ROS_ERROR_STREAM("3D delta: " << tracks[i].delta3D_);
+      }
       else
       {
         current_idx.push_back(i);
         previous_idx.push_back(i);
-        ROS_INFO_STREAM("Current pt3D: " << previous_pts.points[i]);
-        ROS_INFO_STREAM("Previous pt3D: " << previous_pts.points[i]);
+        // ROS_INFO_STREAM("Current pt3D: " << current_pts.points[i]);
+        // ROS_INFO_STREAM("Previous pt3D: " << previous_pts.points[i]);
+        // TODO: If negative x, then print all info
+        if (tracks[i].point3D_.x < 0)
+        {
+          ROS_WARN_STREAM("Current point has negative 3D x: " <<
+                          tracks[i].point3D_);
+        }
+        if (previous_pts.points[i].x < 0)
+        {
+          ROS_WARN_STREAM("Previous point has negative 3D x.");
+          ROS_WARN_STREAM("Tracked point is: " << tracks[i].point3D_);
+          ROS_WARN_STREAM("Tracked 2D point is: " << tracks[i].point2D_);
+          ROS_WARN_STREAM("Tracked 2D vector is: " << tracks[i].delta2D_);
+          ROS_WARN_STREAM("Tracked 3D vector is: " << tracks[i].delta3D_);
+          ROS_WARN_STREAM("Current point is: " << current_pts.points[i]);
+          ROS_WARN_STREAM("Previous point is: " << previous_pts.points[i] << "\n");
+        }
+
       }
     }
 
@@ -408,7 +441,20 @@ class ObjectTracker25D
     Eigen::Matrix4f transform = estimateTransform(previous_pts, current_pts,
                                                   previous_idx, current_idx);
 
-    ROS_INFO_STREAM("Best guess transform is: " << transform);
+    for (int i = 0; i < 4; ++i)
+    {
+      for (int j = 0; j < 4; ++j)
+      {
+        if (isnan(transform(i,j)))
+        {
+          ROS_INFO_STREAM("Best guess transform has nan! \n" << transform);
+          ROS_INFO_STREAM("previous_idx.size() " << previous_idx.size());
+          break;
+        }
+      }
+    }
+    // TODO: return transform
+    // TODO: Display transform (applied to centroid of points?)
     pcl::PointXYZ best_guess;
     return best_guess;
   }
@@ -847,7 +893,7 @@ class TabletopPushingPerceptionNode
       cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
       cv::dilate(obj_mask_raw, obj_mask, element);
       cv::erode(obj_mask, obj_mask, element);
-      cv::imshow("obj_mask: raw", obj_mask_raw);
+      // cv::imshow("obj_mask: raw", obj_mask_raw);
       cv::imshow("obj_mask: closed", obj_mask);
       obj_tracker_->initTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
     }
