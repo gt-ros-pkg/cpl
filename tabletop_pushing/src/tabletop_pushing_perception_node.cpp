@@ -210,11 +210,16 @@ class ObjectTracker25D
  public:
   ObjectTracker25D(int num_downsamples = 0,
                    double ratio_thresh=0.5, double match_thresh=128,
-                   int fast_thresh=9, bool extended_feature=true) :
+                   int fast_thresh=9, bool extended_feature=true,
+                   int max_ransac_iter=100,
+                   double sufficient_support_percent=0.7,
+                   double support_dist_thresh=0.03) :
       num_downsamples_(num_downsamples), initialized_(false),
       fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
       ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
-      frame_count_(0)
+      frame_count_(0), max_ransac_iter_(max_ransac_iter),
+      sufficient_support_percent_(sufficient_support_percent),
+      support_dist_thresh_(support_dist_thresh)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -427,10 +432,6 @@ class ObjectTracker25D
       }
     }
 
-    // TODO: Expose these parameters here
-    int max_ransac_iter_ = 100;
-    float sufficient_support_percent_ = 0.7;
-
     int max_support = 0;
     std::vector<int> best_support;
     Eigen::Matrix4f best_transform;
@@ -512,7 +513,6 @@ class ObjectTracker25D
                                     Eigen::Matrix4f& transform)
   {
     std::vector<int> support_idx;
-    double support_dist_thresh_ = 0.05;
     for (unsigned int i = 0; i < previous_indices.size(); ++i)
     {
       int idx = previous_indices[i];
@@ -635,6 +635,9 @@ class ObjectTracker25D
   double match_score_threshold_;
   int frame_count_;
   int upscale_;
+  int max_ransac_iter_;
+  double sufficient_support_percent_;
+  double support_dist_thresh_;
 };
 
 class TabletopPushingPerceptionNode
@@ -725,15 +728,23 @@ class TabletopPushingPerceptionNode
     double match_score_thresh;
     int fast_thresh;
     bool extended_feats;
+    int max_ransac_iter;
+    double support_percent;
+    double support_dist;
     n_private_.param("obj_tracker_ratio_threshold", ratio_thresh, 0.5);
     n_private_.param("obj_tracker_score_threshold", match_score_thresh, 128.0);
     n_private_.param("obj_tracker_fast_threshold", fast_thresh, 9);
     n_private_.param("obj_tracker_extended_feats", extended_feats, true);
+    n_private_.param("obj_tracker_extended_feats", extended_feats, true);
+    n_private_.param("obj_tracker_max_ransac_iter", max_ransac_iter, 100);
+    n_private_.param("obj_tracker_ransac_support_percent", support_percent, 0.7);
+    n_private_.param("obj_tracker_ransac_dist_thresh", support_dist, 0.03);
+
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
-        new ObjectTracker25D(num_downsamples_, ratio_thresh,
-                             match_score_thresh, fast_thresh,
-                             extended_feats));
+        new ObjectTracker25D(num_downsamples_, ratio_thresh, match_score_thresh,
+                             fast_thresh, extended_feats, max_ransac_iter,
+                             support_percent, support_dist));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
