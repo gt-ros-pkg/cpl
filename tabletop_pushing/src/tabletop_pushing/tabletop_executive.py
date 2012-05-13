@@ -148,7 +148,8 @@ class TabletopExecutive:
         if not _OFFLINE:
             self.raise_and_look()
         # Initialize push pose
-        self.initialize_learning_push();
+        self.initialize_learning_push()
+        rospy.loginfo('Done initializing learning')
 
     def run_singulation(self, num_pushes=1, use_guided=True):
         # Get table height and raise to that before anything else

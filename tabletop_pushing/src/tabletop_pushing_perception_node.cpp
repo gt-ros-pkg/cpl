@@ -236,14 +236,13 @@ class ObjectTracker25D
     frame_count_ = 0;
   }
 
-  pcl::PointXYZ updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                             XYZPointCloud& cloud)
+  Eigen::Matrix4f updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                               XYZPointCloud& cloud)
   {
     if (!initialized_)
     {
       initTracks(in_frame, obj_mask, cloud);
-      pcl::PointXYZ unmoved(0.0,0.0,0.0);
-      return unmoved;
+      return Eigen::Matrix4f::Identity();
     }
     prev_obj_keys_ = cur_obj_keys_;
     // Get current features
@@ -259,14 +258,14 @@ class ObjectTracker25D
     // prev_all_keys_ = cur_all_keys_;
     // drawMatches(in_frame, all_matches, "-all");
 
-    // TODO: Estimate rigid body motion from all points and parse / add more
-    // from the set of all features
 
+    Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
+    // TODO: Return the correct model we want (2D vector?) IN which frame?
+    // TODO: add more from the set of all features based on movement
     // Update model
     cur_obj_keys_ = obj_matches;
     frame_count_++;
-
-    return estimateMotionVector(obj_matches);
+    return transform;
   }
 
   KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
@@ -360,7 +359,7 @@ class ObjectTracker25D
     return matched;
   }
 
-  pcl::PointXYZ estimateMotionVector(KeyPoints& tracks)
+  Eigen::Matrix4f estimateMotionVector(KeyPoints& tracks, cv::Mat& frame)
   {
     XYZPointCloud current_pts;
     XYZPointCloud previous_pts;
@@ -421,42 +420,65 @@ class ObjectTracker25D
           ROS_WARN_STREAM("Tracked 2D vector is: " << tracks[i].delta2D_);
           ROS_WARN_STREAM("Tracked 3D vector is: " << tracks[i].delta3D_);
           ROS_WARN_STREAM("Current point is: " << current_pts.points[i]);
-          ROS_WARN_STREAM("Previous point is: " << previous_pts.points[i] << "\n");
+          ROS_WARN_STREAM("Previous point is: " << previous_pts.points[i]
+                          << "\n");
         }
-
       }
     }
 
-    // TODO: Add RANSAC selection here
-    bool bad_fit = false;
-    while (bad_fit)
-    {
-      // TODO: Choose 2 random indices
-      // TODO: Compute exact transform with random pts (not SVD)!
-      // TODO: Check error for other points in indces
-      // TODO: Determine number in support
-      // TODO: Save if support is larger
-    }
-    // TODO: Estimate final transform with least squares
-    Eigen::Matrix4f transform = estimateTransform(previous_pts, current_pts,
-                                                  previous_idx, current_idx);
+    // TODO: Expose these parameters here
+    int max_ransac_iter_ = 100;
+    float sufficient_support_percent_ = 0.7;
 
-    for (int i = 0; i < 4; ++i)
+    int max_support = 0;
+    std::vector<int> best_support;
+    Eigen::Matrix4f best_transform;
+    for (int i = 0; i < max_ransac_iter_; ++i)
     {
-      for (int j = 0; j < 4; ++j)
+      // Choose 2 random, unique indices
+      int idx0 = current_idx[rand() % current_idx.size()];
+      int idx1 = -1;
+      do
       {
-        if (isnan(transform(i,j)))
-        {
-          ROS_INFO_STREAM("Best guess transform has nan! \n" << transform);
-          ROS_INFO_STREAM("previous_idx.size() " << previous_idx.size());
-          break;
-        }
+        idx1 = current_idx[rand() % current_idx.size()];
+      } while (idx1 == idx0);
+      std::vector<int> rand_idx;
+      rand_idx.push_back(idx0);
+      rand_idx.push_back(idx1);
+      // Compute transform from random pts
+      Eigen::Matrix4f transform = estimateTransform(previous_pts, current_pts,
+                                                    rand_idx, rand_idx);
+      std::vector<int> support = determineSupport(previous_pts, current_pts,
+                                                  previous_idx, current_idx,
+                                                  transform);
+      if (support.size() > max_support)
+      {
+        max_support = support.size();
+        best_transform = transform;
+        best_support = support;
+      }
+      // Exit if support percentage is above a certain threhsold
+      if (best_support.size() >
+          sufficient_support_percent_*current_pts.size())
+      {
+        break;
       }
     }
-    // TODO: return transform
+    // Estimate final transform with least squares (SVD)
+    Eigen::Matrix4f final_transform = estimateTransform(previous_pts,
+                                                        current_pts,
+                                                        best_support,
+                                                        best_support);
+    ROS_INFO_STREAM("Number of support pts is: " << best_support.size());
+    ROS_INFO_STREAM("Best guess transform is: \n" << final_transform << "\n");
+
     // TODO: Display transform (applied to centroid of points?)
-    pcl::PointXYZ best_guess;
-    return best_guess;
+    // TODO: Need to project 3D into the image...
+    // cv::Mat disp_img;
+    // frame.copyTo(disp_img);
+    // cv::line(disp_img, tracks[best_support[0]].point2D_,
+    // cv::imshow("Estimated transform," disp_img);
+    return final_transform;
   }
 
   Eigen::Matrix4f estimateTransform(XYZPointCloud& previous_pts,
@@ -472,9 +494,42 @@ class ObjectTracker25D
     return transform;
   }
 
+  std::vector<int> determineSupport(XYZPointCloud& previous_pts,
+                                    XYZPointCloud& current_pts,
+                                    std::vector<int>& previous_indices,
+                                    std::vector<int>& current_indices,
+                                    Eigen::Matrix4f& transform)
+  {
+    std::vector<int> support_idx;
+    double support_dist_thresh_ = 0.05;
+    for (unsigned int i = 0; i < previous_indices.size(); ++i)
+    {
+      int idx = previous_indices[i];
+      double fit_error = computeReprojectionError(previous_pts.points[idx],
+                                                  current_pts.points[idx],
+                                                  transform);
+      if (fit_error < support_dist_thresh_)
+      {
+        support_idx.push_back(idx);
+      }
+    }
+    return support_idx;
+  }
+
   //
   // Helper functions
   //
+  double computeReprojectionError(pcl::PointXYZ& prev_pt, pcl::PointXYZ& cur_pt,
+                                  Eigen::Matrix4f& transform)
+  {
+    Eigen::Vector4f x_t0(prev_pt.x, prev_pt.y, prev_pt.z, 1.0);
+    Eigen::Vector4f x_t1(cur_pt.x, cur_pt.y, cur_pt.z, 1.0);
+    Eigen::Vector4f x_t1_hat = transform*x_t0;
+    Eigen::Vector4f error_vec = x_t1_hat - x_t1;
+    return error_vec.norm();
+  }
+
+
   int ratioTest(KeyPoint& a, KeyPoints& bList, double ratio_threshold = 0.5,
                 double match_threshold=1.0)
   {
@@ -894,7 +949,7 @@ class TabletopPushingPerceptionNode
       cv::dilate(obj_mask_raw, obj_mask, element);
       cv::erode(obj_mask, obj_mask, element);
       // cv::imshow("obj_mask: raw", obj_mask_raw);
-      cv::imshow("obj_mask: closed", obj_mask);
+      // cv::imshow("obj_mask: closed", obj_mask);
       obj_tracker_->initTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
     }
 
