@@ -378,7 +378,8 @@ class ObjectTracker25D
       current_pts.points[i] = tracks[i].point3D_;
       previous_pts.points[i] = tracks[i].getPrevious3DPoint();
       if (tracks[i].point2D_.x == Tracker25DKeyPoint::NULL_X ||
-          tracks[i].point2D_.y == Tracker25DKeyPoint::NULL_Y)
+          tracks[i].point2D_.y == Tracker25DKeyPoint::NULL_Y ||
+          tracks[i].point2D_.x < 0 || tracks[i].point2D_.y < 0)
       {
       }
       else if (isnan(tracks[i].point3D_.x) || isnan(tracks[i].point3D_.y) || isnan(tracks[i].point3D_.z) )
@@ -433,6 +434,11 @@ class ObjectTracker25D
     int max_support = 0;
     std::vector<int> best_support;
     Eigen::Matrix4f best_transform;
+    if (current_idx.size() < 2)
+    {
+      ROS_ERROR_STREAM("Too few matches to estimate transform");
+      return Eigen::Matrix4f::Identity();
+    }
     for (int i = 0; i < max_ransac_iter_; ++i)
     {
       // Choose 2 random, unique indices
@@ -464,20 +470,25 @@ class ObjectTracker25D
         break;
       }
     }
+
     // Estimate final transform with least squares (SVD)
+    ROS_INFO_STREAM("Number of support pts is: " << best_support.size());
     Eigen::Matrix4f final_transform = estimateTransform(previous_pts,
                                                         current_pts,
                                                         best_support,
                                                         best_support);
-    ROS_INFO_STREAM("Number of support pts is: " << best_support.size());
     ROS_INFO_STREAM("Best guess transform is: \n" << final_transform << "\n");
 
     // TODO: Display transform (applied to centroid of points?)
     // TODO: Need to project 3D into the image...
-    // cv::Mat disp_img;
-    // frame.copyTo(disp_img);
-    // cv::line(disp_img, tracks[best_support[0]].point2D_,
-    // cv::imshow("Estimated transform," disp_img);
+    cv::Mat disp_img;
+    frame.copyTo(disp_img);
+    for (unsigned int i = 0; i < best_support.size(); ++i)
+    {
+      int idx = best_support[i];
+      cv::circle(disp_img, tracks[idx].point2D_, 4, cv::Scalar(0,0,255));
+    }
+    cv::imshow("Support Points", disp_img);
     return final_transform;
   }
 
@@ -586,6 +597,10 @@ class ObjectTracker25D
     in_frame.copyTo(disp_img);
     for (unsigned int i = 0; i < matches.size(); ++i)
     {
+      if (matches[i].point2D_.x < 0 || matches[i].point2D_.y < 0)
+      {
+        continue;
+      }
       cv::line(disp_img, matches[i].point2D_,
                matches[i].point2D_ + matches[i].delta2D_, cv::Scalar(0,255,0));
       cv::circle(disp_img, matches[i].point2D_, 4, cv::Scalar(0,255,0));
