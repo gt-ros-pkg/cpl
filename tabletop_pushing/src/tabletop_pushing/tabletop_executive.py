@@ -237,7 +237,7 @@ class TabletopExecutive:
                     for push_opt in push_options:
                         code_in = raw_input('Reset obj and press <Enter>: ')
                         if code_in.startswith('q'):
-                            return
+                            return False
                         push_vector_res = self.request_learning_push(push_angle,
                                                                      push_dist)
                         res = self.learning_trial(arm, int(push_opt), high_init,
