@@ -266,6 +266,19 @@ class ObjectTracker25D
 
     Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
     // TODO: Return the correct model we want (2D vector?) IN which frame?
+    float x_dot = transform(0,3);
+    float y_dot = transform(1,3);
+    // TODO: Get this rotation
+    float tr_a = (transform(0,0)+transform(1,1)+transform(2,2));
+    float theta_dot = std::acos((tr_a - 1.0)/2.0);
+    ROS_INFO_STREAM("(x_dot, y_dot, theta_dot) = (" << x_dot << ", " <<
+                    y_dot << ", " << theta_dot << ")");
+    cv::Mat vector_frame;
+    in_frame.copyTo(vector_frame);
+    cv::Point img_center(vector_frame.cols/2, vector_frame.rows/2);
+    cv::Point line_end(img_center.x+x_dot, img_center.y+y_dot);
+    cv::line(vector_frame, img_center, line_end, cv::Scalar(0,255,0));
+    cv::imshow("Object motion vector", vector_frame);
     // TODO: add more from the set of all features based on movement
     // Update model
     cur_obj_keys_ = obj_matches;
