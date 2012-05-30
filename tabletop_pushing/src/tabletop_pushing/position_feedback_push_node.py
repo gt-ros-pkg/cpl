@@ -308,7 +308,7 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Succeeded in pointing head')
             return True
         else:
-            rospy.loginfo('Failed to point head')
+            rospy.logwarn('Failed to point head')
             return False
 
     def init_spine_pose(self):
