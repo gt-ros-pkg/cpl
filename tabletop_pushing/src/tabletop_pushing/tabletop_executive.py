@@ -243,7 +243,7 @@ class TabletopExecutive:
     def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0,
                                   rand_angle=True):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        # push_options = [GRIPPER_SWEEP]
+        # push_options = [OVERHEAD_PUSH]
         arms = ['l', 'r']
         # high_inits = [True, False]
         high_inits = [True]
@@ -594,7 +594,7 @@ if __name__ == '__main__':
     num_trials = 4
     push_dist = 0.15 # meters
     push_angle = 0.25*pi # radians
-    rand_angle = False
+    rand_angle = True
     max_pushes = 50
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:

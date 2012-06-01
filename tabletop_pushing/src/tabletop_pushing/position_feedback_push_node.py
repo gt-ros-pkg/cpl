@@ -152,12 +152,15 @@ class PositionFeedbackPushNode:
         else:
             self.base_cart_controller_name = '_cart_transpose_push'
             self.controller_state_msg = JTTaskControllerState
+        self.base_vel_controller_name = '_cart_jinv_push'
+        self.vel_controller_state_msg = JinvTeleopControllerState
 
         # Set joint gains
         self.arm_mode = None
         self.cs = ControllerSwitcher()
         self.init_joint_controllers()
         self.init_cart_controllers()
+        self.init_vel_controllers()
 
         # Setup arms
         self.tf_listener = tf.TransformListener()
@@ -176,9 +179,15 @@ class PositionFeedbackPushNode:
             '/r'+self.base_cart_controller_name+'/command_posture',
             Float64MultiArray)
         self.l_arm_cart_vel_pub = rospy.Publisher(
-            '/l'+self.base_cart_controller_name+'/command_twist', PoseStamped)
+            '/l'+self.base_vel_controller_name+'/command_twist', TwistStamped)
         self.r_arm_cart_vel_pub = rospy.Publisher(
-            '/r'+self.base_cart_controller_name+'/command_twist', PoseStamped)
+            '/r'+self.base_vel_controller_name+'/command_twist', TwistStamped)
+        self.l_arm_vel_posture_pub = rospy.Publisher(
+            '/l'+self.base_vel_controller_name+'/command_posture',
+            Float64MultiArray)
+        self.r_arm_vel_posture_pub = rospy.Publisher(
+            '/r'+self.base_vel_controller_name+'/command_posture',
+            Float64MultiArray)
 
         rospy.Subscriber('/l'+self.base_cart_controller_name+'/state',
                          self.controller_state_msg,
@@ -186,6 +195,14 @@ class PositionFeedbackPushNode:
         rospy.Subscriber('/r'+self.base_cart_controller_name+'/state',
                          self.controller_state_msg,
                          self.r_arm_cart_state_callback)
+
+        # TODO: setup velocity controller callback methods
+        # rospy.Subscriber('/l'+self.base_vel_controller_name+'/state',
+        #                  self.vel_controller_state_msg,
+        #                  self.l_arm_vel_state_callback)
+        # rospy.Subscriber('/r'+self.base_vel_controller_name+'/state',
+        #                  self.vel_controller_state_msg,
+        #                  self.r_arm_vel_state_callback)
 
         self.l_pressure_listener = pl.PressureListener(
             '/pressure/l_gripper_motor', self.pressure_safety_limit)
@@ -392,6 +409,8 @@ class PositionFeedbackPushNode:
             rospy.logdebug('Done moving to overhead start point')
             # Change z to lower arm to table
             start_pose.pose.position.z = start_point.z
+            # self.move_down_until_contact(which_arm)
+
         # Move to start pose
         self.move_to_cart_pose(start_pose, which_arm,
                                self.pre_push_count_thresh)
@@ -524,6 +543,8 @@ class PositionFeedbackPushNode:
             rospy.logdebug('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
+            # self.move_down_until_contact(which_arm)
+
         self.move_to_cart_pose(start_pose, which_arm,
                                self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
@@ -651,6 +672,7 @@ class PositionFeedbackPushNode:
             rospy.logdebug('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
+            # self.move_down_until_contact(which_arm)
 
         # Move to offset pose
         self.move_to_cart_pose(start_pose, which_arm,
@@ -788,7 +810,7 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Succeeded in pointing head')
             response.head_succeeded = True
         else:
-            rospy.loginfo('Failed to point head')
+            rospy.logwarn('Failed to point head')
             response.head_succeeded = False
         return response
 
@@ -1035,23 +1057,43 @@ class PositionFeedbackPushNode:
         else:
             self.r_arm_cart_pub.publish(self.r_arm_pose)
 
-    def move_till_contact(self, twist, which_arm,
+    def move_down_until_contact(self, which_arm, pressure=1000):
+        rospy.loginfo('Moving down!')
+        down_twist = TwistStamped()
+        down_twist.header.stamp = rospy.Time(0)
+        down_twist.header.frame_id = '/torso_lift_link'
+        down_twist.twist.linear.x = 0.0
+        down_twist.twist.linear.y = 0.0
+        down_twist.twist.linear.z = -0.1
+        down_twist.twist.angular.x = 0.0
+        down_twist.twist.angular.y = 0.0
+        down_twist.twist.angular.z = 0.0
+        return self.move_until_contact(down_twist, which_arm)
+
+
+    def move_until_contact(self, twist, which_arm,
                           done_moving_count_thresh=None, pressure=1000):
-        self.switch_to_cart_controllers()
+        self.switch_to_vel_controllers()
         if which_arm == 'l':
-            self.l_arm_cart_vel_pub.publish(twist)
-            posture_pub = self.l_arm_cart_posture_pub
+            vel_pub = self.l_arm_cart_vel_pub
+            posture_pub = self.l_arm_vel_posture_pub
             pl = self.l_pressure_listener
         else:
-            self.r_arm_cart_vel_pub.publish(twist)
-            posture_pub = self.r_arm_cart_posture_pub
+            vel_pub = self.r_arm_cart_vel_pub
+            posture_pub = self.r_arm_vel_posture_pub
             pl = self.r_pressure_listener
 
         arm_not_moving_count = 0
         r = rospy.Rate(self.move_cart_check_hz)
         pl.rezero()
         pl.set_threshold(pressure)
-        while arm_not_moving_count < done_moving_count_thresh:
+        rospy.Time()
+        timeout = 5
+        timeout_at = rospy.get_time() + timeout
+
+        while timeout_at > rospy.get_time():
+            twist.header.stamp = rospy.Time(0)
+            vel_pub.publish(twist)
             if not self.arm_moving_cart(which_arm):
                 arm_not_moving_count += 1
             else:
@@ -1070,10 +1112,15 @@ class PositionFeedbackPushNode:
 
         # Return pose error
         stop_twist = TwistStamped()
-        if which_arm == 'l':
-            self.l_arm_cart_vel_pub.publish(stop_twist)
-        else:
-            self.r_arm_cart_vel_pub.publish(stop_twist)
+        stop_twist.header.stamp = rospy.Time(0)
+        stop_twist.header.frame_id = '/torso_lift_link'
+        stop_twist.twist.linear.x = 0.0
+        stop_twist.twist.linear.y = 0.0
+        stop_twist.twist.linear.z = 0.0
+        stop_twist.twist.angular.x = 0.0
+        stop_twist.twist.angular.y = 0.0
+        stop_twist.twist.angular.z = 0.0
+        vel_pub.publish(stop_twist)
         return
 
 
@@ -1137,6 +1184,13 @@ class PositionFeedbackPushNode:
 
         rospy.sleep(self.post_controller_switch_sleep)
 
+    def init_vel_controllers(self):
+        self.arm_mode = 'vel_mode'
+        self.cs.carefree_switch('r', '%s'+self.base_vel_controller_name,
+                                '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+        self.cs.carefree_switch('l', '%s'+self.base_vel_controller_name,
+                                '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+
     def switch_to_cart_controllers(self):
         if self.arm_mode != 'cart_mode':
             self.cs.carefree_switch('r', '%s'+self.base_cart_controller_name)
@@ -1149,6 +1203,13 @@ class PositionFeedbackPushNode:
             self.cs.carefree_switch('r', '%s_arm_controller')
             self.cs.carefree_switch('l', '%s_arm_controller')
             self.arm_mode = 'joint_mode'
+            rospy.sleep(self.post_controller_switch_sleep)
+
+    def switch_to_vel_controllers(self):
+        if self.arm_mode != 'vel_mode':
+            self.cs.carefree_switch('r', '%s'+self.base_vel_controller_name)
+            self.cs.carefree_switch('l', '%s'+self.base_vel_controller_name)
+            self.arm_mode = 'vel_mode'
             rospy.sleep(self.post_controller_switch_sleep)
 
     #
