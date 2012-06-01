@@ -245,8 +245,8 @@ class TabletopExecutive:
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         # push_options = [GRIPPER_SWEEP]
         arms = ['l', 'r']
-        high_inits = [True, False]
-        # high_inits = [True]
+        # high_inits = [True, False]
+        high_inits = [True]
         push_angle_in = push_angle
         for t in xrange(num_trials):
             # xpush_angle = push_angle_in + pi*float(t)/num_trials - 0.5*pi

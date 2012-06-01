@@ -37,7 +37,7 @@ import hrl_pr2_lib.pr2 as pr2
 import hrl_pr2_lib.pressure_listener as pl
 import hrl_lib.tf_utils as tfu
 from hrl_pr2_arms.pr2_controller_switcher import ControllerSwitcher
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from std_msgs.msg import Float64MultiArray
 from pr2_controllers_msgs.msg import *
 from pr2_manipulation_controllers.msg import *
@@ -175,6 +175,10 @@ class PositionFeedbackPushNode:
         self.r_arm_cart_posture_pub = rospy.Publisher(
             '/r'+self.base_cart_controller_name+'/command_posture',
             Float64MultiArray)
+        self.l_arm_cart_vel_pub = rospy.Publisher(
+            '/l'+self.base_cart_controller_name+'/command_twist', PoseStamped)
+        self.r_arm_cart_vel_pub = rospy.Publisher(
+            '/r'+self.base_cart_controller_name+'/command_twist', PoseStamped)
 
         rospy.Subscriber('/l'+self.base_cart_controller_name+'/state',
                          self.controller_state_msg,
@@ -1030,6 +1034,48 @@ class PositionFeedbackPushNode:
             self.l_arm_cart_pub.publish(self.l_arm_pose)
         else:
             self.r_arm_cart_pub.publish(self.r_arm_pose)
+
+    def move_till_contact(self, twist, which_arm,
+                          done_moving_count_thresh=None, pressure=1000):
+        self.switch_to_cart_controllers()
+        if which_arm == 'l':
+            self.l_arm_cart_vel_pub.publish(twist)
+            posture_pub = self.l_arm_cart_posture_pub
+            pl = self.l_pressure_listener
+        else:
+            self.r_arm_cart_vel_pub.publish(twist)
+            posture_pub = self.r_arm_cart_posture_pub
+            pl = self.r_pressure_listener
+
+        arm_not_moving_count = 0
+        r = rospy.Rate(self.move_cart_check_hz)
+        pl.rezero()
+        pl.set_threshold(pressure)
+        while arm_not_moving_count < done_moving_count_thresh:
+            if not self.arm_moving_cart(which_arm):
+                arm_not_moving_count += 1
+            else:
+                arm_not_moving_count = 0
+            # Command posture
+            m = self.get_desired_posture(which_arm)
+            posture_pub.publish(m)
+
+            if pl.check_safety_threshold():
+                rospy.loginfo('Exceeded pressure safety thresh!\n')
+                break
+            if pl.check_threshold():
+                rospy.loginfo('Exceeded pressure contact thresh...')
+                break
+            r.sleep()
+
+        # Return pose error
+        stop_twist = TwistStamped()
+        if which_arm == 'l':
+            self.l_arm_cart_vel_pub.publish(stop_twist)
+        else:
+            self.r_arm_cart_vel_pub.publish(stop_twist)
+        return
+
 
     def get_desired_posture(self, which_arm):
         if which_arm == 'l':
