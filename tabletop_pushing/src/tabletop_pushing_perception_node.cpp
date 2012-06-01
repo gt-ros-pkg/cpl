@@ -486,7 +486,9 @@ class ObjectTracker25D
     }
 
     // Estimate final transform with least squares (SVD)
-    // ROS_INFO_STREAM("Number of support pts is: " << best_support.size());
+    // ROS_INFO_STREAM("Number of support pts is: " << best_support.size()
+    //                 << " / " << tracks.size());
+
     Eigen::Matrix4f final_transform = estimateTransform(previous_pts,
                                                         current_pts,
                                                         best_support,
