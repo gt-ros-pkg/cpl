@@ -72,26 +72,20 @@ class TabletopExecutive:
 
         # TODO: Replace these parameters with learned / perceived values
         # The offsets should be removed and learned implicitly
-        self.gripper_x_offset = rospy.get_param('~gripper_push_start_x_offset',
-                                                -0.03)
-        self.gripper_y_offset = rospy.get_param('~gripper_push_start_x_offset',
-                                                0.0)
+        self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist',
+                                                   0.05)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z',
-                                                -0.22)
+                                               -0.25)
 
-        self.sweep_x_offset = rospy.get_param('~gripper_sweep_start_x_offset',
-                                              0.0) # -0.03)
-        self.sweep_y_offset = rospy.get_param('~gripper_sweep_start_y_offset',
-                                              0.03)
+        self.sweep_offset_dist = rospy.get_param('~gripper_sweep_offset_dist',
+                                                 0.04)
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z',
-                                              -0.22)
+                                             -0.25)
 
-        self.overhead_x_offset = rospy.get_param('~overhead_push_start_x_offset',
-                                                 -0.02)
-        self.overhead_y_offset = rospy.get_param('~overhead_push_start_x_offset',
-                                                 0.00)
+        self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist',
+                                                    0.03)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.25)
+                                                 -0.27)
         self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
                                                 0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
@@ -249,11 +243,13 @@ class TabletopExecutive:
     def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0,
                                   rand_angle=True):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        push_options = [GRIPPER_PUSH]
+        # push_options = [GRIPPER_SWEEP]
         arms = ['l', 'r']
         high_inits = [True, False]
+        # high_inits = [True]
         push_angle_in = push_angle
         for t in xrange(num_trials):
+            # xpush_angle = push_angle_in + pi*float(t)/num_trials - 0.5*pi
             for high_init in high_inits:
                 for arm in arms:
                     # if arm == 'l':
@@ -442,12 +438,18 @@ class TabletopExecutive:
         push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += self.gripper_x_offset*cos(wrist_yaw)
-        push_req.start_point.point.y += self.gripper_x_offset*sin(wrist_yaw)
+        push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -self.gripper_offset_dist*sin(wrist_yaw)
         push_req.start_point.point.z = self.gripper_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
+
+
+        rospy.loginfo('Gripper push augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
 
         rospy.loginfo("Calling gripper pre push service")
         pre_push_res = self.gripper_pre_push_proxy(push_req)
@@ -465,26 +467,29 @@ class TabletopExecutive:
         # if sweep_req.left_arm:
         if push_vector.push_angle > 0:
             y_offset_dir = -1
-        else:
-            y_offset_dir = +1
-
-        # Correctly set the wrist yaw
-        if push_vector.push_angle > 0.0:
             wrist_yaw = push_vector.push_angle - pi/2
         else:
+            y_offset_dir = +1
             wrist_yaw = push_vector.push_angle + pi/2
+
         sweep_req.wrist_yaw = wrist_yaw
         sweep_req.desired_push_dist = -y_offset_dir*push_dist
 
         # Set offset in x y, based on distance
         sweep_req.start_point.header = push_vector.header
         sweep_req.start_point.point = push_vector.start_point
-        sweep_req.start_point.point.x += self.sweep_x_offset
-        sweep_req.start_point.point.y += y_offset_dir*self.sweep_y_offset
+        sweep_req.start_point.point.x += -self.sweep_offset_dist*sin(wrist_yaw)
+        sweep_req.start_point.point.y += y_offset_dir*self.sweep_offset_dist*cos(wrist_yaw)
         sweep_req.start_point.point.z = self.sweep_start_z
         sweep_req.arm_init = True
         sweep_req.arm_reset = True
         sweep_req.high_arm_init = high_init
+
+
+        rospy.loginfo('Sweep augmented start_point: (' +
+                      str(sweep_req.start_point.point.x) + ', ' +
+                      str(sweep_req.start_point.point.y) + ', ' +
+                      str(sweep_req.start_point.point.z) + ')')
 
         rospy.loginfo("Calling gripper pre sweep service")
         pre_sweep_res = self.gripper_pre_sweep_proxy(sweep_req)
@@ -508,12 +513,17 @@ class TabletopExecutive:
         push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += self.overhead_x_offset*cos(wrist_yaw)
-        push_req.start_point.point.y += self.overhead_x_offset*sin(wrist_yaw)
+        push_req.start_point.point.x += -self.overhead_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -self.overhead_offset_dist*sin(wrist_yaw)
         push_req.start_point.point.z = self.overhead_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
+
+        rospy.loginfo('Gripper push augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
 
         rospy.loginfo("Calling pre overhead push service")
         pre_push_res = self.overhead_pre_push_proxy(push_req)
@@ -581,12 +591,11 @@ if __name__ == '__main__':
     use_learning = True
     use_singulation = False
     use_guided = True
-    num_trials = 3
+    num_trials = 4
     push_dist = 0.15 # meters
-    push_angle = 0.0*pi # radians
+    push_angle = 0.25*pi # radians
     rand_angle = False
     max_pushes = 50
-    num_push_angles = 8
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)

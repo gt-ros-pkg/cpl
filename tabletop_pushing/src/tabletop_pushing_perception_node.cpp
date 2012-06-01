@@ -271,8 +271,8 @@ class ObjectTracker25D
     // TODO: Get this rotation
     float tr_a = (transform(0,0)+transform(1,1)+transform(2,2));
     float theta_dot = std::acos((tr_a - 1.0)/2.0);
-    ROS_INFO_STREAM("(x_dot, y_dot, theta_dot) = (" << x_dot << ", " <<
-                    y_dot << ", " << theta_dot << ")");
+    // ROS_INFO_STREAM("(x_dot, y_dot, theta_dot) = (" << x_dot << ", " <<
+    //                 y_dot << ", " << theta_dot << ")");
     cv::Mat vector_frame;
     in_frame.copyTo(vector_frame);
     cv::Point img_center(vector_frame.cols/2, vector_frame.rows/2);
@@ -486,12 +486,12 @@ class ObjectTracker25D
     }
 
     // Estimate final transform with least squares (SVD)
-    ROS_INFO_STREAM("Number of support pts is: " << best_support.size());
+    // ROS_INFO_STREAM("Number of support pts is: " << best_support.size());
     Eigen::Matrix4f final_transform = estimateTransform(previous_pts,
                                                         current_pts,
                                                         best_support,
                                                         best_support);
-    ROS_INFO_STREAM("Best guess transform is: \n" << final_transform << "\n");
+    // ROS_INFO_STREAM("Best guess transform is: \n" << final_transform << "\n");
 
     // TODO: Display transform (applied to centroid of points?)
     // TODO: Need to project 3D into the image...
