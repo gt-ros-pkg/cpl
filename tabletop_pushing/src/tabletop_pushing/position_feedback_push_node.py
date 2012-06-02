@@ -382,11 +382,13 @@ class PositionFeedbackPushNode:
             if request.high_arm_init:
                 ready_joints = LEFT_ARM_HIGH_PUSH_READY_JOINTS
             which_arm = 'l'
+            robot_gripper = self.robot.left_gripper
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_HIGH_PUSH_READY_JOINTS
             which_arm = 'r'
+            robot_gripper = self.robot.right_gripper
 
         if request.arm_init:
             self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
@@ -402,6 +404,10 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.y = q[1]
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
+
+        if request.open_gripper:
+            # TODO: open gripper
+            res = robot_gripper.open(block=True, position=0.05)
 
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
@@ -426,9 +432,11 @@ class PositionFeedbackPushNode:
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
             which_arm = 'l'
+            robot_gripper = self.robot.left_gripper
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
+            robot_gripper = self.robot.right_gripper
 
         # Retract in a straight line
         rospy.logdebug('Moving gripper up')
@@ -450,6 +458,10 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.y = q[1]
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
+
+        if request.open_gripper:
+            # TODO: Close gripper
+            res = robot_gripper.close(block=True)
 
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z

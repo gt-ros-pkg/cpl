@@ -424,13 +424,14 @@ class TabletopExecutive:
         raise_res = self.raise_and_look_proxy(raise_req)
 
     def gripper_push_object(self, push_dist, which_arm, push_vector,
-                            high_init=False):
+                            high_init=False, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
         push_req.arm_init = True
         push_req.arm_reset = True
+        push_req.open_gripper = open_gripper
 
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
@@ -593,8 +594,8 @@ if __name__ == '__main__':
     use_guided = True
     num_trials = 4
     push_dist = 0.15 # meters
-    push_angle = 0.25*pi # radians
-    rand_angle = True
+    push_angle = 0.0*pi # radians
+    rand_angle = False
     max_pushes = 50
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
