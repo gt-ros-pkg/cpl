@@ -80,6 +80,8 @@
 // tabletop_pushing
 #include <tabletop_pushing/LearnPush.h>
 #include <tabletop_pushing/LocateTable.h>
+#include <tabletop_pushing/PushTrackerState.h>
+#include <tabletop_pushing/PushTracking.h>
 #include <tabletop_pushing/point_cloud_segmentation.h>
 
 // STL
@@ -110,6 +112,7 @@ using boost::shared_ptr;
 using tabletop_pushing::LearnPush;
 using tabletop_pushing::LocateTable;
 using tabletop_pushing::PushVector;
+using tabletop_pushing::PushTracking;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
@@ -121,6 +124,7 @@ TransformEstimator;
 using tabletop_pushing::PointCloudSegmentation;
 using tabletop_pushing::ProtoObject;
 using tabletop_pushing::ProtoObjects;
+using tabletop_pushing::PushTrackerState;
 using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
 
@@ -224,7 +228,8 @@ class ObjectTracker25D
     upscale_ = std::pow(2,num_downsamples_);
   }
 
-  void initTracks(cv::Mat& in_frame, cv::Mat& obj_mask, XYZPointCloud& cloud)
+  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                              XYZPointCloud& cloud)
   {
     initialized_ = false;
     // Update current points and descriptors
@@ -239,15 +244,23 @@ class ObjectTracker25D
     // TODO: Create bounding box for volume estimation in tracking
     initialized_ = true;
     frame_count_ = 0;
+    PushTrackerState state;
+    state.header.seq = 0;
+    state.header.stamp = ros::Time::now();
+    state.header.frame_id = cloud.header.frame_id;
+    // TODO: Set object centroid
+    state.x_dot.x = 0.0;
+    state.x_dot.y = 0.0;
+    state.x_dot.theta = 0.0;
+    return state;
   }
 
-  Eigen::Matrix4f updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                               XYZPointCloud& cloud)
+  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                XYZPointCloud& cloud)
   {
     if (!initialized_)
     {
-      initTracks(in_frame, obj_mask, cloud);
-      return Eigen::Matrix4f::Identity();
+      return initTracks(in_frame, obj_mask, cloud);
     }
     prev_obj_keys_ = cur_obj_keys_;
     // Get current features
@@ -262,7 +275,6 @@ class ObjectTracker25D
     // KeyPoints all_matches = matchFeatures(extracted_points, prev_all_keys_);
     // prev_all_keys_ = cur_all_keys_;
     // drawMatches(in_frame, all_matches, "-all");
-
 
     Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
     // TODO: Return the correct model we want (2D vector?) IN which frame?
@@ -280,10 +292,22 @@ class ObjectTracker25D
     cv::line(vector_frame, img_center, line_end, cv::Scalar(0,255,0));
     cv::imshow("Object motion vector", vector_frame);
     // TODO: add more from the set of all features based on movement
+
     // Update model
     cur_obj_keys_ = obj_matches;
     frame_count_++;
-    return transform;
+
+    PushTrackerState state;
+    state.header.seq = frame_count_;
+    state.header.stamp = ros::Time::now();
+    state.header.frame_id = cloud.header.frame_id;
+    // TODO: Set object centroid
+    // TODO: Divide x_dot by time change...
+    state.x_dot.x = x_dot;
+    state.x_dot.y = y_dot;
+    state.x_dot.theta = theta_dot;
+
+    return state;
   }
 
   KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
@@ -628,7 +652,15 @@ class ObjectTracker25D
   //
   // Getters & Setters
   //
-  bool isInitialized() const { return initialized_;  }
+  bool isInitialized() const
+  {
+    return initialized_;
+  }
+
+  void stopTracking()
+  {
+    initialized_ = false;
+  }
 
   void setNumDownsamples(int num_downsamples)
   {
@@ -770,6 +802,11 @@ class TabletopPushingPerceptionNode
     table_location_server_ = n_.advertiseService(
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
+    push_tracking_server_ = n_.advertiseService(
+        "toggle_push_tracker", &TabletopPushingPerceptionNode::toggleTracker,
+        this);
+    tracker_state_pub_ = n_.advertise<PushTrackerState>("push_tracker_state",
+                                                        1000);
   }
 
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
@@ -866,15 +903,16 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized())
     {
-      obj_tracker_->updateTracks(cur_color_frame_, cur_workspace_mask_,
-                                 cur_point_cloud_);
+      PushTrackerState tracker_state = obj_tracker_->updateTracks(
+          cur_color_frame_, cur_workspace_mask_, cur_point_cloud_);
+      tracker_state_pub_.publish(tracker_state);
     }
 
     // Debug stuff
     if (autorun_pcl_segmentation_)
     {
       float rand_angle = randf()*2.0*M_PI-M_PI;
-      getPushVector(rand_angle, true);
+      getPushStartPose(rand_angle, true);
     }
 
     // Display junk
@@ -944,13 +982,13 @@ class TabletopPushingPerceptionNode
       }
       else
       {
-        res = getPushVector(req.push_angle, req.rand_angle);
+        res = getPushStartPose(req.push_angle, req.rand_angle);
         res.no_push = false;
       }
     }
     else
     {
-      ROS_ERROR_STREAM("Calling getPushVector prior to receiving sensor data.");
+      ROS_ERROR_STREAM("Calling getPushStartPose prior to receiving sensor data.");
       recording_input_ = false;
       res.no_push = true;
       return false;
@@ -958,7 +996,7 @@ class TabletopPushingPerceptionNode
     return true;
   }
 
-  LearnPush::Response getPushVector(double desired_push_angle, bool rand_angle)
+  LearnPush::Response getPushStartPose(double desired_push_angle, bool rand_angle)
   {
 
     // Segment objects
@@ -977,21 +1015,6 @@ class TabletopPushingPerceptionNode
         max_size = objs[i].cloud.size();
         chosen_idx = i;
       }
-    }
-
-
-
-    // if (!obj_tracker_->isInitialized())
-    {
-      // NOTE: disp_image has i+1 for object ids
-      cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
-      cv::Mat obj_mask;
-      cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
-      cv::dilate(obj_mask_raw, obj_mask, element);
-      cv::erode(obj_mask, obj_mask, element);
-      // cv::imshow("obj_mask: raw", obj_mask_raw);
-      // cv::imshow("obj_mask: closed", obj_mask);
-      obj_tracker_->initTracks(cur_color_frame_, obj_mask, cur_point_cloud_);
     }
 
     LearnPush::Response res;
@@ -1158,6 +1181,65 @@ class TabletopPushingPerceptionNode
 
     return res;
   }
+
+  PushTracking::Response startTracking()
+  {
+    // Segment objects
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
+    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+        objs, cur_color_frame_.size(), workspace_frame_);
+    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
+
+    // Assume we care about the biggest currently
+    int chosen_idx = 0;
+    int max_size = 0;
+    for (unsigned int i = 0; i < objs.size(); ++i)
+    {
+      if (objs[i].cloud.size() > max_size)
+      {
+        max_size = objs[i].cloud.size();
+        chosen_idx = i;
+      }
+    }
+
+    // NOTE: disp_image has i+1 for object ids
+    cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
+    cv::Mat obj_mask;
+    cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
+    cv::dilate(obj_mask_raw, obj_mask, element);
+    cv::erode(obj_mask, obj_mask, element);
+    // cv::imshow("obj_mask: raw", obj_mask_raw);
+    // cv::imshow("obj_mask: closed", obj_mask);
+    PushTrackerState tracker_state = obj_tracker_->initTracks(
+        cur_color_frame_, obj_mask, cur_point_cloud_);
+    tracker_state_pub_.publish(tracker_state);
+    PushTracking::Response res;
+    if (objs.size() == 0)
+    {
+      ROS_WARN_STREAM("No objects found");
+      res.obj_pose.x = 0.0;
+      res.obj_pose.y = 0.0;
+      res.obj_tracking = false;
+      return res;
+    }
+    res.obj_pose.x = objs[chosen_idx].centroid[0];
+    res.obj_pose.y = objs[chosen_idx].centroid[1];
+    res.obj_tracking = true;
+
+    ROS_INFO_STREAM("Found " << objs.size() << " objects.");
+    ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
+                    objs[chosen_idx].cloud.size() << " points");
+    return res;
+  }
+
+  PushTracking::Response stopTracking()
+  {
+    obj_tracker_->stopTracking();
+    PushTracking::Response res;
+    res.obj_tracking = false;
+    return res;
+  }
+
   /**
    * ROS Service callback method for determining the location of a table in the
    * scene
@@ -1189,6 +1271,25 @@ class TabletopPushingPerceptionNode
       res.found_table = false;
       return false;
     }
+    return true;
+  }
+
+  bool toggleTracker(PushTracking::Request& req, PushTracking::Response& res)
+  {
+    if (req.start_tracking && req.stop_tracking)
+    {
+      ROS_ERROR_STREAM("Tracker told to start and stop");
+      return false;
+    }
+    else if (req.start_tracking)
+    {
+      res = startTracking();
+    }
+    else if (req.stop_tracking)
+    {
+      res = stopTracking();
+    }
+    // else // nothing...?
     return true;
   }
 
@@ -1272,11 +1373,13 @@ class TabletopPushingPerceptionNode
   message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
+  ros::Publisher tracker_state_pub_;
   sensor_msgs::CameraInfo cam_info_;
   sensor_msgs::CvBridge bridge_;
   shared_ptr<tf::TransformListener> tf_;
   ros::ServiceServer push_pose_server_;
   ros::ServiceServer table_location_server_;
+  ros::ServiceServer push_tracking_server_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
   cv::Mat cur_workspace_mask_;
