@@ -93,6 +93,9 @@ class TabletopExecutive:
                                             -0.27)
         # Setup service proxies
         if not _OFFLINE:
+            # TODO: Link this correctly once it exists
+            self.gripper_feedback_push_proxy = rospy.ServiceProxy('gripper_push',
+                                                                  GripperPush)
             self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                          GripperPush)
             self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
@@ -578,6 +581,45 @@ class TabletopExecutive:
         push_res = self.overhead_pull_proxy(push_req)
         rospy.loginfo("Calling post overhead pull service")
         post_push_res = self.overhead_post_pull_proxy(push_req)
+
+
+    def gripper_feedback_push_object(self, push_dist, which_arm, push_vector,
+                                     high_init=False, open_gripper=False):
+        # Convert pose response to correct push request format
+        push_req = GripperPushRequest()
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
+        push_req.arm_init = True
+        push_req.arm_reset = True
+        push_req.open_gripper = open_gripper
+
+        # Use the sent wrist yaw
+        wrist_yaw = push_vector.push_angle
+        push_req.wrist_yaw = wrist_yaw
+        push_req.desired_push_dist = push_dist
+
+        # Offset pose to not hit the object immediately
+        push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -self.gripper_offset_dist*sin(wrist_yaw)
+        push_req.start_point.point.z = self.gripper_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+        push_req.high_arm_init = high_init
+
+
+        rospy.loginfo('Gripper push augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
+
+        rospy.loginfo("Calling gripper pre push service")
+        pre_push_res = self.gripper_pre_push_proxy(push_req)
+        # TODO: Need to have this push proxy and need to send goal_pose in
+        # push_request
+        rospy.loginfo("Calling gripper feedback push service")
+        push_res = self.gripper_feedback_push_proxy(push_req)
+        rospy.loginfo("Calling gripper post push service")
+        post_push_res = self.gripper_post_push_proxy(push_req)
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)

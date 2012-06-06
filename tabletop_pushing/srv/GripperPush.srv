@@ -7,5 +7,7 @@ bool arm_init
 bool arm_reset
 bool high_arm_init
 bool open_gripper
+geometry_msgs/Pose2D goal_pose
 ---
 float64 dist_pushed
+geometry_msgs/Pose2D goal_error
