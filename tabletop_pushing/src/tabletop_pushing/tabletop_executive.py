@@ -44,6 +44,7 @@ from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt
 import sys
 from push_learning import PushLearningIO, PushTrial
+from geometry_msgs.msg import Pose2D
 import time
 
 GRIPPER_PUSH = 0
@@ -241,7 +242,7 @@ class TabletopExecutive:
         return True
 
     def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0,
-                                  rand_angle=True):
+                                  rand_angle=True, goal_pose=None):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         # push_options = [OVERHEAD_PUSH]
         arms = ['l', 'r']
@@ -262,7 +263,8 @@ class TabletopExecutive:
                         while get_push:
                             push_vec = self.request_learning_push(push_angle,
                                                                   push_dist,
-                                                                  rand_angle)
+                                                                  rand_angle,
+                                                                  goal_pose)
                             if (push_vec.centroid.x == 0.0 and
                                 push_vec.centroid.y == 0.0 and
                                 push_vec.centroid.z == 0.0 or first):
@@ -347,13 +349,18 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_learning_push(self, push_angle, push_dist, rand_angle=False):
+    def request_learning_push(self, push_angle, push_dist, rand_angle=False,
+                              goal_pose=None):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
         push_vector_req.push_angle = push_angle
         push_vector_req.push_dist = push_dist
         push_vector_req.rand_angle = rand_angle
+        if goal_pose is not None:
+            push_vector_req.goal_pose = goal_pose
+            push_vector_req.use_goal_pose = True
+            push_vector_req.rand_angle = False
         rospy.loginfo("Calling learning push vector service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -601,6 +608,11 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
+        # TODO: add in desired pose here
+        goal_pose = Pose2D()
+        goal_pose.x = 0.8
+        goal_pose.y = 0.3
+        goal_pose.theta = 0.25*pi
         node.run_rand_learning_collect(num_trials, push_dist, push_angle,
-                                       rand_angle)
+                                       rand_angle, goal_pose)
         node.finish_learning()

@@ -3,6 +3,8 @@ bool analyze_previous
 float64 push_angle
 float64 push_dist
 bool rand_angle
+bool use_goal_pose
+geometry_msgs/Pose2D goal_pose
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Vector3 moved

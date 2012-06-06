@@ -95,6 +95,7 @@
 #include <math.h>
 #include <time.h> // for srand(time(NULL))
 #include <cstdlib> // for MAX_RAND
+#include <cmath>
 
 // Debugging IFDEFS
 #define DISPLAY_INPUT_COLOR 1
@@ -911,8 +912,11 @@ class TabletopPushingPerceptionNode
     // Debug stuff
     if (autorun_pcl_segmentation_)
     {
-      float rand_angle = randf()*2.0*M_PI-M_PI;
-      getPushStartPose(rand_angle, true);
+      LearnPush::Request req;
+      req.push_angle = randf()*2.0*M_PI-M_PI;
+      req.use_goal_pose = false;
+      req.rand_angle = false;
+      getPushStartPose(req);
     }
 
     // Display junk
@@ -982,7 +986,7 @@ class TabletopPushingPerceptionNode
       }
       else
       {
-        res = getPushStartPose(req.push_angle, req.rand_angle);
+        res = getPushStartPose(req);
         res.no_push = false;
       }
     }
@@ -996,8 +1000,10 @@ class TabletopPushingPerceptionNode
     return true;
   }
 
-  LearnPush::Response getPushStartPose(double desired_push_angle, bool rand_angle)
+  LearnPush::Response getPushStartPose(LearnPush::Request& req)
   {
+    bool rand_angle = req.rand_angle;
+    double desired_push_angle = req.push_angle;
 
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
@@ -1038,6 +1044,13 @@ class TabletopPushingPerceptionNode
     {
       // desired_push_angle = randf()*2.0*M_PI-M_PI;
       desired_push_angle = randf()*M_PI-0.5*M_PI;
+    }
+
+    // Get straight line from current location to goal pose as start
+    if (req.use_goal_pose)
+    {
+      desired_push_angle = atan2(req.goal_pose.y - res.centroid.y,
+                                 req.goal_pose.x - res.centroid.x);
     }
 
     // Set basic push information
@@ -1125,8 +1138,16 @@ class TabletopPushingPerceptionNode
     p.start_point.z = intersection.at(start_idx).z;
 
     // Get push distance
-    p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(
-        intersection.at(start_idx), intersection.at(end_idx)));
+    if (req.use_goal_pose)
+    {
+      p.push_dist = hypot(res.centroid.x - req.goal_pose.x,
+                          res.centroid.y - req.goal_pose.y);
+    }
+    else
+    {
+      p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(
+          intersection.at(start_idx), intersection.at(end_idx)));
+    }
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
     callback_count_++;
