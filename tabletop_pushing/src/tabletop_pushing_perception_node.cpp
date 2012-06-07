@@ -36,6 +36,7 @@
 
 #include <std_msgs/Header.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Pose2D.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -116,6 +117,7 @@ using tabletop_pushing::PushVector;
 using tabletop_pushing::PushTracking;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
+using geometry_msgs::Pose2D;
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
@@ -249,10 +251,11 @@ class ObjectTracker25D
     state.header.seq = 0;
     state.header.stamp = ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
-    // TODO: Set object centroid
+    state.x = estimateCentroid(init_obj_keys_);
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
+    previous_time_ = state.header.stamp.toSec();
     return state;
   }
 
@@ -278,37 +281,61 @@ class ObjectTracker25D
     // drawMatches(in_frame, all_matches, "-all");
 
     Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
-    // TODO: Return the correct model we want (2D vector?) IN which frame?
-    float x_dot = transform(0,3);
-    float y_dot = transform(1,3);
-    // TODO: Get this rotation
+
+    float delta_x = transform(0,3);
+    float delta_y = transform(1,3);
     float tr_a = (transform(0,0)+transform(1,1)+transform(2,2));
-    float theta_dot = std::acos((tr_a - 1.0)/2.0);
-    // ROS_INFO_STREAM("(x_dot, y_dot, theta_dot) = (" << x_dot << ", " <<
-    //                 y_dot << ", " << theta_dot << ")");
-    cv::Mat vector_frame;
-    in_frame.copyTo(vector_frame);
-    cv::Point img_center(vector_frame.cols/2, vector_frame.rows/2);
-    cv::Point line_end(img_center.x+x_dot, img_center.y+y_dot);
-    cv::line(vector_frame, img_center, line_end, cv::Scalar(0,255,0));
-    cv::imshow("Object motion vector", vector_frame);
-    // TODO: add more from the set of all features based on movement
+    float delta_theta = std::acos((tr_a - 1.0)/2.0);
 
     // Update model
-    cur_obj_keys_ = obj_matches;
-    frame_count_++;
 
     PushTrackerState state;
     state.header.seq = frame_count_;
     state.header.stamp = ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
+
     // TODO: Set object centroid
-    // TODO: Divide x_dot by time change...
-    state.x_dot.x = x_dot;
-    state.x_dot.y = y_dot;
-    state.x_dot.theta = theta_dot;
+    state.x = estimateCentroid(obj_matches);
+
+    // Convert delta_x to x_dot
+    double delta_t = state.header.stamp.toSec() - previous_time_;
+    state.x_dot.x = delta_x/delta_t;
+    state.x_dot.y = delta_y/delta_t;
+    state.x_dot.theta = delta_theta/delta_t;
+    previous_time_ = state.header.stamp.toSec();
+    cur_obj_keys_ = obj_matches;
+    frame_count_++;
+
+    ROS_INFO_STREAM("x: (" << state.x << ")");
+    ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
 
     return state;
+  }
+
+  Pose2D estimateCentroid(KeyPoints& points)
+  {
+    Pose2D centroid;
+    centroid.x = 0.0;
+    centroid.y = 0.0;
+    centroid.theta = 0.0;
+    if (points.size() < 1)
+    {
+      return centroid;
+    }
+    for (unsigned int i; i < points.size(); ++i)
+    {
+      if (isnan(points[i].point3D_.x) || isnan(points[i].point3D_.x))
+      {
+        continue;
+      }
+      centroid.x += points[i].point3D_.x;
+      centroid.y += points[i].point3D_.x;
+    }
+
+    centroid.x /= points.size();
+    centroid.y /= points.size();
+    // TODO: Estimate theta somehow...
+    return centroid;
   }
 
   KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
@@ -686,6 +713,7 @@ class ObjectTracker25D
   int max_ransac_iter_;
   double sufficient_support_percent_;
   double support_dist_thresh_;
+  double previous_time_;
 };
 
 class TabletopPushingPerceptionNode
