@@ -96,6 +96,8 @@ class TabletopExecutive:
             # TODO: Link this correctly once it exists
             self.gripper_feedback_push_proxy = rospy.ServiceProxy('gripper_push',
                                                                   GripperPush)
+            self.gripper_post_feedback_push_proxy = rospy.ServiceProxy(
+                'gripper_post_push', GripperPush)
             self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                          GripperPush)
             self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
@@ -619,7 +621,7 @@ class TabletopExecutive:
         rospy.loginfo("Calling gripper feedback push service")
         push_res = self.gripper_feedback_push_proxy(push_req)
         rospy.loginfo("Calling gripper post push service")
-        post_push_res = self.gripper_post_push_proxy(push_req)
+        post_push_res = self.gripper_post_feedback_push_proxy(push_req)
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)
