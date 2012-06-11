@@ -129,6 +129,8 @@ using tabletop_pushing::ProtoObjects;
 using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
 typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
+typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
+typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
 typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
 
 struct Tracker25DKeyPoint
@@ -790,6 +792,8 @@ class TabletopPushingPerceptionNode
     n_private_.param("obj_tracker_max_ransac_iter", max_ransac_iter, 100);
     n_private_.param("obj_tracker_ransac_support_percent", support_percent, 0.7);
     n_private_.param("obj_tracker_ransac_dist_thresh", support_dist, 0.03);
+    n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.01);
+    n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -807,8 +811,7 @@ class TabletopPushingPerceptionNode
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
 
-    // TODO: Setup actionlib server
-    //register the goal and feeback callbacks
+    // Setup push tracking action server
     as_.registerGoalCallback(
         boost::bind(&TabletopPushingPerceptionNode::pushTrackerGoalCB, this));
     as_.registerPreemptCallback(
@@ -912,13 +915,25 @@ class TabletopPushingPerceptionNode
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
           cur_color_frame_, cur_workspace_mask_, cur_point_cloud_);
+      as_.publishFeedback(tracker_state);
+
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
-        // TODO: publish feedback here
-        // TODO: Check for goal conditions
-        // TODO: Check for cancelled stuff...
-        // as_.setSucceded(result);
+        // Check for goal conditions
+        float x_dist = abs(tracker_goal_pose_.x - tracker_state.x.x);
+        float y_dist = abs(tracker_goal_pose_.y - tracker_state.x.y);
+        // TODO: Make sub1/2pi diff
+        float theta_dist = abs(tracker_goal_pose_.theta - tracker_state.x.theta);
+        if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_ &&
+            theta_dist < tracker_angle_thresh_)
+        {
+          PushTrackerResult res;
+          as_.setSucceeded(res);
+        }
+        else
+        {
+        }
       }
     }
 
@@ -1216,7 +1231,7 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  Pose2D startTracking()
+  bool startTracking()
   {
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
@@ -1252,7 +1267,7 @@ class TabletopPushingPerceptionNode
       ROS_WARN_STREAM("No objects found");
       obj_pose.x = 0.0;
       obj_pose.y = 0.0;
-      return obj_pose;
+      return false;
     }
     obj_pose.x = objs[chosen_idx].centroid[0];
     obj_pose.y = objs[chosen_idx].centroid[1];
@@ -1260,7 +1275,7 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
-    return obj_pose;
+    return true;
   }
 
   bool stopTracking()
@@ -1272,10 +1287,25 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
+    bool obj_tracking = startTracking();
+    if (!obj_tracking)
+    {
+      ROS_WARN_STREAM("Nothing to track. Push tracking aborted.");
+      as_.setAborted();
+      return;
+    }
+    boost::shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
+    // TODO: Transform into workspace frame...
+    tracker_goal_pose_ = tracker_goal->desired_pose;
+    pushing_arm_ = tracker_goal->which_arm;
   }
 
   void pushTrackerPreemptCB()
   {
+    bool obj_tracking = stopTracking();
+    ROS_INFO_STREAM("Preempted push tracker");
+    // set the action state to preempted
+    as_.setPreempted();
   }
 
   /**
@@ -1435,6 +1465,10 @@ class TabletopPushingPerceptionNode
   int callback_count_;
   Eigen::Vector4f prev_centroid_;
   shared_ptr<ObjectTracker25D> obj_tracker_;
+  Pose2D tracker_goal_pose_;
+  std::string pushing_arm_;
+  double tracker_dist_thresh_;
+  double tracker_angle_thresh_;
 };
 
 int main(int argc, char ** argv)

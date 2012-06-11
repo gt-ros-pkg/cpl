@@ -44,6 +44,7 @@ from pr2_manipulation_controllers.msg import *
 import tf
 import numpy as np
 from tabletop_pushing.srv import *
+from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt
 import sys
 
@@ -364,7 +365,7 @@ class PositionFeedbackPushNode:
         # TODO: Setup feedback callback method
         # TODO: Feedback callback is for moving the arm based on tracker output
         self.active_arm = which_arm
-        ac = simple_action_clinet.SimpleActionClient()
+        ac = actionlib.SimpleActionClient('push_tracker', VisFeedbackPushTrackingAction)
         done_cb = None
         active_cb = None
         feedback_cb = self.tracker_feedback_gripper_push
@@ -376,7 +377,8 @@ class PositionFeedbackPushNode:
         return response
 
     def tracker_feedback_gripper_push(self, feedback):
-        pass
+        rospy.loginfo('Got feedback from push tracker')
+        rosppy.loginfo('Active arm is: ' + self.active_arm)
 
     def gripper_push(self, request):
         response = GripperPushResponse()
