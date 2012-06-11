@@ -46,6 +46,7 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <cv_bridge/CvBridge.h>
+#include <actionlib/server/simple_action_server.h>
 
 // TF
 #include <tf/transform_listener.h>
@@ -81,9 +82,8 @@
 // tabletop_pushing
 #include <tabletop_pushing/LearnPush.h>
 #include <tabletop_pushing/LocateTable.h>
-#include <tabletop_pushing/PushTrackerState.h>
-#include <tabletop_pushing/PushTracking.h>
 #include <tabletop_pushing/point_cloud_segmentation.h>
+#include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
 
 // STL
 #include <vector>
@@ -114,7 +114,6 @@ using boost::shared_ptr;
 using tabletop_pushing::LearnPush;
 using tabletop_pushing::LocateTable;
 using tabletop_pushing::PushVector;
-using tabletop_pushing::PushTracking;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
@@ -127,35 +126,10 @@ TransformEstimator;
 using tabletop_pushing::PointCloudSegmentation;
 using tabletop_pushing::ProtoObject;
 using tabletop_pushing::ProtoObjects;
-using tabletop_pushing::PushTrackerState;
 using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
-
-class ObjectPushLearning
-{
- public:
-  ObjectPushLearning()
-  {
-  }
-
-  void getObjectDistances()
-  {
-    // TODO: Pass in some representation of the object geometry for shape
-    // context
-    // TODO: call shape context code here.
-  }
-
-  void estimatePushDynamics()
-  {
-    // TODO: Have a function to estimate the simple dynamics of the model
-  }
-
-  void estimatePushError()
-  {
-    // TODO: Have a function to estimate the learned deviation function from the
-    // model
-  }
-};
+typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
+typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
 
 struct Tracker25DKeyPoint
 {
@@ -725,6 +699,7 @@ class TabletopPushingPerceptionNode
       depth_sub_(n, "depth_image_topic", 1),
       cloud_sub_(n, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
+      as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       callback_count_(0)
@@ -831,11 +806,14 @@ class TabletopPushingPerceptionNode
     table_location_server_ = n_.advertiseService(
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
-    push_tracking_server_ = n_.advertiseService(
-        "toggle_push_tracker", &TabletopPushingPerceptionNode::toggleTracker,
-        this);
-    tracker_state_pub_ = n_.advertise<PushTrackerState>("push_tracker_state",
-                                                        1000);
+
+    // TODO: Setup actionlib server
+    //register the goal and feeback callbacks
+    as_.registerGoalCallback(
+        boost::bind(&TabletopPushingPerceptionNode::pushTrackerGoalCB, this));
+    as_.registerPreemptCallback(
+        boost::bind(&TabletopPushingPerceptionNode::pushTrackerPreemptCB,this));
+    as_.start();
   }
 
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
@@ -934,7 +912,14 @@ class TabletopPushingPerceptionNode
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
           cur_color_frame_, cur_workspace_mask_, cur_point_cloud_);
-      tracker_state_pub_.publish(tracker_state);
+      // make sure that the action hasn't been canceled
+      if (as_.isActive())
+      {
+        // TODO: publish feedback here
+        // TODO: Check for goal conditions
+        // TODO: Check for cancelled stuff...
+        // as_.setSucceded(result);
+      }
     }
 
     // Debug stuff
@@ -1041,7 +1026,7 @@ class TabletopPushingPerceptionNode
 
     // Assume we care about the biggest currently
     int chosen_idx = 0;
-    int max_size = 0;
+    unsigned int max_size = 0;
     for (unsigned int i = 0; i < objs.size(); ++i)
     {
       if (objs[i].cloud.size() > max_size)
@@ -1198,7 +1183,7 @@ class TabletopPushingPerceptionNode
 
     // Assume we care about the biggest currently
     int chosen_idx = 0;
-    int max_size = 0;
+    unsigned int max_size = 0;
     for (unsigned int i = 0; i < objs.size(); ++i)
     {
       if (objs[i].cloud.size() > max_size)
@@ -1231,7 +1216,7 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  PushTracking::Response startTracking()
+  Pose2D startTracking()
   {
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
@@ -1241,7 +1226,7 @@ class TabletopPushingPerceptionNode
 
     // Assume we care about the biggest currently
     int chosen_idx = 0;
-    int max_size = 0;
+    unsigned int max_size = 0;
     for (unsigned int i = 0; i < objs.size(); ++i)
     {
       if (objs[i].cloud.size() > max_size)
@@ -1261,32 +1246,36 @@ class TabletopPushingPerceptionNode
     // cv::imshow("obj_mask: closed", obj_mask);
     PushTrackerState tracker_state = obj_tracker_->initTracks(
         cur_color_frame_, obj_mask, cur_point_cloud_);
-    tracker_state_pub_.publish(tracker_state);
-    PushTracking::Response res;
+    Pose2D obj_pose;
     if (objs.size() == 0)
     {
       ROS_WARN_STREAM("No objects found");
-      res.obj_pose.x = 0.0;
-      res.obj_pose.y = 0.0;
-      res.obj_tracking = false;
-      return res;
+      obj_pose.x = 0.0;
+      obj_pose.y = 0.0;
+      return obj_pose;
     }
-    res.obj_pose.x = objs[chosen_idx].centroid[0];
-    res.obj_pose.y = objs[chosen_idx].centroid[1];
-    res.obj_tracking = true;
+    obj_pose.x = objs[chosen_idx].centroid[0];
+    obj_pose.y = objs[chosen_idx].centroid[1];
 
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
-    return res;
+    return obj_pose;
   }
 
-  PushTracking::Response stopTracking()
+  bool stopTracking()
   {
     obj_tracker_->stopTracking();
-    PushTracking::Response res;
-    res.obj_tracking = false;
-    return res;
+    bool obj_tracking = false;
+    return obj_tracking;
+  }
+
+  void pushTrackerGoalCB()
+  {
+  }
+
+  void pushTrackerPreemptCB()
+  {
   }
 
   /**
@@ -1320,25 +1309,6 @@ class TabletopPushingPerceptionNode
       res.found_table = false;
       return false;
     }
-    return true;
-  }
-
-  bool toggleTracker(PushTracking::Request& req, PushTracking::Response& res)
-  {
-    if (req.start_tracking && req.stop_tracking)
-    {
-      ROS_ERROR_STREAM("Tracker told to start and stop");
-      return false;
-    }
-    else if (req.start_tracking)
-    {
-      res = startTracking();
-    }
-    else if (req.stop_tracking)
-    {
-      res = stopTracking();
-    }
-    // else // nothing...?
     return true;
   }
 
@@ -1422,13 +1392,12 @@ class TabletopPushingPerceptionNode
   message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
-  ros::Publisher tracker_state_pub_;
   sensor_msgs::CameraInfo cam_info_;
   sensor_msgs::CvBridge bridge_;
   shared_ptr<tf::TransformListener> tf_;
   ros::ServiceServer push_pose_server_;
   ros::ServiceServer table_location_server_;
-  ros::ServiceServer push_tracking_server_;
+  actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
   cv::Mat cur_workspace_mask_;

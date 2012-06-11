@@ -222,6 +222,8 @@ class PositionFeedbackPushNode:
         self.r_arm_F = None
 
         # Open callback services
+        self.gripper_feedback_push_srv = rospy.Service(
+            'gripper_feedback_push', GripperPush, self.gripper_feedback_push)
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
                                                   GripperPush,
                                                   self.gripper_pre_push)
@@ -346,6 +348,36 @@ class PositionFeedbackPushNode:
     #
     # Behavior functions
     #
+    def gripper_feedback_push(self, request):
+        response = GripperPushResponse()
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+        push_dist = request.desired_push_dist
+
+        if request.left_arm:
+            ready_joints = LEFT_ARM_READY_JOINTS
+            which_arm = 'l'
+        else:
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            which_arm = 'r'
+
+        # TODO: Setup feedback callback method
+        # TODO: Feedback callback is for moving the arm based on tracker output
+        self.active_arm = which_arm
+        ac = simple_action_clinet.SimpleActionClient()
+        done_cb = None
+        active_cb = None
+        feedback_cb = self.tracker_feedback_gripper_push
+        ac.send_goal(goal, done_cb, active_cb, feedback_cb)
+        # Block until done
+        ac.wait_for_result()
+        self.stop_moving_vel(self, which_arm)
+
+        return response
+
+    def tracker_feedback_gripper_push(self, feedback):
+        pass
+
     def gripper_push(self, request):
         response = GripperPushResponse()
         start_point = request.start_point.point
@@ -1122,7 +1154,19 @@ class PositionFeedbackPushNode:
                 break
             r.sleep()
 
+        self.stop_moving_vel(which_arm)
+
         # Return pose error
+        return
+
+    def stop_moving_vel(self, which_arm):
+        if which_arm == 'l':
+            vel_pub = self.l_arm_cart_vel_pub
+            posture_pub = self.l_arm_vel_posture_pub
+        else:
+            vel_pub = self.r_arm_cart_vel_pub
+            posture_pub = self.r_arm_vel_posture_pub
+
         stop_twist = TwistStamped()
         stop_twist.header.stamp = rospy.Time(0)
         stop_twist.header.frame_id = '/torso_lift_link'
@@ -1133,8 +1177,6 @@ class PositionFeedbackPushNode:
         stop_twist.twist.angular.y = 0.0
         stop_twist.twist.angular.z = 0.0
         vel_pub.publish(stop_twist)
-        return
-
 
     def get_desired_posture(self, which_arm):
         if which_arm == 'l':

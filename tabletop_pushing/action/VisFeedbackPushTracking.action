@@ -1,0 +1,14 @@
+# Goal Definition
+std_msgs/Header header
+geometry_msgs/Pose2D desired_pose
+string which_arm
+---
+# Result Definition
+std_msgs/Header header
+geometry_msgs/Pose2D x
+geometry_msgs/Pose2D x_error
+---
+# Feedback Definition
+std_msgs/Header header
+geometry_msgs/Pose2D x
+geometry_msgs/Pose2D x_dot

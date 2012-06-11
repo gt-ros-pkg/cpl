@@ -94,8 +94,8 @@ class TabletopExecutive:
         # Setup service proxies
         if not _OFFLINE:
             # TODO: Link this correctly once it exists
-            self.gripper_feedback_push_proxy = rospy.ServiceProxy('gripper_push',
-                                                                  GripperPush)
+            self.gripper_feedback_push_proxy = rospy.ServiceProxy(
+                'gripper_feedback_push', GripperPush)
             self.gripper_post_feedback_push_proxy = rospy.ServiceProxy(
                 'gripper_post_push', GripperPush)
             self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
