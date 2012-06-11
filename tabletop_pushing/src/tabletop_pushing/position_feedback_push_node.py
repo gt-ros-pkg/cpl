@@ -33,6 +33,7 @@
 
 import roslib; roslib.load_manifest('tabletop_pushing')
 import rospy
+import actionlib
 import hrl_pr2_lib.pr2 as pr2
 import hrl_pr2_lib.pressure_listener as pl
 import hrl_lib.tf_utils as tfu
@@ -167,7 +168,7 @@ class PositionFeedbackPushNode:
         self.tf_listener = tf.TransformListener()
         rospy.loginfo('Creating pr2 object')
         self.robot = pr2.PR2(self.tf_listener, arms=True, base=False,
-                             use_kinematics=False)
+                             use_kinematics=False, use_projector=False)
 
         self.l_arm_cart_pub = rospy.Publisher(
             '/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)
@@ -365,20 +366,34 @@ class PositionFeedbackPushNode:
         # TODO: Setup feedback callback method
         # TODO: Feedback callback is for moving the arm based on tracker output
         self.active_arm = which_arm
+        rospy.loginfo('Creating ac')
         ac = actionlib.SimpleActionClient('push_tracker', VisFeedbackPushTrackingAction)
+        rospy.loginfo('waiting for server')
+        if not ac.wait_for_server(rospy.Duration(5.0)):
+            rospy.loginfo('Failed to connect to push tracker server')
+            return response
+        ac.cancel_all_goals()
         done_cb = None
         active_cb = None
         feedback_cb = self.tracker_feedback_gripper_push
+        goal = VisFeedbackPushTrackingGoal()
+        goal.which_arm = which_arm
+        goal.header.frame_id = request.start_point.header.frame_id
+        goal.desired_pose = request.goal_pose
+        rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
         # Block until done
-        ac.wait_for_result()
-        self.stop_moving_vel(self, which_arm)
+        rospy.loginfo('Waiting for result')
+        ac.wait_for_result(rospy.Duration(0))
+        rospy.loginfo('Result received')
+        self.stop_moving_vel(which_arm)
 
+        # TODO: send back info
         return response
 
     def tracker_feedback_gripper_push(self, feedback):
         rospy.loginfo('Got feedback from push tracker')
-        rosppy.loginfo('Active arm is: ' + self.active_arm)
+        rospy.loginfo('Active arm is: ' + self.active_arm)
 
     def gripper_push(self, request):
         response = GripperPushResponse()

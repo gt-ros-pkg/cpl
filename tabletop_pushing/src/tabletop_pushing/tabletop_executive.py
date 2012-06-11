@@ -250,6 +250,7 @@ class TabletopExecutive:
                                   rand_angle=True, goal_pose=None):
         push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
         # push_options = [OVERHEAD_PUSH]
+        push_options = [GRIPPER_PUSH]
         arms = ['l', 'r']
         # high_inits = [True, False]
         high_inits = [True]
@@ -280,7 +281,7 @@ class TabletopExecutive:
                                 get_push = False
                             first = False
                         res = self.learning_trial(arm, int(push_opt), high_init,
-                                                  push_vec, push_dist)
+                                                  push_vec, push_dist, goal_pose)
                         if not res:
                             return
 
@@ -289,7 +290,7 @@ class TabletopExecutive:
         self.learn_io.close_out_file()
 
     def learning_trial(self, which_arm, push_opt, high_init, push_vector_res,
-                       push_dist):
+                       push_dist, goal_pose):
         push_angle = push_vector_res.push.push_angle
         # NOTE: Use commanded push distance not visually decided minimal distance
         # push_dist = push_vector_res.push.push_dist
@@ -309,8 +310,8 @@ class TabletopExecutive:
         start_time = time.time()
         if not _OFFLINE:
             if push_opt == GRIPPER_PUSH:
-                self.gripper_push_object(push_dist, which_arm,
-                                         push_vector_res.push, high_init)
+                self.gripper_feedback_push_object(push_dist, which_arm,
+                                                  push_vector_res.push, goal_pose, high_init)
             if push_opt == GRIPPER_SWEEP:
                 self.sweep_object(push_dist, which_arm, push_vector_res.push,
                                   high_init)
@@ -585,8 +586,8 @@ class TabletopExecutive:
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
 
-    def gripper_feedback_push_object(self, push_dist, which_arm, push_vector,
-                                     high_init=False, open_gripper=False):
+    def gripper_feedback_push_object(self, push_dist, which_arm, push_vector, goal_pose,
+                                     high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
         push_req.start_point.header = push_vector.header
@@ -594,6 +595,7 @@ class TabletopExecutive:
         push_req.arm_init = True
         push_req.arm_reset = True
         push_req.open_gripper = open_gripper
+        push_req.goal_pose = goal_pose
 
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle

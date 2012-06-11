@@ -282,8 +282,8 @@ class ObjectTracker25D
     cur_obj_keys_ = obj_matches;
     frame_count_++;
 
-    ROS_INFO_STREAM("x: (" << state.x << ")");
-    ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
+    // ROS_INFO_STREAM("x: (" << state.x << ")");
+    // ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
 
     return state;
   }
@@ -915,24 +915,28 @@ class TabletopPushingPerceptionNode
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
           cur_color_frame_, cur_workspace_mask_, cur_point_cloud_);
-      as_.publishFeedback(tracker_state);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
+        as_.publishFeedback(tracker_state);
         // Check for goal conditions
-        float x_dist = abs(tracker_goal_pose_.x - tracker_state.x.x);
-        float y_dist = abs(tracker_goal_pose_.y - tracker_state.x.y);
+        float x_dist = fabs(tracker_goal_pose_.x - tracker_state.x.x);
+        float y_dist = fabs(tracker_goal_pose_.y - tracker_state.x.y);
         // TODO: Make sub1/2pi diff
-        float theta_dist = abs(tracker_goal_pose_.theta - tracker_state.x.theta);
+        float theta_dist = fabs(tracker_goal_pose_.theta - tracker_state.x.theta);
         if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_ &&
             theta_dist < tracker_angle_thresh_)
         {
+          ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
+                          tracker_state.x.y << ", " << tracker_state.x.theta << ")");
+          ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
+                          tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
+          ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
+                          << theta_dist << ")");
           PushTrackerResult res;
           as_.setSucceeded(res);
-        }
-        else
-        {
+          stopTracking();
         }
       }
     }
@@ -1287,6 +1291,7 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
+    ROS_INFO_STREAM("pushTrackerGoalCB(): starting tracking");
     bool obj_tracking = startTracking();
     if (!obj_tracking)
     {
@@ -1294,10 +1299,13 @@ class TabletopPushingPerceptionNode
       as_.setAborted();
       return;
     }
+    ROS_INFO_STREAM("Accepting goal");
     boost::shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
+    ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
+    ROS_INFO_STREAM("Push with arm " << pushing_arm_);
   }
 
   void pushTrackerPreemptCB()
