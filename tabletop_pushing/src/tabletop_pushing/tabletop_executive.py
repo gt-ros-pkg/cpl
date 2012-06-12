@@ -51,7 +51,7 @@ GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
 OVERHEAD_PUSH = 2
 OVERHEAD_PULL = 3
-_OFFLINE = False
+_OFFLINE = True
 
 class TabletopExecutive:
 
