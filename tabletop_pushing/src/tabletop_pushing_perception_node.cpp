@@ -192,12 +192,14 @@ class ObjectTracker25D
   typedef std::vector<FeatureVector> FeatureVectors;
 
  public:
-  ObjectTracker25D(int num_downsamples = 0,
+  ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
+                   int num_downsamples = 0,
                    double ratio_thresh=0.5, double match_thresh=128,
                    int fast_thresh=9, bool extended_feature=true,
                    int max_ransac_iter=100,
                    double sufficient_support_percent=0.7,
                    double support_dist_thresh=0.03) :
+      pcl_segmenter_(segmenter),
       num_downsamples_(num_downsamples), initialized_(false),
       fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
       ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
@@ -208,8 +210,8 @@ class ObjectTracker25D
     upscale_ = std::pow(2,num_downsamples_);
   }
 
-  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                              cv::Mat& self_mask, XYZPointCloud& cloud)
+  PushTrackerState initTracksSURF(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                  cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     initialized_ = false;
     cv::Mat extract_mask;
@@ -233,12 +235,12 @@ class ObjectTracker25D
     return state;
   }
 
-  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                                cv::Mat& self_mask, XYZPointCloud& cloud)
+  PushTrackerState updateTracksSURF(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                    cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     if (!initialized_)
     {
-      return initTracks(in_frame, obj_mask, self_mask, cloud);
+      return initTracksSURF(in_frame, obj_mask, self_mask, cloud);
     }
     prev_obj_keys_ = cur_obj_keys_;
     cv::Mat extract_mask;
@@ -251,11 +253,6 @@ class ObjectTracker25D
 
     // Display matches and individual tracks
     drawMatches(in_frame, obj_matches, "-obj");
-
-    // cur_all_keys_ = extracted_points;
-    // KeyPoints all_matches = matchFeatures(extracted_points, prev_all_keys_);
-    // prev_all_keys_ = cur_all_keys_;
-    // drawMatches(in_frame, all_matches, "-all");
 
     Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
 
@@ -285,6 +282,97 @@ class ObjectTracker25D
 
     // ROS_INFO_STREAM("x: (" << state.x << ")");
     // ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
+
+    return state;
+  }
+
+  ProtoObject findLargestObject(cv::Mat& in_frame, XYZPointCloud& cloud)
+  {
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
+    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+        objs, in_frame.size(), cloud.header.frame_id);
+    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
+
+    // Assume we care about the biggest currently
+    int chosen_idx = 0;
+    unsigned int max_size = 0;
+    for (unsigned int i = 0; i < objs.size(); ++i)
+    {
+      if (objs[i].cloud.size() > max_size)
+      {
+        max_size = objs[i].cloud.size();
+        chosen_idx = i;
+      }
+    }
+
+    if (objs.size() == 0)
+    {
+      ROS_WARN_STREAM("No objects found");
+      ProtoObject empty;
+      return empty;
+    }
+
+    return objs[chosen_idx];
+  }
+
+  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                              cv::Mat& self_mask, XYZPointCloud& cloud)
+  {
+    initialized_ = false;
+    ProtoObject cur_obj = findLargestObject(in_frame, cloud);
+    initialized_ = true;
+    frame_count_ = 0;
+    PushTrackerState state;
+    state.header.seq = 0;
+    state.header.stamp = ros::Time::now();
+    state.header.frame_id = cloud.header.frame_id;
+    state.x.x = cur_obj.centroid[0];
+    state.x.y = cur_obj.centroid[1];
+    // TODO: Track theta as dominant axis?
+    state.x.theta = 0.0;
+    state.x_dot.x = 0.0;
+    state.x_dot.y = 0.0;
+    state.x_dot.theta = 0.0;
+    previous_time_ = state.header.stamp.toSec();
+    previous_state_ = state;
+    return state;
+  }
+
+  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                cv::Mat& self_mask, XYZPointCloud& cloud)
+  {
+    if (!initialized_)
+    {
+      return initTracks(in_frame, obj_mask, self_mask, cloud);
+    }
+    ProtoObject cur_obj = findLargestObject(in_frame, cloud);
+
+
+    // Update model
+    PushTrackerState state;
+    state.header.seq = frame_count_;
+    state.header.stamp = ros::Time::now();
+    state.header.frame_id = cloud.header.frame_id;
+
+    state.x.x = cur_obj.centroid[0];
+    state.x.y = cur_obj.centroid[1];
+    // TODO: Track theta as dominant axis?
+    state.x.theta = 0.0;
+
+    // Convert delta_x to x_dot
+    double delta_x = state.x.x - previous_state_.x.x;
+    double delta_y = state.x.y - previous_state_.x.y;
+    double delta_theta = state.x.theta - previous_state_.x.theta;
+    double delta_t = state.header.stamp.toSec() - previous_time_;
+    state.x_dot.x = delta_x/delta_t;
+    state.x_dot.y = delta_y/delta_t;
+    state.x_dot.theta = delta_theta/delta_t;
+    previous_time_ = state.header.stamp.toSec();
+    previous_state_ = state;
+    frame_count_++;
+
+    ROS_INFO_STREAM("x: (" << state.x << ")");
+    ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
 
     return state;
   }
@@ -674,6 +762,7 @@ class ObjectTracker25D
   }
 
  protected:
+  shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
   bool initialized_;
   int fast_thresh_;
@@ -691,6 +780,7 @@ class ObjectTracker25D
   double sufficient_support_percent_;
   double support_dist_thresh_;
   double previous_time_;
+  PushTrackerState previous_state_;
 };
 
 class TabletopPushingPerceptionNode
@@ -799,12 +889,11 @@ class TabletopPushingPerceptionNode
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.01);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
 
-
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
-        new ObjectTracker25D(num_downsamples_, ratio_thresh, match_score_thresh,
-                             fast_thresh, extended_feats, max_ransac_iter,
-                             support_percent, support_dist));
+        new ObjectTracker25D(pcl_segmenter_, num_downsamples_, ratio_thresh,
+                             match_score_thresh, fast_thresh, extended_feats,
+                             max_ransac_iter, support_percent, support_dist));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -932,7 +1021,8 @@ class TabletopPushingPerceptionNode
     if (obj_tracker_->isInitialized())
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_workspace_mask_, cur_self_mask_, cur_point_cloud_);
+          cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
+          cur_self_filtered_cloud_);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -1090,6 +1180,7 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
+    ROS_INFO_STREAM("Chosen object located at: \n" << res.centroid);
 
     if (start_tracking_on_push_call_)
     {
@@ -1288,7 +1379,7 @@ class TabletopPushingPerceptionNode
     // cv::imshow("obj_mask: raw", obj_mask_raw);
     // cv::imshow("obj_mask: closed", obj_mask);
     PushTrackerState tracker_state = obj_tracker_->initTracks(
-        cur_color_frame_, obj_mask, cur_self_mask_, cur_point_cloud_);
+        cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
     Pose2D obj_pose;
     if (objs.size() == 0)
     {
@@ -1324,7 +1415,7 @@ class TabletopPushingPerceptionNode
       return;
     }
     ROS_INFO_STREAM("Accepting goal");
-    boost::shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
+    shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
