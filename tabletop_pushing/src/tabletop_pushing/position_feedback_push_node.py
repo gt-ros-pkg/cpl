@@ -363,16 +363,18 @@ class PositionFeedbackPushNode:
             ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
-        # TODO: Setup feedback callback method
-        # TODO: Feedback callback is for moving the arm based on tracker output
         self.active_arm = which_arm
         rospy.loginfo('Creating ac')
-        ac = actionlib.SimpleActionClient('push_tracker', VisFeedbackPushTrackingAction)
+        ac = actionlib.SimpleActionClient('push_tracker',
+                                          VisFeedbackPushTrackingAction)
         rospy.loginfo('waiting for server')
         if not ac.wait_for_server(rospy.Duration(5.0)):
             rospy.loginfo('Failed to connect to push tracker server')
             return response
         ac.cancel_all_goals()
+
+        # Start pushing forward
+        self.vel_push_forward(which_arm)
         done_cb = None
         active_cb = None
         feedback_cb = self.tracker_feedback_gripper_push
@@ -392,8 +394,10 @@ class PositionFeedbackPushNode:
         return response
 
     def tracker_feedback_gripper_push(self, feedback):
-        rospy.loginfo('Got feedback from push tracker')
-        rospy.loginfo('Active arm is: ' + self.active_arm)
+        # feedback.x
+        # feedback.x_dot
+        # TODO: Change gripper pushing direction based on observed change
+        pass
 
     def gripper_push(self, request):
         response = GripperPushResponse()
@@ -1176,7 +1180,31 @@ class PositionFeedbackPushNode:
         # Return pose error
         return
 
+    def vel_push_forward(self, which_arm, speed=0.3):
+        self.switch_to_vel_controllers()
+
+        forward_twist = TwistStamped()
+        if which_arm == 'l':
+            vel_pub = self.l_arm_cart_vel_pub
+            posture_pub = self.l_arm_vel_posture_pub
+        else:
+            vel_pub = self.r_arm_cart_vel_pub
+            posture_pub = self.r_arm_vel_posture_pub
+
+        forward_twist.header.frame_id = '/'+which_arm + '_gripper_tool_frame'
+        forward_twist.header.stamp = rospy.Time(0)
+        forward_twist.twist.linear.x = speed
+        forward_twist.twist.linear.y = 0.0
+        forward_twist.twist.linear.z = 0.0
+        forward_twist.twist.angular.x = 0.0
+        forward_twist.twist.angular.y = 0.0
+        forward_twist.twist.angular.z = 0.0
+        m = self.get_desired_posture(which_arm)
+        posture_pub.publish(m)
+        vel_pub.publish(forward_twist)
+
     def stop_moving_vel(self, which_arm):
+        self.switch_to_vel_controllers()
         if which_arm == 'l':
             vel_pub = self.l_arm_cart_vel_pub
             posture_pub = self.l_arm_vel_posture_pub
