@@ -818,7 +818,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("max_workspace_x", max_workspace_x_, 0.0);
     n_private_.param("max_workspace_y", max_workspace_y_, 0.0);
     n_private_.param("max_workspace_z", max_workspace_z_, 0.0);
-    std::string default_workspace_frame = "/torso_lift_link";
+    std::string default_workspace_frame = "torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_,
                      default_workspace_frame);
 
@@ -1478,6 +1478,7 @@ class TabletopPushingPerceptionNode
         return false;
       }
       res.found_table = true;
+      res.table_centroid.header.stamp = ros::Time::now();
     }
     else
     {

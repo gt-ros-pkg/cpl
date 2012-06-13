@@ -51,7 +51,8 @@ GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
 OVERHEAD_PUSH = 2
 OVERHEAD_PULL = 3
-_OFFLINE = True
+_OFFLINE = False
+_USE_LEARN_IO = False
 
 class TabletopExecutive:
 
@@ -140,10 +141,11 @@ class TabletopExecutive:
 
     def init_learning(self):
         # Singulation Push proxy
-        self.learn_io = PushLearningIO()
-        learn_file_name = '/u/thermans/data/learn_out.txt'
-        rospy.loginfo('Opening learn file: '+learn_file_name)
-        self.learn_io.open_out_file(learn_file_name)
+        if _USE_LEARN_IO:
+            self.learn_io = PushLearningIO()
+            learn_file_name = '/u/thermans/data/learn_out.txt'
+            rospy.loginfo('Opening learn file: '+learn_file_name)
+            self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
         # Get table height and raise to that before anything else
@@ -289,7 +291,8 @@ class TabletopExecutive:
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
-        self.learn_io.close_out_file()
+        if _USE_LEARN_IO:
+            self.learn_io.close_out_file()
 
     def learning_trial(self, which_arm, push_opt, high_init, push_vector_res,
                        push_dist, goal_pose):
@@ -339,9 +342,10 @@ class TabletopExecutive:
         rospy.loginfo('Delta (X,Y): (' + str(analysis_res.moved.x) + ', ' +
                        str(analysis_res.moved.y) + '): ' +
                       str(sqrt(analysis_res.moved.x**2 + analysis_res.moved.y**2)))
-        self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
-                                 which_arm, analysis_res.centroid, push_dist,
-                                 high_init, push_time)
+        if _USE_LEARN_IO:
+            self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
+                                     which_arm, analysis_res.centroid, push_dist,
+                                     high_init, push_time)
         return True
 
     def request_singulation_push(self, use_guided=True):
@@ -633,7 +637,7 @@ class TabletopExecutive:
         which_arm = 'r'
         high_init = True
         push = PushVector()
-        push.header.frame_id = '/torso_lift_link'
+        push.header.frame_id = 'torso_lift_link'
         push.header.stamp = rospy.Time(0)
         push.push_angle = pi*0.25
         push.push_dist = push_dist

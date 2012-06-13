@@ -398,7 +398,7 @@ class PositionFeedbackPushNode:
     def tracker_feedback_gripper_push(self, feedback):
         which_arm = self.active_arm
         update_twist = TwistStamped()
-        update_twist.header.frame_id = '/torso_lift_link'
+        update_twist.header.frame_id = 'torso_lift_link'
         update_twist.header.stamp = rospy.Time(0)
         update_twist.twist.linear.z = 0.0
         update_twist.twist.angular.x = 0.0
@@ -848,13 +848,14 @@ class PositionFeedbackPushNode:
             return response
 
         # Get torso_lift_link position in base_link frame
-        (trans, rot) = self.tf_listener.lookupTransform('/base_link',
-                                                        '/torso_lift_link',
+        (trans, rot) = self.tf_listener.lookupTransform('base_link',
+                                                        'torso_lift_link',
                                                         rospy.Time(0))
         lift_link_z = trans[2]
 
         # tabletop position in base_link frame
-        table_base = self.tf_listener.transformPose('/base_link',
+        request.table_centroid.header.stamp = rospy.Time(0)
+        table_base = self.tf_listener.transformPose('base_link',
                                                     request.table_centroid)
         table_z = table_base.pose.position.z
         goal_lift_link_z = table_z + self.torso_z_offset
@@ -881,13 +882,14 @@ class PositionFeedbackPushNode:
         # rospy.logdebug('New torso position is: ' + str(new_torso_position))
 
         # Get torso_lift_link position in base_link frame
-        (new_trans, rot) = self.tf_listener.lookupTransform('/base_link',
-                                                            '/torso_lift_link',
+
+        (new_trans, rot) = self.tf_listener.lookupTransform('base_link',
+                                                            'torso_lift_link',
                                                             rospy.Time(0))
         new_lift_link_z = new_trans[2]
         # rospy.logdebug('New Torso height (m): ' + str(new_lift_link_z))
         # tabletop position in base_link frame
-        new_table_base = self.tf_listener.transformPose('/base_link',
+        new_table_base = self.tf_listener.transformPose('base_link',
                                                         request.table_centroid)
         new_table_z = new_table_base.pose.position.z
         rospy.loginfo('New Table height: ' + str(new_table_z))
@@ -1012,7 +1014,7 @@ class PositionFeedbackPushNode:
             cur_pose = self.r_arm_pose
         rel_pose = PoseStamped()
         rel_pose.header.stamp = rospy.Time(0)
-        rel_pose.header.frame_id = '/torso_lift_link'
+        rel_pose.header.frame_id = 'torso_lift_link'
         rel_pose.pose.position.x = cur_pose.pose.position.x + \
             float(rel_push_vector[0])
         rel_pose.pose.position.y = cur_pose.pose.position.y + \
@@ -1035,7 +1037,7 @@ class PositionFeedbackPushNode:
             start_pose = self.r_arm_pose
         desired_pose = PoseStamped()
         desired_pose.header.stamp = rospy.Time(0)
-        desired_pose.header.frame_id = '/torso_lift_link'
+        desired_pose.header.frame_id = 'torso_lift_link'
         desired_pose.pose.position.x = start_pose.pose.position.x + delta_x
         desired_pose.pose.position.y = start_pose.pose.position.y + delta_y
         desired_pose.pose.position.z = start_pose.pose.position.z
@@ -1157,7 +1159,7 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Moving down!')
         down_twist = TwistStamped()
         down_twist.header.stamp = rospy.Time(0)
-        down_twist.header.frame_id = '/torso_lift_link'
+        down_twist.header.frame_id = 'torso_lift_link'
         down_twist.twist.linear.x = 0.0
         down_twist.twist.linear.y = 0.0
         down_twist.twist.linear.z = -0.1
@@ -1258,7 +1260,7 @@ class PositionFeedbackPushNode:
 
         stop_twist = TwistStamped()
         stop_twist.header.stamp = rospy.Time(0)
-        stop_twist.header.frame_id = '/torso_lift_link'
+        stop_twist.header.frame_id = 'torso_lift_link'
         stop_twist.twist.linear.x = 0.0
         stop_twist.twist.linear.y = 0.0
         stop_twist.twist.linear.z = 0.0
