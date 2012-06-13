@@ -382,6 +382,7 @@ class PositionFeedbackPushNode:
         goal.which_arm = which_arm
         goal.header.frame_id = request.start_point.header.frame_id
         goal.desired_pose = request.goal_pose
+        self.desired_pose = request.goal_pose
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
         # Block until done
@@ -394,10 +395,36 @@ class PositionFeedbackPushNode:
         return response
 
     def tracker_feedback_gripper_push(self, feedback):
-        # feedback.x
-        # feedback.x_dot
-        # TODO: Change gripper pushing direction based on observed change
-        pass
+        update_twist = TwistStamped()
+        if which_arm == 'l':
+            vel_pub = self.l_arm_cart_vel_pub
+            posture_pub = self.l_arm_vel_posture_pub
+        else:
+            vel_pub = self.r_arm_cart_vel_pub
+            posture_pub = self.r_arm_vel_posture_pub
+
+        update_twist.header.frame_id = '/'+self.active_arm + '_gripper_tool_frame'
+        update_twist.header.stamp = rospy.Time(0)
+        update_twist.twist.linear.z = 0.0
+        update_twist.twist.angular.x = 0.0
+        update_twist.twist.angular.y = 0.0
+        update_twist.twist.angular.z = 0.0
+
+        # Push centroid towards the desired goal
+        goal_x_dot = self.desired_pose.x - feedback.x.x
+        goal_y_dot = self.desired_pose.y - feedback.x.y
+
+        # Add in direction to corect for spinning
+        # TODO: Correct component based on transform in object pose
+        spin_x_dot = feedback.x_dot.theta*sin(feedback.x.theta)
+        spin_y_dot = feedback.x_dot.theta*cos(feedback.x.theta)
+
+        k_g = 0.5
+        k_s = 0.03
+
+        update_twist.twist.linear.x = k_g*goal_x_dot + k_s*spin_x_dot
+        update_twist.twist.linear.y = k_g*goal_y_dot + k_s*spin_y_dot
+        self.update_vel(update_twist, self.active_arm)
 
     def gripper_push(self, request):
         response = GripperPushResponse()
@@ -1202,6 +1229,12 @@ class PositionFeedbackPushNode:
         m = self.get_desired_posture(which_arm)
         posture_pub.publish(m)
         vel_pub.publish(forward_twist)
+
+    def update_vel(self, which_arm, update_twist):
+        # Note: assumes velocity controller already running
+        m = self.get_desired_posture(which_arm)
+        posture_pub.publish(m)
+        vel_pub.publish(update_twist)
 
     def stop_moving_vel(self, which_arm):
         self.switch_to_vel_controllers()
