@@ -607,7 +607,7 @@ cv::Point PointCloudSegmentation::projectPointIntoImage(geometry_msgs::PointStam
   }
   catch (tf::TransformException e)
   {
-    ROS_ERROR_STREAM("Fucked.");
+    ROS_ERROR_STREAM("Error projecting 3D point into image plane.");
     ROS_ERROR_STREAM(e.what());
   }
   return img_loc;

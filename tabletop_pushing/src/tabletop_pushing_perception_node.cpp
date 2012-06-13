@@ -120,6 +120,7 @@ using geometry_msgs::Pose2D;
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
+                                                        sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
 typedef pcl::registration::TransformationEstimationSVD<pcl::PointXYZ, pcl::PointXYZ>
 TransformEstimator;
@@ -191,12 +192,14 @@ class ObjectTracker25D
   typedef std::vector<FeatureVector> FeatureVectors;
 
  public:
-  ObjectTracker25D(int num_downsamples = 0,
+  ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
+                   int num_downsamples = 0,
                    double ratio_thresh=0.5, double match_thresh=128,
                    int fast_thresh=9, bool extended_feature=true,
                    int max_ransac_iter=100,
                    double sufficient_support_percent=0.7,
                    double support_dist_thresh=0.03) :
+      pcl_segmenter_(segmenter),
       num_downsamples_(num_downsamples), initialized_(false),
       fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
       ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
@@ -207,16 +210,13 @@ class ObjectTracker25D
     upscale_ = std::pow(2,num_downsamples_);
   }
 
-  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                              XYZPointCloud& cloud)
+  PushTrackerState initTracksSURF(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                  cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     initialized_ = false;
-    // Update current points and descriptors
-    // cv::Mat fake_mask(obj_mask.size(), CV_8UC1, cv::Scalar(255));
-    // cur_all_keys_ = extractFeatures(in_frame, fake_mask, cloud);
-    // prev_all_keys_ = cur_all_keys_;
-
-    init_obj_keys_ = extractFeatures(in_frame, obj_mask, cloud);
+    cv::Mat extract_mask;
+    cv::bitwise_and(obj_mask, self_mask, extract_mask);
+    init_obj_keys_ = extractFeatures(in_frame, extract_mask, cloud);
     cur_obj_keys_ = init_obj_keys_;
     prev_obj_keys_ = init_obj_keys_;
 
@@ -235,26 +235,24 @@ class ObjectTracker25D
     return state;
   }
 
-  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                                XYZPointCloud& cloud)
+  PushTrackerState updateTracksSURF(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                    cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     if (!initialized_)
     {
-      return initTracks(in_frame, obj_mask, cloud);
+      return initTracksSURF(in_frame, obj_mask, self_mask, cloud);
     }
     prev_obj_keys_ = cur_obj_keys_;
+    cv::Mat extract_mask;
+    cv::bitwise_and(obj_mask, self_mask, extract_mask);
+    cv::imshow("extract_mask", extract_mask);
     // Get current features
-    KeyPoints extracted_points = extractFeatures(in_frame, obj_mask, cloud);
+    KeyPoints extracted_points = extractFeatures(in_frame, extract_mask, cloud);
     // Match to current object set
     KeyPoints obj_matches = matchFeatures(extracted_points, prev_obj_keys_);
 
     // Display matches and individual tracks
     drawMatches(in_frame, obj_matches, "-obj");
-
-    // cur_all_keys_ = extracted_points;
-    // KeyPoints all_matches = matchFeatures(extracted_points, prev_all_keys_);
-    // prev_all_keys_ = cur_all_keys_;
-    // drawMatches(in_frame, all_matches, "-all");
 
     Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
 
@@ -284,6 +282,97 @@ class ObjectTracker25D
 
     // ROS_INFO_STREAM("x: (" << state.x << ")");
     // ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
+
+    return state;
+  }
+
+  ProtoObject findLargestObject(cv::Mat& in_frame, XYZPointCloud& cloud)
+  {
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
+    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+        objs, in_frame.size(), cloud.header.frame_id);
+    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
+
+    // Assume we care about the biggest currently
+    int chosen_idx = 0;
+    unsigned int max_size = 0;
+    for (unsigned int i = 0; i < objs.size(); ++i)
+    {
+      if (objs[i].cloud.size() > max_size)
+      {
+        max_size = objs[i].cloud.size();
+        chosen_idx = i;
+      }
+    }
+
+    if (objs.size() == 0)
+    {
+      ROS_WARN_STREAM("No objects found");
+      ProtoObject empty;
+      return empty;
+    }
+
+    return objs[chosen_idx];
+  }
+
+  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                              cv::Mat& self_mask, XYZPointCloud& cloud)
+  {
+    initialized_ = false;
+    ProtoObject cur_obj = findLargestObject(in_frame, cloud);
+    initialized_ = true;
+    frame_count_ = 0;
+    PushTrackerState state;
+    state.header.seq = 0;
+    state.header.stamp = ros::Time::now();
+    state.header.frame_id = cloud.header.frame_id;
+    state.x.x = cur_obj.centroid[0];
+    state.x.y = cur_obj.centroid[1];
+    // TODO: Track theta as dominant axis?
+    state.x.theta = 0.0;
+    state.x_dot.x = 0.0;
+    state.x_dot.y = 0.0;
+    state.x_dot.theta = 0.0;
+    previous_time_ = state.header.stamp.toSec();
+    previous_state_ = state;
+    return state;
+  }
+
+  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
+                                cv::Mat& self_mask, XYZPointCloud& cloud)
+  {
+    if (!initialized_)
+    {
+      return initTracks(in_frame, obj_mask, self_mask, cloud);
+    }
+    ProtoObject cur_obj = findLargestObject(in_frame, cloud);
+
+
+    // Update model
+    PushTrackerState state;
+    state.header.seq = frame_count_;
+    state.header.stamp = ros::Time::now();
+    state.header.frame_id = cloud.header.frame_id;
+
+    state.x.x = cur_obj.centroid[0];
+    state.x.y = cur_obj.centroid[1];
+    // TODO: Track theta as dominant axis?
+    state.x.theta = 0.0;
+
+    // Convert delta_x to x_dot
+    double delta_x = state.x.x - previous_state_.x.x;
+    double delta_y = state.x.y - previous_state_.x.y;
+    double delta_theta = state.x.theta - previous_state_.x.theta;
+    double delta_t = state.header.stamp.toSec() - previous_time_;
+    state.x_dot.x = delta_x/delta_t;
+    state.x_dot.y = delta_y/delta_t;
+    state.x_dot.theta = delta_theta/delta_t;
+    previous_time_ = state.header.stamp.toSec();
+    previous_state_ = state;
+    frame_count_++;
+
+    ROS_INFO_STREAM("x: (" << state.x << ")");
+    ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
 
     return state;
   }
@@ -675,6 +764,7 @@ class ObjectTracker25D
   }
 
  protected:
+  shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
   bool initialized_;
   int fast_thresh_;
@@ -692,6 +782,7 @@ class ObjectTracker25D
   double sufficient_support_percent_;
   double support_dist_thresh_;
   double previous_time_;
+  PushTrackerState previous_state_;
 };
 
 class TabletopPushingPerceptionNode
@@ -701,8 +792,9 @@ class TabletopPushingPerceptionNode
       n_(n), n_private_("~"),
       image_sub_(n, "color_image_topic", 1),
       depth_sub_(n, "depth_image_topic", 1),
+      mask_sub_(n, "mask_image_topic", 1),
       cloud_sub_(n, "point_cloud_topic", 1),
-      sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
+      sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
@@ -743,6 +835,8 @@ class TabletopPushingPerceptionNode
                      1);
 
     n_private_.param("autostart_pcl_segmentation", autorun_pcl_segmentation_,
+                     false);
+    n_private_.param("start_tracking_on_push_call", start_tracking_on_push_call_,
                      false);
 
     n_private_.param("num_downsamples", num_downsamples_, 2);
@@ -799,9 +893,9 @@ class TabletopPushingPerceptionNode
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
-        new ObjectTracker25D(num_downsamples_, ratio_thresh, match_score_thresh,
-                             fast_thresh, extended_feats, max_ransac_iter,
-                             support_percent, support_dist));
+        new ObjectTracker25D(pcl_segmenter_, num_downsamples_, ratio_thresh,
+                             match_score_thresh, fast_thresh, extended_feats,
+                             max_ransac_iter, support_percent, support_dist));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -823,6 +917,7 @@ class TabletopPushingPerceptionNode
 
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
                       const sensor_msgs::ImageConstPtr& depth_msg,
+                      const sensor_msgs::ImageConstPtr& mask_msg,
                       const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
     if (!camera_initialized_)
@@ -836,6 +931,7 @@ class TabletopPushingPerceptionNode
     // Convert images to OpenCV format
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
+    cv::Mat self_mask(bridge_.imgMsgToCv(mask_msg));
 
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
@@ -846,16 +942,6 @@ class TabletopPushingPerceptionNode
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
                           cloud.header.stamp, ros::Duration(0.5));
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
-    // ROS_INFO_STREAM("Transformed point cloud");
-    // tf::StampedTransform transform;
-    // tf_->lookupTransform(cloud.header.frame_id, workspace_frame_, ros::Time(0),
-    //                      transform);
-    // tf::Vector3 trans = transform.getOrigin();
-    // tf::Quaternion rot = transform.getRotation();
-    // ROS_INFO_STREAM("Transform trans: (" << trans.x() << ", " << trans.y() <<
-    //                 ", " << trans.z() << ")");
-    // ROS_INFO_STREAM("Transform rot: (" << rot.x() << ", " << rot.y() <<
-    //                 ", " << rot.z() << ", " << rot.w() << ")");
 
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
@@ -893,22 +979,43 @@ class TabletopPushingPerceptionNode
       }
     }
 
+    XYZPointCloud cloud_self_filtered;
+    cloud_self_filtered.header = cloud.header;
+    cloud_self_filtered.width = cloud.size();
+    cloud_self_filtered.height = 1;
+    cloud_self_filtered.is_dense = false;
+    cloud_self_filtered.resize(cloud_self_filtered.width);
+    for (unsigned int x = 0, i = 0; x < cloud.width; ++x)
+    {
+      for (unsigned int y = 0; y < cloud.height; ++y, ++i)
+      {
+        if (self_mask.at<uchar>(y,x) != 0)
+        {
+          cloud_self_filtered.at(i) = cloud.at(x,y);
+        }
+      }
+    }
+
     // Downsample everything first
     cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
     cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
     cv::Mat workspace_mask_down = downSample(workspace_mask, num_downsamples_);
+    cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
 
     // Save internally for use in the service callback
     prev_color_frame_ = cur_color_frame_.clone();
     prev_depth_frame_ = cur_depth_frame_.clone();
     prev_workspace_mask_ = cur_workspace_mask_.clone();
+    prev_self_mask_ = cur_self_mask_.clone();
     prev_camera_header_ = cur_camera_header_;
 
     // Update the current versions
     cur_color_frame_ = color_frame_down.clone();
     cur_depth_frame_ = depth_frame_down.clone();
     cur_workspace_mask_ = workspace_mask_down.clone();
+    cur_self_mask_ = self_mask_down.clone();
     cur_point_cloud_ = cloud;
+    cur_self_filtered_cloud_ = cloud_self_filtered;
     have_depth_data_ = true;
     cur_camera_header_ = img_msg->header;
     pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
@@ -916,7 +1023,8 @@ class TabletopPushingPerceptionNode
     if (obj_tracker_->isInitialized())
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_workspace_mask_, cur_point_cloud_);
+          cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
+          cur_self_filtered_cloud_);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -970,6 +1078,7 @@ class TabletopPushingPerceptionNode
     if (use_displays_)
     {
       cv::imshow("color", cur_color_frame_);
+      cv::imshow("self_mask", cur_self_mask_);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
@@ -1053,7 +1162,7 @@ class TabletopPushingPerceptionNode
     double desired_push_angle = req.push_angle;
 
     // Segment objects
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_self_filtered_cloud_);
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, cur_color_frame_.size(), workspace_frame_);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
@@ -1086,6 +1195,12 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Found " << objs.size() << " objects.");
     ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
                     objs[chosen_idx].cloud.size() << " points");
+    ROS_INFO_STREAM("Chosen object located at: \n" << res.centroid);
+
+    if (start_tracking_on_push_call_)
+    {
+      startTracking();
+    }
 
     if (rand_angle)
     {
@@ -1209,7 +1324,7 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getAnalysisVector(double desired_push_angle)
   {
-    // Segment objects
+    // // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, cur_color_frame_.size(), workspace_frame_);
@@ -1253,7 +1368,7 @@ class TabletopPushingPerceptionNode
   bool startTracking()
   {
     // Segment objects
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_self_filtered_cloud_);
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, cur_color_frame_.size(), workspace_frame_);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
@@ -1279,7 +1394,7 @@ class TabletopPushingPerceptionNode
     // cv::imshow("obj_mask: raw", obj_mask_raw);
     // cv::imshow("obj_mask: closed", obj_mask);
     PushTrackerState tracker_state = obj_tracker_->initTracks(
-        cur_color_frame_, obj_mask, cur_point_cloud_);
+        cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
     Pose2D obj_pose;
     if (objs.size() == 0)
     {
@@ -1315,7 +1430,7 @@ class TabletopPushingPerceptionNode
       return;
     }
     ROS_INFO_STREAM("Accepting goal");
-    boost::shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
+    shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
@@ -1327,6 +1442,14 @@ class TabletopPushingPerceptionNode
   {
     bool obj_tracking = stopTracking();
     ROS_INFO_STREAM("Preempted push tracker");
+    if (obj_tracking)
+    {
+      ROS_INFO_STREAM("Tracking stopped");
+    }
+    else
+    {
+      ROS_WARN_STREAM("Tracking not stopped");
+    }
     // set the action state to preempted
     as_.setPreempted();
   }
@@ -1443,6 +1566,7 @@ class TabletopPushingPerceptionNode
   ros::NodeHandle n_private_;
   message_filters::Subscriber<sensor_msgs::Image> image_sub_;
   message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
+  message_filters::Subscriber<sensor_msgs::Image> mask_sub_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
   sensor_msgs::CameraInfo cam_info_;
@@ -1454,12 +1578,15 @@ class TabletopPushingPerceptionNode
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
   cv::Mat cur_workspace_mask_;
+  cv::Mat cur_self_mask_;
   cv::Mat prev_color_frame_;
   cv::Mat prev_depth_frame_;
   cv::Mat prev_workspace_mask_;
+  cv::Mat prev_self_mask_;
   std_msgs::Header cur_camera_header_;
   std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
+  XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   bool have_depth_data_;
   int crop_min_x_;
@@ -1483,6 +1610,7 @@ class TabletopPushingPerceptionNode
   bool camera_initialized_;
   std::string cam_info_topic_;
   bool autorun_pcl_segmentation_;
+  bool start_tracking_on_push_call_;
   bool recording_input_;
   int record_count_;
   int learn_callback_count_;
