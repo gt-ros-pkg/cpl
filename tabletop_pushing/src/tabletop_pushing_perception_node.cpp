@@ -298,18 +298,20 @@ class ObjectTracker25D
     {
       return centroid;
     }
+    int n = 0;
     for (unsigned int i; i < points.size(); ++i)
     {
       if (isnan(points[i].point3D_.x) || isnan(points[i].point3D_.x))
       {
         continue;
       }
+      n++;
       centroid.x += points[i].point3D_.x;
-      centroid.y += points[i].point3D_.x;
+      centroid.y += points[i].point3D_.y;
     }
 
-    centroid.x /= points.size();
-    centroid.y /= points.size();
+    centroid.x /= n;
+    centroid.y /= n;
     // TODO: Estimate theta somehow...
     return centroid;
   }
@@ -704,7 +706,7 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      callback_count_(0)
+      learn_callback_count_(0), frame_callback_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -792,7 +794,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("obj_tracker_max_ransac_iter", max_ransac_iter, 100);
     n_private_.param("obj_tracker_ransac_support_percent", support_percent, 0.7);
     n_private_.param("obj_tracker_ransac_dist_thresh", support_dist, 0.03);
-    n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.01);
+    n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
 
     // Initialize classes requiring parameters
@@ -921,10 +923,15 @@ class TabletopPushingPerceptionNode
       {
         as_.publishFeedback(tracker_state);
         // Check for goal conditions
-        float x_dist = fabs(tracker_goal_pose_.x - tracker_state.x.x);
-        float y_dist = fabs(tracker_goal_pose_.y - tracker_state.x.y);
+        float x_error = tracker_goal_pose_.x - tracker_state.x.x;
+        float y_error = tracker_goal_pose_.y - tracker_state.x.y;
         // TODO: Make sub1/2pi diff
-        float theta_dist = fabs(tracker_goal_pose_.theta - tracker_state.x.theta);
+        float theta_error = tracker_goal_pose_.theta - tracker_state.x.theta;
+
+        float x_dist = fabs(x_error);
+        float y_dist = fabs(y_error);
+        float theta_dist = fabs(theta_error);
+
         if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_ &&
             theta_dist < tracker_angle_thresh_)
         {
@@ -937,6 +944,13 @@ class TabletopPushingPerceptionNode
           PushTrackerResult res;
           as_.setSucceeded(res);
           stopTracking();
+        }
+        else
+        {
+          if (frame_callback_count_ % 15)
+          {
+            ROS_INFO_STREAM("Error in (x,y): (" << x_error << ", " << y_error << ")");
+          }
         }
       }
     }
@@ -988,6 +1002,7 @@ class TabletopPushingPerceptionNode
       cv::waitKey(display_wait_ms_);
     }
 #endif // DISPLAY_WAIT
+    ++frame_callback_count_;
   }
 
   /**
@@ -1006,7 +1021,7 @@ class TabletopPushingPerceptionNode
       if (req.initialize)
       {
         record_count_ = 0;
-        callback_count_ = 0;
+        learn_callback_count_ = 0;
         // Initialize stuff if necessary (i.e. angle to push from)
         res.no_push = true;
         recording_input_ = false;
@@ -1182,7 +1197,7 @@ class TabletopPushingPerceptionNode
     }
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
-    callback_count_++;
+    learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
                     << p.start_point.y << ", " << p.start_point.z << ")");
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
@@ -1404,7 +1419,7 @@ class TabletopPushingPerceptionNode
     {
       // Write to disk to create video output
       std::stringstream push_out_name;
-      push_out_name << base_output_path_ << "push_vector" << callback_count_
+      push_out_name << base_output_path_ << "push_vector" << learn_callback_count_
                     << ".png";
       cv::Mat push_out_img(disp_img.size(), CV_8UC3);
       disp_img.convertTo(push_out_img, CV_8UC3, 255);
@@ -1470,7 +1485,8 @@ class TabletopPushingPerceptionNode
   bool autorun_pcl_segmentation_;
   bool recording_input_;
   int record_count_;
-  int callback_count_;
+  int learn_callback_count_;
+  int frame_callback_count_;
   Eigen::Vector4f prev_centroid_;
   shared_ptr<ObjectTracker25D> obj_tracker_;
   Pose2D tracker_goal_pose_;

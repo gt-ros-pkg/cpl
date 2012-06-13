@@ -372,9 +372,10 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Failed to connect to push tracker server')
             return response
         ac.cancel_all_goals()
+        self.feedback_count = 0
 
         # Start pushing forward
-        self.vel_push_forward(which_arm)
+        # self.vel_push_forward(which_arm)
         done_cb = None
         active_cb = None
         feedback_cb = self.tracker_feedback_gripper_push
@@ -395,15 +396,9 @@ class PositionFeedbackPushNode:
         return response
 
     def tracker_feedback_gripper_push(self, feedback):
+        which_arm = self.active_arm
         update_twist = TwistStamped()
-        if which_arm == 'l':
-            vel_pub = self.l_arm_cart_vel_pub
-            posture_pub = self.l_arm_vel_posture_pub
-        else:
-            vel_pub = self.r_arm_cart_vel_pub
-            posture_pub = self.r_arm_vel_posture_pub
-
-        update_twist.header.frame_id = '/'+self.active_arm + '_gripper_tool_frame'
+        update_twist.header.frame_id = '/torso_lift_link'
         update_twist.header.stamp = rospy.Time(0)
         update_twist.twist.linear.z = 0.0
         update_twist.twist.angular.x = 0.0
@@ -419,12 +414,21 @@ class PositionFeedbackPushNode:
         spin_x_dot = sin(feedback.x.theta)*feedback.x_dot.theta
         spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
 
-        k_g = 0.5
+        k_g = 0.1
         k_s = 0.03
 
         update_twist.twist.linear.x = k_g*goal_x_dot + k_s*spin_x_dot
         update_twist.twist.linear.y = k_g*goal_y_dot + k_s*spin_y_dot
-        self.update_vel(update_twist, self.active_arm)
+        if self.feedback_count % 15 == 0:
+            rospy.loginfo('Desired pose: ' + str(self.desired_pose))
+            rospy.loginfo('Current pose: ' + str(feedback.x))
+            rospy.loginfo('q_goal_dot: (' + str(k_g*goal_x_dot) + ', ' + str(k_g*goal_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' + str(spin_y_dot) + ')')
+            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' + str(update_twist.twist.linear.y) + ')\n')
+        update_twist.twist.linear.x = k_g*goal_x_dot
+        update_twist.twist.linear.y = k_g*goal_y_dot
+        self.update_vel(update_twist, which_arm)
+        self.feedback_count += 1
 
     def gripper_push(self, request):
         response = GripperPushResponse()
@@ -1230,8 +1234,15 @@ class PositionFeedbackPushNode:
         posture_pub.publish(m)
         vel_pub.publish(forward_twist)
 
-    def update_vel(self, which_arm, update_twist):
+    def update_vel(self, update_twist, which_arm):
         # Note: assumes velocity controller already running
+        if which_arm == 'l':
+            vel_pub = self.l_arm_cart_vel_pub
+            posture_pub = self.l_arm_vel_posture_pub
+        else:
+            vel_pub = self.r_arm_cart_vel_pub
+            posture_pub = self.r_arm_vel_posture_pub
+
         m = self.get_desired_posture(which_arm)
         posture_pub.publish(m)
         vel_pub.publish(update_twist)

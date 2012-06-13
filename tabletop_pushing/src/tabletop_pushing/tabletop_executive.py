@@ -96,8 +96,10 @@ class TabletopExecutive:
             # TODO: Link this correctly once it exists
             self.gripper_feedback_push_proxy = rospy.ServiceProxy(
                 'gripper_feedback_push', GripperPush)
-            self.gripper_post_feedback_push_proxy = rospy.ServiceProxy(
-                'gripper_post_push', GripperPush)
+            self.gripper_feedback_post_push_proxy = rospy.ServiceProxy(
+                'overhead_post_push', GripperPush)
+            self.gripper_feedback_pre_push_proxy = rospy.ServiceProxy(
+                'overhead_pre_push', GripperPush)
             self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                          GripperPush)
             self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
@@ -617,13 +619,13 @@ class TabletopExecutive:
                       str(push_req.start_point.point.z) + ')')
 
         rospy.loginfo("Calling gripper pre push service")
-        pre_push_res = self.gripper_pre_push_proxy(push_req)
+        pre_push_res = self.gripper_feedback_pre_push_proxy(push_req)
         # TODO: Need to have this push proxy and need to send goal_pose in
         # push_request
         rospy.loginfo("Calling gripper feedback push service")
         push_res = self.gripper_feedback_push_proxy(push_req)
         rospy.loginfo("Calling gripper post push service")
-        post_push_res = self.gripper_post_feedback_push_proxy(push_req)
+        post_push_res = self.gripper_feedback_post_push_proxy(push_req)
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)
@@ -656,9 +658,9 @@ if __name__ == '__main__':
     else:
         # TODO: add in desired pose here
         goal_pose = Pose2D()
-        goal_pose.x = 0.8
-        goal_pose.y = 0.3
-        goal_pose.theta = 0.25*pi
+        goal_pose.x = 0.7
+        goal_pose.y = 0.0
+        goal_pose.theta = 0.0*pi
         node.run_rand_learning_collect(num_trials, push_dist, push_angle,
                                        rand_angle, goal_pose)
         node.finish_learning()
