@@ -416,8 +416,8 @@ class PositionFeedbackPushNode:
 
         # Add in direction to corect for spinning
         # TODO: Correct component based on transform in object pose
-        spin_x_dot = feedback.x_dot.theta*sin(feedback.x.theta)
-        spin_y_dot = feedback.x_dot.theta*cos(feedback.x.theta)
+        spin_x_dot = sin(feedback.x.theta)*feedback.x_dot.theta
+        spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
 
         k_g = 0.5
         k_s = 0.03
