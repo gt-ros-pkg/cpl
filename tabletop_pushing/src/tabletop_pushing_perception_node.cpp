@@ -286,7 +286,8 @@ class ObjectTracker25D
     return state;
   }
 
-  ProtoObject findLargestObject(cv::Mat& in_frame, XYZPointCloud& cloud)
+  ProtoObject findLargestObject(cv::Mat& in_frame, XYZPointCloud& cloud,
+                                bool& no_objects)
   {
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
@@ -309,9 +310,10 @@ class ObjectTracker25D
     {
       ROS_WARN_STREAM("No objects found");
       ProtoObject empty;
+      no_objects = false;
       return empty;
     }
-
+    no_objects = true;
     return objs[chosen_idx];
   }
 
@@ -319,7 +321,8 @@ class ObjectTracker25D
                               cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     initialized_ = false;
-    ProtoObject cur_obj = findLargestObject(in_frame, cloud);
+    bool no_objects = false;
+    ProtoObject cur_obj = findLargestObject(in_frame, cloud,  no_objects);
     initialized_ = true;
     frame_count_ = 0;
     PushTrackerState state;
@@ -345,8 +348,8 @@ class ObjectTracker25D
     {
       return initTracks(in_frame, obj_mask, self_mask, cloud);
     }
-    ProtoObject cur_obj = findLargestObject(in_frame, cloud);
-
+    bool no_objects = false;
+    ProtoObject cur_obj = findLargestObject(in_frame, cloud, no_objects);
 
     // Update model
     PushTrackerState state;
@@ -354,26 +357,43 @@ class ObjectTracker25D
     state.header.stamp = ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
 
-    state.x.x = cur_obj.centroid[0];
-    state.x.y = cur_obj.centroid[1];
-    // TODO: Track theta as dominant axis?
-    state.x.theta = 0.0;
+    if (no_objects)
+    {
+      state.no_detection = true;
+      state.x = previous_state_.x;
+      state.x_dot = previous_state_.x_dot;
+    }
+    else
+    {
+      state.x.x = cur_obj.centroid[0];
+      state.x.y = cur_obj.centroid[1];
+      // TODO: Track theta as dominant axis?
+      state.x.theta = 0.0;
 
-    // Convert delta_x to x_dot
-    double delta_x = state.x.x - previous_state_.x.x;
-    double delta_y = state.x.y - previous_state_.x.y;
-    double delta_theta = state.x.theta - previous_state_.x.theta;
-    double delta_t = state.header.stamp.toSec() - previous_time_;
-    state.x_dot.x = delta_x/delta_t;
-    state.x_dot.y = delta_y/delta_t;
-    state.x_dot.theta = delta_theta/delta_t;
+      // Convert delta_x to x_dot
+      double delta_x = state.x.x - previous_state_.x.x;
+      double delta_y = state.x.y - previous_state_.x.y;
+      double delta_theta = state.x.theta - previous_state_.x.theta;
+      double delta_t = state.header.stamp.toSec() - previous_time_;
+      state.x_dot.x = delta_x/delta_t;
+      state.x_dot.y = delta_y/delta_t;
+      state.x_dot.theta = delta_theta/delta_t;
+    }
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     frame_count_++;
 
-    ROS_INFO_STREAM("x: (" << state.x << ")");
-    ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
+    ROS_INFO_STREAM("x: \n" << state.x);
+    ROS_INFO_STREAM("x_dot\n" << state.x_dot << "\n");
 
+    cv::Mat centroid_frame;
+    in_frame.copyTo(centroid_frame);
+    pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
+                                 cur_obj.centroid[2]);
+    cv::Point img_idx = pcl_segmenter_->projectPointIntoImage(
+        centroid_point, cloud.header.frame_id, "openni_rgb_optical_frame");
+    cv::circle(centroid_frame, img_idx, 4, cv::Scalar(255,255,0));
+    cv::imshow("centroid", centroid_frame);
     return state;
   }
 
