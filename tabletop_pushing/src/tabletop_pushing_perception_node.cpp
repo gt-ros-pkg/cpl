@@ -198,14 +198,14 @@ class ObjectTracker25D
                    int fast_thresh=9, bool extended_feature=true,
                    int max_ransac_iter=100,
                    double sufficient_support_percent=0.7,
-                   double support_dist_thresh=0.03) :
+                   double support_dist_thresh=0.03, bool use_surf=false) :
       pcl_segmenter_(segmenter),
       num_downsamples_(num_downsamples), initialized_(false),
       fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
       ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
       frame_count_(0), max_ransac_iter_(max_ransac_iter),
       sufficient_support_percent_(sufficient_support_percent),
-      support_dist_thresh_(support_dist_thresh)
+      support_dist_thresh_(support_dist_thresh), use_surf_tracker_(use_surf)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -320,6 +320,10 @@ class ObjectTracker25D
   PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
                               cv::Mat& self_mask, XYZPointCloud& cloud)
   {
+    if (use_surf_tracker_)
+    {
+      return initTracksSURF(in_frame, obj_mask, self_mask, cloud);
+    }
     initialized_ = false;
     bool no_objects = false;
     ProtoObject cur_obj = findLargestObject(in_frame, cloud,  no_objects);
@@ -344,6 +348,10 @@ class ObjectTracker25D
   PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
                                 cv::Mat& self_mask, XYZPointCloud& cloud)
   {
+    if (use_surf_tracker_)
+    {
+      return updateTracksSURF(in_frame, obj_mask, self_mask, cloud);
+    }
     if (!initialized_)
     {
       return initTracks(in_frame, obj_mask, self_mask, cloud);
@@ -803,6 +811,7 @@ class ObjectTracker25D
   double support_dist_thresh_;
   double previous_time_;
   PushTrackerState previous_state_;
+  bool use_surf_tracker_;
 };
 
 class TabletopPushingPerceptionNode
@@ -818,7 +827,7 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      learn_callback_count_(0), frame_callback_count_(0)
+      learn_callback_count_(0), frame_callback_count_(0), use_surf_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -910,12 +919,14 @@ class TabletopPushingPerceptionNode
     n_private_.param("obj_tracker_ransac_dist_thresh", support_dist, 0.03);
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
+    n_private_.param("push_tracker_use_SURF", use_surf_, false);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, ratio_thresh,
                              match_score_thresh, fast_thresh, extended_feats,
-                             max_ransac_iter, support_percent, support_dist));
+                             max_ransac_iter, support_percent, support_dist,
+                             use_surf_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -1042,9 +1053,19 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized())
     {
-      PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
-          cur_self_filtered_cloud_);
+      PushTrackerState tracker_state;
+      if (use_surf_)
+      {
+        tracker_state = obj_tracker_->updateTracks(
+            cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
+            cur_point_cloud_);
+      }
+      else
+      {
+        tracker_state = obj_tracker_->updateTracks(
+            cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
+            cur_self_filtered_cloud_);
+      }
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -1413,8 +1434,17 @@ class TabletopPushingPerceptionNode
     cv::erode(obj_mask, obj_mask, element);
     // cv::imshow("obj_mask: raw", obj_mask_raw);
     // cv::imshow("obj_mask: closed", obj_mask);
-    PushTrackerState tracker_state = obj_tracker_->initTracks(
-        cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
+    PushTrackerState tracker_state;
+    if (use_surf_)
+    {
+      tracker_state = obj_tracker_->initTracksSURF(
+          cur_color_frame_, obj_mask, cur_self_mask_, cur_point_cloud_);
+    }
+    else
+    {
+      tracker_state = obj_tracker_->initTracks(
+          cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
+    }
     Pose2D obj_pose;
     if (objs.size() == 0)
     {
@@ -1642,6 +1672,7 @@ class TabletopPushingPerceptionNode
   std::string pushing_arm_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
+  bool use_surf_;
 };
 
 int main(int argc, char ** argv)

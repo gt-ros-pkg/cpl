@@ -152,7 +152,11 @@ class TabletopExecutive:
         if not _OFFLINE:
             self.raise_and_look()
         # Initialize push pose
-        self.initialize_learning_push()
+        initialized = False
+        r = rospy.Rate(0.5)
+        while not initialized:
+            initialized = self.initialize_learning_push()
+            r.sleep()
         rospy.loginfo('Done initializing learning')
 
     def run_singulation(self, num_pushes=1, use_guided=True):
@@ -275,6 +279,8 @@ class TabletopExecutive:
                                                                   push_dist,
                                                                   rand_angle,
                                                                   goal_pose)
+                            if push_vec is None:
+                                return
                             if (push_vec.centroid.x == 0.0 and
                                 push_vec.centroid.y == 0.0 and
                                 push_vec.centroid.z == 0.0 or first):
@@ -406,7 +412,12 @@ class TabletopExecutive:
         push_vector_req.initialize = True
         push_vector_req.analyze_previous = False
         rospy.loginfo('Initializing learning push vector service.')
-        self.learning_push_vector_proxy(push_vector_req)
+        try:
+            self.learning_push_vector_proxy(push_vector_req)
+        except rospy.ServiceException, e:
+            rospy.logwarn("Service did not process request: %s"%str(e))
+            return False
+        return True
 
     def raise_and_look(self, request_table=True, init_arms=False):
         if request_table:
