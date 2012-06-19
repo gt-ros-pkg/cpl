@@ -310,10 +310,50 @@ class ObjectTracker25D
     {
       ROS_WARN_STREAM("No objects found");
       ProtoObject empty;
-      no_objects = false;
+      no_objects = true;
       return empty;
     }
-    no_objects = true;
+
+    // Get a mask of just the current object image
+    cv::Mat obj_mask_raw(disp_img.size(), CV_8UC1);
+    cv::compare(disp_img, cv::Scalar(chosen_idx+1), obj_mask_raw, cv::CMP_EQ);
+    cv::Mat obj_mask(obj_mask_raw.size(), CV_8UC1);
+    cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
+    cv::dilate(obj_mask_raw, obj_mask, element);
+    cv::erode(obj_mask, obj_mask, element);
+
+    std::vector<cv::Point> obj_pts;
+    for (unsigned int r = 0; r < obj_mask.rows; ++r)
+    {
+      for (unsigned int c = 0; c < obj_mask.cols; ++c)
+      {
+        if (obj_mask.at<uchar>(r,c) != 0)
+        {
+          obj_pts.push_back(cv::Point2f(c, r));
+        }
+      }
+    }
+
+    ROS_INFO_STREAM("Number of points is: " << obj_pts.size());
+    // TODO: Fit ellipse to object
+    cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
+    ROS_INFO_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
+                    obj_ellipse.center.y << ", " << obj_ellipse.angle << ")"
+                    << "\t(" << obj_ellipse.size.width << ", " <<
+                    obj_ellipse.size.height << ")");
+    cv::Mat obj_disp_mask(obj_mask.size(), CV_8UC3);
+    cv::cvtColor(obj_mask, obj_disp_mask, CV_GRAY2BGR);
+    cv::ellipse(obj_disp_mask, obj_ellipse, cv::Scalar(0,255,0), 2);
+    float obj_img_theta = M_PI/180.0*obj_ellipse.angle;
+    cv::Point obj_angle_vec(obj_ellipse.center.x +
+                            std::sin(obj_img_theta)*obj_ellipse.size.height*0.5,
+                            obj_ellipse.center.y +
+                            std::cos(obj_img_theta)*obj_ellipse.size.height*0.5);
+    cv::line(obj_disp_mask, obj_ellipse.center, obj_angle_vec,
+             cv::Scalar(0,255,0), 1);
+    cv::imshow("obj_mask_closed", obj_disp_mask);
+
+    no_objects = false;
     return objs[chosen_idx];
   }
 
@@ -333,6 +373,11 @@ class ObjectTracker25D
     state.header.seq = 0;
     state.header.stamp = ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
+    if (no_objects)
+    {
+      state.no_detection = true;
+    }
+
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
     // TODO: Track theta as dominant axis?
