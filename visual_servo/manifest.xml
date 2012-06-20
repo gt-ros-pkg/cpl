@@ -1,13 +1,13 @@
 <package>
-  <description brief="tabletop_pushing">
+  <description brief="visual_servo">
 
-     tabletop_pushing
+     visual_servo
 
   </description>
-  <author>Tucker Hermans</author>
+  <author>Stephan Lee</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
-  <url>http://ros.org/wiki/tabletop_pushing</url>
+  <url>http://ros.org/wiki/visual_servo</url>
   <depend package="roscpp"/>
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
@@ -24,7 +24,7 @@
   <depend package="hrl_pr2_lib"/>
   <depend package="actionlib"/>
   <depend package="actionlib_msgs"/>
-  <depend package="pr2_controllers_msgs"/>
+  <!-- <depend package="pr2_controllers_msgs"/> -->
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
 </package>
