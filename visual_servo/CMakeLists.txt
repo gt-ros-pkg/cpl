@@ -26,3 +26,4 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_gensrv()
 
 rosbuild_add_executable(visual_servo_node src/vs_node.cpp)
+rosbuild_add_executable(visual_servo_node src/visual_servo.cpp)

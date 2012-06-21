@@ -1,6 +1,6 @@
 /*********************************************************************
  *
- *  Copyright (c) 2011, Georgia Institute of Technology
+ *  Copyright (c) 2012, Georgia Institute of Technology
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -83,23 +83,31 @@
 #include <time.h> // for srand(time(NULL))
 #include <cstdlib> // for MAX_RAND
 
-// Else
+// Others
 #include <visual_servo/VisualServoTwist.h>
+#include "visual_servo.cpp"
 
-#define DEBUG_MODE 1
-#define PRINT_TWISTS 1
+#define DEBUG_MODE 0
 
-#define JACOBIAN_TYPE_INV 1
-#define JACOBIAN_TYPE_PSEUDO 2
-#define JACOBIAN_TYPE_AVG 3
+#define fmod(a,b) a - (float)((int)(a/b)*b)
 
-typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::PointCloud2> MySyncPolicy;
+typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
+/*
+typedef struct {
+  // pixels
+  cv::Point image;
+  // meters, note that xyz for this is different from the other one
+  pcl::PointXYZ camera;
+  // the 3d location in workspace frame
+  pcl::PointXYZ workspace;
+  pcl::PointXYZ workspace_angular;
+} VSXYZ;
+*/
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PointStamped;
 using visual_servo::VisualServoTwist;
-
 
 /**
  * We are taping robot hand with three blue painter's tape 
@@ -116,10 +124,14 @@ public:
   cloud_sub_(n, "point_cloud_topic", 1),
   sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
   it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-  cur_twist_(cv::Mat::zeros(6,1, CV_32F))
+  desire_points_initialized_(false)
   {
+    vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
+    std::string default_optical_frame = "/openni_rgb_optical_frame";
+    n_private_.param("optical_frame", optical_frame_, default_optical_frame);
+ 
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
     n_private_.param("num_downsamples", num_downsamples_, 2);
@@ -151,128 +163,152 @@ public:
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
     
     n_private_.param("term_threshold", term_threshold_, 0.05);
+  
+    /********************
+     * UNCOMMENT THIS TO ENABLE THE SIMULATION
+     ********************/
+    // #define SIMULATION 0
+#ifdef SIMULATION
+    n_private_.param("hand_x", sim_hand_x_, 0.05);
+    n_private_.param("hand_y", sim_hand_y_, 0.05);
+    n_private_.param("hand_z", sim_hand_z_, 0.50);
+    n_private_.param("hand_wx", sim_hand_wx_, 0.0);
+    n_private_.param("hand_wy", sim_hand_wy_, 0.0);
+    n_private_.param("hand_wz", sim_hand_wz_, 0.0); 
+ 
+    n_private_.param("desired_x", sim_desired_x_, 0.0);
+    n_private_.param("desired_y", sim_desired_y_, 0.0);
+    n_private_.param("desired_z", sim_desired_z_, 0.8);
+    n_private_.param("desired_wx", sim_desired_wx_, 0.0);
+    n_private_.param("desired_wy", sim_desired_wy_, 0.0);
+    n_private_.param("desired_wz", sim_desired_wz_, 0.0); 
+
+    n_private_.param("camera_x", sim_camera_x_, 0.0);
+    n_private_.param("camera_y", sim_camera_y_, 0.0);
+    n_private_.param("camera_z", sim_camera_z_, 0.8);
+    n_private_.param("camera_wx", sim_camera_wx_, 0.0);
+    n_private_.param("camera_wy", sim_camera_wy_, 0.0);
+    n_private_.param("camera_wz", sim_camera_wz_, 0.0); 
+
+    n_private_.param("sim_noise_z", sim_noise_z_, 0.0); 
+    n_private_.param("sim_time", sim_time_, 20.0); 
+    n_private_.param("feature_size", sim_feature_size_, 3); 
     
+    std::vector<VSXYZ> desired, hand; 
+    std::vector<pcl::PointXYZ> o; 
+    VSXYZ q, d; 
+    simulateInit(&desired, &hand, &o, &q, &d);
+    printf("--- initial ---\n");
+    simulatePrintPoint(d);
+    simulatePrintPoint(q);
+    simulatePrintPoints(desired);
+    simulatePrintPoints(hand);
+    printf("t,x,y,z,wx,wy,wz,e\n");
+
+#if SIMULATION == 0 // single run
+    //unsigned int errors = 0;
+    //for (int i = 0; i < 100; i++)
+    //{
+      //simulateInit(&desired, &hand, &o, &q, &d);
+      for (float t = 0; t < sim_time_; t += 0.1)
+      {
+        simulateTransform(&hand, o, q);
+        cv::Mat twist = computeTwist(desired, hand);
+        simulateMoveHand(&q, twist, 0.1);
+        // simulatePrintPoint(q);
+        // simulatePrintPoints(desired);
+        simulatePrintPoints(hand);
+        printMatrix(twist.t());
+        float error = simulateGetError(desired, hand);
+        printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,", t,
+            q.workspace.x, q.workspace.y, q.workspace.z,
+            q.workspace_angular.x, q.workspace_angular.y, q.workspace_angular.z);
+        printf("%.3f\n", error);
+      }
+      //float error = simulateGetError(d, q);
+      //printf("%.3f\n", error);
+      //if (error > 0.3)
+       // errors++;
+    //}
+    // ROS_INFO("Error Percentage: %d\n", errors);
+#elif SIMULATION == 1 // batch simulation
+    unsigned int count = 0;
+    unsigned int total = 0;
+    for (float x = -5; x < 5; x += 0.2) 
+    {
+      for (float y = -5; y < 5; y += 0.2)
+      {
+        for (float z = 1; z < 5; z += 0.2)
+        {
+          q.workspace = pcl::PointXYZ(x, y, z);
+          q.workspace_angular = pcl::PointXYZ(sim_hand_wx_,sim_hand_wy_,sim_hand_wz_);
+ 
+          simulateTransform(&hand, o, q); 
+          printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,",
+              q.workspace.x, q.workspace.y, q.workspace.z,
+              q.workspace_angular.x, q.workspace_angular.y, q.workspace_angular.z);
+          for (float t = 0; t < sim_time_; t += 0.1)
+          {
+            simulateTransform(&hand, o, q);
+            cv::Mat twist = computeTwist(desired, hand);
+            simulateMoveHand(&q, twist, 0.1);
+            float error = simulateGetError(desired, hand);
+            if (error < 1e-2)
+              break;
+#ifdef SIM_DEBUG
+            printf("T = %.2f | ", t);
+            printf("v:\t");
+            printMatrix(twist.t());
+            simulatePrintPoints(hand);
+#endif
+          }
+
+          printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,",
+              q.workspace.x, q.workspace.y, q.workspace.z,
+              q.workspace_angular.x, q.workspace_angular.y, q.workspace_angular.z);
+          float error_ = simulateGetError(desired, hand);
+          printf("%.3f\n", error_);
+          if (error_ > 1)
+            count++;
+          total++;
+        }
+      }
+    }
+    printf("Error Rate: %f\n", (float)count/total);
+#endif
+    exit(0);
+
+// if SIMULATION IS NOT defined
+#else     
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
-  }
-  
-  /**
-   * The service callback
-   * @param req Request, empty for now
-   * @param res Response: TwistStamped Message
-   */
-  bool getTwist(VisualServoTwist::Request &req, VisualServoTwist::Response &res)
-  {
-    
-    // Do not respond to service call when the node got no sensor callback
-    if (!camera_initialized_)
-    {
-      return false;
-    }
-    
-    /** Main Logic **/
-    // segment color -> find contour -> moments
-    // -> reorder to recognize each point -> find error, interaction matrix, & twist
-    
-    // get all the blues 
-    cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
-                                     tape_hue_threshold_);
-    // find the three largest blues
-    std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-    
-    // order the blue tapes
-    std::vector<cv::Point> pts = getMomentCoordinates(ms);
-    
-    // compute the twist 
-    cv::Mat twist = computeTwist(desired_locations_, cur_color_frame_, cur_depth_frame_, pts);
-    
-#ifdef DEBUG_MODE
-    // put dots on the centroids of wrist
-    for (unsigned int i = 0; i < pts.size(); i++) 
-    {
-      cv::circle(cur_orig_color_frame_, pts.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
-    // put dots on the desired location
-    for (unsigned int i = 0; i < desired_locations_.size(); i++)
-    {
-      cv::circle(cur_orig_color_frame_, desired_locations_.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }    
-    cv::imshow("Output", cur_orig_color_frame_.clone());
-    cv::waitKey(display_wait_ms_);
 #endif
-    
-    cv::Mat temp = twist.clone(); 
-    
-    // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
-    tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
-    tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));
-    tf::StampedTransform transform; 
-    
-    ros::Time now = ros::Time(0);
-    try 
-    {
-      tf::TransformListener listener;
-      listener.waitForTransform(workspace_frame_, "/openni_rgb_optical_frame",  now, ros::Duration(1.0));
-      listener.lookupTransform(workspace_frame_, "/openni_rgb_optical_frame",  now, transform);
-    }
-    catch (tf::TransformException e)
-    {
-      // return 0 value in case of error so the arm stops
-      res.vx = 0; res.vy = 0.; res.vz = 0; res.wx= 0; res.wy = 0; res.wz = 0;
-      ROS_WARN_STREAM(e.what());
-      return true;
-    }
-    
-    // twist transformation
-    btVector3 out_rot = transform.getBasis() * twist_rot;
-    btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
-    
-    // multiple the velocity and rotation by gain defined in the parameter
-    res.vx =  out_vel.x()*gain_vel_;
-    res.vy =  out_vel.y()*gain_vel_;
-    res.vz =  out_vel.z()*gain_vel_;
-    res.wx =  out_rot.x()*gain_rot_;
-    res.wy =  out_rot.y()*gain_rot_;
-    res.wz =  out_rot.z()*gain_rot_;
-    
-#ifdef PRINT_TWISTS
-    printMatrix(temp.t());
-    printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", res.vx, res.vy, res.vz, res.wx, res.wy, res.wz);
-#endif
-    return true;
   }
-  
+
   /**
    * Called when Kinect information is avaiable. Refresh rate of about 100Hz 
    */
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
                       const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
-    if (!camera_initialized_)
-    {
-      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
-      camera_initialized_ = true;
-
-    }
-    /** Preparing the image **/             
+    // Preparing the image
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-    
+
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
-    
+
     XYZPointCloud cloud; 
     pcl::fromROSMsg(*cloud_msg, cloud);
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-                          cloud.header.stamp, ros::Duration(0.5));
+        cloud.header.stamp, ros::Duration(0.5));
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
     prev_camera_header_ = cur_camera_header_;
     cur_camera_header_ = img_msg->header;
-    
-    //ROS_INFO("%d", cur_camera_header_.frame_id);
-    
+
     cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
                            cv::Scalar(255));
+
     // Black out pixels in color and depth images outside of workspace
     // As well as outside of the crop window
     for (int r = 0; r < color_frame.rows; ++r)
@@ -293,232 +329,163 @@ public:
       }
     }
 
-    ROS_INFO("I AM HERE");
-
     // focus only on the tabletop setting. do not care about anything far or too close
     color_frame.copyTo(cur_color_frame_, workspace_mask);
     cur_orig_color_frame_ = color_frame.clone();
-    depth_frame.copyTo(cur_depth_frame_, workspace_mask);
+    cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
-    
-    // if desired point is not initialized
-    if (desired_locations_.size() != 3 || (jacobian_type_ == JACOBIAN_TYPE_AVG && countNonZero(desired_jacobian_)==0) ) 
+
+    // Store camera information only once
+    if (!camera_initialized_)
     {
-      
+      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
+      camera_initialized_ = true;
+    }
+
+    // initialize the desired points 
+    if (!desire_points_initialized_)
+    {
       desired_locations_ = setDesiredPosition();
-      
-      // Average Jacobian requires the interaction matrix at the desired locations too
-      if (jacobian_type_ == JACOBIAN_TYPE_AVG )
+      if (desired_locations_.size() == 3) 
       {
-        desired_jacobian_ = getMeterInteractionMatrix(cur_depth_frame_, desired_locations_);
+        if (jacobian_type_ == JACOBIAN_TYPE_AVG)
+        {
+          // desired_jacobian_ = getMeterInteractionMatrix(desired_locations_);
+          if (vs_->setDesiredInteractionMatrix(desired_locations_)) desire_points_initialized_ = true;
+        }
+        else desire_points_initialized_ = true;
       }
-      
-      // returned jacobian is null, which means we need to crap out
-      if (desired_locations_.size() != 3) {
-        ROS_WARN("Could not compute Desired Location. Please re-arrange your setting and retry.");
-        ros::Duration(0.5).sleep();        
-      }
-      else if (jacobian_type_ == JACOBIAN_TYPE_AVG && countNonZero(desired_jacobian_) == 0) 
+    }
+    else 
+    {
+      ros::NodeHandle n;
+      ros::ServiceClient client = n.serviceClient<visual_servo::VisualServoTwist>("movearm");
+
+      // compute the twist if everything is good to go
+      visual_servo::VisualServoTwist srv = getTwist();    
+      if (client.call(srv))
       {
-        ROS_WARN("Could not get Image Jacobian for Desired Location. Please re-arrange your setting and retry.");
-        ros::Duration(0.5).sleep();
-      } 
-      else 
-      {
-        // No error: advertise twist service
-        twistServer = n_.advertiseService("visual_servo_twist", &VisualServoNode::getTwist, this);
-        ROS_DEBUG("Ready to use the getTwist service");
+        // on success
       }
+      else
+      {
+        // on failure
+      }
+    }
+  }   
+  
+  // Service method
+  visual_servo::VisualServoTwist getTwist()
+  {
+    visual_servo::VisualServoTwist srv;
+
+    // get all the blues 
+    cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
+        tape_hue_threshold_);
+
+    // find the three largest blues
+    std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
+    
+    // order the blue tapes
+    std::vector<cv::Point> pts = getMomentCoordinates(ms);
+    // convert the features into proper form 
+    std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
+    
+    for (unsigned int i = 0; i < desired_locations_.size(); i++)
+    {
+      cv::Point p = desired_locations_.at(i).image;
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+      p = features.at(i).image;
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+    }
+    cv::imshow("in", cur_orig_color_frame_); 
+    cv::waitKey(display_wait_ms_);
+
+    // shared_ptr<VisualServo> vs = shared_ptr<VisualServo>(new VisualServo());
+    srv = vs_->computeTwist(desired_locations_, features);
+/*
+    // compute the twist (output is in optical frame) 
+    cv::Mat twist = computeTwist(desired_locations_, features);
+    cv::Mat temp = twist.clone(); 
+    
+    // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
+    tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
+    tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));
+    tf::StampedTransform transform; 
+    ros::Time now = ros::Time(0);
+    try 
+    {
+      tf::TransformListener listener;
+      listener.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(1.0));
+      listener.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
+    }
+    catch (tf::TransformException e)
+    {
+      // return 0 value in case of error so the arm stops
+      ROS_WARN_STREAM(e.what());
+      return srv;
     }
     
-#ifdef DEBUG_MODE
-    // put dots on the desired location
-    for (unsigned int i = 0; i < desired_locations_.size(); i++) 
-    {
-      cv::circle(cur_orig_color_frame_, desired_locations_.at(i), 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
-    cv::imshow("Raw+Goal", cur_orig_color_frame_.clone());
-    cv::waitKey(display_wait_ms_);
+    // twist transformation from optical frame to workspace frame
+    btVector3 out_rot = transform.getBasis() * twist_rot;
+    btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
+    
+    // multiple the velocity and rotation by gain defined in the parameter
+    srv.request.twist.twist.linear.x = out_vel.x()*gain_vel_*1.2;
+    srv.request.twist.twist.linear.y = out_vel.y()*gain_vel_;
+    srv.request.twist.twist.linear.z =  out_vel.z()*gain_vel_;
+    srv.request.twist.twist.angular.x =  out_rot.x()*gain_rot_;
+    srv.request.twist.twist.angular.y =  out_rot.y()*gain_rot_;
+    srv.request.twist.twist.angular.z =  out_rot.z()*gain_rot_;
+    
+//#define PRINT_TWISTS 1
+#ifdef PRINT_TWISTS
+    printf("Camera:\t");
+    printMatrix(temp.t());
+    printf("Torso:\t");
+    printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x,
+           srv.request.twist.twist.linear.y,
+           srv.request.twist.twist.linear.z,
+           srv.request.twist.twist.angular.x,
+           srv.request.twist.twist.angular.y,
+           srv.request.twist.twist.angular.z);
 #endif
-  }   
+
+*/
+    return srv;
+  }
   
   /**
    * Still in construction:
    * to fix the orientation of the wrist, we now take a look at how the hand is positioned
    * and use it to compute the desired positions.
    */
-  std::vector<cv::Point> setDesiredPosition()
+  std::vector<VSXYZ> setDesiredPosition()
   {
-    std::vector<cv::Point> desired; desired.clear();
+    std::vector<VSXYZ> desired; desired.clear();
     // Looking up the hand
     // Setting the Desired Location of the wrist
     // Desired location: center of the screen
+    std::vector<pcl::PointXYZ> pts; pts.clear();
     pcl::PointXYZ origin = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2);
-    origin.z += 0.05;
+    origin.z += 0.10;
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
-    
     two.y -= 0.05; 
-    three.x -= 0.055;
+    three.x -= 0.05;
     
-    // now we need to convert the position of these desired points that are in pc into the image location
-    cv::Point p0 = projectPointIntoImage(origin, cur_point_cloud_.header.frame_id, cur_camera_header_.frame_id);
-    cv::Point p1 = projectPointIntoImage(two, cur_point_cloud_.header.frame_id, cur_camera_header_.frame_id);								
-    cv::Point p2 = projectPointIntoImage(three, cur_point_cloud_.header.frame_id, cur_camera_header_.frame_id);
-    if (p0.x < 0 || p0.y < 0 || 
-        p1.x < 0 || p1.y < 0 || 
-        p2.x < 0 || p2.y < 0) 
-    {
-      // impossible to get negative pixel value. exit
-      ROS_WARN("Invalid Points Computed. Retrying");
-      ROS_WARN("Points at [%3d,%3d][%3d,%3d][%3d,%3d]", p0.x, p0.y, p1.x, p1.y, p2.x, p2.y); 
-      return desired;
-    }
-    desired.push_back(p0); desired.push_back(p1); desired.push_back(p2);
-    return desired;
-    ROS_INFO("Setting the Desired Point at [%3d,%3d][%3d,%3d][%3d,%3d]", p0.x, p0.y, p1.x, p1.y, p2.x, p2.y); 
+    pts.push_back(origin); pts.push_back(two); pts.push_back(three);
+    return Point3DToVSXYZ(pts);
   }
   
-  cv::Mat computeTwist(std::vector<cv::Point> desired, cv::Mat color_frame, 
-                       cv::Mat depth_frame, std::vector<cv::Point> pts) 
-  {
-    cv::Mat ret = cv::Mat::zeros(6,1, CV_32F);
-    if (pts.size() == 3)
-    {
-      cv::Mat error_mat;
-      float e = 0;
 
-      // for all three features,
-      for (int i = 0; i < 3; i++) 
-      {
-        // Error terms have to be converted into meter 
-        cv::Mat error = projectImagePointToPoint(pts.at(i)) 
-        - projectImagePointToPoint(desired.at(i)); 
-        // taking just x and y, but no z
-        error = error.rowRange(0,2); 
-        error_mat.push_back(error);
-        
-        // RMS of error for termination condition
-        e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
-      }
-      ROS_DEBUG("RMS of Error: %.7f (halt at %0.4f",sqrt(e), term_threshold_);
-      // if RMS of error is less than a constant, just return 0
-      if(sqrt(e) < term_threshold_)
-      {
-        return ret;
-      }
-      
-      cv::Mat im = getMeterInteractionMatrix(depth_frame, pts);
-      
-      // if we can't compute interaction matrix, just make all twists 0
-      if (countNonZero(im) == 0)
-      {
-        return ret;
-      }
-      
-      // inverting the matrix (3 approaches)
-      cv::Mat iim;
-      switch (jacobian_type_) 
-      {
-        case JACOBIAN_TYPE_INV:
-          iim = (im).inv();
-          break;
-        case JACOBIAN_TYPE_PSEUDO:
-          iim = (im.t() * im).inv()*im.t();
-          break;
-        default: 
-          // JACOBIAN_TYPE_AVG
-          // We use specific way shown on visual servo by Chaumette 2006
-          cv::Mat temp = desired_jacobian_ + im;
-          iim = 0.5*(temp.t() * temp).inv() * temp.t();
-      }
-      
-      // Gain Matrix K
-      cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
-      
-      // K x IIM x ERROR = TWIST
-      ret = gain*(iim*error_mat);
-      
-#ifdef DEBUG_MODE
-#ifdef PRINT_TWISTS
-      ROS_INFO("1. error matrix, 2. im frame twist, 3. torso frame twist");
-      printMatrix((error_mat).t());
-#endif
-#endif
-      
-    }
-    return ret;
-  }
   
-  /**
-   * get the interaction matrix
-   * @param depth_frame  Need the depth information from Kinect for Z
-   * @param pts          Vector of feature points
-   * @return             Return the computed interaction Matrix (6 by 6)
-   */
-  cv::Mat getMeterInteractionMatrix(cv::Mat depth_frame, std::vector<cv::Point> &pts) 
-  {
-    // interaction matrix, image jacobian
-    cv::Mat L = cv::Mat::zeros(6,6,CV_32F);
-    if (pts.size() == 3) {
-      for (int i = 0; i < 3; i++) {
-        cv::Mat xy = projectImagePointToPoint(pts.at(i));
-        float x = xy.at<float>(0,0);
-        float y = xy.at<float>(1,0);
-        float z = depth_frame.at<float>(pts.at(i).x, pts.at(i).y);
-        
-        ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
-        
-        // float z = cur_point_cloud_.at(y,x).z;
-        int l = i * 2;
-        if (z <= 0 || isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
-        L.at<float>(l,0) = 1/z;   L.at<float>(l+1,0) = 0;
-        L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = 1/z;
-        L.at<float>(l,2) = -x/z;    L.at<float>(l+1,2) = -y/z;
-        L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = -(1 + pow(y,2));
-        L.at<float>(l,4) = (1+pow(x,2));  L.at<float>(l+1,4) = x*y;
-        L.at<float>(l,5) = -y;      L.at<float>(l+1,5) = x;
-      }
-    }
-#ifdef DEBUG_MODE
-    //      ROS_DEBUG("Interaction");
-    //      printMatrix(L);
-    //      ROS_DEBUG("Inverse");
-    //      printMatrix(L.inv());
-    //      ROS_DEBUG("Pseudo");
-    //      printMatrix(pseudo);
-#endif
-    return L;
-  }
-  
-  /**
-   * get the interaction matrix. However, one caveat is that the X and Y used for
-   * calculations are in pxiels.
-   */
-  cv::Mat getPixelInteractionMatrix(cv::Mat depth_frame, std::vector<cv::Point> &pts) 
-  {
-    // interaction matrix, image jacobian
-    cv::Mat L = cv::Mat::zeros(6,6,CV_32F);
-    if (pts.size() == 3) {
-      for (int i = 0; i < 3; i++) {
-        cv::Point m = pts.at(i);
-        int x = m.x;
-        int y = m.y;
-        float z = depth_frame.at<float>(y, x);
-        // float z = cur_point_cloud_.at(y,x).z;
-        int l = i * 2;
-        if (z <= 0 || isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
-        L.at<float>(l,0) = 1/z;   L.at<float>(l+1,0) = 0;
-        L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = 1/z;
-        L.at<float>(l,2) = -x/z;    L.at<float>(l+1,2) = -y/z;
-        L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = -(1 + pow(y,2));
-        L.at<float>(l,4) = (1+pow(x,2));  L.at<float>(l+1,4) = x*y;
-        L.at<float>(l,5) = -y;      L.at<float>(l+1,5) = x;
-      }
-    }
-    return L;
-  }
-  
+
+
+  /************************************
+   * PERCEPTION
+   ************************************/
+
   /**
    * Take three biggest moments of specific color and returns 
    * the three biggest blobs or moments. This method assumes that
@@ -526,7 +493,7 @@ public:
    * @param ms   All moments of color segmented
    * @return     returns vectors of cv::Point. Ordered in specific way 
    *             (1. top left, 2. top right, and 3. bottom left)
-   */
+   **/
   std::vector<cv::Point> getMomentCoordinates(std::vector<cv::Moments> ms)
   {
     std::vector<cv::Point> ret;
@@ -543,18 +510,28 @@ public:
       }
       
       // find the top left corner using distance scheme
-      double dist[3][3], lowest(1e6);
-      int one(-1);
-      for (int i = 0; i < 3; i++) {
-        for (int j = i; j < 3; j++) {
-          double temp = pow(centroids[j][0]- centroids[i][0],2) 
-          + pow(centroids[j][1]-centroids[i][1],2);
-          dist[i][j] = temp;
-          dist[j][i] = temp;
-        }
-        double score = dist[i][0] + dist[i][1] + dist[i][2];
-        if (score < lowest) {
-          lowest = score;
+      cv::Mat vect = cv::Mat::zeros(3,2, CV_32F); 
+      vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
+      vect.at<float>(0,1) = centroids[0][1] - centroids[1][1];
+      vect.at<float>(1,0) = centroids[0][0] - centroids[2][0];
+      vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
+      vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
+      vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];       
+      
+      double angle[3];
+      angle[0] = abs(vect.row(0).dot(vect.row(1))); 
+      angle[1] = abs(vect.row(0).dot(vect.row(2))); 
+      angle[2] = abs(vect.row(1).dot(vect.row(2))); 
+      
+      // printMatrix(vect); 
+      double min = angle[0]; 
+      int one = 0;
+      for (int i = 0; i < 3; i++)
+      {
+        // printf("[%d, %f]\n", i, angle[i]);
+        if (angle[i] < min)
+        {
+          min = angle[i];
           one = i;
         }
       }
@@ -583,7 +560,6 @@ public:
         ret.push_back(pta);
         ret.push_back(ptb);
       }
-      
     }
     return ret;
   } 
@@ -591,10 +567,12 @@ public:
   /**
    * First, apply morphology to filter out noises and find contours around
    * possible features. Then, it returns the three largest moments
+   * 
    * @param in  single channel image input
    * @param color_frame  need the original image for debugging and imshow
+   * 
    * @return    returns ALL moment of specific color in the image
-   */
+   **/
   std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame) 
   {
     cv::Mat open, temp;
@@ -624,11 +602,6 @@ public:
         }
       }
     }
-#ifdef DEBUG_MODE
-    cv::drawContours(cur_orig_color_frame_, contours, -1,  cv::Scalar(50,225,255), 2);
-    //cv::imshow("in", in); 
-    //cv::imshow("open", open.clone());   
-#endif
     return moments;
   }
   
@@ -640,13 +613,16 @@ public:
      * Same with saturation 0. Low saturation makes everything more gray scaled
      * So the default setting are below 
      */
-    return colorSegment(color_frame, hue - threshold, hue + threshold,  default_sat_bot_value_, default_sat_top_value_, 50, default_val_value_);
+    return colorSegment(color_frame, hue - threshold, hue + threshold,  
+        default_sat_bot_value_, default_sat_top_value_, 50, default_val_value_);
   }
   
   /** 
    * Very Basic Color Segmentation done in HSV space
    * Takes in Hue value and threshold as input to compute the distance in color space
+   *
    * @param color_frame   color input from image
+   *
    * @return  mask from the color segmentation 
    */
   cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
@@ -668,30 +644,132 @@ public:
           if (_sat_n < sat && sat < _sat_p)
             if (_value_n < value && value < _value_p)
               workspace_row[c] = 255;
-        
       } 
     }
     
     // removing unwanted parts by applying mask to the original image
     return wm;
   }
-  
+ 
+
   /**************************** 
-   * Helper Methods
+   * Projection & Conversions
    ****************************/
-  
-  /** 
-   * Print the cv::Mat to stdout
-   */
-  void printMatrix(cv::Mat_<double> in)
+  std::vector<VSXYZ> Point3DToVSXYZ(std::vector<pcl::PointXYZ> in)  
   {
-    for (int i = 0; i < in.rows; i++) {
-      for (int j = 0; j < in.cols; j++) {
-        printf("%+.5f\t", in(i,j)); 
-      }
-      printf("\n");
+    std::vector<VSXYZ> ret;
+    for (unsigned int i = 0; i < in.size(); i++)
+    {
+      ret.push_back(convertFrom3DPointToVSXYZ(in.at(i)));
     }
+    return ret;
   }
+
+  /*
+  cv::Mat pointXYZToMat(pcl::PointXYZ in)
+  {
+    cv::Mat ret = cv::Mat::ones(4,1,CV_32F);
+    ret.at<float>(0,0) = in.x;
+    ret.at<float>(1,0) = in.y;
+    ret.at<float>(2,0) = in.z;
+    return ret;
+  }
+  
+  pcl::PointXYZ matToPointXYZ(cv::Mat in)
+  {
+    return pcl::PointXYZ(in.at<float>(0,0), in.at<float>(1,0),
+    in.at<float>(2,0));
+  }
+  */
+
+#ifdef SIMULATION
+  // separate function for simulation since we can't utilize 
+  // TF for rotation
+  VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
+  {
+    // [X,Y,Z] -> [u,v] -> [x,y,z]
+    VSXYZ ret;
+    
+    // 3D point in world frame
+    pcl::PointXYZ in_c = in;
+
+    // temporary to apply the transformation
+    cv::Mat t = cv::Mat::ones(4,1, CV_32F);
+    t.at<float>(0,0) = in_c.x;
+    t.at<float>(1,0) = in_c.y;
+    t.at<float>(2,0) = in_c.z;
+    cv::Mat R = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+      sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
+    
+    // apply the rotation
+    t = R.inv() * t;
+    in_c.x = t.at<float>(0,0);
+    in_c.y = t.at<float>(1,0);
+    in_c.z = t.at<float>(2,0);
+    
+    // really doesn't matter which frame they are in. ignored for now.
+    cv::Point img = projectPointIntoImage(in_c, "/openni_rgb_optical_frame", "/openni_rgb_optical_frame");
+    cv::Mat temp = projectImagePointToPoint(img);
+
+    float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
+    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
+    
+    ret.image = img;
+    // for simpler simulator, this will be the same
+    ret.camera = _2d;
+    ret.workspace= in;
+    return ret;
+  }
+#else
+  VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
+  {
+    // [X,Y,Z] -> [u,v] -> [x,y,z]
+    VSXYZ ret;
+    
+    // 3D point in world frame
+    pcl::PointXYZ in_c = in;
+    cv::Point img = projectPointIntoImage(in_c, workspace_frame_, optical_frame_);
+    cv::Mat temp = projectImagePointToPoint(img);
+
+    float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
+    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
+    
+    ret.image = img;
+    // for simpler simulator, this will be the same
+    ret.camera = _2d;
+    ret.workspace= in;
+    return ret;
+  }
+#endif
+
+  std::vector<VSXYZ> PointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
+  {
+    std::vector<VSXYZ> ret;
+    for (unsigned int i = 0; i < in.size(); i++)
+    {
+      ret.push_back(convertFromPointToVSXYZ(cloud, depth_frame, in.at(i)));
+    }
+    return ret;
+  }
+  
+  VSXYZ convertFromPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in) 
+  {
+    // [u,v] -> [x,y,z] (from camera intrinsics) & [X, Y, Z] (from PointCloud)
+    VSXYZ ret;
+    // pixel to meter value (using inverse of camera intrinsic) 
+    cv::Mat temp = projectImagePointToPoint(in);
+
+    // getZValue averages out z-value in a window to reduce noises
+    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), getZValue(depth_frame, in.x, in.y));
+    pcl::PointXYZ _3d = cloud.at(in.x, in.y);
+    
+    ret.image = in;
+    ret.camera = _2d;
+    ret.workspace= _3d;
+    return ret;
+  }
+
+  
   /**
    * transforms a point in pixels to meter using the inverse of 
    * image intrinsic K
@@ -700,15 +778,20 @@ public:
    */ 
   cv::Mat projectImagePointToPoint(cv::Point in) 
   {
-    // Camera intrinsic matrix
-    k_inv_ = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K)).inv();
-    k_inv_.convertTo(k_inv_, CV_32F);
+    if (K.rows == 0 || K.cols == 0) {
+      
+      // Camera intrinsic matrix
+      K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+      K.convertTo(K, CV_32F);
+    }
+    
+    cv::Mat k_inv = K.inv();
     
     cv::Mat mIn  = cv::Mat(3,1,CV_32F);
     mIn.at<float>(0,0) = in.x; 
     mIn.at<float>(1,0) = in.y; 
     mIn.at<float>(2,0) = 1; 
-    return k_inv_ * mIn;
+    return k_inv * mIn;
   }
   
   /**
@@ -717,28 +800,17 @@ public:
    * @param in  cv::Mat input to be transformed
    * @return    returns meter in cv::Mat
    */ 
-  cv::Mat projectImageMatToPoint(cv::Mat in) 
-  {
-    // Camera intrinsic matrix
-    k_inv_ = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K)).inv();
-    k_inv_.convertTo(k_inv_, CV_32F);
-    
-    cv::Mat out  = cv::Mat::zeros(3,1,CV_32F);
-    
-    // return 0s if input is in wrong size
-    if (in.rows != 3 || in.cols != 1)
-    { 
-      return out;
-    }
-    out = k_inv_ * in;
-    return out;
+  cv::Mat projectImageMatToPoint(cv::Mat in)   
+  { 
+    cv::Point p(in.at<float>(0,0), in.at<float>(1,0));
+    return projectImagePointToPoint(p);
   }
   
   /** 
    * Transforms a point in Point Cloud to Image Frame (pixels)
    * @param cur_point_pcl  The point to be transformed in pcl::PointXYZ
    * @param point_frame    The frame that the PointCloud is in
-   * @param target_frame   To this frame
+   * @param target_frame   Image frame
    * @return               returns the pixel value of the PointCloud in image frame
    */
   cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
@@ -755,6 +827,11 @@ public:
   cv::Point projectPointIntoImage(PointStamped cur_point,
                                   std::string target_frame)
   {
+    if (K.rows == 0 || K.cols == 0) {
+      // Camera intrinsic matrix
+      K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+      K.convertTo(K, CV_32F);
+    }
     cv::Point img_loc;
     try
     {
@@ -762,13 +839,12 @@ public:
       PointStamped image_frame_loc_m;
       tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
       // Project point onto the image
-      img_loc.x = static_cast<int>((cam_info_.K[0]*image_frame_loc_m.point.x +
-                                    cam_info_.K[2]*image_frame_loc_m.point.z) /
+      img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
+                                    K.at<float>(0,2)*image_frame_loc_m.point.z) /
                                    image_frame_loc_m.point.z);
-      img_loc.y = static_cast<int>((cam_info_.K[4]*image_frame_loc_m.point.y +
-                                    cam_info_.K[5]*image_frame_loc_m.point.z) /
+      img_loc.y = static_cast<int>((K.at<float>(1,1)*image_frame_loc_m.point.y +
+                                    K.at<float>(1,2)*image_frame_loc_m.point.z) /
                                    image_frame_loc_m.point.z);
-      
     }
     catch (tf::TransformException e)
     {
@@ -776,7 +852,238 @@ public:
     }
     return img_loc;
   }
+
+  /**********************
+   * HELPER METHODS
+   **********************/
+  void printMatrix(cv::Mat_<double> in)
+  {
+    for (int i = 0; i < in.rows; i++) {
+      for (int j = 0; j < in.cols; j++) {
+        printf("%+.5f\t", in(i,j)); 
+      }
+      printf("\n");
+    }
+  }
   
+  float getZValue(cv::Mat depth_frame, int x, int y)
+  {
+    int window_size = 3;
+    float value = 0;
+    int size = 0; 
+    for (int i = 0; i < window_size; i++) 
+    {
+      for (int j = 0; j < window_size; j++) 
+      {
+        // depth camera has x and y flipped. depth_frame.at(y,x)
+        float temp = depth_frame.at<float>(y-(int)(window_size/2)+j, x-(int)(window_size/2)+i);
+        // printf("[%d %d] %f\n", x-(int)(window_size/2)+i, y-(int)(window_size/2)+j, temp);
+        if (!isnan(temp) && temp > 0 && temp < 2.0) 
+        {
+          size++;
+          value += temp;
+        }
+      }
+    }
+    if (size == 0)
+      return -1;
+    return value/size;
+  }
+ 
+#ifdef SIMULATION
+#define H_PI 1.5707f
+#define Q_PI 0.7854f
+  float simulateGetError(std::vector<VSXYZ> d, std::vector<VSXYZ> q)
+  {
+    unsigned int size = q.size() > d.size() ? d.size() : q.size();
+    float e = 0;
+    for (unsigned int a = 0; a < size; a++)
+    {
+      pcl::PointXYZ dp = d.at(a).camera;
+      pcl::PointXYZ qp = q.at(a).camera;
+      //pcl::PointXYZ dp = d.workspace;
+      //pcl::PointXYZ qp = q.workspace;
+      e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2); //+ pow(dp.z - qp.z, 2); 
+    }
+    //e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2) + pow(dp.z - qp.z, 2);    
+    return sqrt(e);
+  }
+
+  void simulateMoveHand(VSXYZ *q, cv::Mat vel, float deltaT)
+  {
+    vel = vel * deltaT * 2.0;
+    
+    cv::Mat Rt = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+        sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
+
+    cv::Mat basis = Rt.rowRange(0, 3).colRange(0, 3);
+    // transform.getBasis() * twist_rot;
+    cv::Mat twist_ang = (basis * vel.rowRange(3,6));
+    cv::Mat twist_lin = (basis * vel.rowRange(0,3)+ Rt.colRange(3,4).rowRange(0,3).cross(vel.rowRange(3,6)));
+    
+    pcl::PointXYZ p = (*q).workspace;
+    p.x = p.x + twistlim(twist_lin.at<float>(0,0));
+    p.y = p.y + twistlim(twist_lin.at<float>(1,0));
+    p.z = p.z + twistlim(twist_lin.at<float>(2,0));
+    // need to limit where the hand can go (esp in z direction)
+    if (p.z < 0.30)
+      p.z = 0.30;
+    q->workspace = p;
+
+    pcl::PointXYZ a = (*q).workspace_angular;
+    a.x = simulateGetAngle(a.x + twistlim(twist_ang.at<float>(0,0)));
+    a.y = simulateGetAngle(a.y + twistlim(twist_ang.at<float>(1,0)));
+    a.z = simulateGetAngle(a.z + twistlim(twist_ang.at<float>(2,0)));
+    
+    a.x = anglim(a.x);
+    a.y = anglim(a.y);
+    a.z = anglim(a.z);
+    q->workspace_angular = a;
+    return;
+  }
+  float anglim(float a) 
+  {
+    if (a > Q_PI) return Q_PI;
+    if (a < -Q_PI) return -Q_PI;
+    return a;
+  }
+  float twistlim(float a)
+  {
+    return a > 1.0 ? 1.0 : a < -1.0 ? -1.0 : a;
+  }
+
+  float simulateGetAngle(float i) 
+  {
+    if (i > H_PI)
+      return -H_PI + fmod(i, H_PI);
+    if (i < -H_PI)
+      return H_PI - fmod(i, H_PI);
+    return i;
+  }
+  
+  void simulatePrintPoint(VSXYZ v) 
+  {
+#define SIM_DEBUG 1
+#ifdef SIM_DEBUG
+    printf("[i=%+4d, %+4d][c=%+.3f, %+.3f, %+.3f][w=%+.3f, %+.3f, %+.3f][ww=%+.3f, %+.3f, %+.3f]\n",
+        v.image.x, v.image.y, v.camera.x, v.camera.y, v.camera.z, 
+        v.workspace.x, v.workspace.y, v.workspace.z,
+        v.workspace_angular.x, v.workspace_angular.y, v.workspace_angular.z);
+#else
+    printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f\n",
+        v.workspace.x, v.workspace.y, v.workspace.z,
+        v.workspace_angular.x, v.workspace_angular.y, v.workspace_angular.z);
+#endif
+  }
+
+  void simulatePrintPoints(std::vector<VSXYZ> pt) 
+  {
+    for (unsigned int i = 0; i < pt.size(); i++)
+    {
+      VSXYZ v = pt.at(i);
+      simulatePrintPoint(v);
+    }
+  }
+  void simulateInit(std::vector<VSXYZ>* desired, std::vector<VSXYZ>* hand, std::vector<pcl::PointXYZ>* o, VSXYZ* q, VSXYZ* d)
+  {
+
+    // orthographic camera intrinsics
+    K = cv::Mat::eye(3,3, CV_32F); 
+    K.at<float>(0,0) = 525; 
+    K.at<float>(1,1) = 525; 
+    K.at<float>(0,2) = 319.50; 
+    K.at<float>(1,2) = 239.50;
+
+    // feature location in any frame
+    // features
+    
+    o->push_back(pcl::PointXYZ(0.0, 0.0, 0.0)); 
+    if (sim_feature_size_ == 4)
+      o->push_back(pcl::PointXYZ(0.1, 0.0, 0.0)); 
+    o->push_back(pcl::PointXYZ(0.2, 0.0, 0.0)); 
+    o->push_back(pcl::PointXYZ(0.0, 0.2, 0.0)); 
+
+    desired->clear();
+    // set initial hand point
+    d->workspace = pcl::PointXYZ(sim_desired_x_,sim_desired_y_,
+        sim_desired_z_);
+    d->workspace_angular = pcl::PointXYZ(sim_desired_wx_,
+        sim_desired_wy_,sim_desired_wz_);
+    simulateTransform(desired, *o, *d); 
+
+    desired_jacobian_  = getMeterInteractionMatrix(*desired);
+     
+    // set initial hand point
+    q->workspace = pcl::PointXYZ(sim_hand_x_,sim_hand_y_,sim_hand_z_);
+    q->workspace_angular = pcl::PointXYZ(sim_hand_wx_,sim_hand_wy_,sim_hand_wz_);
+    hand->clear();
+    simulateTransform(hand, *o, *q); 
+  }
+  
+  cv::Mat simulateGetRotationMatrix(float tx, float ty, float tz, float x, float y, float z) 
+  {
+    cv::Mat R = cv::Mat::eye(4,4,CV_32F);
+    // build rotation matrix
+    // Z-Y-X Euler Angle implementation
+    R.at<float>(0,0) = cos(z)*cos(y); 
+    R.at<float>(0,1) = cos(z)*sin(y)*sin(x) - sin(z)*cos(x); 
+    R.at<float>(0,2) = cos(z)*sin(y)*cos(x) + sin(z)*sin(x);     
+    R.at<float>(1,0) = sin(z)*cos(y); 
+    R.at<float>(1,1) = sin(z)*sin(y)*sin(x) + cos(z)*cos(x); 
+    R.at<float>(1,2) = sin(z)*sin(y)*cos(x) - cos(z)*sin(x); 
+    
+    R.at<float>(2,0) = -sin(y); 
+    R.at<float>(2,1) = cos(y)*sin(x); 
+    R.at<float>(2,2) = cos(y)*cos(x);
+    
+    R.at<float>(0,3) = tx;
+    R.at<float>(1,3) = ty;
+    R.at<float>(2,3) = tz;
+    return R; 
+  }
+  void simulateTransform(std::vector<VSXYZ>* hand, std::vector<pcl::PointXYZ> o, VSXYZ q)
+  {
+    pcl::PointXYZ t = q.workspace;
+    pcl::PointXYZ a = q.workspace_angular;
+    cv::Mat R = simulateGetRotationMatrix(t.x, t.y, t.z, a.x, a.y, a.z);   
+    /*
+    // == P
+    cv::Mat R2 = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+      sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
+      */
+    // camera translation matrix
+    // apply the transform
+    for (unsigned int i = 0; i < o.size(); i++)
+    {
+      pcl::PointXYZ p = o.at(i);
+      cv::Mat T(4,1,CV_32F);
+      T.at<float>(0,0) = p.x;
+      T.at<float>(1,0) = p.y;
+      T.at<float>(2,0) = p.z;
+      T.at<float>(3,0) = 1;
+      // sadly, the workspace coordinate is in the 'torso lift link', not the camera 
+      //T = (pseudoInverse(R2) *R) * T;
+      T = R * T;
+      p.x = T.at<float>(0,0);
+      p.y = T.at<float>(1,0);
+      p.z = T.at<float>(2,0);
+
+      // noise can be only 10% of the real value
+      if (sim_noise_z_ > 0)
+      {
+        float random = (rand() % 10000)/10000.0 * p.z*sim_noise_z_/100 -
+        p.z * 2 * sim_noise_z_/ 100;
+        p.z = p.z + random;
+      }
+
+      if ((*hand).size() == o.size())
+        (*hand).at(i) = convertFrom3DPointToVSXYZ(p);  
+      else 
+        (*hand).push_back(convertFrom3DPointToVSXYZ(p));  
+    }
+  }
+#endif
+
   /**
    * Executive control function for launching the node.
    */
@@ -806,15 +1113,17 @@ protected:
   std_msgs::Header cur_camera_header_;
   std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
-  
+
   bool have_depth_data_;
   int display_wait_ms_;
   int num_downsamples_;
   std::string workspace_frame_;
+  std::string optical_frame_;
   bool camera_initialized_;
+  bool desire_points_initialized_;
   std::string cam_info_topic_;
   int tracker_count_;
-  
+
   // filtering 
   double min_workspace_x_;
   double max_workspace_x_;
@@ -826,6 +1135,7 @@ protected:
   int crop_max_x_;
   int crop_min_y_;
   int crop_max_y_;
+
   // segmenting
   int tape_hue_value_;
   int tape_hue_threshold_;
@@ -833,16 +1143,49 @@ protected:
   int default_sat_top_value_;
   int default_val_value_;
   double min_contour_size_;
-  // others
+
+  // others    
+  shared_ptr<VisualServo> vs_;
   int jacobian_type_;
   double gain_vel_;
   double gain_rot_;
-  ros::ServiceServer twistServer;
-  std::vector<cv::Point> desired_locations_;
-  cv::Mat cur_twist_; 
-  cv::Mat desired_jacobian_;
-  cv::Mat k_inv_;
   double term_threshold_;
+
+  cv::Mat desired_jacobian_;
+  std::vector<VSXYZ> desired_locations_;
+  cv::Mat K;
+
+  ros::ServiceServer twistServer;
+  ros::ServiceClient client;
+
+#ifdef SIMULATION
+  // simulation
+  double sim_hand_x_;
+  double sim_hand_y_;
+  double sim_hand_z_;
+  double sim_hand_wx_;
+  double sim_hand_wy_;
+  double sim_hand_wz_;
+
+  double sim_desired_x_;
+  double sim_desired_y_;
+  double sim_desired_z_;
+  double sim_desired_wx_;
+  double sim_desired_wy_;
+  double sim_desired_wz_;
+  
+  double sim_camera_x_;
+  double sim_camera_y_;
+  double sim_camera_z_;
+  double sim_camera_wx_;
+  double sim_camera_wy_;
+  double sim_camera_wz_; 
+
+  double sim_time_;
+  int sim_feature_size_;
+  double sim_noise_z_;
+  cv::Mat P;
+#endif
 };
 
 int main(int argc, char ** argv)

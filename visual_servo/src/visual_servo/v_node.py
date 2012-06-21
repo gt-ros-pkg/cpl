@@ -69,7 +69,7 @@ class VNode:
 
         rospy.loginfo('Waiting for Visual Servo Node Service')
         rospy.wait_for_service('visual_servo_twist')
-        self.srv = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
+        self.get_twist = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
 
     # util
     #
@@ -111,7 +111,7 @@ class VNode:
             twist.header.stamp = rospy.Time(0)
             twist.header.frame_id = 'torso_lift_link'
 
-            resp = self.srv()
+            resp = self.get_twist()
             twist.twist.linear.x = self.adjust_velocity(resp.vx)
             twist.twist.linear.y = self.adjust_velocity(resp.vy)
             twist.twist.linear.z = self.adjust_velocity(resp.vz)
