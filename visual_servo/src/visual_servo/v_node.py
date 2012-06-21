@@ -33,16 +33,26 @@
 
 import roslib; roslib.load_manifest('visual_servo')
 import rospy
-import tabletop_pushing.position_push_node as pn
 from geometry_msgs.msg import TwistStamped
 import tf
 from visual_servo.srv import *
+import tabletop_pushing.position_feedback_push_node as pn
 import sys
+import numpy as np
+
+LEFT_ARM_READY_JOINTS = np.matrix([[0.42427649, 0.0656137,
+                                    1.43411927, -2.11931035,
+                                    -15.78839978, -1.64163257,
+                                    -17.2947453]]).T
+RIGHT_ARM_READY_JOINTS = np.matrix([[-0.42427649, 0.0656137,
+                                     -1.43411927, -2.11931035,
+                                     15.78839978, -1.64163257,
+                                     8.64421842e+01]]).T
 
 class VNode:
 
     def __init__(self):
-        rospy.init_node('v_node', log_level=rospy.DEBUG)
+        # rospy.init_node('v_node', log_level=rospy.DEBUG)
         
         # Setup parameters
         self.vel_sat = rospy.get_param('~vel_sat', 0.10)
@@ -50,10 +60,43 @@ class VNode:
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
         self.pub = self.pn.r_arm_cart_vel_pub
-        
+        self.pn.init_spine_pose()
+        self.pn.init_head_pose(self.pn.head_pose_cam_frame)
+        self.pn.init_arms()
+        self.init_arm_servo()
+        self.pn.switch_to_cart_controllers()
+        rospy.loginfo('Done moving to robot initial pose')
+
         rospy.loginfo('Waiting for Visual Servo Node Service')
         rospy.wait_for_service('visual_servo_twist')
         self.srv = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
+
+    # util
+    #
+
+    def init_arm_servo(self, which_arm='l'):
+        '''
+        Move the arm to the initial pose to be out of the way for viewing the
+        tabletop
+        '''
+        if which_arm == 'l':
+            ready_joints = LEFT_ARM_READY_JOINTS
+        else:
+            ready_joints = RIGHT_ARM_READY_JOINTS
+
+        rospy.loginfo('Moving %s_arm to init servo pose' % which_arm)
+        self.pn.set_arm_joint_pose(ready_joints, which_arm)
+        rospy.loginfo('Moved %s_arm to init servo pose' % which_arm)
+
+
+    def adjust_velocity(self, vel):
+      ret = vel 
+      if ret > self.vel_sat:
+        ret = self.vel_sat
+      elif -ret > self.vel_sat:
+        ret = -self.vel_sat
+      return -ret 
+
 
 
     # Main Control Loop
@@ -81,16 +124,6 @@ class VNode:
             self.pn.stop_moving_vel('r')
             rospy.sleep(0.2) 
   
-    # util
-    #
-    def adjust_velocity(self, vel):
-      ret = vel 
-      if ret > self.vel_sat:
-        ret = self.vel_sat
-      elif -ret > self.vel_sat:
-        ret = -self.vel_sat
-      return -ret 
-
 
 if __name__ == '__main__':
     node = VNode()

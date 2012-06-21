@@ -125,7 +125,7 @@ class PositionFeedbackPushNode:
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
                                                    'openni_rgb_frame')
         self.default_torso_height = rospy.get_param('~default_torso_height',
-                                                    0.3)
+                                                    0.22)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
@@ -167,8 +167,8 @@ class PositionFeedbackPushNode:
         # Setup arms
         self.tf_listener = tf.TransformListener()
         rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False,
-                             use_kinematics=False, use_projector=False)
+        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, 
+                             use_kinematics=False)#, use_projector=False)
 
         self.l_arm_cart_pub = rospy.Publisher(
             '/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)

@@ -292,6 +292,9 @@ public:
         }
       }
     }
+
+    ROS_INFO("I AM HERE");
+
     // focus only on the tabletop setting. do not care about anything far or too close
     color_frame.copyTo(cur_color_frame_, workspace_mask);
     cur_orig_color_frame_ = color_frame.clone();
@@ -513,14 +516,6 @@ public:
         L.at<float>(l,5) = -y;      L.at<float>(l+1,5) = x;
       }
     }
-#ifdef DEBUG_MODE
-      ROS_DEBUG("Interaction");
-      printMatrix(L);
-      ROS_DEBUG("Inverse");
-      printMatrix(L.inv());
-      ROS_DEBUG("Pseudo");
-      printMatrix(pseudo);
-#endif
     return L;
   }
   
