@@ -351,29 +351,44 @@ public:
         if (jacobian_type_ == JACOBIAN_TYPE_AVG)
         {
           // desired_jacobian_ = getMeterInteractionMatrix(desired_locations_);
-          if (vs_->setDesiredInteractionMatrix(desired_locations_)) desire_points_initialized_ = true;
+          if (vs_->setDesiredInteractionMatrix(desired_locations_)) 
+          {
+            desire_points_initialized_ = true; initializeService();
+          }
         }
-        else desire_points_initialized_ = true;
+        else {desire_points_initialized_ = true; initializeService();}
+      }
+      else 
+      {
+        ROS_WARN("Failed to Acquire Three Desired Points. Retrying");
       }
     }
     else 
     {
-      ros::NodeHandle n;
-      ros::ServiceClient client = n.serviceClient<visual_servo::VisualServoTwist>("movearm");
-
       // compute the twist if everything is good to go
-      visual_servo::VisualServoTwist srv = getTwist();    
-      if (client.call(srv))
+      visual_servo::VisualServoTwist srv = getTwist();
+      
+      // calling the service provider to move
+      if (client_.call(srv))
       {
         // on success
+        ROS_DEBUG("SUCCESS!");
       }
       else
       {
         // on failure
+        ROS_WARN("Service FAILED...");
       }
     }
   }   
   
+  void initializeService()
+  {
+    ROS_DEBUG("Hooking Up The Service");
+    ros::NodeHandle n;
+    client_ = n.serviceClient<visual_servo::VisualServoTwist>("movearm");
+  }
+
   // Service method
   visual_servo::VisualServoTwist getTwist()
   {
@@ -391,18 +406,24 @@ public:
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
     
+    // Draw the dots on image to be displayed
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
     {
       cv::Point p = desired_locations_.at(i).image;
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-      p = features.at(i).image;
+
+    }
+    for (unsigned int i = 0; i < features.size(); i++)
+    {
+      cv::Point p = features.at(i).image;
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
     }
     cv::imshow("in", cur_orig_color_frame_); 
     cv::waitKey(display_wait_ms_);
-
+   
     // shared_ptr<VisualServo> vs = shared_ptr<VisualServo>(new VisualServo());
     srv = vs_->computeTwist(desired_locations_, features);
+    return srv;
 /*
     // compute the twist (output is in optical frame) 
     cv::Mat twist = computeTwist(desired_locations_, features);
@@ -452,7 +473,6 @@ public:
 #endif
 
 */
-    return srv;
   }
   
   /**
@@ -1156,7 +1176,7 @@ protected:
   cv::Mat K;
 
   ros::ServiceServer twistServer;
-  ros::ServiceClient client;
+  ros::ServiceClient client_;
 
 #ifdef SIMULATION
   // simulation
