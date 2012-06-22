@@ -52,7 +52,6 @@ RIGHT_ARM_READY_JOINTS = np.matrix([[-0.42427649, 0.0656137,
 class VNode:
 
     def __init__(self):
-        # rospy.init_node('v_node', log_level=rospy.DEBUG)
         
         # Setup parameters
         self.vel_sat = rospy.get_param('~vel_sat', 0.10)
@@ -67,13 +66,9 @@ class VNode:
         self.pn.switch_to_cart_controllers()
         rospy.loginfo('Done moving to robot initial pose')
 
-        rospy.loginfo('Waiting for Visual Servo Node Service')
-        rospy.wait_for_service('visual_servo_twist')
-        self.get_twist = rospy.ServiceProxy('visual_servo_twist', VisualServoTwist)
-
+    
     # util
     #
-
     def init_arm_servo(self, which_arm='l'):
         '''
         Move the arm to the initial pose to be out of the way for viewing the
@@ -98,33 +93,39 @@ class VNode:
       return -ret 
 
 
+    def handle_move_request(req):
+      pub = rospy.Publisher('l_cart/command', Twist)
+      t = req.twist # service call
+      msg = Twist() # this is the message to the twist controller
+      try:
+        twist = TwistStamped()
+        twist.header.stamp = rospy.Time(0)
+        twist.header.frame_id = 'torso_lift_link'
 
-    # Main Control Loop
-    #
-    def run(self):
-        '''
-        Main control loop for the node
-        '''
-        while not rospy.is_shutdown():
-          try:
-            twist = TwistStamped()
-            twist.header.stamp = rospy.Time(0)
-            twist.header.frame_id = 'torso_lift_link'
+        resp = self.get_twist()
+        twist.twist.linear.x = self.adjust_velocity(resp.vx)
+        twist.twist.linear.y = self.adjust_velocity(resp.vy)
+        twist.twist.linear.z = self.adjust_velocity(resp.vz)
+        twist.twist.angular.x = self.adjust_velocity(resp.wx)
+        twist.twist.angular.y = self.adjust_velocity(resp.wy)
+        twist.twist.angular.z = self.adjust_velocity(resp.wz)
+        pn.vel_pub.publish(twist)
 
-            resp = self.get_twist()
-            twist.twist.linear.x = self.adjust_velocity(resp.vx)
-            twist.twist.linear.y = self.adjust_velocity(resp.vy)
-            twist.twist.linear.z = self.adjust_velocity(resp.vz)
-            twist.twist.angular.x = self.adjust_velocity(resp.wx)
-            twist.twist.angular.y = self.adjust_velocity(resp.wy)
-            twist.twist.angular.z = self.adjust_velocity(resp.wz)
-            self.pub.publish(twist)
-            rospy.sleep(0.2) 
-          except rospy.ServiceException, e:
-            self.pn.stop_moving_vel('r')
-            rospy.sleep(0.2) 
-  
+      except rospy.ServiceException, e:
+        pn.stop_moving_vel('l')
+
+      return VisualServoTwistResponse()
+ 
+ 
 
 if __name__ == '__main__':
+  try:
     node = VNode()
-    node.run()
+    
+    rospy.loginfo('Done initializing... Now advertise the Service')
+    s = rospy.Service('movearm', VisualServoTwist , handle_move_request)
+    rospy.loginfo('Ready to move arm')
+    rospy.spin()
+  
+  except rospy.ROSInterruptException: pass
+

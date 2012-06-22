@@ -278,16 +278,13 @@ protected:
       pcl::PointXYZ xyz= pts.at(i).camera;
       float x = xyz.x;
       float y = xyz.y;
-      float z = xyz.z;
-#ifdef DEBUG_MODE
-      // ROS_INFO("x: %f, y: %f, z:%f", x, y, z);
-#endif
+      float Z = xyz.z;
       // float z = cur_point_cloud_.at(y,x).z;
       int l = i * 2;
-      if (isnan(z)) return cv::Mat::zeros(6,6, CV_32F);
-      L.at<float>(l,0) = -1/z;   L.at<float>(l+1,0) = 0;
-      L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = -1/z;
-      L.at<float>(l,2) = x/z;    L.at<float>(l+1,2) = y/z;
+      if (isnan(Z)) return cv::Mat::zeros(6,6, CV_32F);
+      L.at<float>(l,0) = -1/Z;   L.at<float>(l+1,0) = 0;
+      L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = -1/Z;
+      L.at<float>(l,2) = x/Z;    L.at<float>(l+1,2) = y/Z;
       L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = (1 + pow(y,2));
       L.at<float>(l,4) = -(1+pow(x,2));  L.at<float>(l+1,4) = -x*y;
       L.at<float>(l,5) = y;      L.at<float>(l+1,5) = -x;
