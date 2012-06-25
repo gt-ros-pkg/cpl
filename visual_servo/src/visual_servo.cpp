@@ -161,9 +161,26 @@ public:
     srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
     srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
     
-   return srv;
+    printf("camera frame:\t"); printMatrix(twist.t());
+    printf("worksp frame:\t");
+    printf("%+.3f\t%+.3f\t%+.3f\n", 
+    srv.request.twist.twist.linear.x,
+    srv.request.twist.twist.linear.y,
+    srv.request.twist.twist.linear.z
+    );
+
+    return srv;
   }
   
+  void printMatrix(cv::Mat_<double> in)
+  {
+    for (int i = 0; i < in.rows; i++) {
+      for (int j = 0; j < in.cols; j++) {
+        printf("%+.5f\t", in(i,j)); 
+      }
+      printf("\n");
+    }
+  }
   bool setDesiredInteractionMatrix(std::vector<VSXYZ> &pts) 
   {
     cv::Mat im = getMeterInteractionMatrix(pts);
@@ -224,6 +241,8 @@ protected:
       rmse_e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
     }
     
+    printf("Error in camera:\t"); printMatrix(error_mat.t());
+
     im = getMeterInteractionMatrix(pts);
     
     // if we can't compute interaction matrix, just make all twists 0
@@ -279,6 +298,11 @@ protected:
       float x = xyz.x;
       float y = xyz.y;
       float Z = xyz.z;
+      if (Z < 0.1 || Z > 0.95)
+      {
+        ROS_ERROR("Incorrect Z (%f). Cannot Compute Jacobian", Z);
+        return cv::Mat::zeros(size*2, 6, CV_32F);
+      }
       // float z = cur_point_cloud_.at(y,x).z;
       int l = i * 2;
       if (isnan(Z)) return cv::Mat::zeros(6,6, CV_32F);

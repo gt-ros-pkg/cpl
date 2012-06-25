@@ -356,7 +356,11 @@ public:
             desire_points_initialized_ = true; initializeService();
           }
         }
-        else {desire_points_initialized_ = true; initializeService();}
+        else 
+        {
+          desire_points_initialized_ = true; 
+          initializeService();
+        }
       }
       else 
       {
@@ -420,8 +424,18 @@ public:
     }
     cv::imshow("in", cur_orig_color_frame_); 
     cv::waitKey(display_wait_ms_);
+    
+    
+    for (unsigned int i = 0; i < desired_locations_.size(); i++)
+    {
+      printVSXYZ(desired_locations_.at(i));
+    }
+    for (unsigned int i = 0; i < features.size(); i++)
+    {
+      printVSXYZ(features.at(i));
+    }
    
-    // shared_ptr<VisualServo> vs = shared_ptr<VisualServo>(new VisualServo());
+    
     srv = vs_->computeTwist(desired_locations_, features);
     return srv;
 /*
@@ -886,6 +900,12 @@ public:
     }
   }
   
+  void printVSXYZ(VSXYZ i)
+  {
+    printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
+     i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
+
+  }
   float getZValue(cv::Mat depth_frame, int x, int y)
   {
     int window_size = 3;

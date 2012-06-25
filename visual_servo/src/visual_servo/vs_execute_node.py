@@ -56,7 +56,7 @@ def cleanup():
   pub.publish(zero)
 
 def adjustVelocity(vel):
- clip_vel = 0.12
+ clip_vel = 0.05
  ret = vel 
  if ret > clip_vel:
    ret = clip_vel

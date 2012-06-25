@@ -40,9 +40,9 @@ import tabletop_pushing.position_feedback_push_node as pn
 import sys
 import numpy as np
 
-LEFT_ARM_READY_JOINTS = np.matrix([[0.42427649, 0.0656137,
-                                    1.43411927, -2.11931035,
-                                    -15.78839978, -1.64163257,
+LEFT_ARM_READY_JOINTS = np.matrix([[0.42427649, 0.4556137,
+                                    1.63411927, -2.11931035,
+                                    -15.38839978, -1.64163257,
                                     -17.2947453]]).T
 RIGHT_ARM_READY_JOINTS = np.matrix([[-0.42427649, 0.0656137,
                                      -1.43411927, -2.11931035,
@@ -54,7 +54,8 @@ class VNode:
     def __init__(self):
         
         # Setup parameters
-        self.vel_sat = rospy.get_param('~vel_sat', 0.10)
+        self.vel_sat = rospy.get_param('~vel_sat', 0.01)
+        self.vel_scale = rospy.get_param('~vel_scale', 0.1)
         
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
@@ -85,7 +86,7 @@ class VNode:
 
 
     def adjust_velocity(self, vel):
-      ret = vel 
+      ret = vel * self.vel_scale
       if ret > self.vel_sat:
         ret = self.vel_sat
       elif -ret > self.vel_sat:
@@ -93,26 +94,24 @@ class VNode:
       return -ret 
 
 
-    def handle_move_request(req):
-      pub = rospy.Publisher('l_cart/command', Twist)
+    def handle_move_request(self, req):
       t = req.twist # service call
-      msg = Twist() # this is the message to the twist controller
       try:
         twist = TwistStamped()
         twist.header.stamp = rospy.Time(0)
         twist.header.frame_id = 'torso_lift_link'
 
-        resp = self.get_twist()
-        twist.twist.linear.x = self.adjust_velocity(resp.vx)
-        twist.twist.linear.y = self.adjust_velocity(resp.vy)
-        twist.twist.linear.z = self.adjust_velocity(resp.vz)
-        twist.twist.angular.x = self.adjust_velocity(resp.wx)
-        twist.twist.angular.y = self.adjust_velocity(resp.wy)
-        twist.twist.angular.z = self.adjust_velocity(resp.wz)
-        pn.vel_pub.publish(twist)
-
+        twist.twist.linear.x = self.adjust_velocity(t.twist.linear.x)
+        twist.twist.linear.y = self.adjust_velocity(t.twist.linear.y)
+        twist.twist.linear.z = self.adjust_velocity(t.twist.linear.z)
+        twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
+        twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
+        twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
+        self.pn.update_vel(twist, 'l')
+        rospy.loginfo('x:%+.5f y:%+.5f z:%+.5f', \
+           twist.twist.linear.x, twist.twist.linear.y, twist.twist.linear.z)
       except rospy.ServiceException, e:
-        pn.stop_moving_vel('l')
+        self.pn.stop_moving_vel('l')
 
       return VisualServoTwistResponse()
  
@@ -123,7 +122,7 @@ if __name__ == '__main__':
     node = VNode()
     
     rospy.loginfo('Done initializing... Now advertise the Service')
-    s = rospy.Service('movearm', VisualServoTwist , handle_move_request)
+    s = rospy.Service('movearm', VisualServoTwist , node.handle_move_request)
     rospy.loginfo('Ready to move arm')
     rospy.spin()
   

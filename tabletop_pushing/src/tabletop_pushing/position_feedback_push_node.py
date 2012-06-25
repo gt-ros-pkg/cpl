@@ -125,7 +125,7 @@ class PositionFeedbackPushNode:
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
                                                    'openni_rgb_frame')
         self.default_torso_height = rospy.get_param('~default_torso_height',
-                                                    0.22)
+                                                    0.30)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
