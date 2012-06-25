@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Software License Agreement (BSD License)
 #
-#  Copyright (c) 2011, Georgia Institute of Technology
+#  Copyright (c) 2012, Georgia Institute of Technology
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,7 @@ class VNode:
         
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
-        self.pub = self.pn.r_arm_cart_vel_pub
+        self.cart_pub = self.pn.l_arm_cart_vel_pub
         self.pn.init_spine_pose()
         self.pn.init_head_pose(self.pn.head_pose_cam_frame)
         self.pn.init_arms()
@@ -101,15 +101,20 @@ class VNode:
         twist.header.stamp = rospy.Time(0)
         twist.header.frame_id = 'torso_lift_link'
 
-        twist.twist.linear.x = self.adjust_velocity(t.twist.linear.x)
-        twist.twist.linear.y = self.adjust_velocity(t.twist.linear.y)
-        twist.twist.linear.z = self.adjust_velocity(t.twist.linear.z)
+        twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x)
+        twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y)
+        twist.twist.linear.z  = self.adjust_velocity(t.twist.linear.z)
         twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
         twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
         twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-        self.pn.update_vel(twist, 'l')
-        rospy.loginfo('x:%+.5f y:%+.5f z:%+.5f', \
-           twist.twist.linear.x, twist.twist.linear.y, twist.twist.linear.z)
+        self.cart_pub.pub(twist)
+
+        # after(before) adjustment
+        rospy.loginfo('x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', \
+           twist.twist.linear.x, t.twist.linear.x, \
+           twist.twist.linear.y, t.twist.linear.y, \
+           twist.twist.linear.z, t.twist.linear.z)
+
       except rospy.ServiceException, e:
         self.pn.stop_moving_vel('l')
 
@@ -127,4 +132,3 @@ if __name__ == '__main__':
     rospy.spin()
   
   except rospy.ROSInterruptException: pass
-

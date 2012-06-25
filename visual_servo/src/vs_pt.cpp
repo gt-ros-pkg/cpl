@@ -106,7 +106,6 @@ typedef struct {
 */
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
-using geometry_msgs::PointStamped;
 using visual_servo::VisualServoTwist;
 
 /**
@@ -193,7 +192,7 @@ public:
     n_private_.param("sim_noise_z", sim_noise_z_, 0.0); 
     n_private_.param("sim_time", sim_time_, 20.0); 
     n_private_.param("feature_size", sim_feature_size_, 3); 
-    
+
     std::vector<VSXYZ> desired, hand; 
     std::vector<pcl::PointXYZ> o; 
     VSXYZ q, d; 
@@ -415,7 +414,6 @@ public:
     {
       cv::Point p = desired_locations_.at(i).image;
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-
     }
     for (unsigned int i = 0; i < features.size(); i++)
     {
@@ -434,59 +432,11 @@ public:
     {
       printVSXYZ(features.at(i));
     }
-   
     
     srv = vs_->computeTwist(desired_locations_, features);
+    printf("%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x, 
+        srv.request.twist.twist.linear.y, srv.request.twist.twist.linear.z);
     return srv;
-/*
-    // compute the twist (output is in optical frame) 
-    cv::Mat twist = computeTwist(desired_locations_, features);
-    cv::Mat temp = twist.clone(); 
-    
-    // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
-    tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
-    tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));
-    tf::StampedTransform transform; 
-    ros::Time now = ros::Time(0);
-    try 
-    {
-      tf::TransformListener listener;
-      listener.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(1.0));
-      listener.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
-    }
-    catch (tf::TransformException e)
-    {
-      // return 0 value in case of error so the arm stops
-      ROS_WARN_STREAM(e.what());
-      return srv;
-    }
-    
-    // twist transformation from optical frame to workspace frame
-    btVector3 out_rot = transform.getBasis() * twist_rot;
-    btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
-    
-    // multiple the velocity and rotation by gain defined in the parameter
-    srv.request.twist.twist.linear.x = out_vel.x()*gain_vel_*1.2;
-    srv.request.twist.twist.linear.y = out_vel.y()*gain_vel_;
-    srv.request.twist.twist.linear.z =  out_vel.z()*gain_vel_;
-    srv.request.twist.twist.angular.x =  out_rot.x()*gain_rot_;
-    srv.request.twist.twist.angular.y =  out_rot.y()*gain_rot_;
-    srv.request.twist.twist.angular.z =  out_rot.z()*gain_rot_;
-    
-//#define PRINT_TWISTS 1
-#ifdef PRINT_TWISTS
-    printf("Camera:\t");
-    printMatrix(temp.t());
-    printf("Torso:\t");
-    printf("%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x,
-           srv.request.twist.twist.linear.y,
-           srv.request.twist.twist.linear.z,
-           srv.request.twist.twist.angular.x,
-           srv.request.twist.twist.angular.y,
-           srv.request.twist.twist.angular.z);
-#endif
-
-*/
   }
   
   /**
