@@ -408,7 +408,9 @@ public:
     std::vector<cv::Point> pts = getMomentCoordinates(ms);
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-    
+
+#define DISPLAY 0
+#ifdef DISPLAY
     // Draw the dots on image to be displayed
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
     {
@@ -433,12 +435,26 @@ public:
       printVSXYZ(features.at(i));
     }
     
-    srv = vs_->computeTwist(desired_locations_, features);
     printf("%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x, 
         srv.request.twist.twist.linear.y, srv.request.twist.twist.linear.z);
+#endif
+    srv = vs_->computeTwist(desired_locations_, features);
+    srv.request.error = getError(desired_locations_, features);
     return srv;
   }
-  
+
+  float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
+  {
+    float e(0.0);
+    unsigned int size = a.size() <= b.size() ? a.size() : b.size();
+    for (unsigned int i = 0; i < size; i++)
+    {
+      pcl::PointXYZ a_c= a.at(i).camera;
+      pcl::PointXYZ b_c= b.at(i).camera;
+      e += pow(a_c.x - b_c.x ,2) + pow(a_c.y - b_c.y ,2);
+    }
+    return e;
+  }
   /**
    * Still in construction:
    * to fix the orientation of the wrist, we now take a look at how the hand is positioned
@@ -455,8 +471,8 @@ public:
     origin.z += 0.10;
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
-    two.y -= 0.05; 
-    three.x -= 0.05;
+    two.y -= 0.07; 
+    three.x -= 0.06;
     
     pts.push_back(origin); pts.push_back(two); pts.push_back(three);
     return Point3DToVSXYZ(pts);

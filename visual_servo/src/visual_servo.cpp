@@ -161,14 +161,15 @@ public:
     srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
     srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
     
-    printf("camera frame:\t"); printMatrix(twist.t());
-    printf("worksp frame:\t");
-    printf("%+.3f\t%+.3f\t%+.3f\n", 
+    /*
+     printf("camera frame:\t"); printMatrix(twist.t());
+     printf("worksp frame:\t");
+     printf("%+.3f\t%+.3f\t%+.3f\n", 
     srv.request.twist.twist.linear.x,
     srv.request.twist.twist.linear.y,
     srv.request.twist.twist.linear.z
     );
-
+    */
     return srv;
   }
   
@@ -241,7 +242,7 @@ protected:
       rmse_e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
     }
     
-    printf("Error in camera:\t"); printMatrix(error_mat.t());
+    // printf("Error in camera:\t"); printMatrix(error_mat.t());
 
     im = getMeterInteractionMatrix(pts);
     

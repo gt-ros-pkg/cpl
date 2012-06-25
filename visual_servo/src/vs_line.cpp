@@ -156,13 +156,9 @@ public:
     n_private_.param("gain_vel", gain_vel_, 1.0);
     n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
+    n_private_.param("term_threshold", term_threshold_, 0.0007);
     
-    n_private_.param("term_threshold", term_threshold_, 0.05);
- 
-
-
-     
-    // sync_.registerCallback(&VisualServoNode::sensorCallback, this);
+    sync_.registerCallback(&VisualServoNode::sensorCallback, this);
   }
 
   /**
@@ -233,7 +229,6 @@ public:
     }
     else 
     {
-      
       // compute the twist if everything is good to go
       visual_servo::VisualServoTwist srv = getTwist();
 
@@ -241,7 +236,6 @@ public:
       if (client_.call(srv))
       {
         // on success
-        ROS_DEBUG("SUCCESS!");
       }
       else
       {
@@ -251,23 +245,19 @@ public:
     }
   }   
   
-  bool isErrorSmall(std::vector<VSXYZ> a, std::vector<VSXYZ> b) 
+  float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
   {
-    float error(0);
+    float e(0.0);
     unsigned int size = a.size() <= b.size() ? a.size() : b.size();
-    
     for (unsigned int i = 0; i < size; i++)
     {
-      error += pow(a.at(i).camera.x - b.at(i).camera.x, 2);
-      error += pow(a.at(i).camera.y - b.at(i).camera.y, 2);
-      error += pow(a.at(i).camera.z - b.at(i).camera.z, 2);
+      pcl::PointXYZ a_c= a.at(i).camera;
+      pcl::PointXYZ b_c= b.at(i).camera;
+      e += pow(a_c.x - b_c.x ,2) + pow(a_c.y - b_c.y ,2);
     }
-    if (error < 0.5)
-      return true; 
-    
-    return false;
+    return e;
   }
-
+ 
   void initializeService()
   {
     ROS_DEBUG("Hooking Up The Service");
@@ -285,8 +275,12 @@ public:
     srv.request.twist.twist.angular.x = 0;
     srv.request.twist.twist.angular.y = 0; 
     srv.request.twist.twist.angular.z = 0;
-    if (desired_locations_.size() <= 0) return srv;
-
+    if (desired_locations_.size() <= 0)
+    {
+      ROS_INFO("Done with Servo");
+      ros::shutdown();
+      return srv;
+    }
     // get all the blues 
     cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), 
         tape_hue_value_, tape_hue_threshold_);
@@ -299,16 +293,25 @@ public:
     
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-    
+
+    // Get the three points from a waypoint
+    std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_locations_.front());
+#define DISPLAY 0
+#ifdef DISPLAY   
     // Draw the dots on image to be displayed
     cv::Point img_start_pt = prev_wp_.image;
     cv::Point img_end_pt = desired_locations_.front().image;
-    cv::line(cur_orig_color_frame_, img_start_pt, img_end_pt, cv::Scalar(0,0.0,1.0));
+    cv::line(cur_orig_color_frame_, img_start_pt, img_end_pt, cv::Scalar(72,255,0), 2);
     
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
     {
       cv::Point p = desired_locations_.at(i).image;
-      cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(0, 1.0, 0), 2);
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(255, 158, 0), 1);
+    }
+    for (unsigned int i = 0; i < desired_vsxyz.size(); i++)
+    {
+      cv::Point p = desired_vsxyz.at(i).image;
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
     }
     for (unsigned int i = 0; i < features.size(); i++)
     {
@@ -317,14 +320,17 @@ public:
     }
     cv::imshow("in", cur_orig_color_frame_); 
     cv::waitKey(display_wait_ms_);
-   
-    // Get the three points from a waypoint
-    std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_locations_.front());
+#endif
+
+
     srv = vs_->computeTwist(desired_vsxyz, features);
 
-    if(isErrorSmall(desired_vsxyz, features))
+    // Error between desired pose and hand pose
+    float e = getError(desired_vsxyz, features);
+    srv.request.error = e;
+    if(e < term_threshold_)
     {
-      ROS_INFO("Moving to New Waypoint");
+      ROS_DEBUG("Moving to New Waypoint");
       // poping the stack
       prev_wp_ = desired_locations_.front();
       desired_locations_.erase(desired_locations_.begin());
@@ -342,17 +348,17 @@ public:
   std::vector<VSXYZ> setDesiredPosition()
   {
     std::vector<pcl::PointXYZ> pts; pts.clear();
-    pcl::PointXYZ start = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 + 50);
+    pcl::PointXYZ start = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 + 80);
     pcl::PointXYZ end = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 - 50);
     
-    start.z += 0.15;
-    end.z += 0.15;
-    float inc_x = (end.x - start.x) / 10;
-    float inc_y = (end.y - start.y) / 10;
+    start.z += 0.10;
+    end.z += 0.10;
+    float inc_x = (end.x - start.x) / 5;
+    float inc_y = (end.y - start.y) / 5;
     pts.push_back(start);
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 5; i++)
     {
-      pts.push_back(pcl::PointXYZ(start.x + inc_x, start.y + inc_y, start.z)); 
+      pts.push_back(pcl::PointXYZ(start.x + i*inc_x, start.y + i*inc_y, start.z)); 
     }
     pts.push_back(end);
     return Point3DToVSXYZ(pts);
@@ -564,23 +570,6 @@ public:
     }
     return ret;
   }
-
-  /*
-  cv::Mat pointXYZToMat(pcl::PointXYZ in)
-  {
-    cv::Mat ret = cv::Mat::ones(4,1,CV_32F);
-    ret.at<float>(0,0) = in.x;
-    ret.at<float>(1,0) = in.y;
-    ret.at<float>(2,0) = in.z;
-    return ret;
-  }
-  
-  pcl::PointXYZ matToPointXYZ(cv::Mat in)
-  {
-    return pcl::PointXYZ(in.at<float>(0,0), in.at<float>(1,0),
-    in.at<float>(2,0));
-  }
-  */
 
   VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
   {
