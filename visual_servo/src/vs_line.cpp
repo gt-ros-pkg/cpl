@@ -249,6 +249,8 @@ public:
   {
     float e(0.0);
     unsigned int size = a.size() <= b.size() ? a.size() : b.size();
+    if (size < 3)
+      return 1000.0;
     for (unsigned int i = 0; i < size; i++)
     {
       pcl::PointXYZ a_c= a.at(i).camera;
@@ -303,10 +305,12 @@ public:
     cv::Point img_end_pt = desired_locations_.front().image;
     cv::line(cur_orig_color_frame_, img_start_pt, img_end_pt, cv::Scalar(72,255,0), 2);
     
-    for (unsigned int i = 0; i < desired_locations_.size(); i++)
+    cv::Point p = desired_locations_.front().image;
+    cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(0, 128, 255), 3);   
+    for (unsigned int i = 1; i < desired_locations_.size(); i++)
     {
       cv::Point p = desired_locations_.at(i).image;
-      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(255, 158, 0), 1);
+      cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(255, 158, 0), 1);
     }
     for (unsigned int i = 0; i < desired_vsxyz.size(); i++)
     {
@@ -349,16 +353,20 @@ public:
   {
     std::vector<pcl::PointXYZ> pts; pts.clear();
     pcl::PointXYZ start = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 + 80);
-    pcl::PointXYZ end = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 - 50);
+    pcl::PointXYZ end = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 - 60);
     
-    start.z += 0.10;
-    end.z += 0.10;
-    float inc_x = (end.x - start.x) / 5;
-    float inc_y = (end.y - start.y) / 5;
+    // about 10 centimeters above the ground
+    start.z += 0.30; 
+    end.z += 0.30; 
+    int steps = 10;
+
+    float inc_x = (end.x - start.x) / steps;
+    float inc_y = (end.y - start.y) / steps;
+    float inc_z = (end.z - start.z) / steps;
     pts.push_back(start);
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < steps; i++)
     {
-      pts.push_back(pcl::PointXYZ(start.x + i*inc_x, start.y + i*inc_y, start.z)); 
+      pts.push_back(pcl::PointXYZ(start.x + i*inc_x, start.y + i*inc_y, start.z + i*inc_z)); 
     }
     pts.push_back(end);
     return Point3DToVSXYZ(pts);
@@ -368,9 +376,6 @@ public:
   {
     pcl::PointXYZ origin = origin_xyz.workspace;
     std::vector<pcl::PointXYZ> pts; pts.clear();
-
-    // about 10 centimeters above the ground
-    origin.z += 0.10;
 
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;

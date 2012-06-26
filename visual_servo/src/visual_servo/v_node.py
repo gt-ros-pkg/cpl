@@ -55,8 +55,8 @@ class VNode:
     def __init__(self):
         
         # Setup parameters
-        self.vel_sat = rospy.get_param('~vel_sat', 0.02)
-        self.vel_scale = rospy.get_param('~vel_scale', 0.50)
+        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.02)
+        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.015)
         
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
@@ -98,7 +98,9 @@ class VNode:
     def handle_move_request(self, req):
       t = req.twist # service call
       e = req.error
-      self.vel_scale = sqrt(e+ 0.015) # some offset 0.02
+      self.vel_scale = sqrt(e + self.vel_scale_param)
+      self.vel_sat = sqrt(e * self.vel_sat_param)
+      # self.vel_sat = self.vel_sat_param
       try:
         twist = TwistStamped()
         twist.header.stamp = rospy.Time(0)
@@ -113,7 +115,7 @@ class VNode:
         self.cart_pub.publish(twist)
 
         # after(before) adjustment
-        rospy.loginfo('[e=%.4f][scale=%.4f] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', e, self.vel_scale, \
+        rospy.loginfo('[e=%.4f][sca=%.4f][sat=%.4f] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', e, self.vel_scale, self.vel_sat, \
            twist.twist.linear.x, t.twist.linear.x, \
            twist.twist.linear.y, t.twist.linear.y, \
            twist.twist.linear.z, t.twist.linear.z)
