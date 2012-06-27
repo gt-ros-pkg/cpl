@@ -376,6 +376,7 @@ class PositionFeedbackPushNode:
 
         # Start pushing forward
         # self.vel_push_forward(which_arm)
+        self.stop_moving_vel(which_arm)
         done_cb = None
         active_cb = None
         feedback_cb = self.tracker_feedback_gripper_push
@@ -415,7 +416,7 @@ class PositionFeedbackPushNode:
         spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
 
         k_g = 0.1
-        k_s = 0.03
+        k_s = 0.00
 
         update_twist.twist.linear.x = k_g*goal_x_dot + k_s*spin_x_dot
         update_twist.twist.linear.y = k_g*goal_y_dot + k_s*spin_y_dot

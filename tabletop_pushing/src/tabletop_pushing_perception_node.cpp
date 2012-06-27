@@ -314,6 +314,7 @@ class ObjectTracker25D
       return empty;
     }
 
+#ifdef USE_ELLIPSE_BULLSHIT
     // Get a mask of just the current object image
     cv::Mat obj_mask_raw(disp_img.size(), CV_8UC1);
     cv::compare(disp_img, cv::Scalar(chosen_idx+1), obj_mask_raw, cv::CMP_EQ);
@@ -352,7 +353,7 @@ class ObjectTracker25D
     cv::line(obj_disp_mask, obj_ellipse.center, obj_angle_vec,
              cv::Scalar(0,255,0), 1);
     cv::imshow("obj_mask_closed", obj_disp_mask);
-
+#endif // USE_ELLIPSE_BULLSHIT
     no_objects = false;
     return objs[chosen_idx];
   }
@@ -871,7 +872,7 @@ class TabletopPushingPerceptionNode
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
       as_(n, "push_tracker", false),
       have_depth_data_(false),
-      camera_initialized_(false), recording_input_(false), record_count_(0),
+      camera_initialized_(false), recording_input_(true), record_count_(0),
       learn_callback_count_(0), frame_callback_count_(0), use_surf_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -1171,8 +1172,11 @@ class TabletopPushingPerceptionNode
     {
       std::stringstream out_name;
       out_name << base_output_path_ << "input" << record_count_ << ".png";
-      record_count_++;
       cv::imwrite(out_name.str(), cur_color_frame_);
+      std::stringstream self_out_name;
+      self_out_name << base_output_path_ << "self" << record_count_ << ".png";
+      cv::imwrite(self_out_name.str(), cur_self_mask_);
+      record_count_++;
     }
 #endif // DISPLAY_INPUT_COLOR
 #ifdef DISPLAY_INPUT_DEPTH
