@@ -1332,9 +1332,9 @@ class PositionFeedbackPushNode:
     def init_vel_controllers(self):
         self.arm_mode = 'vel_mode'
         self.cs.carefree_switch('r', '%s'+self.base_vel_controller_name,
-                                '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+                                '$(find tabletop_pushing)/params/j_inverse_params_custom.yaml')
         self.cs.carefree_switch('l', '%s'+self.base_vel_controller_name,
-                                '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+                                '$(find tabletop_pushing)/params/j_inverse_params_custom.yaml')
 
     def switch_to_cart_controllers(self):
         if self.arm_mode != 'cart_mode':
