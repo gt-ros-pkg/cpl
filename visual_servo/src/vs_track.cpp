@@ -149,10 +149,10 @@ public:
     n_private_.param("max_workspace_z", max_workspace_z_, 0.6);
     
     // color segmentation parameters
-    n_private_.param("tape_hue_value", target_hue_value_, 10);
-    n_private_.param("tape_hue_threshold", target_hue_threshold_, 20);
-    n_private_.param("tape_hue_value", tape_hue_value_, 137);
-    n_private_.param("tape_hue_threshold", tape_hue_threshold_, 10);
+    n_private_.param("target_hue_value", target_hue_value_, 10);
+    n_private_.param("target_hue_threshold", target_hue_threshold_, 20);
+    n_private_.param("tape_hue_value", tape_hue_value_, 180);
+    n_private_.param("tape_hue_threshold", tape_hue_threshold_, 50);
     n_private_.param("default_sat_bot_value", default_sat_bot_value_, 40);
     n_private_.param("default_sat_top_value", default_sat_top_value_, 40);
     n_private_.param("default_val_value", default_val_value_, 200);
@@ -224,9 +224,9 @@ public:
     {
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
       camera_initialized_ = true;
+      initializeService();
     }
 
-    initializeService();
     
     // compute the twist if everything is good to go
     visual_servo::VisualServoTwist srv = getTwist();
@@ -235,12 +235,11 @@ public:
     if (client_.call(srv))
     {
       // on success
-      ROS_DEBUG("SUCCESS!");
     }
     else
     {
       // on failure
-      ROS_WARN("Service FAILED...");
+      // ROS_WARN("Service FAILED...");
     }
   }   
   
@@ -275,12 +274,30 @@ public:
     //////////////////////
     // Target
     // 
-    cv::Mat mask_t = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
+    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_, 
         tape_hue_threshold_);
 
     // find the three largest blues
     std::vector<cv::Moments> ms_t = findMoments(mask_t, cur_color_frame_); 
+   
+   
+    cv::Mat mask_h = colorSegment(cur_color_frame_.clone(), tape_hue_value_, tape_hue_threshold_);
 
+
+    cv::Mat t, u;
+    cur_orig_color_frame_.copyTo(t, mask_t);
+    cur_orig_color_frame_.copyTo(u, mask_h);
+    cv::imshow("red", t); 
+    cv::imshow("blue", u); 
+    cv::imshow("in", cur_orig_color_frame_); 
+    cv::waitKey(display_wait_ms_);
+
+    // impossible then
+    if (ms_t.size() < 1)
+    {
+           ROS_WARN("No target Found");
+      return srv;
+    }
     // going to get one big blob
     std::vector<cv::Point> pts_t; pts_t.clear();
     cv::Moments m = ms_t.front();
@@ -325,7 +342,7 @@ public:
     cv::imshow("in", cur_orig_color_frame_); 
     cv::waitKey(display_wait_ms_);
     
-    
+    /* 
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
     {
       printVSXYZ(desired_locations_.at(i));
@@ -337,6 +354,7 @@ public:
     
     printf("%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x, 
         srv.request.twist.twist.linear.y, srv.request.twist.twist.linear.z);
+    */
 #endif
     srv = vs_->computeTwist(desired_locations_, features);
     srv.request.error = getError(desired_locations_, features);
@@ -524,7 +542,7 @@ public:
   cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
   {
     cv::Mat temp (color_frame.clone());
-    cv::cvtColor(temp, temp, CV_RGB2HSV);
+    cv::cvtColor(temp, temp, CV_BGR2HSV);
     std::vector<cv::Mat> hsv;
     cv::split(temp, hsv);
    
@@ -539,14 +557,21 @@ public:
       uchar* workspace_row = wm.ptr<uchar>(r);
       for (int c = 0; c < temp.cols; c++)
       {
-        int hue = (int)hsv[0].at<uchar>(r, c), sat = (int)hsv[1].at<uchar>(r, c), value = (int)hsv[2].at<uchar>(r, c);
+        int hue = 2*(int)hsv[0].at<uchar>(r, c), sat = (int)hsv[1].at<uchar>(r, c), value = (int)hsv[2].at<uchar>(r, c);
         if (_hue_n < hue && hue < _hue_p)
           if (_sat_n < sat && sat < _sat_p)
             if (_value_n < value && value < _value_p)
               workspace_row[c] = 255;
       } 
     }
-    
+
+    // REMOVE
+    int r = 0; int c = temp.cols-1;
+    int hue = (int)hsv[0].at<uchar>(r,c);
+    int sat = (int)hsv[1].at<uchar>(r,c);
+    int value = (int)hsv[2].at<uchar>(r,c);
+    printf("[%d,%d][%d, %.3f, %.3f]\n", r, c, hue*2, sat/255.0, value/255.0);
+     
     // removing unwanted parts by applying mask to the original image
     return wm;
   }

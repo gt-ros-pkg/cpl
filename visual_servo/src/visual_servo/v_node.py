@@ -41,7 +41,7 @@ import sys
 import numpy as np
 from math import sqrt
 
-LEFT_ARM_READY_JOINTS = np.matrix([[0.42427649, 0.4556137,
+LEFT_ARM_READY_JOINTS = np.matrix([[0.62427649, 0.4556137,
                                     1.63411927, -2.11931035,
                                     -15.38839978, -1.64163257,
                                     -17.2947453]]).T
@@ -55,8 +55,8 @@ class VNode:
     def __init__(self):
         
         # Setup parameters
-        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.02)
-        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.015)
+        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.025)
+        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.018)
         
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()

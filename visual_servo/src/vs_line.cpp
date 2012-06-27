@@ -227,6 +227,7 @@ public:
 
       initializeService();
       desire_points_initialized_ = true;
+      ROS_DEBUG("Desired Points Initialization Done...");
     }
     else 
     {
@@ -302,24 +303,27 @@ public:
 
     // Get the three points from a waypoint
     std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_locations_.front());
+
 #define DISPLAY 0
 #ifdef DISPLAY   
     // Draw the dots on image to be displayed
     cv::Point img_start_pt = prev_wp_.image;
     cv::Point img_end_pt = desired_locations_.front().image;
+    cv::Point img_last_pt = desired_locations_.back().image;
     cv::line(cur_orig_color_frame_, img_start_pt, img_end_pt, cv::Scalar(72,255,0), 2);
-    
+    // cv::line(cur_orig_color_frame_, img_start_pt, img_last_pt, cv::Scalar(0,72,255), 2);
+
     cv::Point p = desired_locations_.front().image;
-    cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(0, 128, 255), 3);   
     for (unsigned int i = 1; i < desired_locations_.size(); i++)
     {
       cv::Point p = desired_locations_.at(i).image;
-      cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(255, 158, 0), 1);
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(255, 158, 0), 1);
     }
     for (unsigned int i = 0; i < desired_vsxyz.size(); i++)
     {
       cv::Point p = desired_vsxyz.at(i).image;
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+      cv::circle(cur_orig_color_frame_, p, 1, cv::Scalar(0, 128, 255), 1);   
     }
     for (unsigned int i = 0; i < features.size(); i++)
     {
@@ -359,13 +363,13 @@ public:
   std::vector<VSXYZ> setDesiredPosition()
   {
     std::vector<pcl::PointXYZ> pts; pts.clear();
-    pcl::PointXYZ start = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 + 80);
+    pcl::PointXYZ start = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 + 90);
     pcl::PointXYZ end = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2 - 50);
     
     // about 10 centimeters above the ground
-    start.z += 0.15; 
-    end.z += 0.45; 
-    int steps = 10;
+    start.z += 0.35; 
+    end.z += 0.25; 
+    int steps = 8;
 
     float inc_x = (end.x - start.x) / steps;
     float inc_y = (end.y - start.y) / steps;

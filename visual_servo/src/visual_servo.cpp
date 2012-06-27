@@ -184,12 +184,18 @@ public:
   }
   bool setDesiredInteractionMatrix(std::vector<VSXYZ> &pts) 
   {
-    cv::Mat im = getMeterInteractionMatrix(pts);
-    if (countNonZero(im) > 0)
+    try 
     {
-      desired_jacobian_ = im;
-      desired_jacobian_set_ = true;
-      return true;
+      cv::Mat im = getMeterInteractionMatrix(pts);
+      if (countNonZero(im) > 0)
+      {
+        desired_jacobian_ = im;
+        desired_jacobian_set_ = true;
+        return true;
+      }
+    }
+    catch(ros::Exception e)
+    {
     }
     return false;
   }
@@ -299,7 +305,7 @@ protected:
       float x = xyz.x;
       float y = xyz.y;
       float Z = xyz.z;
-      if (Z < 0.1 || Z > 0.95)
+      if (Z < 0.01 || Z > 0.95)
       {
         ROS_ERROR("Incorrect Z (%f). Cannot Compute Jacobian", Z);
         return cv::Mat::zeros(size*2, 6, CV_32F);
