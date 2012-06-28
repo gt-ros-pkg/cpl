@@ -5,8 +5,8 @@
     <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
     <remap from="point_cloud_topic" to="/kinect_head/depth/points"/>
 
-    <param name="target_hue_value" value="15" type="int"/>
-    <param name="target_hue_threshold" value="100" type="int"/>
+    <param name="target_hue_value" value="345" type="int"/>
+    <param name="target_hue_threshold" value="40" type="int"/>
     
     <param name="tape_hue_value" value="200" type="int"/>
     <param name="tape_hue_threshold" value="50" type="int"/>

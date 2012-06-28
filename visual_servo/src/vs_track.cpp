@@ -255,6 +255,8 @@ public:
     pcl::PointXYZ origin = origin_xyz.workspace;
     std::vector<pcl::PointXYZ> pts; pts.clear();
 
+    origin.x -= 0.15;
+    origin.z += 0.10;
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
     two.y -= 0.05; 
@@ -274,23 +276,14 @@ public:
     //////////////////////
     // Target
     // 
-    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_, 
-        tape_hue_threshold_);
+    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_, target_hue_threshold_);
+
+    cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7,7));
+    cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
+    cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
 
     // find the three largest blues
-    std::vector<cv::Moments> ms_t = findMoments(mask_t, cur_color_frame_); 
-   
-   
-    cv::Mat mask_h = colorSegment(cur_color_frame_.clone(), tape_hue_value_, tape_hue_threshold_);
-
-
-    cv::Mat t, u;
-    cur_orig_color_frame_.copyTo(t, mask_t);
-    cur_orig_color_frame_.copyTo(u, mask_h);
-    cv::imshow("red", t); 
-    cv::imshow("blue", u); 
-    cv::imshow("in", cur_orig_color_frame_); 
-    cv::waitKey(display_wait_ms_);
+    std::vector<cv::Moments> ms_t = findMoments(mask_t, cur_color_frame_, 1); 
 
     // impossible then
     if (ms_t.size() < 1)
@@ -298,7 +291,8 @@ public:
            ROS_WARN("No target Found");
       return srv;
     }
-    // going to get one big blob
+
+    // get the center of the moment
     std::vector<cv::Point> pts_t; pts_t.clear();
     cv::Moments m = ms_t.front();
     pts_t.push_back(cv::Point(m.m10/m.m00, m.m01/m.m00));
@@ -316,6 +310,10 @@ public:
     // get all the blues 
     cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
         tape_hue_threshold_);
+    
+    // make it clearer with morphology
+    cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+    cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
 
     // find the three largest blues
     std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
@@ -479,21 +477,17 @@ public:
   } 
   
   /**
-   * First, apply morphology to filter out noises and find contours around
-   * possible features. Then, it returns the three largest moments
    * 
    * @param in  single channel image input
    * @param color_frame  need the original image for debugging and imshow
    * 
    * @return    returns ALL moment of specific color in the image
    **/
-  std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame) 
+  std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame, unsigned int max_num = 3) 
   {
-    cv::Mat open, temp;
-    cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
-    cv::morphologyEx(in.clone(), open, cv::MORPH_OPEN, element);
+    cv::Mat temp = in.clone();
     std::vector<std::vector<cv::Point> > contours; contours.clear();
-    temp = open.clone();
+     
     cv::findContours(temp, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
     std::vector<cv::Moments> moments; moments.clear();
     
@@ -503,7 +497,7 @@ public:
         // first add the forth element
         moments.push_back(m);
         // find the smallest element of 4 and remove that
-        if (moments.size() > 3) {
+        if (moments.size() > max_num) {
           double small(moments.at(0).m00);
           unsigned int smallInd(0);
           for (unsigned int j = 1; j < moments.size(); j++){
@@ -528,7 +522,7 @@ public:
      * So the default setting are below 
      */
     return colorSegment(color_frame, hue - threshold, hue + threshold,  
-        default_sat_bot_value_, default_sat_top_value_, 50, default_val_value_);
+        default_sat_bot_value_, default_sat_top_value_, 40, default_val_value_);
   }
   
   /** 
@@ -547,8 +541,8 @@ public:
     cv::split(temp, hsv);
    
     // so it can support hue near 0 & 360
-    _hue_n = (_hue_n + 360) % 360;
-    _hue_p = (_hue_p + 360) % 360;
+    _hue_n = (_hue_n + 360);
+    _hue_p = (_hue_p + 360);
 
     // masking out values that do not fall between the condition 
     cv::Mat wm(color_frame.rows, color_frame.cols, CV_8UC1, cv::Scalar(0));
@@ -557,21 +551,27 @@ public:
       uchar* workspace_row = wm.ptr<uchar>(r);
       for (int c = 0; c < temp.cols; c++)
       {
-        int hue = 2*(int)hsv[0].at<uchar>(r, c), sat = (int)hsv[1].at<uchar>(r, c), value = (int)hsv[2].at<uchar>(r, c);
+        int hue     = 2*(int)hsv[0].at<uchar>(r, c) + 360;  
+        float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
+        float value = 0.392*(int)hsv[2].at<uchar>(r, c);
+
         if (_hue_n < hue && hue < _hue_p)
           if (_sat_n < sat && sat < _sat_p)
             if (_value_n < value && value < _value_p)
               workspace_row[c] = 255;
       } 
     }
-
+    
+    /*
     // REMOVE
+    printf("[hn=%d hp=%d]", _hue_n, _hue_p);
     int r = 0; int c = temp.cols-1;
-    int hue = (int)hsv[0].at<uchar>(r,c);
-    int sat = (int)hsv[1].at<uchar>(r,c);
-    int value = (int)hsv[2].at<uchar>(r,c);
-    printf("[%d,%d][%d, %.3f, %.3f]\n", r, c, hue*2, sat/255.0, value/255.0);
-     
+    int hue     = 2*(int)hsv[0].at<uchar>(r, c);  
+    float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
+    float value = 0.392*(int)hsv[2].at<uchar>(r, c);
+    printf("[%d,%d][%d, %.1f, %.1f]\n", r, c, hue,sat,value);
+    */
+
     // removing unwanted parts by applying mask to the original image
     return wm;
   }
