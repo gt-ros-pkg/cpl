@@ -134,6 +134,21 @@ typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
 typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
 typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
 
+float subHalfPiAngle(float angle)
+{
+  // NOTE: All angles should be between -pi/2 and pi/2 (only want gradient)
+  while ( angle < -M_PI/2 )
+  {
+    angle += M_PI;
+  }
+  while ( angle > M_PI/2 )
+  {
+    angle -= M_PI;
+  }
+  return angle;
+}
+
+
 struct Tracker25DKeyPoint
 {
   typedef std::vector<float> FeatureVector;
@@ -198,101 +213,22 @@ class ObjectTracker25D
                    int fast_thresh=9, bool extended_feature=true,
                    int max_ransac_iter=100,
                    double sufficient_support_percent=0.7,
-                   double support_dist_thresh=0.03, bool use_surf=false) :
+                   double support_dist_thresh=0.03, bool use_displays=false) :
       pcl_segmenter_(segmenter),
       num_downsamples_(num_downsamples), initialized_(false),
       fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
       ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
       frame_count_(0), max_ransac_iter_(max_ransac_iter),
       sufficient_support_percent_(sufficient_support_percent),
-      support_dist_thresh_(support_dist_thresh), use_surf_tracker_(use_surf)
+      support_dist_thresh_(support_dist_thresh), use_displays_(use_displays)
   {
     upscale_ = std::pow(2,num_downsamples_);
-  }
-
-  PushTrackerState initTracksSURF(cv::Mat& in_frame, cv::Mat& obj_mask,
-                                  cv::Mat& self_mask, XYZPointCloud& cloud)
-  {
-    initialized_ = false;
-    cv::Mat extract_mask;
-    cv::bitwise_and(obj_mask, self_mask, extract_mask);
-    init_obj_keys_ = extractFeatures(in_frame, extract_mask, cloud);
-    cur_obj_keys_ = init_obj_keys_;
-    prev_obj_keys_ = init_obj_keys_;
-
-    // TODO: Create bounding box for volume estimation in tracking
-    initialized_ = true;
-    frame_count_ = 0;
-    PushTrackerState state;
-    state.header.seq = 0;
-    state.header.stamp = ros::Time::now();
-    state.header.frame_id = cloud.header.frame_id;
-    state.x = estimateCentroid(init_obj_keys_);
-    state.x_dot.x = 0.0;
-    state.x_dot.y = 0.0;
-    state.x_dot.theta = 0.0;
-    previous_time_ = state.header.stamp.toSec();
-    return state;
-  }
-
-  PushTrackerState updateTracksSURF(cv::Mat& in_frame, cv::Mat& obj_mask,
-                                    cv::Mat& self_mask, XYZPointCloud& cloud)
-  {
-    if (!initialized_)
-    {
-      return initTracksSURF(in_frame, obj_mask, self_mask, cloud);
-    }
-    prev_obj_keys_ = cur_obj_keys_;
-    cv::Mat extract_mask;
-    cv::bitwise_and(obj_mask, self_mask, extract_mask);
-    cv::imshow("extract_mask", extract_mask);
-    // Get current features
-    KeyPoints extracted_points = extractFeatures(in_frame, extract_mask, cloud);
-    // Match to current object set
-    KeyPoints obj_matches = matchFeatures(extracted_points, prev_obj_keys_);
-
-    // Display matches and individual tracks
-    drawMatches(in_frame, obj_matches, "-obj");
-
-    Eigen::Matrix4f transform = estimateMotionVector(obj_matches, in_frame);
-
-    float delta_x = transform(0,3);
-    float delta_y = transform(1,3);
-    float tr_a = (transform(0,0)+transform(1,1)+transform(2,2));
-    float delta_theta = std::acos((tr_a - 1.0)/2.0);
-
-    // Update model
-
-    PushTrackerState state;
-    state.header.seq = frame_count_;
-    state.header.stamp = ros::Time::now();
-    state.header.frame_id = cloud.header.frame_id;
-
-    // TODO: Set object centroid
-    state.x = estimateCentroid(obj_matches);
-
-    // Convert delta_x to x_dot
-    double delta_t = state.header.stamp.toSec() - previous_time_;
-    state.x_dot.x = delta_x/delta_t;
-    state.x_dot.y = delta_y/delta_t;
-    state.x_dot.theta = delta_theta/delta_t;
-    previous_time_ = state.header.stamp.toSec();
-    cur_obj_keys_ = obj_matches;
-    frame_count_++;
-
-    // ROS_INFO_STREAM("x: (" << state.x << ")");
-    // ROS_INFO_STREAM("x_dot: (" << state.x_dot << ")");
-
-    return state;
   }
 
   ProtoObject findLargestObject(cv::Mat& in_frame, XYZPointCloud& cloud,
                                 bool& no_objects)
   {
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
-    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, in_frame.size(), cloud.header.frame_id);
-    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
 
     // Assume we care about the biggest currently
     int chosen_idx = 0;
@@ -314,27 +250,36 @@ class ObjectTracker25D
       return empty;
     }
 
-#ifdef USE_ELLIPSE_BULLSHIT
-    // Get a mask of just the current object image
-    cv::Mat obj_mask_raw(disp_img.size(), CV_8UC1);
-    cv::compare(disp_img, cv::Scalar(chosen_idx+1), obj_mask_raw, cv::CMP_EQ);
-    cv::Mat obj_mask(obj_mask_raw.size(), CV_8UC1);
-    cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
-    cv::dilate(obj_mask_raw, obj_mask, element);
-    cv::erode(obj_mask, obj_mask, element);
-
-    std::vector<cv::Point> obj_pts;
-    for (unsigned int r = 0; r < obj_mask.rows; ++r)
+    if (use_displays_)
     {
-      for (unsigned int c = 0; c < obj_mask.cols; ++c)
-      {
-        if (obj_mask.at<uchar>(r,c) != 0)
-        {
-          obj_pts.push_back(cv::Point2f(c, r));
-        }
-      }
+      cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+          objs, in_frame.size(), cloud.header.frame_id);
+      pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     }
 
+    no_objects = false;
+    return objs[chosen_idx];
+  }
+
+  double findObjectOrientation(ProtoObject& obj)
+  {
+    cv::RotatedRect obj_ellipse = findFootprintEllipse(obj);
+    float theta = obj_ellipse.angle*M_PI/180.0;
+    // NOTE: Since we are fitting an ellipse, we don't know which way is
+    // dominant, so we will keep angles to be within one half, this could be bad
+    // on boundary conditions...
+    theta = subHalfPiAngle(theta);
+    return theta;
+  }
+
+  cv::RotatedRect findFootprintEllipse(ProtoObject& obj)
+  {
+    // Get 2D footprint of object and fit an ellipse to it
+    std::vector<cv::Point2f> obj_pts;
+    for (unsigned int i = 0; i < obj.cloud.size(); ++i)
+    {
+      obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
+    }
     ROS_INFO_STREAM("Number of points is: " << obj_pts.size());
     // TODO: Fit ellipse to object
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
@@ -342,29 +287,12 @@ class ObjectTracker25D
                     obj_ellipse.center.y << ", " << obj_ellipse.angle << ")"
                     << "\t(" << obj_ellipse.size.width << ", " <<
                     obj_ellipse.size.height << ")");
-    cv::Mat obj_disp_mask(obj_mask.size(), CV_8UC3);
-    cv::cvtColor(obj_mask, obj_disp_mask, CV_GRAY2BGR);
-    cv::ellipse(obj_disp_mask, obj_ellipse, cv::Scalar(0,255,0), 2);
-    float obj_img_theta = M_PI/180.0*obj_ellipse.angle;
-    cv::Point obj_angle_vec(obj_ellipse.center.x +
-                            std::sin(obj_img_theta)*obj_ellipse.size.height*0.5,
-                            obj_ellipse.center.y +
-                            std::cos(obj_img_theta)*obj_ellipse.size.height*0.5);
-    cv::line(obj_disp_mask, obj_ellipse.center, obj_angle_vec,
-             cv::Scalar(0,255,0), 1);
-    cv::imshow("obj_mask_closed", obj_disp_mask);
-#endif // USE_ELLIPSE_BULLSHIT
-    no_objects = false;
-    return objs[chosen_idx];
+    return obj_ellipse;
   }
 
   PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
                               cv::Mat& self_mask, XYZPointCloud& cloud)
   {
-    if (use_surf_tracker_)
-    {
-      return initTracksSURF(in_frame, obj_mask, self_mask, cloud);
-    }
     initialized_ = false;
     bool no_objects = false;
     ProtoObject cur_obj = findLargestObject(in_frame, cloud,  no_objects);
@@ -381,8 +309,7 @@ class ObjectTracker25D
 
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
-    // TODO: Track theta as dominant axis?
-    state.x.theta = 0.0;
+    state.x.theta = findObjectOrientation(cur_obj);
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
@@ -394,10 +321,6 @@ class ObjectTracker25D
   PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
                                 cv::Mat& self_mask, XYZPointCloud& cloud)
   {
-    if (use_surf_tracker_)
-    {
-      return updateTracksSURF(in_frame, obj_mask, self_mask, cloud);
-    }
     if (!initialized_)
     {
       return initTracks(in_frame, obj_mask, self_mask, cloud);
@@ -421,8 +344,7 @@ class ObjectTracker25D
     {
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
-      // TODO: Track theta as dominant axis?
-      state.x.theta = 0.0;
+      state.x.theta = findObjectOrientation(cur_obj);
 
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
@@ -432,22 +354,56 @@ class ObjectTracker25D
       state.x_dot.x = delta_x/delta_t;
       state.x_dot.y = delta_y/delta_t;
       state.x_dot.theta = delta_theta/delta_t;
+
+      ROS_INFO_STREAM("x: \n" << state.x);
+      ROS_INFO_STREAM("x_dot\n" << state.x_dot << "\n");
+
+      if (use_displays_)
+      {
+        cv::Mat centroid_frame;
+        in_frame.copyTo(centroid_frame);
+        pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
+                                  cur_obj.centroid[2]);
+        const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+            centroid_point, cloud.header.frame_id, "openni_rgb_optical_frame");
+        cv::circle(centroid_frame, img_c_idx, 4, cv::Scalar(255,255,0));
+
+        cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
+        const float x_rad0 = std::cos(obj_ellipse.angle)*obj_ellipse.size.height*0.5;
+        const float y_rad0 = std::sin(obj_ellipse.angle)*obj_ellipse.size.height*0.5;
+        pcl::PointXYZ theta_point0(centroid_point.x+x_rad0,
+                                   centroid_point.y+y_rad0,
+                                   centroid_point.z);
+        const float x_rad1 = std::cos(obj_ellipse.angle)*obj_ellipse.size.width*1.5;
+        const float y_rad1 = std::sin(obj_ellipse.angle)*obj_ellipse.size.width*1.5;
+        pcl::PointXYZ theta_point1(centroid_point.x+x_rad1,
+                                   centroid_point.y+y_rad1,
+                                   centroid_point.z);
+        const cv::Point2f img_o0_idx = pcl_segmenter_->projectPointIntoImage(
+            theta_point0, cloud.header.frame_id, "openni_rgb_optical_frame");
+        const cv::Point2f img_o1_idx = pcl_segmenter_->projectPointIntoImage(
+            theta_point1, cloud.header.frame_id, "openni_rgb_optical_frame");
+        cv::line(centroid_frame, img_c_idx, img_o0_idx, cv::Scalar(255,255,0));
+        cv::line(centroid_frame, img_c_idx, img_o1_idx, cv::Scalar(255,255,0));
+        cv::Size img_size;
+        img_size.width = std::sqrt(std::pow(img_o1_idx.x-img_c_idx.x,2) +
+                                   std::pow(img_o1_idx.y-img_c_idx.y,2));
+        img_size.height = std::sqrt(std::pow(img_o0_idx.x-img_c_idx.x,2) +
+                                    std::pow(img_o0_idx.y-img_c_idx.y,2));
+        // TODO: Get angle using atan2
+        float img_angle = std::atan2(img_o0_idx.y, img_o0_idx.x)*180./M_PI;
+        cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+        cv::Mat ellipse_frame;
+        in_frame.copyTo(ellipse_frame);
+        cv::ellipse(ellipse_frame, img_ellipse, cv::Scalar(0,255,255));
+        cv::imshow("ellipse 2D", ellipse_frame);
+        cv::imshow("centroid", centroid_frame);
+      }
     }
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     frame_count_++;
 
-    ROS_INFO_STREAM("x: \n" << state.x);
-    ROS_INFO_STREAM("x_dot\n" << state.x_dot << "\n");
-
-    cv::Mat centroid_frame;
-    in_frame.copyTo(centroid_frame);
-    pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
-                                 cur_obj.centroid[2]);
-    cv::Point img_idx = pcl_segmenter_->projectPointIntoImage(
-        centroid_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-    cv::circle(centroid_frame, img_idx, 4, cv::Scalar(255,255,0));
-    cv::imshow("centroid", centroid_frame);
     return state;
   }
 
@@ -517,7 +473,7 @@ class ObjectTracker25D
         key_points.size();
     KeyPoints obj_key_points;
     FeatureVectors feats;
-    for (int i = 0; i < key_points.size(); ++i)
+    for (unsigned int i = 0; i < key_points.size(); ++i)
     {
       FeatureVector f;
       for (int j = 0; j < descriptor_length; ++j)
@@ -857,7 +813,7 @@ class ObjectTracker25D
   double support_dist_thresh_;
   double previous_time_;
   PushTrackerState previous_state_;
-  bool use_surf_tracker_;
+  bool use_displays_;
 };
 
 class TabletopPushingPerceptionNode
@@ -873,7 +829,7 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(true), record_count_(0),
-      learn_callback_count_(0), frame_callback_count_(0), use_surf_(false)
+      learn_callback_count_(0), frame_callback_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -965,14 +921,13 @@ class TabletopPushingPerceptionNode
     n_private_.param("obj_tracker_ransac_dist_thresh", support_dist, 0.03);
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
-    n_private_.param("push_tracker_use_SURF", use_surf_, false);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, ratio_thresh,
                              match_score_thresh, fast_thresh, extended_feats,
                              max_ransac_iter, support_percent, support_dist,
-                             use_surf_));
+                             use_displays_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -1099,19 +1054,9 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized())
     {
-      PushTrackerState tracker_state;
-      if (use_surf_)
-      {
-        tracker_state = obj_tracker_->updateTracks(
-            cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
-            cur_point_cloud_);
-      }
-      else
-      {
-        tracker_state = obj_tracker_->updateTracks(
-            cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
-            cur_self_filtered_cloud_);
-      }
+      PushTrackerState tracker_state = obj_tracker_->updateTracks(
+          cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
+          cur_self_filtered_cloud_);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -1483,17 +1428,8 @@ class TabletopPushingPerceptionNode
     cv::erode(obj_mask, obj_mask, element);
     // cv::imshow("obj_mask: raw", obj_mask_raw);
     // cv::imshow("obj_mask: closed", obj_mask);
-    PushTrackerState tracker_state;
-    if (use_surf_)
-    {
-      tracker_state = obj_tracker_->initTracksSURF(
-          cur_color_frame_, obj_mask, cur_self_mask_, cur_point_cloud_);
-    }
-    else
-    {
-      tracker_state = obj_tracker_->initTracks(
-          cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
-    }
+    PushTrackerState tracker_state = obj_tracker_->initTracks(
+        cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
     Pose2D obj_pose;
     if (objs.size() == 0)
     {
@@ -1721,7 +1657,6 @@ class TabletopPushingPerceptionNode
   std::string pushing_arm_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
-  bool use_surf_;
 };
 
 int main(int argc, char ** argv)

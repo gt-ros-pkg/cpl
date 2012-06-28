@@ -1,6 +1,4 @@
 <launch>
-  <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/>
-  <!-- <include file="$(find tabletop_pushing)/launch/pr2_camera_self_filter_kinect_head.launch"/> -->
   <node name="push_learning_perception" pkg="tabletop_pushing" type="tabletop_pushing_perception_node" respawn="false" output="screen">
     <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
     <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
@@ -57,6 +55,5 @@
     <param name="obj_tracker_fast_threshold" value="9" type="int"/>
     <param name="obj_tracker_extended_feats" value="true" type="bool"/>
     <param name="push_tracker_dist_thresh" value="0.05" type="double"/>
-    <param name="push_tracker_use_SURF" value="false" type="bool"/>
   </node>
 </launch>
