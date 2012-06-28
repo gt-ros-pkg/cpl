@@ -119,6 +119,20 @@ public:
     n_private_.param("gain_vel", gain_vel_, 1.0);
     n_private_.param("gain_rot", gain_rot_, 1.0);
     // n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
+    
+    ros::Time now = ros::Time(0);
+    try 
+    {
+      tf::TransformListener listener;
+      listener.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(2.0));
+      listener.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
+    }
+    catch (tf::TransformException e)
+    {
+      // return 0 value in case of error so the arm stops
+      ROS_WARN_STREAM(e.what());
+      ros::shutdown();
+    }
   }
 
   
@@ -128,14 +142,13 @@ public:
     
     cv::Mat twist = computeTwistCamera(desired_locations, hand_features);
     cv::Mat temp = twist.clone(); 
-    
-
+    /*
     tf::StampedTransform transform; 
     ros::Time now = ros::Time(0);
     try 
     {
       tf::TransformListener listener;
-      listener.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(1.0));
+      listener.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(2.0));
       listener.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
     }
     catch (tf::TransformException e)
@@ -144,7 +157,8 @@ public:
       ROS_WARN_STREAM(e.what());
       return srv;
     }
- 
+    */
+    
     // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
     tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
     tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));  
@@ -161,15 +175,6 @@ public:
     srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
     srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
     
-    /*
-     printf("camera frame:\t"); printMatrix(twist.t());
-     printf("worksp frame:\t");
-     printf("%+.3f\t%+.3f\t%+.3f\n", 
-    srv.request.twist.twist.linear.x,
-    srv.request.twist.twist.linear.y,
-    srv.request.twist.twist.linear.z
-    );
-    */
     return srv;
   }
   
@@ -216,6 +221,7 @@ protected:
   // shared_ptr<tf::TransformListener> tf_;
   std::string workspace_frame_;
   std::string optical_frame_;
+  tf::StampedTransform transform;
  
   // others
   int jacobian_type_;
@@ -254,7 +260,7 @@ protected:
     
     // if we can't compute interaction matrix, just make all twists 0
     if (countNonZero(im) == 0) return cv::Mat::zeros(6, 1, CV_32F);
-
+    
     // inverting the matrix, 3 approaches
     cv::Mat iim;
     switch (jacobian_type_) 

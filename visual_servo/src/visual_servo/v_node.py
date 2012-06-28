@@ -55,8 +55,8 @@ class VNode:
     def __init__(self):
         
         # Setup parameters
-        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.025)
-        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.018)
+        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.15)
+        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.1)
         
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()

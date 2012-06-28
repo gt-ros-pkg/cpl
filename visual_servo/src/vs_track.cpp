@@ -547,8 +547,8 @@ public:
     cv::split(temp, hsv);
    
     // so it can support hue near 0 & 360
-    _hue_n = (_hue_n + 256) % 256;
-    _hue_p = (_hue_p + 256) % 256;
+    _hue_n = (_hue_n + 360) % 360;
+    _hue_p = (_hue_p + 360) % 360;
 
     // masking out values that do not fall between the condition 
     cv::Mat wm(color_frame.rows, color_frame.cols, CV_8UC1, cv::Scalar(0));
@@ -795,8 +795,8 @@ public:
   {
     printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
      i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
-
   }
+
   float getZValue(cv::Mat depth_frame, int x, int y)
   {
     int window_size = 3;
@@ -821,199 +821,6 @@ public:
     return value/size;
   }
  
-#ifdef SIMULATION
-#define H_PI 1.5707f
-#define Q_PI 0.7854f
-  float simulateGetError(std::vector<VSXYZ> d, std::vector<VSXYZ> q)
-  {
-    unsigned int size = q.size() > d.size() ? d.size() : q.size();
-    float e = 0;
-    for (unsigned int a = 0; a < size; a++)
-    {
-      pcl::PointXYZ dp = d.at(a).camera;
-      pcl::PointXYZ qp = q.at(a).camera;
-      //pcl::PointXYZ dp = d.workspace;
-      //pcl::PointXYZ qp = q.workspace;
-      e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2); //+ pow(dp.z - qp.z, 2); 
-    }
-    //e += pow(dp.x - qp.x, 2) + pow(dp.y - qp.y, 2) + pow(dp.z - qp.z, 2);    
-    return sqrt(e);
-  }
-
-  void simulateMoveHand(VSXYZ *q, cv::Mat vel, float deltaT)
-  {
-    vel = vel * deltaT * 2.0;
-    
-    cv::Mat Rt = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
-        sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
-
-    cv::Mat basis = Rt.rowRange(0, 3).colRange(0, 3);
-    // transform.getBasis() * twist_rot;
-    cv::Mat twist_ang = (basis * vel.rowRange(3,6));
-    cv::Mat twist_lin = (basis * vel.rowRange(0,3)+ Rt.colRange(3,4).rowRange(0,3).cross(vel.rowRange(3,6)));
-    
-    pcl::PointXYZ p = (*q).workspace;
-    p.x = p.x + twistlim(twist_lin.at<float>(0,0));
-    p.y = p.y + twistlim(twist_lin.at<float>(1,0));
-    p.z = p.z + twistlim(twist_lin.at<float>(2,0));
-    // need to limit where the hand can go (esp in z direction)
-    if (p.z < 0.30)
-      p.z = 0.30;
-    q->workspace = p;
-
-    pcl::PointXYZ a = (*q).workspace_angular;
-    a.x = simulateGetAngle(a.x + twistlim(twist_ang.at<float>(0,0)));
-    a.y = simulateGetAngle(a.y + twistlim(twist_ang.at<float>(1,0)));
-    a.z = simulateGetAngle(a.z + twistlim(twist_ang.at<float>(2,0)));
-    
-    a.x = anglim(a.x);
-    a.y = anglim(a.y);
-    a.z = anglim(a.z);
-    q->workspace_angular = a;
-    return;
-  }
-  float anglim(float a) 
-  {
-    if (a > Q_PI) return Q_PI;
-    if (a < -Q_PI) return -Q_PI;
-    return a;
-  }
-  float twistlim(float a)
-  {
-    return a > 1.0 ? 1.0 : a < -1.0 ? -1.0 : a;
-  }
-
-  float simulateGetAngle(float i) 
-  {
-    if (i > H_PI)
-      return -H_PI + fmod(i, H_PI);
-    if (i < -H_PI)
-      return H_PI - fmod(i, H_PI);
-    return i;
-  }
-  
-  void simulatePrintPoint(VSXYZ v) 
-  {
-#define SIM_DEBUG 1
-#ifdef SIM_DEBUG
-    printf("[i=%+4d, %+4d][c=%+.3f, %+.3f, %+.3f][w=%+.3f, %+.3f, %+.3f][ww=%+.3f, %+.3f, %+.3f]\n",
-        v.image.x, v.image.y, v.camera.x, v.camera.y, v.camera.z, 
-        v.workspace.x, v.workspace.y, v.workspace.z,
-        v.workspace_angular.x, v.workspace_angular.y, v.workspace_angular.z);
-#else
-    printf("%+.3f,%+.3f,%+.3f,%+.3f,%+.3f,%+.3f\n",
-        v.workspace.x, v.workspace.y, v.workspace.z,
-        v.workspace_angular.x, v.workspace_angular.y, v.workspace_angular.z);
-#endif
-  }
-
-  void simulatePrintPoints(std::vector<VSXYZ> pt) 
-  {
-    for (unsigned int i = 0; i < pt.size(); i++)
-    {
-      VSXYZ v = pt.at(i);
-      simulatePrintPoint(v);
-    }
-  }
-  void simulateInit(std::vector<VSXYZ>* desired, std::vector<VSXYZ>* hand, std::vector<pcl::PointXYZ>* o, VSXYZ* q, VSXYZ* d)
-  {
-
-    // orthographic camera intrinsics
-    K = cv::Mat::eye(3,3, CV_32F); 
-    K.at<float>(0,0) = 525; 
-    K.at<float>(1,1) = 525; 
-    K.at<float>(0,2) = 319.50; 
-    K.at<float>(1,2) = 239.50;
-
-    // feature location in any frame
-    // features
-    
-    o->push_back(pcl::PointXYZ(0.0, 0.0, 0.0)); 
-    if (sim_feature_size_ == 4)
-      o->push_back(pcl::PointXYZ(0.1, 0.0, 0.0)); 
-    o->push_back(pcl::PointXYZ(0.2, 0.0, 0.0)); 
-    o->push_back(pcl::PointXYZ(0.0, 0.2, 0.0)); 
-
-    desired->clear();
-    // set initial hand point
-    d->workspace = pcl::PointXYZ(sim_desired_x_,sim_desired_y_,
-        sim_desired_z_);
-    d->workspace_angular = pcl::PointXYZ(sim_desired_wx_,
-        sim_desired_wy_,sim_desired_wz_);
-    simulateTransform(desired, *o, *d); 
-
-    desired_jacobian_  = getMeterInteractionMatrix(*desired);
-     
-    // set initial hand point
-    q->workspace = pcl::PointXYZ(sim_hand_x_,sim_hand_y_,sim_hand_z_);
-    q->workspace_angular = pcl::PointXYZ(sim_hand_wx_,sim_hand_wy_,sim_hand_wz_);
-    hand->clear();
-    simulateTransform(hand, *o, *q); 
-  }
-  
-  cv::Mat simulateGetRotationMatrix(float tx, float ty, float tz, float x, float y, float z) 
-  {
-    cv::Mat R = cv::Mat::eye(4,4,CV_32F);
-    // build rotation matrix
-    // Z-Y-X Euler Angle implementation
-    R.at<float>(0,0) = cos(z)*cos(y); 
-    R.at<float>(0,1) = cos(z)*sin(y)*sin(x) - sin(z)*cos(x); 
-    R.at<float>(0,2) = cos(z)*sin(y)*cos(x) + sin(z)*sin(x);     
-    R.at<float>(1,0) = sin(z)*cos(y); 
-    R.at<float>(1,1) = sin(z)*sin(y)*sin(x) + cos(z)*cos(x); 
-    R.at<float>(1,2) = sin(z)*sin(y)*cos(x) - cos(z)*sin(x); 
-    
-    R.at<float>(2,0) = -sin(y); 
-    R.at<float>(2,1) = cos(y)*sin(x); 
-    R.at<float>(2,2) = cos(y)*cos(x);
-    
-    R.at<float>(0,3) = tx;
-    R.at<float>(1,3) = ty;
-    R.at<float>(2,3) = tz;
-    return R; 
-  }
-  void simulateTransform(std::vector<VSXYZ>* hand, std::vector<pcl::PointXYZ> o, VSXYZ q)
-  {
-    pcl::PointXYZ t = q.workspace;
-    pcl::PointXYZ a = q.workspace_angular;
-    cv::Mat R = simulateGetRotationMatrix(t.x, t.y, t.z, a.x, a.y, a.z);   
-    /*
-    // == P
-    cv::Mat R2 = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
-      sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
-      */
-    // camera translation matrix
-    // apply the transform
-    for (unsigned int i = 0; i < o.size(); i++)
-    {
-      pcl::PointXYZ p = o.at(i);
-      cv::Mat T(4,1,CV_32F);
-      T.at<float>(0,0) = p.x;
-      T.at<float>(1,0) = p.y;
-      T.at<float>(2,0) = p.z;
-      T.at<float>(3,0) = 1;
-      // sadly, the workspace coordinate is in the 'torso lift link', not the camera 
-      //T = (pseudoInverse(R2) *R) * T;
-      T = R * T;
-      p.x = T.at<float>(0,0);
-      p.y = T.at<float>(1,0);
-      p.z = T.at<float>(2,0);
-
-      // noise can be only 10% of the real value
-      if (sim_noise_z_ > 0)
-      {
-        float random = (rand() % 10000)/10000.0 * p.z*sim_noise_z_/100 -
-        p.z * 2 * sim_noise_z_/ 100;
-        p.z = p.z + random;
-      }
-
-      if ((*hand).size() == o.size())
-        (*hand).at(i) = convertFrom3DPointToVSXYZ(p);  
-      else 
-        (*hand).push_back(convertFrom3DPointToVSXYZ(p));  
-    }
-  }
-#endif
 
   /**
    * Executive control function for launching the node.

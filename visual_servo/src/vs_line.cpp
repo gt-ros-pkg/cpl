@@ -119,7 +119,7 @@ public:
   cloud_sub_(n, "point_cloud_topic", 1),
   sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
   it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-  desire_points_initialized_(false)
+  desire_points_initialized_(false), below_threshold_count_(0)
   {
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -167,6 +167,7 @@ public:
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
                       const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
+
     // Preparing the image
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
@@ -223,27 +224,36 @@ public:
     {
       orig_depth_ = depth_frame.clone(); 
       desired_locations_ = setDesiredPosition();
-      prev_wp_ = desired_locations_.front();
-
-      initializeService();
-      desire_points_initialized_ = true;
-      ROS_DEBUG("Desired Points Initialization Done...");
+      if (desired_locations_.size() > 0)
+      {
+        prev_wp_ = desired_locations_.front();
+        initializeService();
+        desire_points_initialized_ = true;
+        ROS_DEBUG("Desired Points Initialization Done...");
+      }
     }
     else 
     {
-      // compute the twist if everything is good to go
-      visual_servo::VisualServoTwist srv = getTwist();
+      try
+      {
+        // compute the twist if everything is good to go
+        visual_servo::VisualServoTwist srv = getTwist();
 
-      // calling the service provider to move
-      if (client_.call(srv))
-      {
-        // on success
+        // calling the service provider to move
+        if (client_.call(srv))
+        {
+          // on success
+        }
+        else
+        {
+          // on failure
+          ROS_WARN("Service FAILED...");
+        }
       }
-      else
+      catch(ros::Exception e)
       {
-        // on failure
-        ROS_WARN("Service FAILED...");
       }
+
     }
   }   
   
@@ -294,10 +304,9 @@ public:
 
     // find the three largest blues
     std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-    
     // order the blue tapes
     std::vector<cv::Point> pts = getMomentCoordinates(ms);
-    
+     
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
 
@@ -330,8 +339,20 @@ public:
       cv::Point p = features.at(i).image;
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
     }
+    
     cv::imshow("in", cur_orig_color_frame_); 
     cv::waitKey(display_wait_ms_);
+    /* 
+    ROS_DEBUG("------------ Hi -----------");
+    for (unsigned int i = 0; i < desired_vsxyz.size(); i++)
+    {
+      printf("[D%d]\t", i); printVSXYZ(desired_vsxyz.at(i));
+    }
+    for (unsigned int i = 0; i < features.size(); i++)
+    {
+      printf("[F%d]\t", i); printVSXYZ(features.at(i));
+    } 
+    */
 #endif
 
     // set the IM of desired locations for averaging
@@ -343,17 +364,26 @@ public:
     // Error between desired pose and hand pose
     float e = getError(desired_vsxyz, features);
     srv.request.error = e;
-    if(e < term_threshold_)
+    if(e < term_threshold_ && ++below_threshold_count_ >= 2)
     {
       ROS_DEBUG("Moving to New Waypoint");
       // poping the stack
       prev_wp_ = desired_locations_.front();
       desired_locations_.erase(desired_locations_.begin());
+      below_threshold_count_ = 0;
     }
 
     return srv;
   }
  
+
+  void printVSXYZ(VSXYZ i)
+  {
+    printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
+     i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
+  }
+
+
   
   /**
    * Still in construction:
@@ -549,7 +579,7 @@ public:
      * So the default setting are below 
      */
     return colorSegment(color_frame, hue - threshold, hue + threshold,  
-        default_sat_bot_value_, default_sat_top_value_, 50, default_val_value_);
+        default_sat_bot_value_, default_sat_top_value_, 40, default_val_value_);
   }
   
   /** 
@@ -563,7 +593,7 @@ public:
   cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
   {
     cv::Mat temp (color_frame.clone());
-    cv::cvtColor(temp, temp, CV_RGB2HSV);
+    cv::cvtColor(temp, temp, CV_BGR2HSV);
     std::vector<cv::Mat> hsv;
     cv::split(temp, hsv);
     
@@ -574,9 +604,11 @@ public:
       uchar* workspace_row = wm.ptr<uchar>(r);
       for (int c = 0; c < temp.cols; c++)
       {
-        int hue   = (int)hsv[0].at<uchar>(r, c);
-        int sat   = (int)hsv[1].at<uchar>(r, c);
-        int value = (int)hsv[2].at<uchar>(r, c);
+        // hue = 0 to 360 (degrees)
+        // sat, value = 0 to 100 (percent)
+        int hue   = 2*(int)hsv[0].at<uchar>(r, c);  
+        float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
+        float value = 0.392*(int)hsv[2].at<uchar>(r, c);
         // printf("[%d, %d] hue = %d\n", r, c, hue);
         if (_hue_n < hue && hue < _hue_p)
           if (_sat_n < sat && sat < _sat_p)
@@ -841,6 +873,7 @@ protected:
   double gain_vel_;
   double gain_rot_;
   double term_threshold_;
+  unsigned int below_threshold_count_;
 
   cv::Mat desired_jacobian_;
   std::vector<VSXYZ> desired_locations_;
