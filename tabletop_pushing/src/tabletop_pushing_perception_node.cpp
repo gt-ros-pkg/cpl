@@ -374,8 +374,8 @@ class ObjectTracker25D
         pcl::PointXYZ theta_point0(centroid_point.x+x_rad0,
                                    centroid_point.y+y_rad0,
                                    centroid_point.z);
-        const float x_rad1 = std::cos(obj_ellipse.angle)*obj_ellipse.size.width*1.5;
-        const float y_rad1 = std::sin(obj_ellipse.angle)*obj_ellipse.size.width*1.5;
+        const float x_rad1 = std::cos(obj_ellipse.angle)*obj_ellipse.size.width*0.5;
+        const float y_rad1 = std::sin(obj_ellipse.angle)*obj_ellipse.size.width*0.5;
         pcl::PointXYZ theta_point1(centroid_point.x+x_rad1,
                                    centroid_point.y+y_rad1,
                                    centroid_point.z);
@@ -387,9 +387,9 @@ class ObjectTracker25D
         cv::line(centroid_frame, img_c_idx, img_o1_idx, cv::Scalar(255,255,0));
         cv::Size img_size;
         img_size.width = std::sqrt(std::pow(img_o1_idx.x-img_c_idx.x,2) +
-                                   std::pow(img_o1_idx.y-img_c_idx.y,2));
+                                   std::pow(img_o1_idx.y-img_c_idx.y,2))*2.0;
         img_size.height = std::sqrt(std::pow(img_o0_idx.x-img_c_idx.x,2) +
-                                    std::pow(img_o0_idx.y-img_c_idx.y,2));
+                                    std::pow(img_o0_idx.y-img_c_idx.y,2))*2.0;
         // TODO: Get angle using atan2
         float img_angle = std::atan2(img_o0_idx.y, img_o0_idx.x)*180./M_PI;
         cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
