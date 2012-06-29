@@ -128,6 +128,7 @@ class PositionFeedbackPushNode:
                                                     0.3)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
+        # TODO: Base this value on the tallest tabletop object
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
