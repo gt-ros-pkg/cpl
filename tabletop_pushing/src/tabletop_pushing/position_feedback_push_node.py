@@ -198,13 +198,12 @@ class PositionFeedbackPushNode:
                          self.controller_state_msg,
                          self.r_arm_cart_state_callback)
 
-        # TODO: setup velocity controller callback methods
-        # rospy.Subscriber('/l'+self.base_vel_controller_name+'/state',
-        #                  self.vel_controller_state_msg,
-        #                  self.l_arm_vel_state_callback)
-        # rospy.Subscriber('/r'+self.base_vel_controller_name+'/state',
-        #                  self.vel_controller_state_msg,
-        #                  self.r_arm_vel_state_callback)
+        rospy.Subscriber('/l'+self.base_vel_controller_name+'/state',
+                         self.vel_controller_state_msg,
+                         self.l_arm_vel_state_callback)
+        rospy.Subscriber('/r'+self.base_vel_controller_name+'/state',
+                         self.vel_controller_state_msg,
+                         self.r_arm_vel_state_callback)
 
         self.l_pressure_listener = pl.PressureListener(
             '/pressure/l_gripper_motor', self.pressure_safety_limit)
@@ -224,8 +223,13 @@ class PositionFeedbackPushNode:
         self.r_arm_F = None
 
         # Open callback services
-        self.gripper_feedback_push_srv = rospy.Service(
-            'gripper_feedback_push', GripperPush, self.gripper_feedback_push)
+        self.overhead_feedback_push_srv = rospy.Service(
+            'overhead_feedback_push', GripperPush, self.overhead_feedback_push)
+        self.overhead_feedback_post_push_srv = rospy.Service(
+            'overhead_feedback_post_push', GripperPush,
+            self.overhead_feedback_post_push)
+
+
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
                                                   GripperPush,
                                                   self.gripper_pre_push)
@@ -350,7 +354,7 @@ class PositionFeedbackPushNode:
     #
     # Behavior functions
     #
-    def gripper_feedback_push(self, request):
+    def overhead_feedback_push(self, request):
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
@@ -415,6 +419,7 @@ class PositionFeedbackPushNode:
         spin_x_dot = sin(feedback.x.theta)*feedback.x_dot.theta
         spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
 
+        # TODO: Make these accesible through the parameter server
         k_g = 0.1
         k_s = 0.00
 
@@ -430,6 +435,63 @@ class PositionFeedbackPushNode:
         update_twist.twist.linear.y = k_g*goal_y_dot
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
+
+    def overhead_feedback_post_push(self, request):
+        response = GripperPushResponse()
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+
+        if request.left_arm:
+            ready_joints = LEFT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = LEFT_ARM_PULL_READY_JOINTS
+            which_arm = 'l'
+            wrist_pitch = 0.5*pi
+        else:
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = RIGHT_ARM_PULL_READY_JOINTS
+            which_arm = 'r'
+            wrist_pitch = -0.5*pi
+
+        rospy.logdebug('Moving gripper up')
+        pose_err, err_dist = self.move_relative_gripper(
+            np.matrix([-self.gripper_raise_dist, 0.0, 0.0]).T, which_arm,
+            move_cart_count_thresh=self.post_move_count_thresh)
+        rospy.logdebug('Done moving up')
+        rospy.logdebug('Pushing reverse')
+        pose_err, err_dist = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, -0.03]).T, which_arm,
+            move_cart_count_thresh=self.post_move_count_thresh)
+        rospy.loginfo('Done pushing reverse')
+
+
+        rospy.logdebug('Moving up to end point')
+        wrist_yaw = request.wrist_yaw
+        end_pose = PoseStamped()
+        end_pose.header = request.start_point.header
+        # TODO: Move straight up to point above the current EE pose
+        if request.left_arm:
+            cur_pose = self.l_arm_pose
+        else:
+            cur_pose = self.r_arm_pose
+
+        end_pose.pose.position.x = cur_pose.pose.position.x
+        end_pose.pose.position.y = cur_pose.pose.position.y
+        end_pose.pose.position.z = self.high_arm_init_z
+        q = tf.transformations.quaternion_from_euler(0.0, 0.5*pi, wrist_yaw)
+        end_pose.pose.orientation.x = q[0]
+        end_pose.pose.orientation.y = q[1]
+        end_pose.pose.orientation.z = q[2]
+        end_pose.pose.orientation.w = q[3]
+        self.move_to_cart_pose(end_pose, which_arm,
+                               self.post_move_count_thresh)
+        rospy.loginfo('Done moving up to end point')
+
+        if request.arm_reset:
+            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        return response
+
 
     def gripper_push(self, request):
         response = GripperPushResponse()
@@ -1294,6 +1356,22 @@ class PositionFeedbackPushNode:
         self.l_arm_F = state_msg.F
 
     def r_arm_cart_state_callback(self, state_msg):
+        x_err = state_msg.x_err
+        x_d = state_msg.xd
+        self.r_arm_pose = state_msg.x
+        self.r_arm_x_err = state_msg.x_err
+        self.r_arm_x_d = state_msg.xd
+        self.r_arm_F = state_msg.F
+
+    def l_arm_vel_state_callback(self, state_msg):
+        x_err = state_msg.x_err
+        x_d = state_msg.xd
+        self.l_arm_pose = state_msg.x
+        self.l_arm_x_err = x_err
+        self.l_arm_x_d = x_d
+        self.l_arm_F = state_msg.F
+
+    def r_arm_vel_state_callback(self, state_msg):
         x_err = state_msg.x_err
         x_d = state_msg.xd
         self.r_arm_pose = state_msg.x

@@ -95,11 +95,11 @@ class TabletopExecutive:
         # Setup service proxies
         if not _OFFLINE:
             # TODO: Link this correctly once it exists
-            self.gripper_feedback_push_proxy = rospy.ServiceProxy(
-                'gripper_feedback_push', GripperPush)
-            self.gripper_feedback_post_push_proxy = rospy.ServiceProxy(
-                'overhead_post_push', GripperPush)
-            self.gripper_feedback_pre_push_proxy = rospy.ServiceProxy(
+            self.overhead_feedback_push_proxy = rospy.ServiceProxy(
+                'overhead_feedback_push', GripperPush)
+            self.overhead_feedback_post_push_proxy = rospy.ServiceProxy(
+                'overhead_feedback_post_push', GripperPush)
+            self.overhead_feedback_pre_push_proxy = rospy.ServiceProxy(
                 'overhead_pre_push', GripperPush)
             self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                          GripperPush)
@@ -321,7 +321,7 @@ class TabletopExecutive:
         start_time = time.time()
         if not _OFFLINE:
             if push_opt == GRIPPER_PUSH:
-                self.gripper_feedback_push_object(push_dist, which_arm,
+                self.overhead_feedback_push_object(push_dist, which_arm,
                                                   push_vector_res.push, goal_pose, high_init)
             if push_opt == GRIPPER_SWEEP:
                 self.sweep_object(push_dist, which_arm, push_vector_res.push,
@@ -603,7 +603,7 @@ class TabletopExecutive:
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
 
-    def gripper_feedback_push_object(self, push_dist, which_arm, push_vector, goal_pose,
+    def overhead_feedback_push_object(self, push_dist, which_arm, push_vector, goal_pose,
                                      high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
@@ -633,14 +633,14 @@ class TabletopExecutive:
                       str(push_req.start_point.point.y) + ', ' +
                       str(push_req.start_point.point.z) + ')')
 
-        rospy.loginfo("Calling gripper pre push service")
-        pre_push_res = self.gripper_feedback_pre_push_proxy(push_req)
+        rospy.loginfo("Calling overhead feedback pre push service")
+        pre_push_res = self.overhead_feedback_pre_push_proxy(push_req)
         # TODO: Need to have this push proxy and need to send goal_pose in
         # push_request
-        rospy.loginfo("Calling gripper feedback push service")
-        push_res = self.gripper_feedback_push_proxy(push_req)
-        rospy.loginfo("Calling gripper post push service")
-        post_push_res = self.gripper_feedback_post_push_proxy(push_req)
+        rospy.loginfo("Calling overhead feedback push service")
+        push_res = self.overhead_feedback_push_proxy(push_req)
+        rospy.loginfo("Calling overhead feedback  post push service")
+        post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)

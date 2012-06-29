@@ -134,21 +134,6 @@ typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
 typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
 typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
 
-float subHalfPiAngle(float angle)
-{
-  // NOTE: All angles should be between -pi/2 and pi/2 (only want gradient)
-  while ( angle < -M_PI/2 )
-  {
-    angle += M_PI;
-  }
-  while ( angle > M_PI/2 )
-  {
-    angle -= M_PI;
-  }
-  return angle;
-}
-
-
 struct Tracker25DKeyPoint
 {
   typedef std::vector<float> FeatureVector;
@@ -268,7 +253,6 @@ class ObjectTracker25D
     // NOTE: Since we are fitting an ellipse, we don't know which way is
     // dominant, so we will keep angles to be within one half, this could be bad
     // on boundary conditions...
-    theta = subHalfPiAngle(theta);
     return theta;
   }
 
@@ -349,6 +333,7 @@ class ObjectTracker25D
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
       double delta_y = state.x.y - previous_state_.x.y;
+      // TODO: Need to make theta dot the sub pi angle difference
       double delta_theta = state.x.theta - previous_state_.x.theta;
       double delta_t = state.header.stamp.toSec() - previous_time_;
       state.x_dot.x = delta_x/delta_t;
@@ -374,17 +359,16 @@ class ObjectTracker25D
         pcl::PointXYZ theta_point0(centroid_point.x+x_rad0,
                                    centroid_point.y+y_rad0,
                                    centroid_point.z);
-        const float x_rad1 = std::cos(obj_ellipse.angle)*obj_ellipse.size.width*0.5;
-        const float y_rad1 = std::sin(obj_ellipse.angle)*obj_ellipse.size.width*0.5;
-        pcl::PointXYZ theta_point1(centroid_point.x+x_rad1,
-                                   centroid_point.y+y_rad1,
+        const float x_rad1 = std::cos(obj_ellipse.angle+M_PI*0.5)*obj_ellipse.size.width*0.5;
+        const float y_rad1 = std::sin(obj_ellipse.angle+M_PI*0.5)*obj_ellipse.size.width*0.5;
+        pcl::PointXYZ theta_point1(centroid_point.x+x_rad1, centroid_point.y+y_rad1,
                                    centroid_point.z);
         const cv::Point2f img_o0_idx = pcl_segmenter_->projectPointIntoImage(
             theta_point0, cloud.header.frame_id, "openni_rgb_optical_frame");
         const cv::Point2f img_o1_idx = pcl_segmenter_->projectPointIntoImage(
             theta_point1, cloud.header.frame_id, "openni_rgb_optical_frame");
         cv::line(centroid_frame, img_c_idx, img_o0_idx, cv::Scalar(255,255,0));
-        cv::line(centroid_frame, img_c_idx, img_o1_idx, cv::Scalar(255,255,0));
+        cv::line(centroid_frame, img_c_idx, img_o1_idx, cv::Scalar(0,128,128));
         cv::Size img_size;
         img_size.width = std::sqrt(std::pow(img_o1_idx.x-img_c_idx.x,2) +
                                    std::pow(img_o1_idx.y-img_c_idx.y,2))*2.0;

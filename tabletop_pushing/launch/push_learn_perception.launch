@@ -55,5 +55,6 @@
     <param name="obj_tracker_fast_threshold" value="9" type="int"/>
     <param name="obj_tracker_extended_feats" value="true" type="bool"/>
     <param name="push_tracker_dist_thresh" value="0.05" type="double"/>
+    <param name="push_tracker_angle_thresh" value="6" type="double"/>
   </node>
 </launch>
