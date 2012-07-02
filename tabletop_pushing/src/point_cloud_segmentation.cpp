@@ -279,7 +279,7 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
  * @return The ICP fitness score of the match
  */
 double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
-                       Eigen::Matrix4f& transform)
+                                               Eigen::Matrix4f& transform)
 {
   // TODO: Investigate this!
   // pcl::IterativeClosestPointNonLinear<pcl::PointXYZ, pcl::PointXYZ> icp;
@@ -306,7 +306,8 @@ double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
  * @return The new set of objects that have moved in the second cloud
  */
 ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
-                             XYZPointCloud& cur_cloud, std::string suf)
+                                                     XYZPointCloud& cur_cloud,
+                                                     std::string suf)
 {
   // cloud_out = prev_cloud - cur_cloud
   pcl::SegmentDifferences<pcl::PointXYZ> pcl_diff;
@@ -335,7 +336,8 @@ ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
  * @param moved_regions The regions that have been detected as having moved
  *
  */
-void PointCloudSegmentation::matchMovedRegions(ProtoObjects& objs, ProtoObjects& moved_regions)
+void PointCloudSegmentation::matchMovedRegions(ProtoObjects& objs,
+                                               ProtoObjects& moved_regions)
 {
   // Determining which previous objects have moved
   for (unsigned int i = 0; i < moved_regions.size(); ++i)
@@ -363,7 +365,8 @@ void PointCloudSegmentation::matchMovedRegions(ProtoObjects& objs, ProtoObjects&
  * @return true if any points from cloud0 and cloud1 have distance less than
  * voxel_down_res_
  */
-bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0, XYZPointCloud cloud1)
+bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0,
+                                             XYZPointCloud cloud1)
 {
   int moved_count = 0;
   for (unsigned int i = 0; i < cloud0.size(); ++i)
@@ -385,8 +388,9 @@ bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0, XYZPointCloud
   return false;
 }
 
-bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0, XYZPointCloud cloud1,
-                     double thresh)
+bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0,
+                                             XYZPointCloud cloud1,
+                                             double thresh)
 {
   for (unsigned int i = 0; i < cloud0.size(); ++i)
   {
@@ -518,8 +522,8 @@ cv::Mat PointCloudSegmentation::projectProtoObjectsIntoImage(ProtoObjects& objs,
  * @param objs The set of proto objects
  */
 cv::Mat PointCloudSegmentation::displayObjectImage(cv::Mat& obj_img,
-                           std::string win_name,
-                           bool use_display)
+                                                   std::string win_name,
+                                                   bool use_display)
 {
   cv::Mat obj_disp_img(obj_img.size(), CV_32FC3, cv::Scalar(0.0,0.0,0.0));
   for (int r = 0; r < obj_img.rows; ++r)
@@ -540,8 +544,10 @@ cv::Mat PointCloudSegmentation::displayObjectImage(cv::Mat& obj_img,
   return obj_disp_img;
 }
 
-void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud, cv::Mat& lbl_img,
-                                std::string target_frame, unsigned int id)
+void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud,
+                                                        cv::Mat& lbl_img,
+                                                        std::string target_frame,
+                                                        unsigned int id)
 {
   for (unsigned int i = 0; i < cloud.size(); ++i)
   {
@@ -553,8 +559,8 @@ void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud, cv
 }
 
 cv::Point PointCloudSegmentation::projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
-                                std::string point_frame,
-                                std::string target_frame)
+                                                        std::string point_frame,
+                                                        std::string target_frame)
 {
   geometry_msgs::PointStamped cur_point;
   cur_point.header.frame_id = point_frame;
@@ -564,7 +570,8 @@ cv::Point PointCloudSegmentation::projectPointIntoImage(pcl::PointXYZ cur_point_
   return projectPointIntoImage(cur_point, target_frame);
 }
 
-void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud, cv::Mat& lbl_img)
+void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud,
+                                                        cv::Mat& lbl_img)
 {
   for (unsigned int i = 0; i < cloud.size(); ++i)
   {
@@ -575,13 +582,14 @@ void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud, cv
   }
 }
 
-cv::Point PointCloudSegmentation::projectPointIntoImage(geometry_msgs::PointStamped cur_point)
+cv::Point PointCloudSegmentation::projectPointIntoImage(
+    geometry_msgs::PointStamped cur_point)
 {
   return projectPointIntoImage(cur_point, cur_camera_header_.frame_id);
 }
 
-cv::Point PointCloudSegmentation::projectPointIntoImage(geometry_msgs::PointStamped cur_point,
-                                std::string target_frame)
+cv::Point PointCloudSegmentation::projectPointIntoImage(
+    geometry_msgs::PointStamped cur_point, std::string target_frame)
 {
   cv::Point img_loc;
   try
