@@ -63,5 +63,19 @@ cv::Mat upSample(cv::Mat data_in, int scales)
   }
   return out;
 }
+
+double subPIAngle(double theta)
+{
+  while (theta > M_PI)
+  {
+    theta -= M_PI;
+  }
+  while (theta < -M_PI)
+  {
+    theta += M_PI;
+  }
+  return theta;
+}
+
 };
 #endif // cpl_visual_features_helpers_h_DEFINED

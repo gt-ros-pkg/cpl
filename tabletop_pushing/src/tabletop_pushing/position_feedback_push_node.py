@@ -146,6 +146,10 @@ class PositionFeedbackPushNode:
                                                              0.005)
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
+
+        self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
+        self.k_s = rospy.get_param('~push_control_spin_gain', 0.03)
+
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
         # Setup cartesian controller parameters
@@ -420,20 +424,19 @@ class PositionFeedbackPushNode:
         spin_x_dot = sin(feedback.x.theta)*feedback.x_dot.theta
         spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
 
-        # TODO: Make these accesible through the parameter server
-        k_g = 0.1
-        k_s = 0.00
-
-        update_twist.twist.linear.x = k_g*goal_x_dot + k_s*spin_x_dot
-        update_twist.twist.linear.y = k_g*goal_y_dot + k_s*spin_y_dot
+        update_twist.twist.linear.x = self.k_g*goal_x_dot + self.k_s*spin_x_dot
+        update_twist.twist.linear.y = self.k_g*goal_y_dot + self.k_s*spin_y_dot
         if self.feedback_count % 15 == 0:
             rospy.loginfo('Desired pose: ' + str(self.desired_pose))
             rospy.loginfo('Current pose: ' + str(feedback.x))
-            rospy.loginfo('q_goal_dot: (' + str(k_g*goal_x_dot) + ', ' + str(k_g*goal_y_dot) + ')')
-            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' + str(spin_y_dot) + ')')
-            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' + str(update_twist.twist.linear.y) + ')\n')
-        update_twist.twist.linear.x = k_g*goal_x_dot
-        update_twist.twist.linear.y = k_g*goal_y_dot
+            rospy.loginfo('q_goal_dot: (' + str(self.k_g*goal_x_dot) + ', ' +
+                          str(self.k_g*goal_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
+                          str(spin_y_dot) + ')')
+            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
+                          str(update_twist.twist.linear.y) + ')\n')
+        update_twist.twist.linear.x = self.k_g*goal_x_dot
+        update_twist.twist.linear.y = self.k_g*goal_y_dot
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
@@ -471,7 +474,8 @@ class PositionFeedbackPushNode:
         wrist_yaw = request.wrist_yaw
         end_pose = PoseStamped()
         end_pose.header = request.start_point.header
-        # TODO: Move straight up to point above the current EE pose
+
+        # Move straight up to point above the current EE pose
         if request.left_arm:
             cur_pose = self.l_arm_pose
         else:
@@ -554,7 +558,6 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper:
-            # TODO: open gripper
             res = robot_gripper.open(block=True, position=0.05)
 
         if request.high_arm_init:
@@ -608,7 +611,6 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper:
-            # TODO: Close gripper
             res = robot_gripper.close(block=True)
 
         if request.high_arm_init:
