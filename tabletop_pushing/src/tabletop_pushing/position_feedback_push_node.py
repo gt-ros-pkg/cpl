@@ -46,7 +46,7 @@ import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import sin, cos, pi, fabs, sqrt
+from math import sin, cos, pi, fabs, sqrt, atan2
 import sys
 
 # Setup joints stolen from Kelsey's code.
@@ -148,7 +148,7 @@ class PositionFeedbackPushNode:
                                                      2000)
 
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
-        self.k_s = rospy.get_param('~push_control_spin_gain', 0.03)
+        self.k_s = rospy.get_param('~push_control_spin_gain', 0.05)
 
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -421,22 +421,28 @@ class PositionFeedbackPushNode:
 
         # Add in direction to corect for spinning
         # TODO: Correct component based on transform in object pose
-        spin_x_dot = sin(feedback.x.theta)*feedback.x_dot.theta
-        spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
+        # TODO: Should transform about the translation vector? / arm direction
+        translation_angle = atan2(feedback.x_dot.y, feedback.x_dot.x)
+        spin_x_dot = sin(translation_angle)*feedback.x_dot.theta
+        spin_y_dot = cos(translation_angle)*feedback.x_dot.theta
 
         update_twist.twist.linear.x = self.k_g*goal_x_dot + self.k_s*spin_x_dot
         update_twist.twist.linear.y = self.k_g*goal_y_dot + self.k_s*spin_y_dot
-        if self.feedback_count % 15 == 0:
-            rospy.loginfo('Desired pose: ' + str(self.desired_pose))
-            rospy.loginfo('Current pose: ' + str(feedback.x))
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
+                          str(self.desired_pose.y) + ', ' +
+                          str(self.desired_pose.theta) + ')')
+            rospy.loginfo('X: (' + str(feedback.x.x) + ', ' + str(feedback.x.y)
+                          + ', ' + str(feedback.x.theta) + ')')
+            rospy.loginfo('X_dot: (' + str(feedback.x_dot.x) + ', ' +
+                          str(feedback.x_dot.y) + ', ' +
+                          str(feedback.x_dot.theta) + ')')
             rospy.loginfo('q_goal_dot: (' + str(self.k_g*goal_x_dot) + ', ' +
                           str(self.k_g*goal_y_dot) + ')')
-            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
-                          str(spin_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(self.k_s*spin_x_dot) + ', ' +
+                          str(self.k_s*spin_y_dot) + ')')
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ')\n')
-        update_twist.twist.linear.x = self.k_g*goal_x_dot
-        update_twist.twist.linear.y = self.k_g*goal_y_dot
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 

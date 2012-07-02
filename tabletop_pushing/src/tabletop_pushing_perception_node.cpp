@@ -338,7 +338,7 @@ class ObjectTracker25D
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
       double delta_y = state.x.y - previous_state_.x.y;
-      // TODO: Need to make theta dot the sub pi angle difference
+      // TODO: Need to fix this to ignore when the axis flips PI radians
       double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
       double delta_t = state.header.stamp.toSec() - previous_time_;
       state.x_dot.x = delta_x/delta_t;
