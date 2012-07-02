@@ -87,7 +87,7 @@ class TabletopExecutive:
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist',
                                                     0.03)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.27)
+                                                 -0.29)
         self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
                                                 0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
