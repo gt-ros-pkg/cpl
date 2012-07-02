@@ -1187,7 +1187,7 @@ class TabletopPushingPerceptionNode
       else
       {
         res = getPushStartPose(req);
-        recording_input_ = true;
+        recording_input_ = !res.no_objects;
         res.no_push = false;
       }
     }
@@ -1231,6 +1231,7 @@ class TabletopPushingPerceptionNode
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
+      res.no_objects = true;
       return res;
     }
     res.centroid.x = objs[chosen_idx].centroid[0];

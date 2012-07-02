@@ -286,9 +286,7 @@ class TabletopExecutive:
                                                                   goal_pose)
                             if push_vec is None:
                                 return
-                            if (push_vec.centroid.x == 0.0 and
-                                push_vec.centroid.y == 0.0 and
-                                push_vec.centroid.z == 0.0):
+                            if push_vec.no_objects:
                                 code_in = raw_input('Reset obj and press <Enter>: ')
                                 if code_in.startswith('q'):
                                     return
