@@ -1591,9 +1591,7 @@ class TabletopPushingPerceptionNode
       std::stringstream push_out_name;
       push_out_name << base_output_path_ << "push_vector" << learn_callback_count_
                     << ".png";
-      cv::Mat push_out_img(disp_img.size(), CV_8UC3);
-      disp_img.convertTo(push_out_img, CV_8UC3, 255);
-      cv::imwrite(push_out_name.str(), push_out_img);
+      cv::imwrite(push_out_name.str(), disp_img);
     }
   }
 
