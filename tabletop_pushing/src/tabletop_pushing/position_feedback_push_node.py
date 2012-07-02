@@ -420,10 +420,8 @@ class PositionFeedbackPushNode:
         goal_y_dot = self.desired_pose.y - feedback.x.y
 
         # Add in direction to corect for spinning
-        # TODO: Correct component based on transform in object pose
-        # TODO: Should transform about the translation vector? / arm direction
-        translation_angle = atan2(feedback.x_dot.y, feedback.x_dot.x)
-        spin_x_dot = sin(translation_angle)*feedback.x_dot.theta
+        translation_angle = atan2(goal_y_dot, goal_x_dot)
+        spin_x_dot = -sin(translation_angle)*feedback.x_dot.theta
         spin_y_dot = cos(translation_angle)*feedback.x_dot.theta
 
         update_twist.twist.linear.x = self.k_g*goal_x_dot + self.k_s*spin_x_dot
