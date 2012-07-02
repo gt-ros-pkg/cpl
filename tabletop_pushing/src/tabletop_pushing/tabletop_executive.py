@@ -275,6 +275,11 @@ class TabletopExecutive:
                         get_push = True
                         first = True
                         while get_push:
+                            if first:
+                                code_in = raw_input('Reset obj and press <Enter>: ')
+                                if code_in.startswith('q'):
+                                    return
+                            first = False
                             push_vec = self.request_learning_push(push_angle,
                                                                   push_dist,
                                                                   rand_angle,
@@ -283,13 +288,12 @@ class TabletopExecutive:
                                 return
                             if (push_vec.centroid.x == 0.0 and
                                 push_vec.centroid.y == 0.0 and
-                                push_vec.centroid.z == 0.0 or first):
+                                push_vec.centroid.z == 0.0):
                                 code_in = raw_input('Reset obj and press <Enter>: ')
                                 if code_in.startswith('q'):
                                     return
                             else:
                                 get_push = False
-                            first = False
                         res = self.learning_trial(arm, int(push_opt), high_init,
                                                   push_vec, push_dist, goal_pose)
                         if not res:

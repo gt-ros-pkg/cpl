@@ -201,14 +201,17 @@ class ObjectTracker25D
                    int fast_thresh=9, bool extended_feature=true,
                    int max_ransac_iter=100,
                    double sufficient_support_percent=0.7,
-                   double support_dist_thresh=0.03, bool use_displays=false) :
+                   double support_dist_thresh=0.03, bool use_displays=false,
+                   bool write_to_disk=false, std::string base_output_path="") :
       pcl_segmenter_(segmenter),
       num_downsamples_(num_downsamples), initialized_(false),
       fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
       ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
       frame_count_(0), max_ransac_iter_(max_ransac_iter),
       sufficient_support_percent_(sufficient_support_percent),
-      support_dist_thresh_(support_dist_thresh), use_displays_(use_displays)
+      support_dist_thresh_(support_dist_thresh), use_displays_(use_displays),
+      write_to_disk_(write_to_disk), base_output_path_(base_output_path),
+      record_count_(0)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -348,7 +351,7 @@ class ObjectTracker25D
       ROS_INFO_STREAM("x: \n" << state.x);
       ROS_INFO_STREAM("x_dot\n" << state.x_dot << "\n");
 
-      if (use_displays_)
+      if (use_displays_ || write_to_disk_)
       {
         cv::Mat centroid_frame;
         in_frame.copyTo(centroid_frame);
@@ -387,14 +390,24 @@ class ObjectTracker25D
         // float img_angle = RAD2DEG(std::atan2(img_maj_idx.y, img_maj_idx.x));
         // cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
         // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 3);
-        cv::imshow("Ellipse Axes", centroid_frame);
+        if (use_displays_)
+        {
+          cv::imshow("Ellipse Axes", centroid_frame);
+        }
+        if (write_to_disk_)
+        {
+          std::stringstream out_name;
+          out_name << base_output_path_ << "ellipse_axes" << record_count_
+                   << ".png";
+          cv::imwrite(out_name.str(), centroid_frame);
+        }
       }
     }
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     previous_obj_ = cur_obj;
     frame_count_++;
-
+    record_count_++;
     return state;
   }
 
@@ -806,6 +819,9 @@ class ObjectTracker25D
   ProtoObject previous_obj_;
   PushTrackerState previous_state_;
   bool use_displays_;
+  bool write_to_disk_;
+  std::string base_output_path_;
+  int record_count_;
 };
 
 class TabletopPushingPerceptionNode
@@ -820,7 +836,7 @@ class TabletopPushingPerceptionNode
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
       as_(n, "push_tracker", false),
       have_depth_data_(false),
-      camera_initialized_(false), recording_input_(true), record_count_(0),
+      camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), frame_callback_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -919,7 +935,7 @@ class TabletopPushingPerceptionNode
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, ratio_thresh,
                              match_score_thresh, fast_thresh, extended_feats,
                              max_ransac_iter, support_percent, support_dist,
-                             use_displays_));
+                             use_displays_, write_to_disk_, base_output_path_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -1166,10 +1182,12 @@ class TabletopPushingPerceptionNode
       {
         res = getAnalysisVector(req.push_angle);
         res.no_push = true;
+        recording_input_ = false;
       }
       else
       {
         res = getPushStartPose(req);
+        recording_input_ = true;
         res.no_push = false;
       }
     }
