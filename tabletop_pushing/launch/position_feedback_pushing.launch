@@ -9,5 +9,6 @@
       <param name="use_joint_posture" type="bool" value="True"/>
       <param name="push_control_goal_gain" type="double" value="0.1"/>
       <param name="push_control_spin_gain" type="double" value="0.1"/>
+      <param name="push_control_position_spin_gain" type="double" value="0.05"/>
     </node>
 </launch>

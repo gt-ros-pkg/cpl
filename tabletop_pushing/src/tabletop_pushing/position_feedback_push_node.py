@@ -148,7 +148,8 @@ class PositionFeedbackPushNode:
                                                      2000)
 
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
-        self.k_s = rospy.get_param('~push_control_spin_gain', 0.05)
+        self.k_d_s = rospy.get_param('~push_control_spin_gain', 0.05)
+        self.k_p_s = rospy.get_param('~push_control_position_spin_gain', 0.05)
 
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -416,16 +417,21 @@ class PositionFeedbackPushNode:
         update_twist.twist.angular.z = 0.0
 
         # Push centroid towards the desired goal
-        goal_x_dot = self.desired_pose.x - feedback.x.x
-        goal_y_dot = self.desired_pose.y - feedback.x.y
+        x_error = self.desired_pose.x - feedback.x.x
+        y_error = self.desired_pose.y - feedback.x.y
+        t_error = self.desired_pose.theta - feedback.x.theta
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
 
         # Add in direction to corect for spinning
         translation_angle = atan2(goal_y_dot, goal_x_dot)
-        spin_x_dot = -sin(translation_angle)*feedback.x_dot.theta
-        spin_y_dot = cos(translation_angle)*feedback.x_dot.theta
+        spin_x_dot = -sin(translation_angle)*(self.k_d_s*feedback.x_dot.theta +
+                                              -self.k_p_s*t_error)
+        spin_y_dot =  cos(translation_angle)*(self.k_d_s*feedback.x_dot.theta +
+                                              -self.k_p_s*t_error)
 
-        update_twist.twist.linear.x = self.k_g*goal_x_dot + self.k_s*spin_x_dot
-        update_twist.twist.linear.y = self.k_g*goal_y_dot + self.k_s*spin_y_dot
+        update_twist.twist.linear.x = goal_x_dot + spin_x_dot
+        update_twist.twist.linear.y = goal_y_dot + spin_y_dot
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
                           str(self.desired_pose.y) + ', ' +
@@ -435,10 +441,10 @@ class PositionFeedbackPushNode:
             rospy.loginfo('X_dot: (' + str(feedback.x_dot.x) + ', ' +
                           str(feedback.x_dot.y) + ', ' +
                           str(feedback.x_dot.theta) + ')')
-            rospy.loginfo('q_goal_dot: (' + str(self.k_g*goal_x_dot) + ', ' +
-                          str(self.k_g*goal_y_dot) + ')')
-            rospy.loginfo('q_spin_dot: (' + str(self.k_s*spin_x_dot) + ', ' +
-                          str(self.k_s*spin_y_dot) + ')')
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
+                          str(spin_y_dot) + ')')
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ')\n')
         self.update_vel(update_twist, which_arm)
