@@ -334,9 +334,11 @@ class ObjectTracker25D
     }
     else
     {
+      cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
-      state.x.theta = findObjectOrientation(cur_obj);
+      // state.x.theta = findObjectOrientation(cur_obj);
+      state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
 
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
@@ -356,11 +358,9 @@ class ObjectTracker25D
         cv::Mat centroid_frame;
         in_frame.copyTo(centroid_frame);
         pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
-                                  cur_obj.centroid[2]);
+                                     cur_obj.centroid[2]);
         const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
             centroid_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-
-        cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
         double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
         const float x_maj_rad = (std::cos(ellipse_angle_rad)*
                                  obj_ellipse.size.width*0.5);
@@ -380,16 +380,17 @@ class ObjectTracker25D
             table_maj_point, cloud.header.frame_id, "openni_rgb_optical_frame");
         const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
             table_min_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-        cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255), 3);
-        cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0), 3);
-        // cv::Size img_size;
-        // img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
-        //                            std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
-        // img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
-        //                             std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
-        // float img_angle = RAD2DEG(std::atan2(img_maj_idx.y, img_maj_idx.x));
-        // cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-        // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 3);
+        cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255), 2);
+        cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0), 2);
+        cv::Size img_size;
+        img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                                   std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
+        img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                                    std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+        float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+                                             img_maj_idx.x-img_c_idx.x));
+        cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+        cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
         if (use_displays_)
         {
           cv::imshow("Ellipse Axes", centroid_frame);
