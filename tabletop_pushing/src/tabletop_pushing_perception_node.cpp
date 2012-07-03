@@ -256,9 +256,8 @@ class ObjectTracker25D
   {
     cv::RotatedRect obj_ellipse = findFootprintEllipse(obj);
     float theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
-    // NOTE: Since we are fitting an ellipse, we don't know which way is
-    // dominant, so we will keep angles to be within one half, this could be bad
-    // on boundary conditions...
+    // NOTE: We need to track the orientation better since the ellipse will only
+    // give angles in a PI radian range
     return theta;
   }
 
@@ -273,11 +272,11 @@ class ObjectTracker25D
     ROS_INFO_STREAM("Number of points is: " << obj_pts.size());
     // TODO: Fit ellipse to object
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
-    ROS_INFO_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
-                    obj_ellipse.center.y << ", " <<
-                    subPIAngle(DEG2RAD(obj_ellipse.angle)) << ")" << "\t(" <<
-                    obj_ellipse.size.width << ", " << obj_ellipse.size.height
-                    << ")");
+    // ROS_DEBUG_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
+    //                  obj_ellipse.center.y << ", " <<
+    //                  subPIAngle(DEG2RAD(obj_ellipse.angle)) << ")" << "\t(" <<
+    //                  obj_ellipse.size.width << ", " << obj_ellipse.size.height
+    //                  << ")");
     return obj_ellipse;
   }
 
@@ -304,6 +303,11 @@ class ObjectTracker25D
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
+    ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                    state.x.theta << ")");
+    ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                    << ", " << state.x_dot.theta << ")\n");
+
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     previous_obj_ = cur_obj;
@@ -350,8 +354,10 @@ class ObjectTracker25D
       state.x_dot.y = delta_y/delta_t;
       state.x_dot.theta = delta_theta/delta_t;
 
-      ROS_INFO_STREAM("x: \n" << state.x);
-      ROS_INFO_STREAM("x_dot\n" << state.x_dot << "\n");
+      ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                      state.x.theta << ")");
+      ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                      << ", " << state.x_dot.theta << ")\n");
 
       if (use_displays_ || write_to_disk_)
       {
@@ -380,8 +386,8 @@ class ObjectTracker25D
             table_maj_point, cloud.header.frame_id, "openni_rgb_optical_frame");
         const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
             table_min_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-        cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255), 2);
-        cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0), 2);
+        cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,255,0),2);
+        cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,255),2);
         cv::Size img_size;
         img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
                                    std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
