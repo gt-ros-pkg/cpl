@@ -211,7 +211,7 @@ class ObjectTracker25D
       sufficient_support_percent_(sufficient_support_percent),
       support_dist_thresh_(support_dist_thresh), use_displays_(use_displays),
       write_to_disk_(write_to_disk), base_output_path_(base_output_path),
-      record_count_(0)
+      record_count_(0), swap_orientation_(false)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -284,6 +284,7 @@ class ObjectTracker25D
                               cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     initialized_ = false;
+    swap_orientation_ = false;
     bool no_objects = false;
     ProtoObject cur_obj = findLargestObject(in_frame, cloud,  no_objects);
     initialized_ = true;
@@ -344,10 +345,33 @@ class ObjectTracker25D
       // state.x.theta = findObjectOrientation(cur_obj);
       state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
 
+      if(swap_orientation_)
+      {
+        if(state.x.theta > 0.0)
+          state.x.theta += - M_PI;
+        else
+          state.x.theta += M_PI;
+      }
+
+      if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
+      {
+        if ((fabs(state.x.theta) > M_PI*0.25 &&
+             fabs(state.x.theta) < (M_PI*0.75 )) ||
+            (fabs(previous_state_.x.theta) > 1.0 &&
+             fabs(previous_state_.x.theta) < (M_PI - 0.5)))
+        {
+          swap_orientation_ = !swap_orientation_;
+          // We either need to swap or need to undo the swap
+          if(state.x.theta > 0.0)
+            state.x.theta += -M_PI;
+          else
+            state.x.theta += M_PI;
+        }
+      }
+
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
       double delta_y = state.x.y - previous_state_.x.y;
-      // TODO: Need to fix this to ignore when the axis flips PI radians
       double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
       double delta_t = state.header.stamp.toSec() - previous_time_;
       state.x_dot.x = delta_x/delta_t;
@@ -829,6 +853,7 @@ class ObjectTracker25D
   bool write_to_disk_;
   std::string base_output_path_;
   int record_count_;
+  bool swap_orientation_;
 };
 
 class TabletopPushingPerceptionNode
