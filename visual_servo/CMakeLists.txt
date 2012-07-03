@@ -27,5 +27,5 @@ rosbuild_gensrv()
 
 rosbuild_add_executable(visual_servo_node src/visual_servo.cpp)
 #rosbuild_add_executable(visual_servo_node src/vs_line.cpp)
-rosbuild_add_executable(visual_servo_node src/vs_track.cpp)
+rosbuild_add_executable(visual_servo_node src/vs_follow.cpp)
 #rosbuild_add_executable(visual_servo_node src/vs_pt.cpp)
