@@ -847,8 +847,7 @@ class PositionFeedbackPushNode:
             # self.move_down_until_contact(which_arm)
 
         # Move to offset pose
-        self.move_to_cart_pose(start_pose, which_arm,
-                               self.pre_push_count_thresh)
+        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
 
         return response

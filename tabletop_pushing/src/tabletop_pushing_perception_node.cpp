@@ -301,6 +301,7 @@ class ObjectTracker25D
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
     state.x.theta = findObjectOrientation(cur_obj);
+    state.z = cur_obj.centroid[2];
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
@@ -336,6 +337,7 @@ class ObjectTracker25D
       state.no_detection = true;
       state.x = previous_state_.x;
       state.x_dot = previous_state_.x_dot;
+      state.z = previous_state_.z;
     }
     else
     {
@@ -344,6 +346,7 @@ class ObjectTracker25D
       state.x.y = cur_obj.centroid[1];
       // state.x.theta = findObjectOrientation(cur_obj);
       state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
+      state.z = cur_obj.centroid[2];
 
       if(swap_orientation_)
       {
@@ -1098,6 +1101,18 @@ class TabletopPushingPerceptionNode
           cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
           cur_self_filtered_cloud_);
 
+      PointStamped start_point;
+      PointStamped end_point;
+      start_point.header.frame_id = workspace_frame_;
+      end_point.header.frame_id = workspace_frame_;
+      start_point.point.x = tracker_state.x.x;
+      start_point.point.y = tracker_state.x.y;
+      start_point.point.z = tracker_state.z;
+      end_point.point.x = tracker_goal_pose_.x;
+      end_point.point.y = tracker_goal_pose_.y;
+      end_point.point.z = start_point.point.z;
+
+      displayPushVector(cur_color_frame_, start_point, end_point);
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
@@ -1595,8 +1610,6 @@ class TabletopPushingPerceptionNode
 
   void displayPushVector(cv::Mat& img, PushVector& push)
   {
-    cv::Mat disp_img;
-    img.copyTo(disp_img);
     PointStamped start_point;
     start_point.point = push.start_point;
     start_point.header.frame_id = workspace_frame_;
@@ -1605,6 +1618,13 @@ class TabletopPushingPerceptionNode
     end_point.point.y = start_point.point.y+std::sin(push.push_angle)*push.push_dist;
     end_point.point.z = start_point.point.z;
     end_point.header.frame_id = workspace_frame_;
+    displayPushVector(img, start_point, end_point);
+  }
+
+  void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point)
+  {
+    cv::Mat disp_img;
+    img.copyTo(disp_img);
 
     cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(
         start_point);

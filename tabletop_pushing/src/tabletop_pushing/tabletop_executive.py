@@ -87,7 +87,7 @@ class TabletopExecutive:
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist',
                                                     0.03)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.29)
+                                                 -0.28)
         self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
                                                 0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
@@ -297,16 +297,16 @@ class TabletopExecutive:
                         if not res:
                             return
 
-    def run_feedback_testing(self, num_trials, push_dist, push_angle=0.0, rand_angle=True, goal_pose=None):
+    def run_feedback_testing(self, push_dist, push_angle=0.0, rand_angle=True, goal_pose=None):
         high_init = True
         push_angle_in = push_angle
         push_opt = OVERHEAD_PUSH
-        for t in xrange(num_trials):
+        while True:
             get_push = True
             first = True
             while get_push:
                 if first:
-                    code_in = raw_input('Set object in first pose and press <Enter>: ')
+                    code_in = raw_input('Set object in start pose and press <Enter>: ')
                     if code_in.startswith('q'):
                         return
                 first = False
@@ -670,7 +670,7 @@ class TabletopExecutive:
         # Offset pose to not hit the object immediately
         push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
         push_req.start_point.point.y += -self.gripper_offset_dist*sin(wrist_yaw)
-        push_req.start_point.point.z = self.gripper_start_z
+        push_req.start_point.point.z = self.overhead_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
@@ -726,5 +726,5 @@ if __name__ == '__main__':
         goal_pose.theta = 0.0*pi
         # node.run_rand_learning_collect(num_trials, push_dist, push_angle,
         #                                rand_angle, goal_pose)
-        node.run_feedback_testing(num_trials, push_dist, push_angle, rand_angle, goal_pose)
+        node.run_feedback_testing(push_dist, push_angle, rand_angle, goal_pose)
         node.finish_learning()
