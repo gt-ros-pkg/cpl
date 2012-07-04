@@ -150,7 +150,7 @@ class PositionFeedbackPushNode:
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
         self.k_d_s = rospy.get_param('~push_control_spin_gain', 0.05)
         self.k_p_s = rospy.get_param('~push_control_position_spin_gain', 0.05)
-
+        self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
         # Setup cartesian controller parameters
@@ -389,7 +389,7 @@ class PositionFeedbackPushNode:
         self.stop_moving_vel(which_arm)
         done_cb = None
         active_cb = None
-        feedback_cb = self.tracker_feedback_gripper_push
+        feedback_cb = self.tracker_feedback_overhead_push
         goal = VisFeedbackPushTrackingGoal()
         goal.which_arm = which_arm
         goal.header.frame_id = request.start_point.header.frame_id
@@ -406,7 +406,7 @@ class PositionFeedbackPushNode:
         # TODO: send back info
         return response
 
-    def tracker_feedback_gripper_push(self, feedback):
+    def tracker_feedback_overhead_push(self, feedback):
         which_arm = self.active_arm
         update_twist = TwistStamped()
         update_twist.header.frame_id = 'torso_lift_link'
@@ -414,7 +414,7 @@ class PositionFeedbackPushNode:
         update_twist.twist.linear.z = 0.0
         update_twist.twist.angular.x = 0.0
         update_twist.twist.angular.y = 0.0
-        update_twist.twist.angular.z = 0.0
+        update_twist.twist.angular.z = -self.overhead_fb_down_vel
 
         # Push centroid towards the desired goal
         x_error = self.desired_pose.x - feedback.x.x
@@ -954,7 +954,7 @@ class PositionFeedbackPushNode:
 
         # rospy.logdebug('Got torso client result')
         new_torso_position = np.asarray(self.robot.torso.pose()).ravel()[0]
-        # rospy.logdebug('New torso position is: ' + str(new_torso_position))
+        rospy.loginfo('New spine height is ' + str(new_torso_position))
 
         # Get torso_lift_link position in base_link frame
 

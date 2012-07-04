@@ -856,6 +856,11 @@ class ObjectTracker25D
     upscale_ = std::pow(2,num_downsamples_);
   }
 
+  PushTrackerState getMostRecentState() const
+  {
+    return previous_state_;
+  }
+
  protected:
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
@@ -1447,7 +1452,7 @@ class TabletopPushingPerceptionNode
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, cur_color_frame_.size(), workspace_frame_);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
-
+    PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
     // Assume we care about the biggest currently
     int chosen_idx = 0;
     unsigned int max_size = 0;
@@ -1472,6 +1477,7 @@ class TabletopPushingPerceptionNode
       return res;
     }
 
+    // TODO: Make these better named and match the trackr
     Eigen::Vector4f move_vec = objs[chosen_idx].centroid - prev_centroid_;
     res.moved.x = move_vec[0];
     res.moved.y = move_vec[1];
@@ -1479,6 +1485,7 @@ class TabletopPushingPerceptionNode
     res.centroid.x = objs[chosen_idx].centroid[0];
     res.centroid.y = objs[chosen_idx].centroid[1];
     res.centroid.z = objs[chosen_idx].centroid[2];
+    res.theta = tracker_state.x.theta;
 
     return res;
   }
@@ -1757,4 +1764,3 @@ int main(int argc, char ** argv)
   perception_node.spin();
   return 0;
 }
-

@@ -297,7 +297,10 @@ class TabletopExecutive:
                         if not res:
                             return
 
-    def run_feedback_testing(self, push_dist, push_angle=0.0, rand_angle=True, goal_pose=None):
+    def run_feedback_testing(self, goal_pose):
+        push_angle=0.0
+        push_dist = 0.0
+        rand_angle = False
         high_init = True
         push_angle_in = push_angle
         push_opt = OVERHEAD_PUSH
@@ -391,11 +394,16 @@ class TabletopExecutive:
         rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
                       ', ' + str(push_vector_res.centroid.y) + ', ' +
                       str(push_angle) +')')
-        rospy.loginfo('New (X,Y): (' + str(analysis_res.centroid.x) + ', ' +
-                       str(analysis_res.centroid.y) + ')')
-        rospy.loginfo('Delta (X,Y): (' + str(analysis_res.moved.x) + ', ' +
-                       str(analysis_res.moved.y) + '): ' +
+        rospy.loginfo('New (X,Y,Theta): (' + str(analysis_res.centroid.x) + ', ' +
+                       str(analysis_res.centroid.y) + ', ' + str(analysis_res.theta)+ ')')
+        rospy.loginfo('Delta (X,Y,Theta): (' + str(analysis_res.moved.x) + ', ' +
+                      str(analysis_res.moved.y) + '): ' +
                       str(sqrt(analysis_res.moved.x**2 + analysis_res.moved.y**2)))
+        rospy.loginfo('Desired (X,Y,Theta): (' + str(goal_pose.x) + ', ' +
+                       str(goal_pose.y) + ', ' + str(goal_pose.theta) + ')')
+        rospy.loginfo('Error (X,Y,Theta): (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) +
+                      ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +
+                      str(fabs(goal_pose.theta-analysis_res.theta)) + ')')
         if _USE_LEARN_IO:
             self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
                                      which_arm, analysis_res.centroid, push_dist,
@@ -687,7 +695,7 @@ class TabletopExecutive:
         # push_request
         rospy.loginfo("Calling overhead feedback push service")
         push_res = self.overhead_feedback_push_proxy(push_req)
-        rospy.loginfo("Calling overhead feedback  post push service")
+        rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 
     def test_new_controller(self):
@@ -726,5 +734,5 @@ if __name__ == '__main__':
         goal_pose.theta = 0.0*pi
         # node.run_rand_learning_collect(num_trials, push_dist, push_angle,
         #                                rand_angle, goal_pose)
-        node.run_feedback_testing(push_dist, push_angle, rand_angle, goal_pose)
+        node.run_feedback_testing(goal_pose)
         node.finish_learning()
