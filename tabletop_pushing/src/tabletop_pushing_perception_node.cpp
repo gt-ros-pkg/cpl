@@ -186,6 +186,13 @@ struct Tracker25DKeyPoint
   pcl::PointXYZ delta3D_;
 };
 
+static inline double sqrDistXY(Eigen::Vector4f a, Pose2D b)
+{
+  const double dx = a[0]-b.x;
+  const double dy = a[1]-b.y;
+  return dx*dx+dy*dy;
+}
+
 class ObjectTracker25D
 {
  protected:
@@ -216,29 +223,47 @@ class ObjectTracker25D
     upscale_ = std::pow(2,num_downsamples_);
   }
 
-  ProtoObject findLargestObject(cv::Mat& in_frame, XYZPointCloud& cloud,
+  ProtoObject findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
                                 bool& no_objects)
   {
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
-
-    // Assume we care about the biggest currently
-    int chosen_idx = 0;
-    unsigned int max_size = 0;
-    for (unsigned int i = 0; i < objs.size(); ++i)
-    {
-      if (objs[i].cloud.size() > max_size)
-      {
-        max_size = objs[i].cloud.size();
-        chosen_idx = i;
-      }
-    }
-
     if (objs.size() == 0)
     {
       ROS_WARN_STREAM("No objects found");
       ProtoObject empty;
       no_objects = true;
       return empty;
+    }
+
+    int chosen_idx = 0;
+    if (objs.size() == 1)
+    {
+    }
+    else if (frame_count_ == 0)
+    {
+      // Assume we care about the biggest currently
+      unsigned int max_size = 0;
+      for (unsigned int i = 0; i < objs.size(); ++i)
+      {
+        if (objs[i].cloud.size() > max_size)
+        {
+          max_size = objs[i].cloud.size();
+          chosen_idx = i;
+        }
+      }
+    }
+    else // Find closest object to last time
+    {
+      double min_dist = 1000.0;
+      for (unsigned int i = 0; i < objs.size(); ++i)
+      {
+        double centroid_dist = sqrDistXY(objs[i].centroid, previous_state_.x);
+        if (centroid_dist  < min_dist)
+        {
+          min_dist = centroid_dist;
+          chosen_idx = i;
+        }
+      }
     }
 
     if (use_displays_)
@@ -286,9 +311,9 @@ class ObjectTracker25D
     initialized_ = false;
     swap_orientation_ = false;
     bool no_objects = false;
-    ProtoObject cur_obj = findLargestObject(in_frame, cloud,  no_objects);
-    initialized_ = true;
     frame_count_ = 0;
+    ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects);
+    initialized_ = true;
     PushTrackerState state;
     state.header.seq = 0;
     state.header.stamp = ros::Time::now();
@@ -324,7 +349,7 @@ class ObjectTracker25D
       return initTracks(in_frame, obj_mask, self_mask, cloud);
     }
     bool no_objects = false;
-    ProtoObject cur_obj = findLargestObject(in_frame, cloud, no_objects);
+    ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
 
     // Update model
     PushTrackerState state;
@@ -872,7 +897,7 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      learn_callback_count_(0), frame_callback_count_(0)
+      learn_callback_count_(0), goal_out_count_(0), frame_callback_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -1635,13 +1660,13 @@ class TabletopPushingPerceptionNode
 
     if (use_displays_)
     {
-      cv::imshow("push_vector", disp_img);
+      cv::imshow("goal_vector", disp_img);
     }
     if (write_to_disk_)
     {
       // Write to disk to create video output
       std::stringstream push_out_name;
-      push_out_name << base_output_path_ << "push_vector" << learn_callback_count_
+      push_out_name << base_output_path_ << "goal_vector" << goal_out_count_++
                     << ".png";
       cv::imwrite(push_out_name.str(), disp_img);
     }
@@ -1711,6 +1736,7 @@ class TabletopPushingPerceptionNode
   bool recording_input_;
   int record_count_;
   int learn_callback_count_;
+  int goal_out_count_;
   int frame_callback_count_;
   Eigen::Vector4f prev_centroid_;
   shared_ptr<ObjectTracker25D> obj_tracker_;
