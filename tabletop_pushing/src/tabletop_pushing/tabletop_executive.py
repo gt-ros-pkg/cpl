@@ -276,7 +276,7 @@ class TabletopExecutive:
                         first = True
                         while get_push:
                             if first:
-                                code_in = raw_input('Reset obj and press <Enter>: ')
+                                code_in = raw_input('Set object in first pose and press <Enter>: ')
                                 if code_in.startswith('q'):
                                     return
                             first = False
@@ -287,7 +287,7 @@ class TabletopExecutive:
                             if push_vec is None:
                                 return
                             if push_vec.no_objects:
-                                code_in = raw_input('Reset obj and press <Enter>: ')
+                                code_in = raw_input('No objects found. Place object and press <Enter>: ')
                                 if code_in.startswith('q'):
                                     return
                             else:
@@ -296,6 +296,52 @@ class TabletopExecutive:
                                                   push_vec, push_dist, goal_pose)
                         if not res:
                             return
+
+    def run_feedback_testing(self, num_trials, push_dist, push_angle=0.0, rand_angle=True, goal_pose=None):
+        high_init = True
+        push_angle_in = push_angle
+        push_opt = OVERHEAD_PUSH
+        for t in xrange(num_trials):
+            get_push = True
+            first = True
+            while get_push:
+                if first:
+                    code_in = raw_input('Set object in first pose and press <Enter>: ')
+                    if code_in.startswith('q'):
+                        return
+                first = False
+                push_vec_res = self.request_learning_push(push_angle, push_dist, rand_angle, goal_pose)
+                if push_vec_res is None:
+                    return
+                if push_vec_res.no_objects:
+                    code_in = raw_input('No objects found. Place object and press <Enter>: ')
+                    if code_in.startswith('q'):
+                        return
+                else:
+                    get_push = False
+            which_arm = self.choose_arm(push_vec_res.push)
+            res = self.learning_trial(which_arm, int(push_opt), high_init,
+                                      push_vec_res, push_dist, goal_pose)
+            if not res:
+                return
+
+    def choose_arm(self, push_vec):
+        if (fabs(push_vec.start_point.y) > self.use_same_side_y_thresh or
+            push_vec.start_point.x > self.use_same_side_x_thresh):
+            if (push_vec.start_point.y < 0):
+                which_arm = 'r'
+                rospy.loginfo('Setting arm to right because of limits')
+            else:
+                which_arm = 'l'
+                rospy.loginfo('Setting arm to left because of limits')
+        elif push_vec.push_angle > 0:
+            which_arm = 'r'
+            rospy.loginfo('Setting arm to right because of angle')
+        else:
+            which_arm = 'l'
+            rospy.loginfo('Setting arm to left because of angle')
+
+        return which_arm
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
@@ -322,15 +368,15 @@ class TabletopExecutive:
         rospy.loginfo('Push dist: ' + str(push_dist))
         start_time = time.time()
         if not _OFFLINE:
-            if push_opt == GRIPPER_PUSH:
-                self.overhead_feedback_push_object(push_dist, which_arm,
-                                                  push_vector_res.push, goal_pose, high_init)
+            if push_opt == OVERHEAD_PUSH:
+                self.overhead_feedback_push_object(push_dist, which_arm, push_vector_res.push,
+                                                   goal_pose, high_init)
             if push_opt == GRIPPER_SWEEP:
                 self.sweep_object(push_dist, which_arm, push_vector_res.push,
                                   high_init)
-            if push_opt == OVERHEAD_PUSH:
-                self.overhead_push_object(push_dist, which_arm,
-                                          push_vector_res.push, high_init)
+            if push_opt == GRIPPER_PUSH:
+                self.gripper_push_object(push_dist, which_arm,
+                                         push_vector_res.push, high_init)
             if push_opt == OVERHEAD_PULL:
                 self.overhead_pull_object(push_dist, which_arm,
                                           push_vector_res.push, high_init)
@@ -678,6 +724,7 @@ if __name__ == '__main__':
         goal_pose.x = 0.7
         goal_pose.y = 0.0
         goal_pose.theta = 0.0*pi
-        node.run_rand_learning_collect(num_trials, push_dist, push_angle,
-                                       rand_angle, goal_pose)
+        # node.run_rand_learning_collect(num_trials, push_dist, push_angle,
+        #                                rand_angle, goal_pose)
+        node.run_feedback_testing(num_trials, push_dist, push_angle, rand_angle, goal_pose)
         node.finish_learning()
