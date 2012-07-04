@@ -218,13 +218,13 @@ class ObjectTracker25D
       sufficient_support_percent_(sufficient_support_percent),
       support_dist_thresh_(support_dist_thresh), use_displays_(use_displays),
       write_to_disk_(write_to_disk), base_output_path_(base_output_path),
-      record_count_(0), swap_orientation_(false)
+      record_count_(0), swap_orientation_(false), paused_(false)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
 
   ProtoObject findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
-                                bool& no_objects)
+                               bool& no_objects)
   {
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
     if (objs.size() == 0)
@@ -277,15 +277,6 @@ class ObjectTracker25D
     return objs[chosen_idx];
   }
 
-  double findObjectOrientation(ProtoObject& obj)
-  {
-    cv::RotatedRect obj_ellipse = findFootprintEllipse(obj);
-    float theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
-    // NOTE: We need to track the orientation better since the ellipse will only
-    // give angles in a PI radian range
-    return theta;
-  }
-
   cv::RotatedRect findFootprintEllipse(ProtoObject& obj)
   {
     // Get 2D footprint of object and fit an ellipse to it
@@ -305,9 +296,9 @@ class ObjectTracker25D
     return obj_ellipse;
   }
 
-  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                              cv::Mat& self_mask, XYZPointCloud& cloud)
+  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud)
   {
+    paused_ = false;
     initialized_ = false;
     swap_orientation_ = false;
     bool no_objects = false;
@@ -323,13 +314,20 @@ class ObjectTracker25D
       state.no_detection = true;
     }
 
+    cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
+    state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
-    state.x.theta = findObjectOrientation(cur_obj);
     state.z = cur_obj.centroid[2];
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
+
+    if (use_displays_ || write_to_disk_)
+    {
+      trackerIO(in_frame, cur_obj, obj_ellipse);
+    }
+
     ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
                     state.x.theta << ")");
     ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
@@ -341,12 +339,11 @@ class ObjectTracker25D
     return state;
   }
 
-  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& obj_mask,
-                                cv::Mat& self_mask, XYZPointCloud& cloud)
+  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     if (!initialized_)
     {
-      return initTracks(in_frame, obj_mask, self_mask, cloud);
+      return initTracks(in_frame, self_mask, cloud);
     }
     bool no_objects = false;
     ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
@@ -367,10 +364,9 @@ class ObjectTracker25D
     else
     {
       cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
+      state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
-      // state.x.theta = findObjectOrientation(cur_obj);
-      state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
       state.z = cur_obj.centroid[2];
 
       if(swap_orientation_)
@@ -413,53 +409,7 @@ class ObjectTracker25D
 
       if (use_displays_ || write_to_disk_)
       {
-        cv::Mat centroid_frame;
-        in_frame.copyTo(centroid_frame);
-        pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
-                                     cur_obj.centroid[2]);
-        const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-            centroid_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-        double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
-        const float x_maj_rad = (std::cos(ellipse_angle_rad)*
-                                 obj_ellipse.size.width*0.5);
-        const float y_maj_rad = (std::sin(ellipse_angle_rad)*
-                                 obj_ellipse.size.width*0.5);
-        pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad,
-                                      centroid_point.y+y_maj_rad,
-                                      centroid_point.z);
-        const float x_min_rad = (std::cos(ellipse_angle_rad+M_PI*0.5)*
-                                 obj_ellipse.size.height*0.5);
-        const float y_min_rad = (std::sin(ellipse_angle_rad+M_PI*0.5)*
-                                 obj_ellipse.size.height*0.5);
-        pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad,
-                                      centroid_point.y+y_min_rad,
-                                      centroid_point.z);
-        const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-            table_maj_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-        const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
-            table_min_point, cloud.header.frame_id, "openni_rgb_optical_frame");
-        cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,255,0),2);
-        cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,255),2);
-        cv::Size img_size;
-        img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
-                                   std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
-        img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
-                                    std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
-        float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
-                                             img_maj_idx.x-img_c_idx.x));
-        cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-        cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
-        if (use_displays_)
-        {
-          cv::imshow("Ellipse Axes", centroid_frame);
-        }
-        if (write_to_disk_)
-        {
-          std::stringstream out_name;
-          out_name << base_output_path_ << "ellipse_axes" << record_count_
-                   << ".png";
-          cv::imwrite(out_name.str(), centroid_frame);
-        }
+        trackerIO(in_frame, cur_obj, obj_ellipse);
       }
     }
     previous_time_ = state.header.stamp.toSec();
@@ -861,7 +811,80 @@ class ObjectTracker25D
     return previous_state_;
   }
 
+  ProtoObject getMostRecentObject() const
+  {
+    return previous_obj_;
+  }
+
+  void pause()
+  {
+    paused_ = true;
+  }
+
+  void unpause()
+  {
+    paused_ = false;
+  }
+
+  bool isPaused() const
+  {
+    return paused_;
+  }
+
  protected:
+
+  void trackerIO(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
+  {
+    cv::Mat centroid_frame;
+    in_frame.copyTo(centroid_frame);
+    pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
+                                 cur_obj.centroid[2]);
+    const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+        centroid_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+    double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
+    const float x_maj_rad = (std::cos(ellipse_angle_rad)*
+                             obj_ellipse.size.width*0.5);
+    const float y_maj_rad = (std::sin(ellipse_angle_rad)*
+                             obj_ellipse.size.width*0.5);
+    pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad,
+                                  centroid_point.y+y_maj_rad,
+                                  centroid_point.z);
+    const float x_min_rad = (std::cos(ellipse_angle_rad+M_PI*0.5)*
+                             obj_ellipse.size.height*0.5);
+    const float y_min_rad = (std::sin(ellipse_angle_rad+M_PI*0.5)*
+                             obj_ellipse.size.height*0.5);
+    pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad,
+                                  centroid_point.y+y_min_rad,
+                                  centroid_point.z);
+    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
+        table_maj_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+    const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
+        table_min_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,255,0),2);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,255),2);
+    cv::Size img_size;
+    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
+    img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                               std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+    float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+                                         img_maj_idx.x-img_c_idx.x));
+    cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
+    if (use_displays_)
+    {
+      cv::imshow("Ellipse Axes", centroid_frame);
+    }
+    if (write_to_disk_)
+    {
+      std::stringstream out_name;
+      out_name << base_output_path_ << "ellipse_axes" << record_count_
+               << ".png";
+      cv::imwrite(out_name.str(), centroid_frame);
+    }
+
+  }
+
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
   bool initialized_;
@@ -887,6 +910,7 @@ class ObjectTracker25D
   std::string base_output_path_;
   int record_count_;
   bool swap_orientation_;
+  bool paused_;
 };
 
 class TabletopPushingPerceptionNode
@@ -1125,11 +1149,10 @@ class TabletopPushingPerceptionNode
     cur_camera_header_ = img_msg->header;
     pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
 
-    if (obj_tracker_->isInitialized())
+    if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_workspace_mask_, cur_self_mask_,
-          cur_self_filtered_cloud_);
+          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
 
       PointStamped start_point;
       PointStamped end_point;
@@ -1168,7 +1191,7 @@ class TabletopPushingPerceptionNode
                           << theta_dist << ")");
           PushTrackerResult res;
           as_.setSucceeded(res);
-          stopTracking();
+          obj_tracker_->pause();
         }
         else
         {
@@ -1320,9 +1343,10 @@ class TabletopPushingPerceptionNode
                     objs[chosen_idx].cloud.size() << " points");
     ROS_INFO_STREAM("Chosen object located at: \n" << res.centroid);
 
-    if (start_tracking_on_push_call_)
+    startTracking();
+    if (!start_tracking_on_push_call_)
     {
-      startTracking();
+      obj_tracker_->pause();
     }
 
     if (rand_angle)
@@ -1445,6 +1469,10 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
+  // LearnPush::Response getSpinPushStartPose(LearnPush::Request& req)
+  // {
+  // }
+
   LearnPush::Response getAnalysisVector(double desired_push_angle)
   {
     // // Segment objects
@@ -1453,6 +1481,8 @@ class TabletopPushingPerceptionNode
         objs, cur_color_frame_.size(), workspace_frame_);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
+    obj_tracker_->stopTracking();
+
     // Assume we care about the biggest currently
     int chosen_idx = 0;
     unsigned int max_size = 0;
@@ -1490,69 +1520,21 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  bool startTracking()
+  PushTrackerState startTracking()
   {
-    // Segment objects
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_self_filtered_cloud_);
-    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, cur_color_frame_.size(), workspace_frame_);
-    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
-
-    // Assume we care about the biggest currently
-    int chosen_idx = 0;
-    unsigned int max_size = 0;
-    for (unsigned int i = 0; i < objs.size(); ++i)
-    {
-      if (objs[i].cloud.size() > max_size)
-      {
-        max_size = objs[i].cloud.size();
-        chosen_idx = i;
-      }
-    }
-
-    // NOTE: disp_image has i+1 for object ids
-    cv::Mat obj_mask_raw = (disp_img == (chosen_idx+1));
-    cv::Mat obj_mask;
-    cv::Mat element(3,3, CV_8UC1, cv::Scalar(255));
-    cv::dilate(obj_mask_raw, obj_mask, element);
-    cv::erode(obj_mask, obj_mask, element);
-    // cv::imshow("obj_mask: raw", obj_mask_raw);
-    // cv::imshow("obj_mask: closed", obj_mask);
-    PushTrackerState tracker_state = obj_tracker_->initTracks(
-        cur_color_frame_, obj_mask, cur_self_mask_, cur_self_filtered_cloud_);
-    Pose2D obj_pose;
-    if (objs.size() == 0)
-    {
-      ROS_WARN_STREAM("No objects found");
-      obj_pose.x = 0.0;
-      obj_pose.y = 0.0;
-      return false;
-    }
-    obj_pose.x = objs[chosen_idx].centroid[0];
-    obj_pose.y = objs[chosen_idx].centroid[1];
-
-    ROS_INFO_STREAM("Found " << objs.size() << " objects.");
-    ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
-                    objs[chosen_idx].cloud.size() << " points");
-    return true;
-  }
-
-  bool stopTracking()
-  {
-    obj_tracker_->stopTracking();
-    bool obj_tracking = false;
-    return obj_tracking;
+    return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
   }
 
   void pushTrackerGoalCB()
   {
     ROS_INFO_STREAM("pushTrackerGoalCB(): starting tracking");
-    bool obj_tracking = startTracking();
-    if (!obj_tracking)
+    if (obj_tracker_->isInitialized())
     {
-      ROS_WARN_STREAM("Nothing to track. Push tracking aborted.");
-      as_.setAborted();
-      return;
+      obj_tracker_->unpause();
+    }
+    else
+    {
+      startTracking();
     }
     ROS_INFO_STREAM("Accepting goal");
     shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
@@ -1565,16 +1547,8 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerPreemptCB()
   {
-    bool obj_tracking = stopTracking();
+    obj_tracker_->pause();
     ROS_INFO_STREAM("Preempted push tracker");
-    if (obj_tracking)
-    {
-      ROS_INFO_STREAM("Tracking stopped");
-    }
-    else
-    {
-      ROS_WARN_STREAM("Tracking not stopped");
-    }
     // set the action state to preempted
     as_.setPreempted();
   }
