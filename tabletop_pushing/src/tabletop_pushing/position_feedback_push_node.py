@@ -114,6 +114,13 @@ _POSTURES = {
     'elbowdownl': [-0.0088195719039858515, 1.2834828245284853, 0.20338442004843196, -1.5565279256852611, -0.096340012666916802, -1.0235018652439782, 1.7990893054129216]
 }
 
+def subPIAngle(theta):
+    while theta < -pi:
+        theta += 2.0*pi
+    while theta > pi:
+        theta -= 2.0*pi
+    return theta
+
 class PositionFeedbackPushNode:
 
     def __init__(self):
@@ -407,6 +414,8 @@ class PositionFeedbackPushNode:
         return response
 
     def tracker_feedback_overhead_push(self, feedback):
+        if self.feedback_count == 0:
+            self.theta0 = feedback.x.theta
         which_arm = self.active_arm
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
@@ -437,15 +446,18 @@ class PositionFeedbackPushNode:
         # Push centroid towards the desired goal
         x_error = desired_state.x - cur_state.x.x
         y_error = desired_state.y - cur_state.x.y
-        t_error = desired_state.theta - cur_state.x.theta
+        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
+        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
         goal_x_dot = self.k_g*x_error
         goal_y_dot = self.k_g*y_error
         # Add in direction to corect for spinning
-        translation_angle = atan2(goal_y_dot, goal_x_dot)
-        spin_x_dot = -sin(translation_angle)*(self.k_d_s*cur_state.x_dot.theta +
-                                              -self.k_p_s*t_error)
-        spin_y_dot =  cos(translation_angle)*(self.k_d_s*cur_state.x_dot.theta +
-                                              -self.k_p_s*t_error)
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        # transform_angle = t0_error
+        spin_x_dot = -sin(transform_angle)*(self.k_d_s*cur_state.x_dot.theta +
+                                            -self.k_p_s*t0_error)
+        spin_y_dot =  cos(transform_angle)*(self.k_d_s*cur_state.x_dot.theta +
+                                            -self.k_p_s*t0_error)
         u.twist.linear.x = goal_x_dot + spin_x_dot
         u.twist.linear.y = goal_y_dot + spin_y_dot
         if self.feedback_count % 5 == 0:
