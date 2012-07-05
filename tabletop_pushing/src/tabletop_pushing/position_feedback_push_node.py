@@ -432,6 +432,7 @@ class PositionFeedbackPushNode:
         u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
+        # TODO: Make this a function of the measured pressure?
         u.twist.angular.z = -self.overhead_fb_down_vel
         # Push centroid towards the desired goal
         x_error = desired_state.x - cur_state.x.x
@@ -453,6 +454,19 @@ class PositionFeedbackPushNode:
             rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
                           str(spin_y_dot) + ')')
         return u
+
+    def slidingModeController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time(0)
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = -self.overhead_fb_down_vel
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = desired_state.theta - cur_state.x.theta
 
     def overhead_feedback_post_push(self, request):
         response = GripperPushResponse()
