@@ -408,30 +408,6 @@ class PositionFeedbackPushNode:
 
     def tracker_feedback_overhead_push(self, feedback):
         which_arm = self.active_arm
-        update_twist = TwistStamped()
-        update_twist.header.frame_id = 'torso_lift_link'
-        update_twist.header.stamp = rospy.Time(0)
-        update_twist.twist.linear.z = 0.0
-        update_twist.twist.angular.x = 0.0
-        update_twist.twist.angular.y = 0.0
-        update_twist.twist.angular.z = -self.overhead_fb_down_vel
-
-        # Push centroid towards the desired goal
-        x_error = self.desired_pose.x - feedback.x.x
-        y_error = self.desired_pose.y - feedback.x.y
-        t_error = self.desired_pose.theta - feedback.x.theta
-        goal_x_dot = self.k_g*x_error
-        goal_y_dot = self.k_g*y_error
-
-        # Add in direction to corect for spinning
-        translation_angle = atan2(goal_y_dot, goal_x_dot)
-        spin_x_dot = -sin(translation_angle)*(self.k_d_s*feedback.x_dot.theta +
-                                              -self.k_p_s*t_error)
-        spin_y_dot =  cos(translation_angle)*(self.k_d_s*feedback.x_dot.theta +
-                                              -self.k_p_s*t_error)
-
-        update_twist.twist.linear.x = goal_x_dot + spin_x_dot
-        update_twist.twist.linear.y = goal_y_dot + spin_y_dot
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
                           str(self.desired_pose.y) + ', ' +
@@ -441,14 +417,42 @@ class PositionFeedbackPushNode:
             rospy.loginfo('X_dot: (' + str(feedback.x_dot.x) + ', ' +
                           str(feedback.x_dot.y) + ', ' +
                           str(feedback.x_dot.theta) + ')')
-            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
-                          str(goal_y_dot) + ')')
-            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
-                          str(spin_y_dot) + ')')
+        # TODO: Add new pushing visual feedback controllers here
+        update_twist = self.spinCompensationController(feedback, self.desired_pose)
+        if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ')\n')
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
+
+    def spinCompensationController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time(0)
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = -self.overhead_fb_down_vel
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = desired_state.theta - cur_state.x.theta
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
+        # Add in direction to corect for spinning
+        translation_angle = atan2(goal_y_dot, goal_x_dot)
+        spin_x_dot = -sin(translation_angle)*(self.k_d_s*cur_state.x_dot.theta +
+                                              -self.k_p_s*t_error)
+        spin_y_dot =  cos(translation_angle)*(self.k_d_s*cur_state.x_dot.theta +
+                                              -self.k_p_s*t_error)
+        u.twist.linear.x = goal_x_dot + spin_x_dot
+        u.twist.linear.y = goal_y_dot + spin_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
+                          str(spin_y_dot) + ')')
+        return u
 
     def overhead_feedback_post_push(self, request):
         response = GripperPushResponse()
