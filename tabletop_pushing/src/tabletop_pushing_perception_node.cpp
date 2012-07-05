@@ -296,7 +296,7 @@ class ObjectTracker25D
     initialized_ = true;
     PushTrackerState state;
     state.header.seq = 0;
-    state.header.stamp = ros::Time::now();
+    state.header.stamp = cloud.header.stamp;// ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
     if (no_objects)
     {
@@ -340,7 +340,7 @@ class ObjectTracker25D
     // Update model
     PushTrackerState state;
     state.header.seq = frame_count_;
-    state.header.stamp = ros::Time::now();
+    state.header.stamp = cloud.header.stamp; //ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
 
     if (no_objects)
@@ -349,6 +349,7 @@ class ObjectTracker25D
       state.x = previous_state_.x;
       state.x_dot = previous_state_.x_dot;
       state.z = previous_state_.z;
+      ROS_WARN_STREAM("Using previous state, but updating time!");
     }
     else
     {

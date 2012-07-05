@@ -385,6 +385,11 @@ class TabletopExecutive:
                                           push_vector_res.push, high_init)
         push_time = time.time() - start_time
         rospy.loginfo('Done performing push behavior.')
+        if _OFFLINE:
+            code_in = raw_input('Press <Enter> to get analysis vector: ')
+            if code_in.startswith('q'):
+                return False
+
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
         rospy.loginfo('Push: ' + str(push_opt))
