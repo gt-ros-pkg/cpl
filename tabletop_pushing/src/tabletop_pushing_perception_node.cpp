@@ -101,7 +101,6 @@
 // Debugging IFDEFS
 #define DISPLAY_INPUT_COLOR 1
 // #define DISPLAY_INPUT_DEPTH 1
-// #define DISPLAY_WORKSPACE_MASK 1
 #define DISPLAY_PROJECTED_OBJECTS 1
 #define DISPLAY_CHOSEN_BOUNDARY 1
 #define DISPLAY_3D_BOUNDARIES 1
@@ -202,23 +201,13 @@ class ObjectTracker25D
   typedef std::vector<FeatureVector> FeatureVectors;
 
  public:
-  ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
-                   int num_downsamples = 0,
-                   double ratio_thresh=0.5, double match_thresh=128,
-                   int fast_thresh=9, bool extended_feature=true,
-                   int max_ransac_iter=100,
-                   double sufficient_support_percent=0.7,
-                   double support_dist_thresh=0.03, bool use_displays=false,
-                   bool write_to_disk=false, std::string base_output_path="") :
-      pcl_segmenter_(segmenter),
-      num_downsamples_(num_downsamples), initialized_(false),
-      fast_thresh_(fast_thresh), surf_(0.05, 4, 2, extended_feature),
-      ratio_threshold_(ratio_thresh), match_score_threshold_(match_thresh),
-      frame_count_(0), max_ransac_iter_(max_ransac_iter),
-      sufficient_support_percent_(sufficient_support_percent),
-      support_dist_thresh_(support_dist_thresh), use_displays_(use_displays),
-      write_to_disk_(write_to_disk), base_output_path_(base_output_path),
-      record_count_(0), swap_orientation_(false), paused_(false)
+  ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
+                   bool use_displays=false, bool write_to_disk=false,
+                   std::string base_output_path="") :
+      pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
+      frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
+      base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
+      paused_(false)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -420,372 +409,9 @@ class ObjectTracker25D
     return state;
   }
 
-  Pose2D estimateCentroid(KeyPoints& points)
-  {
-    Pose2D centroid;
-    centroid.x = 0.0;
-    centroid.y = 0.0;
-    centroid.theta = 0.0;
-    if (points.size() < 1)
-    {
-      return centroid;
-    }
-    int n = 0;
-    for (unsigned int i; i < points.size(); ++i)
-    {
-      if (isnan(points[i].point3D_.x) || isnan(points[i].point3D_.x))
-      {
-        continue;
-      }
-      n++;
-      centroid.x += points[i].point3D_.x;
-      centroid.y += points[i].point3D_.y;
-    }
-
-    centroid.x /= n;
-    centroid.y /= n;
-    // TODO: Estimate theta somehow...
-    return centroid;
-  }
-
-  KeyPoints extractFeatures(cv::Mat& in_frame, cv::Mat& obj_mask,
-                            XYZPointCloud& cloud)
-  {
-    cv::Mat bw_frame(in_frame.size(), CV_8UC1);
-    if (in_frame.channels() == 3)
-    {
-      cv::cvtColor(in_frame, bw_frame, CV_BGR2GRAY);
-    }
-    else
-    {
-      bw_frame = in_frame;
-    }
-    // TODO: Compare points returned to extracting features from pre-masked
-    // image
-    std::vector<cv::KeyPoint> key_points;
-    cv::FAST(bw_frame, key_points, fast_thresh_);
-
-    // Remove keypoints not on the object mask
-    for (unsigned int i = 0; i < key_points.size();)
-    {
-      if (obj_mask.at<uchar>(key_points[i].pt.y,
-                             key_points[i].pt.x) == 0)
-      {
-        key_points.erase(key_points.begin() + i);
-      }
-      else
-      {
-        i++;
-      }
-    }
-    // Extract descriptors for those points on the object
-    FeatureVector raw_descriptors;
-    surf_(bw_frame, obj_mask, key_points, raw_descriptors, true);
-    // Populate feature vectors and key point locations
-    const int descriptor_length = float(raw_descriptors.size()) /
-        key_points.size();
-    KeyPoints obj_key_points;
-    FeatureVectors feats;
-    for (unsigned int i = 0; i < key_points.size(); ++i)
-    {
-      FeatureVector f;
-      for (int j = 0; j < descriptor_length; ++j)
-      {
-        f.push_back(raw_descriptors[i*descriptor_length + j]);
-      }
-      // Extract 3D locations of points
-      KeyPoint k(key_points[i].pt, getPoint3D(key_points[i].pt, cloud), f);
-      obj_key_points.push_back(k);
-      feats.push_back(f);
-    }
-
-    cv::Mat disp_img;
-    cv::drawKeypoints(in_frame, key_points, disp_img, cv::Scalar(0,255,0));
-    if (!initialized_)
-    {
-      cv::imshow("Initial Features", disp_img);
-    }
-    else
-    {
-      cv::imshow("Extracted Features", disp_img);
-    }
-    return obj_key_points;
-  }
-
-  KeyPoints matchFeatures(KeyPoints& extracted, KeyPoints& previous)
-  {
-    KeyPoints matched;
-    int null_count = 0;
-    // Match extracted against previous;
-    for (unsigned int i = 0; i < previous.size(); ++i)
-    {
-      int match_idx = ratioTest(previous[i], extracted, ratio_threshold_,
-                                match_score_threshold_);
-      // NOTE: Ignore bad matches
-      if (match_idx < 0)
-      {
-        KeyPoint null;
-        matched.push_back(null);
-        matched[i].descriptor_ = previous[i].descriptor_;
-        null_count++;
-      }
-      else
-      {
-        KeyPoint match = extracted[match_idx];
-        match.updateVelocities(previous[i]);
-        matched.push_back(match);
-      }
-    }
-    return matched;
-  }
-
-  Eigen::Matrix4f estimateMotionVector(KeyPoints& tracks, cv::Mat& frame)
-  {
-    XYZPointCloud current_pts;
-    XYZPointCloud previous_pts;
-    current_pts.width = tracks.size();
-    current_pts.height = 1;
-    current_pts.is_dense = false;
-    current_pts.resize(current_pts.width*current_pts.height);
-    previous_pts.width = tracks.size();
-    previous_pts.height = 1;
-    previous_pts.is_dense = false;
-    previous_pts.resize(previous_pts.width*previous_pts.height);
-    std::vector<int> current_idx;
-    std::vector<int> previous_idx;
-    for(unsigned int i=0; i < tracks.size(); ++i)
-    {
-      current_pts.points[i] = tracks[i].point3D_;
-      previous_pts.points[i] = tracks[i].getPrevious3DPoint();
-      if (tracks[i].point2D_.x == Tracker25DKeyPoint::NULL_X ||
-          tracks[i].point2D_.y == Tracker25DKeyPoint::NULL_Y ||
-          tracks[i].point2D_.x < 0 || tracks[i].point2D_.y < 0)
-      {
-      }
-      else if (isnan(tracks[i].point3D_.x) || isnan(tracks[i].point3D_.y) || isnan(tracks[i].point3D_.z) )
-      {
-        // // TODO: Look if any points in the downsampled neighborhood have values
-        // ROS_ERROR_STREAM("Nan in point: " << tracks[i].point3D_);
-        // ROS_ERROR_STREAM("2D point: " << tracks[i].point2D_);
-        // ROS_ERROR_STREAM("2D delta: " << tracks[i].delta2D_);
-        // ROS_ERROR_STREAM("3D delta: " << tracks[i].delta3D_);
-      }
-      else if (isnan(previous_pts.points[i].x) ||
-               isnan(previous_pts.points[i].y) ||
-               isnan(previous_pts.points[i].z))
-      {
-        // // TODO: Look if any points in the downsampled neighborhood have values
-        // ROS_ERROR_STREAM("Nan in prev point: " << previous_pts.points[i]);
-        // ROS_ERROR_STREAM("3D point: " << tracks[i].point3D_);
-        // ROS_ERROR_STREAM("2D point: " << tracks[i].point2D_);
-        // ROS_ERROR_STREAM("2D delta: " << tracks[i].delta2D_);
-        // ROS_ERROR_STREAM("3D delta: " << tracks[i].delta3D_);
-      }
-      else
-      {
-        current_idx.push_back(i);
-        previous_idx.push_back(i);
-        // ROS_INFO_STREAM("Current pt3D: " << current_pts.points[i]);
-        // ROS_INFO_STREAM("Previous pt3D: " << previous_pts.points[i]);
-        // TODO: If negative x, then print all info
-        if (tracks[i].point3D_.x < 0)
-        {
-          ROS_WARN_STREAM("Current point has negative 3D x: " <<
-                          tracks[i].point3D_);
-        }
-        if (previous_pts.points[i].x < 0)
-        {
-          ROS_WARN_STREAM("Previous point has negative 3D x.");
-          ROS_WARN_STREAM("Tracked point is: " << tracks[i].point3D_);
-          ROS_WARN_STREAM("Tracked 2D point is: " << tracks[i].point2D_);
-          ROS_WARN_STREAM("Tracked 2D vector is: " << tracks[i].delta2D_);
-          ROS_WARN_STREAM("Tracked 3D vector is: " << tracks[i].delta3D_);
-          ROS_WARN_STREAM("Current point is: " << current_pts.points[i]);
-          ROS_WARN_STREAM("Previous point is: " << previous_pts.points[i]
-                          << "\n");
-        }
-      }
-    }
-
-    int max_support = 0;
-    std::vector<int> best_support;
-    Eigen::Matrix4f best_transform;
-    if (current_idx.size() < 2)
-    {
-      ROS_ERROR_STREAM("Too few matches to estimate transform");
-      return Eigen::Matrix4f::Identity();
-    }
-    for (int i = 0; i < max_ransac_iter_; ++i)
-    {
-      // Choose 2 random, unique indices
-      int idx0 = current_idx[rand() % current_idx.size()];
-      int idx1 = -1;
-      do
-      {
-        idx1 = current_idx[rand() % current_idx.size()];
-      } while (idx1 == idx0);
-      std::vector<int> rand_idx;
-      rand_idx.push_back(idx0);
-      rand_idx.push_back(idx1);
-      // Compute transform from random pts
-      Eigen::Matrix4f transform = estimateTransform(previous_pts, current_pts,
-                                                    rand_idx, rand_idx);
-      std::vector<int> support = determineSupport(previous_pts, current_pts,
-                                                  previous_idx, current_idx,
-                                                  transform);
-      if (support.size() > max_support)
-      {
-        max_support = support.size();
-        best_transform = transform;
-        best_support = support;
-      }
-      // Exit if support percentage is above a certain threhsold
-      if (best_support.size() >
-          sufficient_support_percent_*current_pts.size())
-      {
-        break;
-      }
-    }
-
-    // Estimate final transform with least squares (SVD)
-    // ROS_INFO_STREAM("Number of support pts is: " << best_support.size()
-    //                 << " / " << tracks.size());
-
-    Eigen::Matrix4f final_transform = estimateTransform(previous_pts,
-                                                        current_pts,
-                                                        best_support,
-                                                        best_support);
-    // ROS_INFO_STREAM("Best guess transform is: \n" << final_transform << "\n");
-
-    // TODO: Display transform (applied to centroid of points?)
-    // TODO: Need to project 3D into the image...
-    cv::Mat disp_img;
-    frame.copyTo(disp_img);
-    for (unsigned int i = 0; i < best_support.size(); ++i)
-    {
-      int idx = best_support[i];
-      cv::circle(disp_img, tracks[idx].point2D_, 4, cv::Scalar(0,0,255));
-    }
-    cv::imshow("Support Points", disp_img);
-    return final_transform;
-  }
-
-  Eigen::Matrix4f estimateTransform(XYZPointCloud& previous_pts,
-                                    XYZPointCloud& current_pts,
-                                    std::vector<int>& previous_indices,
-                                    std::vector<int>& current_indices)
-  {
-    TransformEstimator estimator;
-    Eigen::Matrix4f transform;
-    estimator.estimateRigidTransformation(previous_pts, previous_indices,
-                                          current_pts, current_indices,
-                                          transform);
-    return transform;
-  }
-
-  std::vector<int> determineSupport(XYZPointCloud& previous_pts,
-                                    XYZPointCloud& current_pts,
-                                    std::vector<int>& previous_indices,
-                                    std::vector<int>& current_indices,
-                                    Eigen::Matrix4f& transform)
-  {
-    std::vector<int> support_idx;
-    for (unsigned int i = 0; i < previous_indices.size(); ++i)
-    {
-      int idx = previous_indices[i];
-      double fit_error = computeReprojectionError(previous_pts.points[idx],
-                                                  current_pts.points[idx],
-                                                  transform);
-      if (fit_error < support_dist_thresh_)
-      {
-        support_idx.push_back(idx);
-      }
-    }
-    return support_idx;
-  }
-
   //
   // Helper functions
   //
-  double computeReprojectionError(pcl::PointXYZ& prev_pt, pcl::PointXYZ& cur_pt,
-                                  Eigen::Matrix4f& transform)
-  {
-    Eigen::Vector4f x_t0(prev_pt.x, prev_pt.y, prev_pt.z, 1.0);
-    Eigen::Vector4f x_t1(cur_pt.x, cur_pt.y, cur_pt.z, 1.0);
-    Eigen::Vector4f x_t1_hat = transform*x_t0;
-    Eigen::Vector4f error_vec = x_t1_hat - x_t1;
-    return error_vec.norm();
-  }
-
-
-  int ratioTest(KeyPoint& a, KeyPoints& bList, double ratio_threshold = 0.5,
-                double match_threshold=1.0)
-  {
-    double best_score = 1000000;
-    double second_best = 1000000;
-    int best_index = -1;
-
-    for (unsigned int b = 0; b < bList.size(); ++b) {
-      double score = 0;
-      score = SSD(a.descriptor_, bList[b].descriptor_);
-
-      if (score < best_score) {
-        second_best = best_score;
-        best_score = score;
-        best_index = b;
-      } else if (score < second_best) {
-        second_best = score;
-      }
-    }
-    if ( second_best == 0 ||
-         best_score / second_best > ratio_threshold) {
-      best_index = -1;
-    }
-    if ( best_score > match_threshold) {
-      best_index = -1;
-    }
-    return best_index;
-  }
-
-  double SSD(FeatureVector& a, FeatureVector& b)
-  {
-    double diff = 0;
-
-    for (unsigned int i = 0; i < a.size(); ++i) {
-      float delta = a[i] - b[i];
-      diff += delta*delta;
-    }
-
-    return diff;
-  }
-
-  pcl::PointXYZ getPoint3D(cv::Point pt, XYZPointCloud& cloud) const
-  {
-    // Compensate for downsampling
-    return cloud.at(pt.x*upscale_, pt.y*upscale_);
-  }
-
-  //
-  // I/O Functions
-  //
-  void drawMatches(cv::Mat& in_frame, KeyPoints& matches, std::string append="")
-  {
-    cv::Mat disp_img;
-    in_frame.copyTo(disp_img);
-    for (unsigned int i = 0; i < matches.size(); ++i)
-    {
-      if (matches[i].point2D_.x < 0 || matches[i].point2D_.y < 0)
-      {
-        continue;
-      }
-      cv::line(disp_img, matches[i].point2D_,
-               matches[i].point2D_ + matches[i].delta2D_, cv::Scalar(0,255,0));
-      cv::circle(disp_img, matches[i].point2D_, 4, cv::Scalar(0,255,0));
-    }
-    std::stringstream title;
-    title << "Tracker 2.5D Matches" << append;
-    cv::imshow(title.str(), disp_img);
-  }
 
   //
   // Getters & Setters
@@ -832,6 +458,9 @@ class ObjectTracker25D
   }
 
  protected:
+  //
+  // I/O Functions
+  //
 
   void trackerIO(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
   {
@@ -888,20 +517,8 @@ class ObjectTracker25D
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
   bool initialized_;
-  int fast_thresh_;
-  KeyPoints init_obj_keys_;
-  KeyPoints prev_obj_keys_;
-  KeyPoints cur_obj_keys_;
-  KeyPoints prev_all_keys_;
-  KeyPoints cur_all_keys_;
-  cv::SURF surf_;
-  double ratio_threshold_;
-  double match_score_threshold_;
   int frame_count_;
   int upscale_;
-  int max_ransac_iter_;
-  double sufficient_support_percent_;
-  double support_dist_thresh_;
   double previous_time_;
   ProtoObject previous_obj_;
   PushTrackerState previous_state_;
@@ -932,20 +549,18 @@ class TabletopPushingPerceptionNode
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
         new PointCloudSegmentation(tf_));
     // Get parameters from the server
-    n_private_.param("crop_min_x", crop_min_x_, 0);
-    n_private_.param("crop_max_x", crop_max_x_, 640);
-    n_private_.param("crop_min_y", crop_min_y_, 0);
-    n_private_.param("crop_max_y", crop_max_y_, 480);
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
     n_private_.param("use_displays", use_displays_, false);
     n_private_.param("write_input_to_disk", write_input_to_disk_, false);
     n_private_.param("write_to_disk", write_to_disk_, false);
-    n_private_.param("min_workspace_x", min_workspace_x_, 0.0);
-    n_private_.param("min_workspace_y", min_workspace_y_, 0.0);
-    n_private_.param("min_workspace_z", min_workspace_z_, 0.0);
-    n_private_.param("max_workspace_x", max_workspace_x_, 0.0);
-    n_private_.param("max_workspace_y", max_workspace_y_, 0.0);
-    n_private_.param("max_workspace_z", max_workspace_z_, 0.0);
+
+    n_private_.param("min_workspace_x", pcl_segmenter_->min_workspace_x_, 0.0);
+    n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
+    n_private_.param("max_workspace_x", pcl_segmenter_->max_workspace_x_, 0.0);
+    n_private_.param("max_workspace_z", pcl_segmenter_->max_workspace_z_, 0.0);
+    n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
+    n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
+
     std::string default_workspace_frame = "torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_,
                      default_workspace_frame);
@@ -953,19 +568,7 @@ class TabletopPushingPerceptionNode
     std::string output_path_def = "~";
     n_private_.param("img_output_path", base_output_path_, output_path_def);
 
-    n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
-    n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
-    pcl_segmenter_->min_workspace_x_ = min_workspace_x_;
-    pcl_segmenter_->max_workspace_x_ = max_workspace_x_;
-    pcl_segmenter_->min_workspace_z_ = min_workspace_z_;
-    pcl_segmenter_->max_workspace_z_ = max_workspace_z_;
-    n_private_.param("moved_count_thresh", pcl_segmenter_->moved_count_thresh_,
-                     1);
-
-    n_private_.param("autostart_pcl_segmentation", autorun_pcl_segmentation_,
-                     false);
-    n_private_.param("start_tracking_on_push_call", start_tracking_on_push_call_,
-                     false);
+    n_private_.param("start_tracking_on_push_call", start_tracking_on_push_call_, false);
 
     n_private_.param("num_downsamples", num_downsamples_, 2);
     pcl_segmenter_->num_downsamples_ = num_downsamples_;
@@ -993,38 +596,14 @@ class TabletopPushingPerceptionNode
                      0.1);
     n_private_.param("use_pcl_voxel_downsample",
                      pcl_segmenter_->use_voxel_down_, true);
-    n_private_.param("icp_max_iters", pcl_segmenter_->icp_max_iters_, 100);
-    n_private_.param("icp_transform_eps", pcl_segmenter_->icp_transform_eps_,
-                     0.0);
-    n_private_.param("icp_max_cor_dist",
-                     pcl_segmenter_->icp_max_cor_dist_, 1.0);
-    n_private_.param("icp_ransac_thresh",
-                     pcl_segmenter_->icp_ransac_thresh_, 0.015);
 
-    double ratio_thresh;
-    double match_score_thresh;
-    int fast_thresh;
-    bool extended_feats;
-    int max_ransac_iter;
-    double support_percent;
-    double support_dist;
-    n_private_.param("obj_tracker_ratio_threshold", ratio_thresh, 0.5);
-    n_private_.param("obj_tracker_score_threshold", match_score_thresh, 128.0);
-    n_private_.param("obj_tracker_fast_threshold", fast_thresh, 9);
-    n_private_.param("obj_tracker_extended_feats", extended_feats, true);
-    n_private_.param("obj_tracker_extended_feats", extended_feats, true);
-    n_private_.param("obj_tracker_max_ransac_iter", max_ransac_iter, 100);
-    n_private_.param("obj_tracker_ransac_support_percent", support_percent, 0.7);
-    n_private_.param("obj_tracker_ransac_dist_thresh", support_dist, 0.03);
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
-        new ObjectTracker25D(pcl_segmenter_, num_downsamples_, ratio_thresh,
-                             match_score_thresh, fast_thresh, extended_feats,
-                             max_ransac_iter, support_percent, support_dist,
-                             use_displays_, write_to_disk_, base_output_path_));
+        new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
+                             base_output_path_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -1086,28 +665,6 @@ class TabletopPushingPerceptionNode
       }
     }
 
-    cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
-                           cv::Scalar(255));
-    // Black out pixels in color and depth images outside of workspace
-    // As well as outside of the crop window
-    for (int r = 0; r < color_frame.rows; ++r)
-    {
-      uchar* workspace_row = workspace_mask.ptr<uchar>(r);
-      for (int c = 0; c < color_frame.cols; ++c)
-      {
-        // NOTE: Cloud is accessed by at(column, row)
-        pcl::PointXYZ cur_pt = cloud.at(c, r);
-        if (cur_pt.x < min_workspace_x_ || cur_pt.x > max_workspace_x_ ||
-            cur_pt.y < min_workspace_y_ || cur_pt.y > max_workspace_y_ ||
-            cur_pt.z < min_workspace_z_ || cur_pt.z > max_workspace_z_ ||
-            r < crop_min_y_ || c < crop_min_x_ || r > crop_max_y_ ||
-            c > crop_max_x_ )
-        {
-          workspace_row[c] = 0;
-        }
-      }
-    }
-
     XYZPointCloud cloud_self_filtered;
     cloud_self_filtered.header = cloud.header;
     cloud_self_filtered.width = cloud.size();
@@ -1128,20 +685,17 @@ class TabletopPushingPerceptionNode
     // Downsample everything first
     cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
     cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
-    cv::Mat workspace_mask_down = downSample(workspace_mask, num_downsamples_);
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
 
     // Save internally for use in the service callback
     prev_color_frame_ = cur_color_frame_.clone();
     prev_depth_frame_ = cur_depth_frame_.clone();
-    prev_workspace_mask_ = cur_workspace_mask_.clone();
     prev_self_mask_ = cur_self_mask_.clone();
     prev_camera_header_ = cur_camera_header_;
 
     // Update the current versions
     cur_color_frame_ = color_frame_down.clone();
     cur_depth_frame_ = depth_frame_down.clone();
-    cur_workspace_mask_ = workspace_mask_down.clone();
     cur_self_mask_ = self_mask_down.clone();
     cur_point_cloud_ = cloud;
     cur_self_filtered_cloud_ = cloud_self_filtered;
@@ -1203,16 +757,6 @@ class TabletopPushingPerceptionNode
       }
     }
 
-    // Debug stuff
-    if (autorun_pcl_segmentation_)
-    {
-      LearnPush::Request req;
-      req.push_angle = randf()*2.0*M_PI-M_PI;
-      req.use_goal_pose = false;
-      req.rand_angle = false;
-      getPushStartPose(req);
-    }
-
     // Display junk
 #ifdef DISPLAY_INPUT_COLOR
     if (use_displays_)
@@ -1242,12 +786,6 @@ class TabletopPushingPerceptionNode
       cv::imshow("input_depth", depth_display);
     }
 #endif // DISPLAY_INPUT_DEPTH
-#ifdef DISPLAY_WORKSPACE_MASK
-    if (use_displays_)
-    {
-      cv::imshow("workspace_mask", cur_workspace_mask_);
-    }
-#endif // DISPLAY_WORKSPACE_MASK
 #ifdef DISPLAY_WAIT
     if (use_displays_)
     {
@@ -1507,7 +1045,7 @@ class TabletopPushingPerceptionNode
       return res;
     }
 
-    // TODO: Make these better named and match the trackr
+    // TODO: Make these better named and match the tracker
     Eigen::Vector4f move_vec = objs[chosen_idx].centroid - prev_centroid_;
     res.moved.x = move_vec[0];
     res.moved.y = move_vec[1];
@@ -1680,11 +1218,9 @@ class TabletopPushingPerceptionNode
   actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
-  cv::Mat cur_workspace_mask_;
   cv::Mat cur_self_mask_;
   cv::Mat prev_color_frame_;
   cv::Mat prev_depth_frame_;
-  cv::Mat prev_workspace_mask_;
   cv::Mat prev_self_mask_;
   std_msgs::Header cur_camera_header_;
   std_msgs::Header prev_camera_header_;
@@ -1692,27 +1228,16 @@ class TabletopPushingPerceptionNode
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   bool have_depth_data_;
-  int crop_min_x_;
-  int crop_max_x_;
-  int crop_min_y_;
-  int crop_max_y_;
   int display_wait_ms_;
   bool use_displays_;
   bool write_input_to_disk_;
   bool write_to_disk_;
   std::string base_output_path_;
-  double min_workspace_x_;
-  double max_workspace_x_;
-  double min_workspace_y_;
-  double max_workspace_y_;
-  double min_workspace_z_;
-  double max_workspace_z_;
   int num_downsamples_;
   std::string workspace_frame_;
   PoseStamped table_centroid_;
   bool camera_initialized_;
   std::string cam_info_topic_;
-  bool autorun_pcl_segmentation_;
   bool start_tracking_on_push_call_;
   bool recording_input_;
   int record_count_;
