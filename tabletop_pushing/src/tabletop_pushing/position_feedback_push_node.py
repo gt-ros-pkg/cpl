@@ -47,6 +47,7 @@ import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt, atan2
+# from controller_analysis import *
 import sys
 
 # Setup joints stolen from Kelsey's code.
@@ -125,7 +126,11 @@ class PositionFeedbackPushNode:
 
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
+        out_file_name = '/u/thermans/data/push_out.txt'
+        rospy.loginfo('Opening controller output file: '+out_file_name)
+        self.learn_io.open_out_file(out_file_name)
 
+        # self.controller_io = ControlAnalysisIO()
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
         self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
@@ -155,8 +160,8 @@ class PositionFeedbackPushNode:
                                                      2000)
 
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
-        self.k_d_s = rospy.get_param('~push_control_spin_gain', 0.05)
-        self.k_p_s = rospy.get_param('~push_control_position_spin_gain', 0.05)
+        self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
+        self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
         self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -454,10 +459,10 @@ class PositionFeedbackPushNode:
         goal_angle = atan2(goal_y_dot, goal_x_dot)
         transform_angle = goal_angle
         # transform_angle = t0_error
-        spin_x_dot = -sin(transform_angle)*(self.k_d_s*cur_state.x_dot.theta +
-                                            -self.k_p_s*t0_error)
-        spin_y_dot =  cos(transform_angle)*(self.k_d_s*cur_state.x_dot.theta +
-                                            -self.k_p_s*t0_error)
+        spin_x_dot = -sin(transform_angle)*(self.k_s_d*cur_state.x_dot.theta +
+                                            -self.k_s_p*t0_error)
+        spin_y_dot =  cos(transform_angle)*(self.k_s_d*cur_state.x_dot.theta +
+                                            -self.k_s_p*t0_error)
         u.twist.linear.x = goal_x_dot + spin_x_dot
         u.twist.linear.y = goal_y_dot + spin_y_dot
         if self.feedback_count % 5 == 0:
