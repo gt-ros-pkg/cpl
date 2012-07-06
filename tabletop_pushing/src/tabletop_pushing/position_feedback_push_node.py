@@ -126,11 +126,11 @@ class PositionFeedbackPushNode:
 
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
-        out_file_name = '/u/thermans/data/push_out.txt'
-        rospy.loginfo('Opening controller output file: '+out_file_name)
-        self.learn_io.open_out_file(out_file_name)
-
         # self.controller_io = ControlAnalysisIO()
+        # out_file_name = '/u/thermans/data/push_out.txt'
+        # rospy.loginfo('Opening controller output file: '+out_file_name)
+        # self.controller_io.open_out_file(out_file_name)
+
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
         self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
