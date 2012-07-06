@@ -228,6 +228,8 @@ class PointCloudSegmentation
 
   XYZPointCloud lineCloudIntersection(XYZPointCloud& cloud, Eigen::Vector3f vec,
                                       Eigen::Vector4f base);
+  std::vector<pcl::PointXYZ> lineCloudIntersectionEndPoints(
+      XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base);
 
   /**
    * Filter a point cloud to only be above the estimated table and within the

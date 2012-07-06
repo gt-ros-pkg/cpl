@@ -455,6 +455,91 @@ XYZPointCloud PointCloudSegmentation::lineCloudIntersection(
   return line_cloud;
 }
 
+std::vector<pcl::PointXYZ> PointCloudSegmentation::lineCloudIntersectionEndPoints(
+    XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base)
+{
+  XYZPointCloud intersection = lineCloudIntersection(cloud, vec, base);
+  unsigned int min_y_idx = intersection.size();
+  unsigned int max_y_idx = intersection.size();
+  unsigned int min_x_idx = intersection.size();
+  unsigned int max_x_idx = intersection.size();
+  float min_y = FLT_MAX;
+  float max_y = -FLT_MAX;
+  float min_x = FLT_MAX;
+  float max_x = -FLT_MAX;
+  for (unsigned int i = 0; i < intersection.size(); ++i)
+  {
+    if (intersection.at(i).y < min_y)
+    {
+      min_y = intersection.at(i).y;
+      min_y_idx = i;
+    }
+    if (intersection.at(i).y > max_y)
+    {
+      max_y = intersection.at(i).y;
+      max_y_idx = i;
+    }
+    if (intersection.at(i).x < min_x)
+    {
+      min_x = intersection.at(i).x;
+      min_x_idx = i;
+    }
+    if (intersection.at(i).x > max_x)
+    {
+      max_x = intersection.at(i).x;
+      max_x_idx = i;
+    }
+  }
+  const double y_dist_obs = max_y - min_y;
+  const double x_dist_obs = max_x - min_x;
+  int start_idx = min_x_idx;
+  int end_idx = max_x_idx;
+
+  if (x_dist_obs > y_dist_obs)
+  {
+    // Use X index
+    if (vec[0] > 0)
+    {
+      // Use min
+      start_idx = min_x_idx;
+      end_idx = max_x_idx;
+    }
+    else
+    {
+      // use max
+      start_idx = max_x_idx;
+      end_idx = min_x_idx;
+    }
+  }
+  else
+  {
+    // Use Y index
+    if (vec[1] > 0)
+    {
+      // Use min
+      start_idx = min_y_idx;
+      end_idx = max_y_idx;
+    }
+    else
+    {
+      // use max
+      start_idx = max_y_idx;
+      end_idx = min_y_idx;
+    }
+  }
+  std::vector<pcl::PointXYZ> points;
+  pcl::PointXYZ start_point, end_point;
+  start_point.x = intersection.at(start_idx).x;
+  start_point.y = intersection.at(start_idx).y;
+  start_point.z = intersection.at(start_idx).z;
+  end_point.x = intersection.at(start_idx).x;
+  end_point.y = intersection.at(start_idx).y;
+  end_point.z = intersection.at(start_idx).z;
+  points.push_back(start_point);
+  points.push_back(end_point);
+  return points;
+}
+
 /**
  * Filter a point cloud to only be above the estimated table and within the
  * workspace in x, then downsample the voxels.

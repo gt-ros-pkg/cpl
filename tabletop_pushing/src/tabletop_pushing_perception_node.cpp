@@ -343,6 +343,7 @@ class ObjectTracker25D
     state.header.stamp = cloud.header.stamp; //ros::Time::now();
     state.header.frame_id = cloud.header.frame_id;
 
+    cv::RotatedRect obj_ellipse;
     if (no_objects)
     {
       state.no_detection = true;
@@ -353,7 +354,7 @@ class ObjectTracker25D
     }
     else
     {
-      cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
+      obj_ellipse = findFootprintEllipse(cur_obj);
       state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
@@ -405,6 +406,7 @@ class ObjectTracker25D
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     previous_obj_ = cur_obj;
+    previous_obj_ellipse_ = obj_ellipse;
     frame_count_++;
     record_count_++;
     return state;
@@ -441,6 +443,11 @@ class ObjectTracker25D
   ProtoObject getMostRecentObject() const
   {
     return previous_obj_;
+  }
+
+  cv::RotatedRect getMostRecentEllipse() const
+  {
+    return previous_obj_ellipse_;
   }
 
   void pause()
@@ -523,6 +530,7 @@ class ObjectTracker25D
   double previous_time_;
   ProtoObject previous_obj_;
   PushTrackerState previous_state_;
+  cv::RotatedRect previous_obj_ellipse_;
   bool use_displays_;
   bool write_to_disk_;
   std::string base_output_path_;
@@ -544,7 +552,8 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      learn_callback_count_(0), goal_out_count_(0), frame_callback_count_(0)
+      learn_callback_count_(0), goal_out_count_(0), frame_callback_count_(0),
+      just_spun_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -823,6 +832,12 @@ class TabletopPushingPerceptionNode
         res.no_push = true;
         recording_input_ = false;
       }
+      else if (req.spin_push)
+      {
+        res = getSpinPushStartPose(req);
+        recording_input_ = !res.no_objects;
+        res.no_push = false;
+      }
       else
       {
         res = getPushStartPose(req);
@@ -844,27 +859,25 @@ class TabletopPushingPerceptionNode
   {
     bool rand_angle = req.rand_angle;
     double desired_push_angle = req.push_angle;
-
-    // Segment objects
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_self_filtered_cloud_);
-    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, cur_color_frame_.size(), workspace_frame_);
-    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
-
-    // Assume we care about the biggest currently
-    int chosen_idx = 0;
-    unsigned int max_size = 0;
-    for (unsigned int i = 0; i < objs.size(); ++i)
+    PushTrackerState cur_state;
+    if (just_spun_)
     {
-      if (objs[i].cloud.size() > max_size)
-      {
-        max_size = objs[i].cloud.size();
-        chosen_idx = i;
-      }
+      just_spun_ = false;
+      cur_state = obj_tracker_->getMostRecentState();
+    }
+    else
+    {
+      cur_state = startTracking();
+    }
+    ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+    tracker_goal_pose_ = req.goal_pose;
+    if (!start_tracking_on_push_call_)
+    {
+      obj_tracker_->pause();
     }
 
     LearnPush::Response res;
-    if (objs.size() == 0)
+    if (cur_state.no_detection)
     {
       ROS_WARN_STREAM("No objects found");
       res.centroid.x = 0.0;
@@ -873,20 +886,9 @@ class TabletopPushingPerceptionNode
       res.no_objects = true;
       return res;
     }
-    res.centroid.x = objs[chosen_idx].centroid[0];
-    res.centroid.y = objs[chosen_idx].centroid[1];
-    res.centroid.z = objs[chosen_idx].centroid[2];
-
-    ROS_INFO_STREAM("Found " << objs.size() << " objects.");
-    ROS_INFO_STREAM("Chosen object idx is " << chosen_idx << " with " <<
-                    objs[chosen_idx].cloud.size() << " points");
-    ROS_INFO_STREAM("Chosen object located at: \n" << res.centroid);
-
-    startTracking();
-    if (!start_tracking_on_push_call_)
-    {
-      obj_tracker_->pause();
-    }
+    res.centroid.x = cur_obj.centroid[0];
+    res.centroid.y = cur_obj.centroid[1];
+    res.centroid.z = cur_obj.centroid[2];
 
     if (rand_angle)
     {
@@ -909,81 +911,11 @@ class TabletopPushingPerceptionNode
     // Get vector through centroid and determine start point and distance
     Eigen::Vector3f push_unit_vec(std::cos(desired_push_angle),
                                   std::sin(desired_push_angle), 0.0f);
-    XYZPointCloud intersection = pcl_segmenter_->lineCloudIntersection(
-        objs[chosen_idx].cloud, push_unit_vec, objs[chosen_idx].centroid);
-
-    unsigned int min_y_idx = intersection.size();
-    unsigned int max_y_idx = intersection.size();
-    unsigned int min_x_idx = intersection.size();
-    unsigned int max_x_idx = intersection.size();
-    float min_y = FLT_MAX;
-    float max_y = -FLT_MAX;
-    float min_x = FLT_MAX;
-    float max_x = -FLT_MAX;
-    for (unsigned int i = 0; i < intersection.size(); ++i)
-    {
-      if (intersection.at(i).y < min_y)
-      {
-        min_y = intersection.at(i).y;
-        min_y_idx = i;
-      }
-      if (intersection.at(i).y > max_y)
-      {
-        max_y = intersection.at(i).y;
-        max_y_idx = i;
-      }
-      if (intersection.at(i).x < min_x)
-      {
-        min_x = intersection.at(i).x;
-        min_x_idx = i;
-      }
-      if (intersection.at(i).x > max_x)
-      {
-        max_x = intersection.at(i).x;
-        max_x_idx = i;
-      }
-    }
-    const double y_dist_obs = max_y - min_y;
-    const double x_dist_obs = max_x - min_x;
-    int start_idx = min_x_idx;
-    int end_idx = max_x_idx;
-
-    if (x_dist_obs > y_dist_obs)
-    {
-      // Use X index
-      if (push_unit_vec[0] > 0)
-      {
-        // Use min
-        start_idx = min_x_idx;
-        end_idx = max_x_idx;
-      }
-      else
-      {
-        // use max
-        start_idx = max_x_idx;
-        end_idx = min_x_idx;
-      }
-    }
-    else
-    {
-      // Use Y index
-      if (push_unit_vec[1] > 0)
-      {
-        // Use min
-        start_idx = min_y_idx;
-        end_idx = max_y_idx;
-      }
-      else
-      {
-        // use max
-        start_idx = max_y_idx;
-        end_idx = min_y_idx;
-      }
-
-    }
-    p.start_point.x = intersection.at(start_idx).x;
-    p.start_point.y = intersection.at(start_idx).y;
-    p.start_point.z = intersection.at(start_idx).z;
+    std::vector<pcl::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud, push_unit_vec,
+                                                                                           cur_obj.centroid);
+    p.start_point.x = end_points[0].x;
+    p.start_point.y = end_points[0].y;
+    p.start_point.z = end_points[0].z;
 
     // Get push distance
     if (req.use_goal_pose)
@@ -993,8 +925,7 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(
-          intersection.at(start_idx), intersection.at(end_idx)));
+      p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(end_points[0], end_points[1]));
     }
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
@@ -1003,18 +934,60 @@ class TabletopPushingPerceptionNode
                     << p.start_point.y << ", " << p.start_point.z << ")");
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
     ROS_INFO_STREAM("Push angle: " << p.push_angle);
-    prev_centroid_ = objs[chosen_idx].centroid;
+    start_centroid_ = cur_obj.centroid;
     res.push = p;
     return res;
   }
 
-  // LearnPush::Response getSpinPushStartPose(LearnPush::Request& req)
-  // {
-  // }
+  LearnPush::Response getSpinPushStartPose(LearnPush::Request& req)
+  {
+    PushTrackerState cur_state = startTracking();
+    ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+    tracker_goal_pose_ = req.goal_pose;
+    if (!start_tracking_on_push_call_)
+    {
+      obj_tracker_->pause();
+    }
+    LearnPush::Response res;
+    if (cur_state.no_detection)
+    {
+      ROS_WARN_STREAM("No objects found");
+      res.centroid.x = 0.0;
+      res.centroid.y = 0.0;
+      res.centroid.z = 0.0;
+      res.no_objects = true;
+      return res;
+    }
+
+    res.centroid.x = cur_obj.centroid[0];
+    res.centroid.y = cur_obj.centroid[1];
+    res.centroid.z = cur_obj.centroid[2];
+
+    // Set basic push information
+    PushVector p;
+    p.header.frame_id = workspace_frame_;
+
+    // TODO: Project ellipse major axis into point cloud to find height
+    Eigen::Vector3f major_axis_vec(std::cos(cur_state.x.theta),
+                                   std::sin(cur_state.x.theta), 0.0f);
+    Eigen::Vector3f minor_axis_vec(std::cos(cur_state.x.theta+0.5*M_PI),
+                                   std::sin(cur_state.x.theta+0.5*M_PI), 0.0f);
+    std::vector<pcl::PointXYZ> major_end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
+        cur_obj.cloud, major_axis_vec, cur_obj.centroid);
+    std::vector<pcl::PointXYZ> minor_end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
+        cur_obj.cloud, minor_axis_vec, cur_obj.centroid);
+
+    // TODO: Set this to the direction of the initial push (either major or minor
+    // axis)
+    p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
+    res.push = p;
+    just_spun_ = true;
+    return res;
+  }
 
   LearnPush::Response getAnalysisVector(double desired_push_angle)
   {
-    // // Segment objects
+    // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, cur_color_frame_.size(), workspace_frame_);
@@ -1047,7 +1020,7 @@ class TabletopPushingPerceptionNode
     }
 
     // TODO: Make these better named and match the tracker
-    Eigen::Vector4f move_vec = objs[chosen_idx].centroid - prev_centroid_;
+    Eigen::Vector4f move_vec = objs[chosen_idx].centroid - start_centroid_;
     res.moved.x = move_vec[0];
     res.moved.y = move_vec[1];
     res.moved.z = move_vec[2];
@@ -1245,12 +1218,13 @@ class TabletopPushingPerceptionNode
   int learn_callback_count_;
   int goal_out_count_;
   int frame_callback_count_;
-  Eigen::Vector4f prev_centroid_;
+  Eigen::Vector4f start_centroid_;
   shared_ptr<ObjectTracker25D> obj_tracker_;
   Pose2D tracker_goal_pose_;
   std::string pushing_arm_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
+  bool just_spun_;
 };
 
 int main(int argc, char ** argv)
