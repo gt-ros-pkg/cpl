@@ -298,48 +298,50 @@ class TabletopExecutive:
                             return
 
     def run_feedback_testing(self, goal_pose):
-        push_angle=0.0
         push_dist = 0.0
-        rand_angle = False
         high_init = True
-        push_angle_in = push_angle
         push_opt = OVERHEAD_PUSH
+        use_spin_push = True
         while True:
-            get_push = True
-            first = True
-            do_spin = True
-            while get_push:
-                if first:
-                    code_in = raw_input('Set object in start pose and press <Enter>: ')
-                    if code_in.startswith('q'):
-                        return
-                first = False
-                if do_spin:
-                    push_vec_res = self.request_feedback_spin_start_pose(goal_pose)
-                    code_in = raw_input('Waiting before moving to spin start pose: ')
-                    if code_in.startswith('q'):
-                        return
-                else:
-                    push_vec_res = self.request_feedback_push_start_pose(goal_pose)
-
-                if push_vec_res is None:
+            if use_spin_push:
+                code_in = raw_input('Set object in start pose and press <Enter>: ')
+                if code_in.startswith('q'):
                     return
-                if push_vec_res.no_objects:
-                    code_in = raw_input('No objects found. Place object and press <Enter>: ')
-                    if code_in.startswith('q'):
-                        return
-                else:
-                    get_push = False
-            which_arm = self.choose_arm(push_vec_res.push, spin=do_spin)
+            else:
+                code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
+                if code_in.startswith('q'):
+                    return
+
+            push_vec_res = self.get_feedback_push_start_pose(goal_pose, use_spin_push)
+            if push_vec_res is None:
+                return
+            which_arm = self.choose_arm(push_vec_res.push, spin=use_spin_push)
             res = self.learning_trial(which_arm, int(push_opt), high_init,
-                                      push_vec_res, push_dist, goal_pose, spin=do_spin)
+                                      push_vec_res, push_dist, goal_pose, spin=use_spin_push)
             # NOTE: Alternate between spinning and pushing
-            do_spin = not do_spin
+            use_spin_push = (not use_spin_push)
             if not res:
                 return
 
+    def get_feedback_push_start_pose(self, goal_pose, use_spin_push):
+        get_push = True
+        while get_push:
+            if use_spin_push:
+                push_vec_res = self.request_feedback_spin_start_pose(goal_pose)
+            else:
+                push_vec_res = self.request_feedback_push_start_pose(goal_pose)
+
+            if push_vec_res is None:
+                return None
+            if push_vec_res.no_objects:
+                code_in = raw_input('No objects found. Place object and press <Enter>: ')
+                if code_in.startswith('q'):
+                    return None
+            else:
+                return push_vec_res
+
     def choose_arm(self, push_vec, spin=False):
-        rospy.loginfo('choose_arm() spin: ' + str(spin))
+
         if spin:
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
@@ -347,6 +349,7 @@ class TabletopExecutive:
             else:
                 which_arm = 'l'
                 rospy.loginfo('Setting arm to left because of spinning')
+            return which_arm
 
         if (fabs(push_vec.start_point.y) > self.use_same_side_y_thresh or
             push_vec.start_point.x > self.use_same_side_x_thresh):
@@ -404,6 +407,9 @@ class TabletopExecutive:
                                           push_vector_res.push, high_init)
         push_time = time.time() - start_time
         rospy.loginfo('Done performing push behavior.')
+        if spin:
+            return True
+
         if _OFFLINE:
             code_in = raw_input('Press <Enter> to get analysis vector: ')
             if code_in.startswith('q'):
@@ -746,9 +752,8 @@ class TabletopExecutive:
         # TODO: Need to have this push proxy and need to send goal_pose in
         # push_request
         rospy.loginfo("Calling overhead feedback push service")
-        rospy.loginfo("Spin: " + str(spin))
         if spin:
-            raw_input('Holding on input: ')
+            raw_input('Not spinning; holding for input: ')
         else:
             push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
