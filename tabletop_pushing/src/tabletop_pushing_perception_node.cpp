@@ -554,7 +554,7 @@ class TabletopPushingPerceptionNode
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), goal_out_count_(0), frame_callback_count_(0),
-      just_spun_(false)
+      just_spun_(false), major_axis_spin_pos_scale_(0.75)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -610,7 +610,7 @@ class TabletopPushingPerceptionNode
 
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
-
+    n_private_.param("major_axis_spin_pos_scale", major_axis_spin_pos_scale_, 0.75);
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
@@ -985,18 +985,18 @@ class TabletopPushingPerceptionNode
                                                                cur_obj.centroid);
     Eigen::Vector3f centroid(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
 
-    Eigen::Vector3f major_pos((major_pts[0].x - centroid[0])*0.5,
-                              (major_pts[0].y - centroid[1])*0.5, 0.0);
+    Eigen::Vector3f major_pos((major_pts[0].x - centroid[0]),
+                              (major_pts[0].y - centroid[1]), 0.0);
     Eigen::Vector3f minor_pos((minor_pts[0].x - centroid[0]),
                               (minor_pts[0].y - centroid[1]), 0.0);
     ROS_INFO_STREAM("major_pts: " << major_pts[0] << ", " << major_pts[1]);
     ROS_INFO_STREAM("minor_pts: " << minor_pts[0] << ", " << minor_pts[1]);
     Eigen::Vector3f major_neg = -major_pos;
     Eigen::Vector3f minor_neg = -minor_pos;
-    Eigen::Vector3f push_pt0 = centroid + major_pos + minor_pos;
-    Eigen::Vector3f push_pt1 = centroid + major_pos + minor_neg;
-    Eigen::Vector3f push_pt2 = centroid + major_neg + minor_neg;
-    Eigen::Vector3f push_pt3 = centroid + major_neg + minor_pos;
+    Eigen::Vector3f push_pt0 = centroid + major_axis_spin_pos_scale_*major_pos + minor_pos;
+    Eigen::Vector3f push_pt1 = centroid + major_axis_spin_pos_scale_*major_pos + minor_neg;
+    Eigen::Vector3f push_pt2 = centroid + major_axis_spin_pos_scale_*major_neg + minor_neg;
+    Eigen::Vector3f push_pt3 = centroid + major_axis_spin_pos_scale_*major_neg + minor_pos;
 
     std::vector<Eigen::Vector3f> push_pts;
     std::vector<float> sx;
@@ -1317,6 +1317,7 @@ class TabletopPushingPerceptionNode
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
   bool just_spun_;
+  double major_axis_spin_pos_scale_;
 };
 
 int main(int argc, char ** argv)
