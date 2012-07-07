@@ -750,10 +750,7 @@ class TabletopExecutive:
         pre_push_res = self.overhead_feedback_pre_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback push service")
         push_req.spin_to_heading = spin
-        if spin:
-            raw_input('Waiting for input; not spinning: ')
-        else:
-            push_res = self.overhead_feedback_push_proxy(push_req)
+        push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 

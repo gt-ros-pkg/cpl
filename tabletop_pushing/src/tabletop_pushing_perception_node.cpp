@@ -554,7 +554,7 @@ class TabletopPushingPerceptionNode
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), goal_out_count_(0), frame_callback_count_(0),
-      just_spun_(false), major_axis_spin_pos_scale_(0.75)
+      just_spun_(false), major_axis_spin_pos_scale_(0.75), spin_to_heading_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -738,15 +738,26 @@ class TabletopPushingPerceptionNode
         // Check for goal conditions
         float x_error = tracker_goal_pose_.x - tracker_state.x.x;
         float y_error = tracker_goal_pose_.y - tracker_state.x.y;
-        // TODO: Make sub1/2pi diff
-        float theta_error = tracker_goal_pose_.theta - tracker_state.x.theta;
+        float theta_error = subPIAngle(tracker_goal_pose_.theta - tracker_state.x.theta);
 
         float x_dist = fabs(x_error);
         float y_dist = fabs(y_error);
         float theta_dist = fabs(theta_error);
 
-        if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_ &&
-            theta_dist < tracker_angle_thresh_)
+        if (spin_to_heading_ && theta_dist < tracker_angle_thresh_)
+        {
+          ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
+                          tracker_state.x.y << ", " << tracker_state.x.theta << ")");
+          ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
+                          tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
+          ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
+                          << theta_dist << ")");
+          PushTrackerResult res;
+          as_.setSucceeded(res);
+          obj_tracker_->pause();
+        }
+
+        else if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
         {
           ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                           tracker_state.x.y << ", " << tracker_state.x.theta << ")");
@@ -1156,6 +1167,7 @@ class TabletopPushingPerceptionNode
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
+    spin_to_heading_ = tracker_goal->spin_to_heading;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     ROS_INFO_STREAM("Push with arm " << pushing_arm_);
   }
@@ -1329,6 +1341,7 @@ class TabletopPushingPerceptionNode
   double tracker_angle_thresh_;
   bool just_spun_;
   double major_axis_spin_pos_scale_;
+  bool spin_to_heading_;
 };
 
 int main(int argc, char ** argv)
