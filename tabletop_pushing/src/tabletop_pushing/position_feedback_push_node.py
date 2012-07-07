@@ -122,6 +122,11 @@ def subPIAngle(theta):
         theta -= 2.0*pi
     return theta
 
+def sign(x):
+    if x < 0:
+        return -1
+    return 1
+
 class PositionFeedbackPushNode:
 
     def __init__(self):
@@ -426,6 +431,8 @@ class PositionFeedbackPushNode:
     def tracker_feedback_overhead_push(self, feedback):
         if self.feedback_count == 0:
             self.theta0 = feedback.x.theta
+            self.x0 = feedback.x.x
+            self.y0 = feedback.x.y
         which_arm = self.active_arm
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
@@ -436,6 +443,9 @@ class PositionFeedbackPushNode:
             rospy.loginfo('X_dot: (' + str(feedback.x_dot.x) + ', ' +
                           str(feedback.x_dot.y) + ', ' +
                           str(feedback.x_dot.theta) + ')')
+            rospy.loginfo('X_error: (' + str(self.desired_pose.x - feedback.x.x) + ', ' +
+                          str(self.desired_pose.y - feedback.x.y) + ', ' +
+                          str(self.desired_pose.theta - feedback.x.theta) + ')')
         # TODO: Add new pushing visual feedback controllers here
         if self.spin_to_heading:
             update_twist = self.spinHeadingController(feedback, self.desired_pose)
@@ -494,11 +504,13 @@ class PositionFeedbackPushNode:
         y_error = desired_state.y - cur_state.x.y
         t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
         t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
+        s_theta = sign(t_error)
         # TODO: Figure out this controller
-        # spin_x_dot = self.k_h*cos(t_error)
-        # spin_y_dot = self.k_h*sin(t_error)
-        # u.twist.linear.x = spin_x_dot
-        # u.twist.linear.y = spin_y_dot
+        # TODO: Scale the velocity based on the t_error
+        heading_x_dot = self.k_h*s_theta*sin(t_error)
+        heading_y_dot = self.k_h*-s_theta*cos(t_error)
+        u.twist.linear.x = heading_x_dot
+        u.twist.linear.y = heading_y_dot
         return u
 
     def slidingModeController(self, cur_state, desired_state):
