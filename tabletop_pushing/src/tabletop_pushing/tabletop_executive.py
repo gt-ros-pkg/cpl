@@ -752,10 +752,8 @@ class TabletopExecutive:
         # TODO: Need to have this push proxy and need to send goal_pose in
         # push_request
         rospy.loginfo("Calling overhead feedback push service")
-        if spin:
-            raw_input('Not spinning; holding for input: ')
-        else:
-            push_res = self.overhead_feedback_push_proxy(push_req)
+        push_req.spin_to_heading = spin
+        push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 

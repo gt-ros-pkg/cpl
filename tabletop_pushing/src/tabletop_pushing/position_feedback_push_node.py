@@ -240,6 +240,8 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = None
         self.r_arm_F = None
 
+        self.spin_to_heading = False
+
         # Open callback services
         self.overhead_feedback_push_srv = rospy.Service(
             'overhead_feedback_push', GripperPush, self.overhead_feedback_push)
@@ -407,6 +409,7 @@ class PositionFeedbackPushNode:
         goal.header.frame_id = request.start_point.header.frame_id
         goal.desired_pose = request.goal_pose
         self.desired_pose = request.goal_pose
+        self.spin_to_heading = request.spin_to_heading
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
         # Block until done
@@ -432,7 +435,10 @@ class PositionFeedbackPushNode:
                           str(feedback.x_dot.y) + ', ' +
                           str(feedback.x_dot.theta) + ')')
         # TODO: Add new pushing visual feedback controllers here
-        update_twist = self.spinCompensationController(feedback, self.desired_pose)
+        if self.spin_to_heading:
+            update_twist = self.spinHeadingController(feedback, self.desired_pose)
+        else:
+            update_twist = self.spinCompensationController(feedback, self.desired_pose)
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ')\n')
@@ -443,11 +449,11 @@ class PositionFeedbackPushNode:
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time(0)
-        u.twist.linear.z = 0.0
+        # TODO: Make this a function of the measured pressure?
+        u.twist.linear.z = -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
-        # TODO: Make this a function of the measured pressure?
-        u.twist.angular.z = -self.overhead_fb_down_vel
+        u.twist.angular.z = 0.0
         # Push centroid towards the desired goal
         x_error = desired_state.x - cur_state.x.x
         y_error = desired_state.y - cur_state.x.y
@@ -472,14 +478,33 @@ class PositionFeedbackPushNode:
                           str(spin_y_dot) + ')')
         return u
 
+    def spinHeadingController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time(0)
+        # TODO: Make this a function of the measured pressure?
+        u.twist.linear.z = -self.overhead_fb_down_vel
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
+        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
+
+        return u
+
     def slidingModeController(self, cur_state, desired_state):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time(0)
-        u.twist.linear.z = 0.0
+        u.twist.linear.z = -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
-        u.twist.angular.z = -self.overhead_fb_down_vel
+        u.twist.angular.z = 0.0
         # Push centroid towards the desired goal
         x_error = desired_state.x - cur_state.x.x
         y_error = desired_state.y - cur_state.x.y
