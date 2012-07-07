@@ -167,7 +167,8 @@ class PositionFeedbackPushNode:
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
         self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
         self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
-        self.k_h = rospy.get_param('~push_control_heading_gain', 0.03)
+        self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
+        self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
         self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -448,7 +449,7 @@ class PositionFeedbackPushNode:
                           str(self.desired_pose.theta - feedback.x.theta) + ')')
         # TODO: Add new pushing visual feedback controllers here
         if self.spin_to_heading:
-            update_twist = self.spinHeadingController(feedback, self.desired_pose)
+            update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
         else:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
         if self.feedback_count % 5 == 0:
@@ -490,26 +491,28 @@ class PositionFeedbackPushNode:
                           str(spin_y_dot) + ')')
         return u
 
-    def spinHeadingController(self, cur_state, desired_state):
+    def spinHeadingController(self, cur_state, desired_state, which_arm):
         u = TwistStamped()
-        u.header.frame_id = 'torso_lift_link'
+        u.header.frame_id = which_arm+'_gripper_palm_link'
         u.header.stamp = rospy.Time(0)
         # TODO: Make this a function of the measured pressure?
-        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
+        u.twist.linear.x = 0.0 # -self.overhead_fb_down_vel
+        # TODO: Track object rotation with gripper angle
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
         # Push in a direction to continue spinning the object
-        x_error = desired_state.x - cur_state.x.x
-        y_error = desired_state.y - cur_state.x.y
+        # x_error = desired_state.x - cur_state.x.x
+        # y_error = desired_state.y - cur_state.x.y
         t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
-        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
+        # t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
         s_theta = sign(t_error)
+        t_dist = fabs(t_error)
         # TODO: Figure out this controller
         # TODO: Scale the velocity based on the t_error
-        heading_x_dot = self.k_h*s_theta*sin(t_error)
-        heading_y_dot = self.k_h*-s_theta*cos(t_error)
-        u.twist.linear.x = heading_x_dot
+        heading_x_dot = self.k_h_f*t_dist
+        heading_y_dot = s_theta*self.k_h_in*t_dist
+        u.twist.linear.z = heading_x_dot
         u.twist.linear.y = heading_y_dot
         return u
 

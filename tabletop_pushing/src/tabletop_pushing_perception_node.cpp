@@ -399,10 +399,10 @@ class ObjectTracker25D
       state.x_dot.y = delta_y/delta_t;
       state.x_dot.theta = delta_theta/delta_t;
 
-      ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                      state.x.theta << ")");
-      ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                      << ", " << state.x_dot.theta << ")\n");
+      ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                       state.x.theta << ")");
+      ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                       << ", " << state.x_dot.theta << ")");
 
       if (use_displays_ || write_to_disk_)
       {
@@ -773,8 +773,8 @@ class TabletopPushingPerceptionNode
         {
           if (frame_callback_count_ % 15)
           {
-            ROS_INFO_STREAM("Error in (x,y, theta): (" << x_error << ", " << y_error <<  ", " <<
-                            theta_error << ")");
+            ROS_DEBUG_STREAM("Error in (x,y, theta): (" << x_error << ", " << y_error <<  ", " <<
+                             theta_error << ")\n");
           }
         }
       }
@@ -1000,8 +1000,8 @@ class TabletopPushingPerceptionNode
     Eigen::Vector3f centroid(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
     Eigen::Vector3f major_pos((major_pts[0].x-centroid[0]), (major_pts[0].y-centroid[1]), 0.0);
     Eigen::Vector3f minor_pos((minor_pts[0].x-centroid[0]), (minor_pts[0].y-centroid[1]), 0.0);
-    ROS_INFO_STREAM("major_pts: " << major_pts[0] << ", " << major_pts[1]);
-    ROS_INFO_STREAM("minor_pts: " << minor_pts[0] << ", " << minor_pts[1]);
+    ROS_DEBUG_STREAM("major_pts: " << major_pts[0] << ", " << major_pts[1]);
+    ROS_DEBUG_STREAM("minor_pts: " << minor_pts[0] << ", " << minor_pts[1]);
     Eigen::Vector3f major_neg = -major_pos;
     Eigen::Vector3f minor_neg = -minor_pos;
     Eigen::Vector3f push_pt0 = centroid + major_axis_spin_pos_scale_*major_pos + minor_pos;
