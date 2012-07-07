@@ -870,6 +870,9 @@ class TabletopPushingPerceptionNode
     {
       cur_state = startTracking();
     }
+    ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " <<
+                    cur_state.x.theta << ")");
+
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
@@ -945,6 +948,9 @@ class TabletopPushingPerceptionNode
   {
     PushTrackerState cur_state = startTracking();
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+    ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " <<
+                    cur_state.x.theta << ")");
+
     cv::RotatedRect cur_ellipse = obj_tracker_->getMostRecentEllipse();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
@@ -1018,7 +1024,7 @@ class TabletopPushingPerceptionNode
     {
       for (unsigned int i = 0; i < push_pts.size(); ++i)
       {
-        ROS_INFO_STREAM("Point " << i << " is: " << push_pts[i]);
+        ROS_DEBUG_STREAM("Point " << i << " is: " << push_pts[i]);
         const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
             push_pts[i], cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
         cv::Scalar draw_color;
