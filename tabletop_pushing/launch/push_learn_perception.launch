@@ -10,6 +10,7 @@
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
     <param name="write_to_disk" value="true" type="bool"/>
     <param name="write_input_to_disk" value="false" type="bool"/>
+    <param name="major_axis_spin_pos_scale" value="0.5" type="double"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
     <param name="min_workspace_x" value="-1.0" type="double"/>

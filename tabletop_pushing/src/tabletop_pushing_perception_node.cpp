@@ -966,9 +966,9 @@ class TabletopPushingPerceptionNode
     res.centroid.z = cur_obj.centroid[2];
 
     // Use estimated ellipse to determine object extent and pushing locations
-    Eigen::Vector3f major_axis(std::cos(cur_state.x.theta),
+    Eigen::Vector3f minor_axis(std::cos(cur_state.x.theta),
                                std::sin(cur_state.x.theta), 0.0f);
-    Eigen::Vector3f minor_axis(std::cos(cur_state.x.theta+0.5*M_PI),
+    Eigen::Vector3f major_axis(std::cos(cur_state.x.theta+0.5*M_PI),
                                std::sin(cur_state.x.theta+0.5*M_PI), 0.0f);
     // Eigen::Vector3f major_pos = cur_ellipse.size.width*0.25*major_axis;
     // Eigen::Vector3f major_neg = -cur_ellipse.size.width*0.25*major_axis;
