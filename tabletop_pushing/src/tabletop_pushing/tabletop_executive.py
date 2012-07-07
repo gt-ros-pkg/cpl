@@ -53,6 +53,7 @@ OVERHEAD_PUSH = 2
 OVERHEAD_PULL = 3
 _OFFLINE = False
 _USE_LEARN_IO = False
+_TEST_SPIN_POSE = False
 
 class TabletopExecutive:
 
@@ -87,7 +88,7 @@ class TabletopExecutive:
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist',
                                                     0.03)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.28)
+                                                 -0.27)
         self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
                                                 0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
@@ -318,7 +319,8 @@ class TabletopExecutive:
             res = self.learning_trial(which_arm, int(push_opt), high_init,
                                       push_vec_res, push_dist, goal_pose, spin=use_spin_push)
             # NOTE: Alternate between spinning and pushing
-            use_spin_push = (not use_spin_push)
+            if not _TEST_SPIN_POSE:
+                use_spin_push = (not use_spin_push)
             if not res:
                 return
 
@@ -750,7 +752,10 @@ class TabletopExecutive:
         pre_push_res = self.overhead_feedback_pre_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback push service")
         push_req.spin_to_heading = spin
-        push_res = self.overhead_feedback_push_proxy(push_req)
+        if spin and _TEST_SPIN_POSE:
+            raw_input('waiting for input to recall arm: ')
+        else:
+            push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 
