@@ -1021,7 +1021,7 @@ class TabletopPushingPerceptionNode
         const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
             push_pts[i], cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
         cv::Scalar draw_color;
-        if (sx[i] > 0)
+        if (i % 2 == 0)
         {
           // push_neg direction
           draw_color = cv::Scalar(0,255,0);
@@ -1038,9 +1038,11 @@ class TabletopPushingPerceptionNode
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
-    // TODO: Choose point and rotation direction
+
+    // Choose point and rotation direction
     unsigned int chosen_point = 0;
     double theta_error = subPIAngle(req.goal_pose.theta - cur_state.x.theta);
+    ROS_INFO_STREAM("Theta error is: " );
     if (theta_error > 0.0)
     {
       // Positive push is corner 1 or 3
