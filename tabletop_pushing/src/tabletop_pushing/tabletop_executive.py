@@ -54,6 +54,7 @@ OVERHEAD_PULL = 3
 _OFFLINE = False
 _USE_LEARN_IO = False
 _TEST_SPIN_POSE = False
+_WAIT_BEFORE_STRAIGHT_PUSH = False
 
 class TabletopExecutive:
 
@@ -307,7 +308,7 @@ class TabletopExecutive:
                 code_in = raw_input('Set object in start pose and press <Enter>: ')
                 if code_in.startswith('q'):
                     return
-            else:
+            elif _WAIT_BEFORE_STRAIGHT_PUSH:
                 code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
                 if code_in.startswith('q'):
                     return
