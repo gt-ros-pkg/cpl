@@ -887,6 +887,7 @@ class TabletopPushingPerceptionNode
       res.no_objects = true;
       return res;
     }
+    res.no_objects = false;
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
@@ -960,7 +961,7 @@ class TabletopPushingPerceptionNode
       res.no_objects = true;
       return res;
     }
-
+    res.no_objects = false;
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
@@ -1042,7 +1043,7 @@ class TabletopPushingPerceptionNode
     // Choose point and rotation direction
     unsigned int chosen_point = 0;
     double theta_error = subPIAngle(req.goal_pose.theta - cur_state.x.theta);
-    ROS_INFO_STREAM("Theta error is: " );
+    ROS_INFO_STREAM("Theta error is: " << theta_error);
     if (theta_error > 0.0)
     {
       // Positive push is corner 1 or 3
@@ -1070,9 +1071,12 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Chosen idx is : " << chosen_point);
     p.start_point.x = push_pts[chosen_point][0];
     p.start_point.y = push_pts[chosen_point][1];
-    p.start_point.y = centroid[2];
+    p.start_point.z = centroid[2];
     p.push_angle = cur_state.x.theta + sx[chosen_point]*0.5*M_PI;
+    // NOTE: This is useless here, whatever
+    p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
     res.push = p;
+    res.theta = cur_state.x.theta;
     just_spun_ = true;
     return res;
   }
@@ -1108,9 +1112,10 @@ class TabletopPushingPerceptionNode
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
+      res.no_objects = true;
       return res;
     }
-
+    res.no_objects = false;
     // TODO: Make these better named and match the tracker
     Eigen::Vector4f move_vec = objs[chosen_idx].centroid - start_centroid_;
     res.moved.x = move_vec[0];
