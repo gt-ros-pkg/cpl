@@ -162,6 +162,7 @@ class PositionFeedbackPushNode:
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
         self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
         self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
+        self.k_h = rospy.get_param('~push_control_heading_gain', 0.03)
         self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -451,7 +452,7 @@ class PositionFeedbackPushNode:
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time(0)
         # TODO: Make this a function of the measured pressure?
-        u.twist.linear.z = -self.overhead_fb_down_vel
+        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
@@ -484,25 +485,27 @@ class PositionFeedbackPushNode:
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time(0)
         # TODO: Make this a function of the measured pressure?
-        u.twist.linear.z = -self.overhead_fb_down_vel
+        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
-        # Push centroid towards the desired goal
+        # Push in a direction to continue spinning the object
         x_error = desired_state.x - cur_state.x.x
         y_error = desired_state.y - cur_state.x.y
         t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
         t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
-        goal_x_dot = self.k_g*x_error
-        goal_y_dot = self.k_g*y_error
-
+        # TODO: Figure out this controller
+        # spin_x_dot = self.k_h*cos(t_error)
+        # spin_y_dot = self.k_h*sin(t_error)
+        # u.twist.linear.x = spin_x_dot
+        # u.twist.linear.y = spin_y_dot
         return u
 
     def slidingModeController(self, cur_state, desired_state):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time(0)
-        u.twist.linear.z = -self.overhead_fb_down_vel
+        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0

@@ -756,8 +756,8 @@ class TabletopPushingPerceptionNode
           as_.setSucceeded(res);
           obj_tracker_->pause();
         }
-
-        else if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
+        else if (!spin_to_heading_ &&
+                 x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
         {
           ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                           tracker_state.x.y << ", " << tracker_state.x.theta << ")");
