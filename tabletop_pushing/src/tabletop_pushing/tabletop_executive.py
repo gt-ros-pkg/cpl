@@ -307,13 +307,21 @@ class TabletopExecutive:
         while True:
             get_push = True
             first = True
+            do_spin = True
             while get_push:
                 if first:
                     code_in = raw_input('Set object in start pose and press <Enter>: ')
                     if code_in.startswith('q'):
                         return
                 first = False
-                push_vec_res = self.request_learning_push(push_angle, push_dist, rand_angle, goal_pose)
+                if do_spin:
+                    push_vec_res = self.request_feedback_spin_start_pose(goal_pose)
+                    code_in = raw_input('Waiting before moving to spin start pose: ')
+                    if code_in.startswith('q'):
+                        return
+                else:
+                    push_vec_res = self.request_feedback_push_start_pose(goal_pose)
+
                 if push_vec_res is None:
                     return
                 if push_vec_res.no_objects:
@@ -322,13 +330,24 @@ class TabletopExecutive:
                         return
                 else:
                     get_push = False
-            which_arm = self.choose_arm(push_vec_res.push)
+            which_arm = self.choose_arm(push_vec_res.push, spin=do_spin)
             res = self.learning_trial(which_arm, int(push_opt), high_init,
-                                      push_vec_res, push_dist, goal_pose)
+                                      push_vec_res, push_dist, goal_pose, spin=do_spin)
+            # NOTE: Alternate between spinning and pushing
+            do_spin = not do_spin
             if not res:
                 return
 
-    def choose_arm(self, push_vec):
+    def choose_arm(self, push_vec, spin=False):
+        rospy.loginfo('choose_arm() spin: ' + str(spin))
+        if spin:
+            if (push_vec.start_point.y < 0):
+                which_arm = 'r'
+                rospy.loginfo('Setting arm to right because of spinning')
+            else:
+                which_arm = 'l'
+                rospy.loginfo('Setting arm to left because of spinning')
+
         if (fabs(push_vec.start_point.y) > self.use_same_side_y_thresh or
             push_vec.start_point.x > self.use_same_side_x_thresh):
             if (push_vec.start_point.y < 0):
@@ -352,7 +371,7 @@ class TabletopExecutive:
             self.learn_io.close_out_file()
 
     def learning_trial(self, which_arm, push_opt, high_init, push_vector_res,
-                       push_dist, goal_pose):
+                       push_dist, goal_pose, spin=False):
         push_angle = push_vector_res.push.push_angle
         # NOTE: Use commanded push distance not visually decided minimal distance
         # push_dist = push_vector_res.push.push_dist
@@ -373,7 +392,7 @@ class TabletopExecutive:
         if not _OFFLINE:
             if push_opt == OVERHEAD_PUSH:
                 self.overhead_feedback_push_object(push_dist, which_arm, push_vector_res.push,
-                                                   goal_pose, high_init)
+                                                   goal_pose, high_init, spin=spin)
             if push_opt == GRIPPER_SWEEP:
                 self.sweep_object(push_dist, which_arm, push_vector_res.push,
                                   high_init)
@@ -428,6 +447,31 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
+    def request_feedback_spin_start_pose(self, goal_pose):
+        return self.request_feedback_push_start_pose(goal_pose, spin=True)
+
+    def request_feedback_push_start_pose(self, goal_pose, spin=False):
+        push_vector_req = LearnPushRequest()
+        push_vector_req.initialize = False
+        push_vector_req.analyze_previous = False
+        push_vector_req.push_angle = 0.0
+        push_vector_req.push_dist = 0.0
+        push_vector_req.rand_angle = False
+        push_vector_req.goal_pose = goal_pose
+        push_vector_req.use_goal_pose = True
+        push_vector_req.spin_push = spin
+        if spin:
+            rospy.loginfo("Getting feedback push spin start service")
+        else:
+            rospy.loginfo("Getting feedback push start service")
+        try:
+            push_vector_res = self.learning_push_vector_proxy(push_vector_req)
+            return push_vector_res
+        except rospy.ServiceException, e:
+            rospy.logwarn("Service did not process request: %s"%str(e))
+            return None
+
+
     def request_learning_push(self, push_angle, push_dist, rand_angle=False,
                               goal_pose=None):
         push_vector_req = LearnPushRequest()
@@ -438,7 +482,7 @@ class TabletopExecutive:
         push_vector_req.rand_angle = rand_angle
         # TODO: remove none_goal pose stuff
         # TODO: Break out spin request stuff
-        push_vector_req.spin_push = True
+        push_vector_req.spin_push = False
         if goal_pose is not None:
             push_vector_req.goal_pose = goal_pose
             push_vector_req.use_goal_pose = True
@@ -668,7 +712,7 @@ class TabletopExecutive:
 
 
     def overhead_feedback_push_object(self, push_dist, which_arm, push_vector, goal_pose,
-                                     high_init=True, open_gripper=False):
+                                      high_init=True, open_gripper=False, spin=False):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
         push_req.start_point.header = push_vector.header
@@ -702,7 +746,11 @@ class TabletopExecutive:
         # TODO: Need to have this push proxy and need to send goal_pose in
         # push_request
         rospy.loginfo("Calling overhead feedback push service")
-        push_res = self.overhead_feedback_push_proxy(push_req)
+        rospy.loginfo("Spin: " + str(spin))
+        if spin:
+            raw_input('Holding on input: ')
+        else:
+            push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 
