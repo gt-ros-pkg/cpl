@@ -274,7 +274,7 @@ class ObjectTracker25D
     {
       obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
     }
-    ROS_INFO_STREAM("Number of points is: " << obj_pts.size());
+    ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
     // TODO: Fit ellipse to object
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
     // ROS_DEBUG_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
@@ -317,10 +317,10 @@ class ObjectTracker25D
       trackerIO(in_frame, cur_obj, obj_ellipse);
     }
 
-    ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                    state.x.theta << ")");
-    ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                    << ", " << state.x_dot.theta << ")\n");
+    ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                     state.x.theta << ")");
+    ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                     << ", " << state.x_dot.theta << ")\n");
 
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
@@ -394,10 +394,10 @@ class ObjectTracker25D
       state.x_dot.y = delta_y/delta_t;
       state.x_dot.theta = delta_theta/delta_t;
 
-      ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                      state.x.theta << ")");
-      ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                      << ", " << state.x_dot.theta << ")\n");
+      ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                       state.x.theta << ")");
+      ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                       << ", " << state.x_dot.theta << ")\n");
 
       if (use_displays_ || write_to_disk_)
       {
@@ -762,7 +762,7 @@ class TabletopPushingPerceptionNode
         {
           if (frame_callback_count_ % 15)
           {
-            ROS_INFO_STREAM("Error in (x,y): (" << x_error << ", " << y_error << ")");
+            ROS_DEBUG_STREAM("Error in (x,y): (" << x_error << ", " << y_error << ")");
           }
         }
       }
@@ -1002,13 +1002,13 @@ class TabletopPushingPerceptionNode
     std::vector<Eigen::Vector3f> push_pts;
     std::vector<float> sx;
     push_pts.push_back(push_pt0);
-    sx.push_back(-1.0);
+    sx.push_back(0.0);
     push_pts.push_back(push_pt1);
     sx.push_back(1.0);
     push_pts.push_back(push_pt2);
     sx.push_back(1.0);
     push_pts.push_back(push_pt3);
-    sx.push_back(-1.0);
+    sx.push_back(0.0);
 
     // TODO: Display the pushing point locations
     cv::Mat disp_img;
@@ -1072,7 +1072,7 @@ class TabletopPushingPerceptionNode
     p.start_point.x = push_pts[chosen_point][0];
     p.start_point.y = push_pts[chosen_point][1];
     p.start_point.z = centroid[2];
-    p.push_angle = cur_state.x.theta + sx[chosen_point]*0.5*M_PI;
+    p.push_angle = cur_state.x.theta + sx[chosen_point]*M_PI;
     // NOTE: This is useless here, whatever
     p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
     res.push = p;
