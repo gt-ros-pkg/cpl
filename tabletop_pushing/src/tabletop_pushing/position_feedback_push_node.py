@@ -409,6 +409,7 @@ class PositionFeedbackPushNode:
         goal.header.frame_id = request.start_point.header.frame_id
         goal.desired_pose = request.goal_pose
         self.desired_pose = request.goal_pose
+        goal.spin_to_heading = request.spin_to_heading
         self.spin_to_heading = request.spin_to_heading
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)

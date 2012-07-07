@@ -2,6 +2,7 @@
 std_msgs/Header header
 geometry_msgs/Pose2D desired_pose
 string which_arm
+bool spin_to_heading
 ---
 # Result Definition
 std_msgs/Header header

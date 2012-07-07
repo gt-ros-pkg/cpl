@@ -94,7 +94,6 @@ class TabletopExecutive:
                                             -0.27)
         # Setup service proxies
         if not _OFFLINE:
-            # TODO: Link this correctly once it exists
             self.overhead_feedback_push_proxy = rospy.ServiceProxy(
                 'overhead_feedback_push', GripperPush)
             self.overhead_feedback_post_push_proxy = rospy.ServiceProxy(
@@ -749,11 +748,12 @@ class TabletopExecutive:
 
         rospy.loginfo("Calling overhead feedback pre push service")
         pre_push_res = self.overhead_feedback_pre_push_proxy(push_req)
-        # TODO: Need to have this push proxy and need to send goal_pose in
-        # push_request
         rospy.loginfo("Calling overhead feedback push service")
         push_req.spin_to_heading = spin
-        push_res = self.overhead_feedback_push_proxy(push_req)
+        if spin:
+            raw_input('Waiting for input; not spinning: ')
+        else:
+            push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
 
