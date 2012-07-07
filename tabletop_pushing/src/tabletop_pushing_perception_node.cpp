@@ -296,7 +296,7 @@ class ObjectTracker25D
     initialized_ = true;
     PushTrackerState state;
     state.header.seq = 0;
-    state.header.stamp = cloud.header.stamp;// ros::Time::now();
+    state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
     if (no_objects)
     {
@@ -304,7 +304,7 @@ class ObjectTracker25D
     }
 
     cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
-    state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
+    state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
     state.z = cur_obj.centroid[2];
@@ -329,6 +329,11 @@ class ObjectTracker25D
     return state;
   }
 
+  double getThetaFromEllipse(cv::RotatedRect& obj_ellipse)
+  {
+    return subPIAngle(DEG2RAD(obj_ellipse.angle)+0.5*M_PI);
+  }
+
   PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud)
   {
     if (!initialized_)
@@ -341,7 +346,7 @@ class ObjectTracker25D
     // Update model
     PushTrackerState state;
     state.header.seq = frame_count_;
-    state.header.stamp = cloud.header.stamp; //ros::Time::now();
+    state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
 
     cv::RotatedRect obj_ellipse;
@@ -356,7 +361,7 @@ class ObjectTracker25D
     else
     {
       obj_ellipse = findFootprintEllipse(cur_obj);
-      state.x.theta = subPIAngle(DEG2RAD(obj_ellipse.angle));
+      state.x.theta = getThetaFromEllipse(obj_ellipse);
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
       state.z = cur_obj.centroid[2];
@@ -394,10 +399,10 @@ class ObjectTracker25D
       state.x_dot.y = delta_y/delta_t;
       state.x_dot.theta = delta_theta/delta_t;
 
-      ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                       state.x.theta << ")");
-      ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                       << ", " << state.x_dot.theta << ")\n");
+      ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                      state.x.theta << ")");
+      ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                      << ", " << state.x_dot.theta << ")\n");
 
       if (use_displays_ || write_to_disk_)
       {
@@ -479,32 +484,27 @@ class ObjectTracker25D
                                  cur_obj.centroid[2]);
     const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
         centroid_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
-    double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
-    const float x_maj_rad = (std::cos(ellipse_angle_rad)*
-                             obj_ellipse.size.width*0.5);
-    const float y_maj_rad = (std::sin(ellipse_angle_rad)*
-                             obj_ellipse.size.width*0.5);
-    pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad,
-                                  centroid_point.y+y_maj_rad,
+    // double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
+    double theta = getThetaFromEllipse(obj_ellipse);
+    const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
+    const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
+    pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
                                   centroid_point.z);
-    const float x_min_rad = (std::cos(ellipse_angle_rad+M_PI*0.5)*
-                             obj_ellipse.size.height*0.5);
-    const float y_min_rad = (std::sin(ellipse_angle_rad+M_PI*0.5)*
-                             obj_ellipse.size.height*0.5);
-    pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad,
-                                  centroid_point.y+y_min_rad,
+    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
+    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
+    pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
                                   centroid_point.z);
-    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-        table_maj_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
     const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
         table_min_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,255,0),2);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,255),2);
+    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
+        table_maj_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
     cv::Size img_size;
-    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
-                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
     img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                                std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
     float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                          img_maj_idx.x-img_c_idx.x));
     cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
@@ -773,7 +773,8 @@ class TabletopPushingPerceptionNode
         {
           if (frame_callback_count_ % 15)
           {
-            ROS_DEBUG_STREAM("Error in (x,y): (" << x_error << ", " << y_error << ")");
+            ROS_INFO_STREAM("Error in (x,y, theta): (" << x_error << ", " << y_error <<  ", " <<
+                            theta_error << ")");
           }
         }
       }
@@ -1035,7 +1036,7 @@ class TabletopPushingPerceptionNode
     {
       for (unsigned int i = 0; i < push_pts.size(); ++i)
       {
-        ROS_DEBUG_STREAM("Point " << i << " is: " << push_pts[i]);
+        ROS_INFO_STREAM("Point " << i << " is: " << push_pts[i]);
         const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
             push_pts[i], cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
         cv::Scalar draw_color;
