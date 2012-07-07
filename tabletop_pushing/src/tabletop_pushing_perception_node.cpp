@@ -325,6 +325,7 @@ class ObjectTracker25D
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     previous_obj_ = cur_obj;
+    previous_obj_ellipse_ = obj_ellipse;
     return state;
   }
 
@@ -943,6 +944,7 @@ class TabletopPushingPerceptionNode
   {
     PushTrackerState cur_state = startTracking();
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+    cv::RotatedRect cur_ellipse = obj_tracker_->getMostRecentEllipse();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
     {
@@ -963,23 +965,111 @@ class TabletopPushingPerceptionNode
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
 
+    // Use estimated ellipse to determine object extent and pushing locations
+    Eigen::Vector3f major_axis(std::cos(cur_state.x.theta),
+                               std::sin(cur_state.x.theta), 0.0f);
+    Eigen::Vector3f minor_axis(std::cos(cur_state.x.theta+0.5*M_PI),
+                               std::sin(cur_state.x.theta+0.5*M_PI), 0.0f);
+    // Eigen::Vector3f major_pos = cur_ellipse.size.width*0.25*major_axis;
+    // Eigen::Vector3f major_neg = -cur_ellipse.size.width*0.25*major_axis;
+    // Eigen::Vector3f minor_pos = cur_ellipse.size.height*0.5*minor_axis;
+    // Eigen::Vector3f minor_neg = -cur_ellipse.size.height*0.5*minor_axis;
+
+    std::vector<pcl::PointXYZ> major_pts;
+    major_pts = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud,
+                                                               major_axis,
+                                                               cur_obj.centroid);
+    std::vector<pcl::PointXYZ> minor_pts;
+    minor_pts = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud,
+                                                               minor_axis,
+                                                               cur_obj.centroid);
+    Eigen::Vector3f centroid(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
+
+    Eigen::Vector3f major_pos((major_pts[0].x - centroid[0])*0.5,
+                              (major_pts[0].y - centroid[1])*0.5, 0.0);
+    Eigen::Vector3f minor_pos((minor_pts[0].x - centroid[0]),
+                              (minor_pts[0].y - centroid[1]), 0.0);
+    ROS_INFO_STREAM("major_pts: " << major_pts[0] << ", " << major_pts[1]);
+    ROS_INFO_STREAM("minor_pts: " << minor_pts[0] << ", " << minor_pts[1]);
+    Eigen::Vector3f major_neg = -major_pos;
+    Eigen::Vector3f minor_neg = -minor_pos;
+    Eigen::Vector3f push_pt0 = centroid + major_pos + minor_pos;
+    Eigen::Vector3f push_pt1 = centroid + major_pos + minor_neg;
+    Eigen::Vector3f push_pt2 = centroid + major_neg + minor_neg;
+    Eigen::Vector3f push_pt3 = centroid + major_neg + minor_pos;
+
+    std::vector<Eigen::Vector3f> push_pts;
+    std::vector<float> sx;
+    push_pts.push_back(push_pt0);
+    sx.push_back(-1.0);
+    push_pts.push_back(push_pt1);
+    sx.push_back(1.0);
+    push_pts.push_back(push_pt2);
+    sx.push_back(1.0);
+    push_pts.push_back(push_pt3);
+    sx.push_back(-1.0);
+
+    // TODO: Display the pushing point locations
+    cv::Mat disp_img;
+    cur_color_frame_.copyTo(disp_img);
+
+    if (use_displays_)
+    {
+      for (unsigned int i = 0; i < push_pts.size(); ++i)
+      {
+        ROS_INFO_STREAM("Point " << i << " is: " << push_pts[i]);
+        const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
+            push_pts[i], cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+        cv::Scalar draw_color;
+        if (sx[i] > 0)
+        {
+          // push_neg direction
+          draw_color = cv::Scalar(0,255,0);
+        }
+        else
+        {
+          // push_pos direction
+          draw_color = cv::Scalar(0,0,255);
+        }
+        cv::circle(disp_img, img_idx, 4, draw_color);
+      }
+      cv::imshow("push points", disp_img);
+    }
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
-
-    // TODO: Project ellipse major axis into point cloud to find height
-    Eigen::Vector3f major_axis_vec(std::cos(cur_state.x.theta),
-                                   std::sin(cur_state.x.theta), 0.0f);
-    Eigen::Vector3f minor_axis_vec(std::cos(cur_state.x.theta+0.5*M_PI),
-                                   std::sin(cur_state.x.theta+0.5*M_PI), 0.0f);
-    std::vector<pcl::PointXYZ> major_end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
-        cur_obj.cloud, major_axis_vec, cur_obj.centroid);
-    std::vector<pcl::PointXYZ> minor_end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
-        cur_obj.cloud, minor_axis_vec, cur_obj.centroid);
-
-    // TODO: Set this to the direction of the initial push (either major or minor
-    // axis)
-    p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
+    // TODO: Choose point and rotation direction
+    unsigned int chosen_point = 0;
+    double theta_error = subPIAngle(req.goal_pose.theta - cur_state.x.theta);
+    if (theta_error > 0.0)
+    {
+      // Positive push is corner 1 or 3
+      if (push_pts[1][0] < push_pts[3][0])
+      {
+        chosen_point = 1;
+      }
+      else
+      {
+        chosen_point = 3;
+      }
+    }
+    else
+    {
+      // Negative push is corner 0 or 2
+      if (push_pts[0][0] < push_pts[2][0])
+      {
+        chosen_point = 0;
+      }
+      else
+      {
+        chosen_point = 2;
+      }
+    }
+    ROS_INFO_STREAM("Chosen idx is : " << chosen_point);
+    p.start_point.x = push_pts[chosen_point][0];
+    p.start_point.y = push_pts[chosen_point][1];
+    p.start_point.y = centroid[2];
+    p.push_angle = cur_state.x.theta + sx[chosen_point]*0.5*M_PI;
     res.push = p;
     just_spun_ = true;
     return res;

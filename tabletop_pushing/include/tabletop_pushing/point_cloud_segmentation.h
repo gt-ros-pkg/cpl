@@ -276,6 +276,8 @@ class PointCloudSegmentation
 
   cv::Point projectPointIntoImage(geometry_msgs::PointStamped cur_point,
                                   std::string target_frame);
+  cv::Point projectPointIntoImage(Eigen::Vector3f cur_point_eig,
+                                  std::string point_frame, std::string target_frame);
 
   Eigen::Vector4f getTableCentroid()
   {

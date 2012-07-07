@@ -643,6 +643,18 @@ void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud,
   }
 }
 
+cv::Point PointCloudSegmentation::projectPointIntoImage(Eigen::Vector3f cur_point_eig,
+                                                        std::string point_frame,
+                                                        std::string target_frame)
+{
+  geometry_msgs::PointStamped cur_point;
+  cur_point.header.frame_id = point_frame;
+  cur_point.point.x = cur_point_eig[0];
+  cur_point.point.y = cur_point_eig[1];
+  cur_point.point.z = cur_point_eig[2];
+  return projectPointIntoImage(cur_point, target_frame);
+}
+
 cv::Point PointCloudSegmentation::projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
                                                         std::string point_frame,
                                                         std::string target_frame)

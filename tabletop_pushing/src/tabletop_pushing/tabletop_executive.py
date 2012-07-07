@@ -436,6 +436,9 @@ class TabletopExecutive:
         push_vector_req.push_angle = push_angle
         push_vector_req.push_dist = push_dist
         push_vector_req.rand_angle = rand_angle
+        # TODO: remove none_goal pose stuff
+        # TODO: Break out spin request stuff
+        push_vector_req.spin_push = True
         if goal_pose is not None:
             push_vector_req.goal_pose = goal_pose
             push_vector_req.use_goal_pose = True
