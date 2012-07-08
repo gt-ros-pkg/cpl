@@ -35,7 +35,7 @@
     <param name="img_output_path" value="/u/thermans/data/new/" type="string"/>
 
     <param name="push_tracker_dist_thresh" value="0.05" type="double"/>
-    <param name="push_tracker_angle_thresh" value="0.05" type="double"/>
+    <param name="push_tracker_angle_thresh" value="0.1" type="double"/>
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
   </node>
 </launch>

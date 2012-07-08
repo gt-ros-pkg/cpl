@@ -53,9 +53,10 @@ GRIPPER_SWEEP = 1
 OVERHEAD_PUSH = 2
 OVERHEAD_PULL = 3
 _OFFLINE = False
-_USE_LEARN_IO = False
+_USE_LEARN_IO = True
 _TEST_SPIN_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
+_SPIN_FIRST = False
 
 class TabletopExecutive:
 
@@ -144,7 +145,7 @@ class TabletopExecutive:
         # Singulation Push proxy
         if _USE_LEARN_IO:
             self.learn_io = PushLearningIO()
-            learn_file_name = '/u/thermans/data/learn_out.txt'
+            learn_file_name = '/u/thermans/data/new/goal_out.txt'
             rospy.loginfo('Opening learn file: '+learn_file_name)
             self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(
@@ -302,26 +303,34 @@ class TabletopExecutive:
         push_dist = 0.0
         high_init = True
         push_opt = OVERHEAD_PUSH
-        use_spin_push = True
+        use_spin_push = _SPIN_FIRST
         while True:
             if use_spin_push:
                 goal_pose = self.generateRandomTablePose()
                 code_in = raw_input('Set object in start pose and press <Enter>: ')
                 if code_in.startswith('q'):
                     return
-            elif _WAIT_BEFORE_STRAIGHT_PUSH:
-                code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
+            elif _WAIT_BEFORE_STRAIGHT_PUSH or not _SPIN_FIRST:
+                if not _SPIN_FIRST:
+                    goal_pose = self.generateRandomTablePose()
+                    code_in = raw_input('Set object in start pose and press <Enter>: ')
+                else:
+                    code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
                 if code_in.startswith('q'):
                     return
 
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, use_spin_push)
+            code_in = raw_input('Got start pose to continue press <Enter>: ')
+            if code_in.startswith('q'):
+                return
+
             if push_vec_res is None:
                 return
             which_arm = self.choose_arm(push_vec_res.push, spin=use_spin_push)
             res = self.learning_trial(which_arm, int(push_opt), high_init,
                                       push_vec_res, push_dist, goal_pose, spin=use_spin_push)
             # NOTE: Alternate between spinning and pushing
-            if not _TEST_SPIN_POSE:
+            if not _TEST_SPIN_POSE and _SPIN_FIRST:
                 use_spin_push = (not use_spin_push)
             if not res:
                 return
@@ -438,9 +447,32 @@ class TabletopExecutive:
                       ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +
                       str(fabs(goal_pose.theta-analysis_res.theta)) + ')')
         if _USE_LEARN_IO:
-            self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
-                                     which_arm, analysis_res.centroid, push_dist,
-                                     high_init, push_time)
+            # self.learn_io.write_line(push_vector_res.centroid, push_angle, push_opt,
+            #                          which_arm, analysis_res.centroid, push_dist,
+            #                          high_init, push_time)
+            out_str = 'Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +\
+                ', ' + str(push_vector_res.centroid.y) + ', ' + str(push_angle) +')\n'
+            self.learn_io.data_out.write(out_str)
+            self.learn_io.data_out.flush()
+            out_str = 'New (X,Y,Theta): (' + str(analysis_res.centroid.x) + ', ' +\
+                str(analysis_res.centroid.y) + ', ' + str(analysis_res.theta)+ ')\n'
+            self.learn_io.data_out.write(out_str)
+            self.learn_io.data_out.flush()
+            out_str = 'Delta (X,Y,Theta): (' + str(analysis_res.moved.x) + ', ' +\
+                str(analysis_res.moved.y) + '): ' + \
+                str(sqrt(analysis_res.moved.x**2 + analysis_res.moved.y**2))+'\n'
+            self.learn_io.data_out.write(out_str)
+            self.learn_io.data_out.flush()
+            out_str = 'Desired (X,Y,Theta): (' + str(goal_pose.x) + ', ' + \
+                str(goal_pose.y) + ', ' + str(goal_pose.theta) + ')\n'
+            self.learn_io.data_out.write(out_str)
+            self.learn_io.data_out.flush()
+            out_str = 'Error (X,Y,Theta): (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) + \
+                ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +\
+                str(fabs(goal_pose.theta-analysis_res.theta)) + ')\n'
+            self.learn_io.data_out.write(out_str)
+            self.learn_io.data_out.flush()
+
         return True
 
     def request_singulation_push(self, use_guided=True):
@@ -779,9 +811,9 @@ class TabletopExecutive:
 
     def generateRandomTablePose(self):
         # TODO: make these parameters
-        min_x = 0.35
+        min_x = 0.4
         max_x = 0.9
-        max_y = 0.35
+        max_y = 0.325
         min_y = -max_y
         max_theta = pi
         min_theta = -pi
@@ -795,13 +827,9 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    use_learning = True
     use_singulation = False
+    use_learning = True
     use_guided = True
-    num_trials = 4
-    push_dist = 0.15 # meters
-    push_angle = 0.0*pi # radians
-    rand_angle = False
     max_pushes = 50
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:

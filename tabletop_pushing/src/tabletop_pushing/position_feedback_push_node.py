@@ -511,9 +511,9 @@ class PositionFeedbackPushNode:
         s_theta = sign(t_error)
         t_dist = fabs(t_error)
         heading_x_dot = self.k_h_f*t_dist
-        heading_y_dot = s_theta*self.k_h_in*t_dist
+        heading_y_dot = s_theta*self.k_h_in#*t_dist
         u.twist.linear.z = min(heading_x_dot, self.max_heading_u_x)
-        u.twist.linear.y = min(heading_y_dot, self.max_heading_u_y)
+        u.twist.linear.y = heading_y_dot
         if self.feedback_count % 5 == 0:
             rospy.loginfo('heading_x_dot: (' + str(heading_x_dot) + ')')
             rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
