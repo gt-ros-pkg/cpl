@@ -108,8 +108,8 @@
 #define DISPLAY_WAIT 1
 #define DEBUG_PUSH_HISTORY 1
 #define randf() static_cast<float>(rand())/RAND_MAX
-#define DEG2RAD M_PI/180.0*
-#define RAD2DEG 180.0/M_PI*
+// #define DEG2RAD M_PI/180.0*
+// #define RAD2DEG 180.0/M_PI*
 
 using boost::shared_ptr;
 using tabletop_pushing::LearnPush;
