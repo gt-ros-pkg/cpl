@@ -13,5 +13,7 @@
       <param name="push_control_forward_heading_gain" type="double" value="0.1"/>
       <param name="push_control_in_heading_gain" type="double" value="0.0"/>
       <param name="overhead_feedback_down_vel" type="double" value="0.0"/>
+      <param name="max_heading_push_u_x" type="double" value="0.2"/>
+      <param name="max_heading_push_u_y" type="double" value="0.01"/>
     </node>
 </launch>

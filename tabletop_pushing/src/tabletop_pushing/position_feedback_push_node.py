@@ -169,6 +169,8 @@ class PositionFeedbackPushNode:
         self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
+        self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
+        self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
         self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -454,7 +456,8 @@ class PositionFeedbackPushNode:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
-                          str(update_twist.twist.linear.y) + ')\n')
+                          str(update_twist.twist.linear.y) + ', ' +
+                          str(update_twist.twist.linear.z) + ')\n')
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
@@ -482,6 +485,7 @@ class PositionFeedbackPushNode:
                                             -self.k_s_p*t0_error)
         spin_y_dot =  cos(transform_angle)*(self.k_s_d*cur_state.x_dot.theta +
                                             -self.k_s_p*t0_error)
+        # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot + spin_x_dot
         u.twist.linear.y = goal_y_dot + spin_y_dot
         if self.feedback_count % 5 == 0:
@@ -501,19 +505,16 @@ class PositionFeedbackPushNode:
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
-        # Push in a direction to continue spinning the object
-        # x_error = desired_state.x - cur_state.x.x
-        # y_error = desired_state.y - cur_state.x.y
         t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
-        # t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
         s_theta = sign(t_error)
         t_dist = fabs(t_error)
-        # TODO: Figure out this controller
-        # TODO: Scale the velocity based on the t_error
         heading_x_dot = self.k_h_f*t_dist
         heading_y_dot = s_theta*self.k_h_in*t_dist
-        u.twist.linear.z = heading_x_dot
-        u.twist.linear.y = heading_y_dot
+        u.twist.linear.z = min(heading_x_dot, self.max_heading_u_x)
+        u.twist.linear.y = min(heading_y_dot, self.max_heading_u_y)
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('heading_x_dot: (' + str(heading_x_dot) + ')')
+            rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
         return u
 
     def slidingModeController(self, cur_state, desired_state):
