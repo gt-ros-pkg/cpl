@@ -55,7 +55,7 @@ class ControlAnalysisIO:
         data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
             str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
             str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
-            str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+\
+            str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
             str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+'\n'
         self.data_out.write(data_line)
         self.data_out.flush()
