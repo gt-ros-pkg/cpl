@@ -1138,7 +1138,7 @@ class TabletopPushingPerceptionNode
     res.theta = cur_state.x.theta;
     just_spun_ = true;
 
-    if (use_displays_)
+    if (use_displays_|| write_to_disk_)
     {
       for (unsigned int i = 0; i < push_pts.size(); ++i)
       {
@@ -1156,7 +1156,17 @@ class TabletopPushingPerceptionNode
         }
         cv::circle(disp_img, img_idx, 4, draw_color);
       }
-      cv::imshow("push points", disp_img);
+      if (use_displays_)
+      {
+        cv::imshow("push points", disp_img);
+      }
+      if (write_to_disk_)
+      {
+        // Write to disk to create video output
+        std::stringstream push_out_name;
+        push_out_name << base_output_path_ << "push_points" << frame_set_count_ << ".png";
+        cv::imwrite(push_out_name.str(), disp_img);
+      }
     }
     PointStamped centroid_pt;
     centroid_pt.header.frame_id = cur_obj.cloud.header.frame_id;
@@ -1378,12 +1388,12 @@ class TabletopPushingPerceptionNode
     // NOTE: Renormalize goal idx positiong to be on a circle with current heading point
     cv::Point img_goal_draw_idx(std::cos(DEG2RAD(img_end_angle))*img_height+img_c_idx.x,
                                 std::sin(DEG2RAD(img_end_angle))*img_height+img_c_idx.y);
+    double theta_error = subPIAngle(goal_theta - theta);
     cv::Size axes(img_height, img_height);
-    cv::ellipse(disp_img, img_c_idx, axes, img_start_angle, 0, img_end_angle-img_start_angle,
-                cv::Scalar(0,0,255));
+    cv::ellipse(disp_img, img_c_idx, axes, img_start_angle, 0,
+                RAD2DEG(subPIAngle(DEG2RAD(img_end_angle-img_start_angle))), cv::Scalar(0,0,255));
     cv::line(disp_img, img_c_idx, img_maj_idx, cv::Scalar(0,0,255));
     cv::line(disp_img, img_c_idx, img_goal_draw_idx, cv::Scalar(0,0,255));
-    // TODO: Draw filled polygon here
     if (use_displays_)
     {
       cv::imshow("goal_heading", disp_img);
