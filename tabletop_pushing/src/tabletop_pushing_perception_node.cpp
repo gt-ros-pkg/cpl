@@ -501,6 +501,13 @@ class ObjectTracker25D
         centroid_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
     // double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
     double theta = getThetaFromEllipse(obj_ellipse);
+    if(swap_orientation_)
+    {
+      if(theta > 0.0)
+        theta += - M_PI;
+      else
+        theta += M_PI;
+    }
     const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
     const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
     pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
@@ -1388,7 +1395,6 @@ class TabletopPushingPerceptionNode
     // NOTE: Renormalize goal idx positiong to be on a circle with current heading point
     cv::Point img_goal_draw_idx(std::cos(DEG2RAD(img_end_angle))*img_height+img_c_idx.x,
                                 std::sin(DEG2RAD(img_end_angle))*img_height+img_c_idx.y);
-    double theta_error = subPIAngle(goal_theta - theta);
     cv::Size axes(img_height, img_height);
     cv::ellipse(disp_img, img_c_idx, axes, img_start_angle, 0,
                 RAD2DEG(subPIAngle(DEG2RAD(img_end_angle-img_start_angle))), cv::Scalar(0,0,255));
