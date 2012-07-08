@@ -46,6 +46,7 @@ import sys
 from push_learning import PushLearningIO, PushTrial
 from geometry_msgs.msg import Pose2D
 import time
+import random
 
 GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
@@ -60,7 +61,6 @@ class TabletopExecutive:
 
     def __init__(self, use_singulation, use_learning):
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
-        # TODO: Determine workspace limits for max here
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
         self.max_push_dist = rospy.get_param('~mix_push_dist', 0.3)
         self.use_overhead_x_thresh = rospy.get_param('~use_overhead_x_thresh',
@@ -298,13 +298,14 @@ class TabletopExecutive:
                         if not res:
                             return
 
-    def run_feedback_testing(self, goal_pose):
+    def run_feedback_testing(self):
         push_dist = 0.0
         high_init = True
         push_opt = OVERHEAD_PUSH
         use_spin_push = True
         while True:
             if use_spin_push:
+                goal_pose = self.generateRandomTablePose()
                 code_in = raw_input('Set object in start pose and press <Enter>: ')
                 if code_in.startswith('q'):
                     return
@@ -776,7 +777,24 @@ class TabletopExecutive:
         self.gripper_push_object(push_dist, which_arm,
                                  push, high_init)
 
+    def generateRandomTablePose(self):
+        # TODO: make these parameters
+        min_x = 0.3
+        max_x = 0.9
+        max_y = 0.35
+        min_y = -max_y
+        max_theta = pi
+        min_theta = -pi
+        rand_pose = Pose2D()
+        rand_pose.x = random.uniform(min_x, max_x)
+        rand_pose.y = random.uniform(min_y, max_y)
+        rand_pose.theta = random.uniform(min_theta, max_theta)
+        rospy.loginfo('Rand table pose is: (' + str(rand_pose.x) + ', ' + str(rand_pose.y) +
+                      ', ' + str(rand_pose.theta) + ')')
+        return rand_pose
+
 if __name__ == '__main__':
+    random.seed()
     use_learning = True
     use_singulation = False
     use_guided = True
@@ -789,12 +807,5 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
-        # TODO: add in desired pose here
-        goal_pose = Pose2D()
-        goal_pose.x = 0.7
-        goal_pose.y = 0.0
-        goal_pose.theta = 0.0*pi
-        # node.run_rand_learning_collect(num_trials, push_dist, push_angle,
-        #                                rand_angle, goal_pose)
-        node.run_feedback_testing(goal_pose)
+        node.run_feedback_testing()
         node.finish_learning()
