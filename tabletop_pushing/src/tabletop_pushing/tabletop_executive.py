@@ -779,7 +779,7 @@ class TabletopExecutive:
 
     def generateRandomTablePose(self):
         # TODO: make these parameters
-        min_x = 0.3
+        min_x = 0.35
         max_x = 0.9
         max_y = 0.35
         min_y = -max_y

@@ -523,7 +523,7 @@ class ObjectTracker25D
     float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                          img_maj_idx.x-img_c_idx.x));
     cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(255,0,255), 1);
     if (use_displays_)
     {
       cv::imshow("Ellipse Axes", centroid_frame);
@@ -569,7 +569,7 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      learn_callback_count_(0), goal_out_count_(0), frame_callback_count_(0),
+      learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0), frame_callback_count_(0),
       just_spun_(false), major_axis_spin_pos_scale_(0.75), spin_to_heading_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -744,9 +744,12 @@ class TabletopPushingPerceptionNode
       start_point.point.z = tracker_state.z;
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
-      end_point.point.z = table_centroid_.pose.position.z; // start_point.point.z;
+      end_point.point.z = start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
+      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                         tracker_goal_pose_.theta);
+
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
@@ -808,8 +811,10 @@ class TabletopPushingPerceptionNode
       start_point.point.z = tracker_state.z;
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
-      end_point.point.z = table_centroid_.pose.position.z;// start_point.point.z;
+      end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
+      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                         tracker_goal_pose_.theta);
     }
 
     // Display junk
@@ -978,6 +983,11 @@ class TabletopPushingPerceptionNode
     }
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
+    PointStamped centroid;
+    centroid.header.frame_id = cur_obj.cloud.header.frame_id;
+    centroid.point = res.centroid;
+    displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
+
     learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
                     << p.start_point.y << ", " << p.start_point.z << ")");
@@ -1132,7 +1142,7 @@ class TabletopPushingPerceptionNode
     {
       for (unsigned int i = 0; i < push_pts.size(); ++i)
       {
-        ROS_INFO_STREAM("Point " << i << " is: " << push_pts[i]);
+        ROS_DEBUG_STREAM("Point " << i << " is: " << push_pts[i]);
         const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
             push_pts[i], cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
         cv::Scalar draw_color;
@@ -1148,7 +1158,10 @@ class TabletopPushingPerceptionNode
       }
       cv::imshow("push points", disp_img);
     }
-
+    PointStamped centroid_pt;
+    centroid_pt.header.frame_id = cur_obj.cloud.header.frame_id;
+    centroid_pt.point = res.centroid;
+    displayGoalHeading(cur_color_frame_, centroid_pt, cur_state.x.theta, tracker_goal_pose_.theta);
     return res;
   }
 
@@ -1336,6 +1349,55 @@ class TabletopPushingPerceptionNode
     }
   }
 
+  void displayGoalHeading(cv::Mat& img, PointStamped& centroid, double theta, double goal_theta)
+  {
+    cv::Mat disp_img;
+    img.copyTo(disp_img);
+
+    cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(centroid);
+    cv::RotatedRect obj_ellipse = obj_tracker_->getMostRecentEllipse();
+    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
+    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
+    pcl::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
+                                      centroid.point.z);
+    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
+        table_heading_point, centroid.header.frame_id, "openni_rgb_optical_frame");
+    const float goal_x_rad = (std::cos(goal_theta)*obj_ellipse.size.height*0.5);
+    const float goal_y_rad = (std::sin(goal_theta)*obj_ellipse.size.height*0.5);
+    pcl::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
+                                     centroid.point.z);
+    cv::Point2f img_goal_idx = pcl_segmenter_->projectPointIntoImage(
+        goal_heading_point, centroid.header.frame_id, "openni_rgb_optical_frame");
+    // TODO: Draw partially shaded ellipse showing angle error
+    float img_start_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+                                               img_maj_idx.x-img_c_idx.x));
+    float img_end_angle = RAD2DEG(std::atan2(img_goal_idx.y-img_c_idx.y,
+                                             img_goal_idx.x-img_c_idx.x));
+    double img_height = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                                  std::pow(img_maj_idx.y-img_c_idx.y,2));
+    // NOTE: Renormalize goal idx positiong to be on a circle with current heading point
+    cv::Point img_goal_draw_idx(std::cos(DEG2RAD(img_end_angle))*img_height+img_c_idx.x,
+                                std::sin(DEG2RAD(img_end_angle))*img_height+img_c_idx.y);
+    cv::Size axes(img_height, img_height);
+    cv::ellipse(disp_img, img_c_idx, axes, img_start_angle, 0, img_end_angle-img_start_angle,
+                cv::Scalar(0,0,255));
+    cv::line(disp_img, img_c_idx, img_maj_idx, cv::Scalar(0,0,255));
+    cv::line(disp_img, img_c_idx, img_goal_draw_idx, cv::Scalar(0,0,255));
+    // TODO: Draw filled polygon here
+    if (use_displays_)
+    {
+      cv::imshow("goal_heading", disp_img);
+    }
+    if (write_to_disk_)
+    {
+      // Write to disk to create video output
+      std::stringstream push_out_name;
+      push_out_name << base_output_path_ << "goal_heading_" << frame_set_count_ << "_"
+                    << goal_heading_count_++ << ".png";
+      cv::imwrite(push_out_name.str(), disp_img);
+    }
+  }
+
   /**
    * Executive control function for launching the node.
    */
@@ -1388,6 +1450,7 @@ class TabletopPushingPerceptionNode
   int record_count_;
   int learn_callback_count_;
   int goal_out_count_;
+  int goal_heading_count_;
   int frame_callback_count_;
   Eigen::Vector4f start_centroid_;
   shared_ptr<ObjectTracker25D> obj_tracker_;

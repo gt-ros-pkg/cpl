@@ -132,7 +132,7 @@ class PositionFeedbackPushNode:
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
         self.controller_io = ControlAnalysisIO()
-        out_file_name = '/u/thermans/data/control_out_'+str(rospy.get_time())+'.txt'
+        out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
         self.controller_io.open_out_file(out_file_name)
 
