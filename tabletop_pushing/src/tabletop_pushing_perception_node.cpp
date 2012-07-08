@@ -1236,6 +1236,9 @@ class TabletopPushingPerceptionNode
   PushTrackerState startTracking()
   {
     frame_set_count_++;
+    goal_out_count_ = 0;
+    goal_heading_count_ = 0;
+    frame_callback_count_ = 0;
     return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
   }
 
