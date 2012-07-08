@@ -41,7 +41,7 @@ from tabletop_pushing.msg import *
 import sys
 import rospy
 
-_HEADER_LINE = 'x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z'
+_HEADER_LINE = 'x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time'
 
 class ControlAnalysisIO:
     def __init__(self):
@@ -56,7 +56,7 @@ class ControlAnalysisIO:
             str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
             str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
             str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
-            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+'\n'
+            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+'\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 
