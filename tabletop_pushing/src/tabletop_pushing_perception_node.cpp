@@ -1070,7 +1070,7 @@ class TabletopPushingPerceptionNode
         }
         else
         {
-          chosen_idx = 3;
+          chosen_idx = 2;
         }
       }
       else
