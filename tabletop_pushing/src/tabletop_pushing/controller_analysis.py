@@ -41,36 +41,22 @@ from tabletop_pushing.msg import *
 import sys
 import rospy
 
-_HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist high_init push_time'
-
-class ControlState:
-    def __init__(self):
-        self.x = None
-        self.x_dot = None
-        self.x_desired = None
-        self.theta0 = None
-        self.u = None
-        self.u_g = None
-        self.u_spin = None
-        self.k_g = None
-        self.k_s_d = None
-        self.k_s_p = None
-
-    def __str__(self):
-        return str((self.x, self.x_dot, self.x_desired, self.theta0, self.u, self.u_g, self.u_spin,
-                    self.k_g, self.k_s_d, self.k_s_p))
+_HEADER_LINE = 'x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z'
 
 class ControlAnalysisIO:
     def __init__(self):
         self.data_out = None
         self.data_in = None
 
-    def write_line(self, x, x_dot, x_desired, theta0, u, u_g, u_spin, k_g, k_s_d, k_s_p):
+    def write_line(self, x, x_dot, x_desired, theta0, u, time):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
-        data_line = str(x)+' '+str(x_dot)+' '+str(x_desired)+' '+str(theta0)+' '+str(u)+' '+\
-            str(u_g)+' '+str(u_spin)+' '+str(k_g)+' '+str(k_s_d)+' '+str(k_s_p)+'\n'
+        data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
+            str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
+            str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
+            str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+\
+            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+'\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 

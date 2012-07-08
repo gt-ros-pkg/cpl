@@ -47,7 +47,7 @@ import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt, atan2
-# from controller_analysis import *
+from controller_analysis import ControlAnalysisIO
 import sys
 
 # Setup joints stolen from Kelsey's code.
@@ -131,10 +131,10 @@ class PositionFeedbackPushNode:
 
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
-        # self.controller_io = ControlAnalysisIO()
-        # out_file_name = '/u/thermans/data/push_out.txt'
-        # rospy.loginfo('Opening controller output file: '+out_file_name)
-        # self.controller_io.open_out_file(out_file_name)
+        self.controller_io = ControlAnalysisIO()
+        out_file_name = '/u/thermans/data/control_out_'+str(rospy.get_time())+'.txt'
+        rospy.loginfo('Opening controller output file: '+out_file_name)
+        self.controller_io.open_out_file(out_file_name)
 
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
@@ -458,6 +458,8 @@ class PositionFeedbackPushNode:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
+        self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                      update_twist.twist, update_twist.header.stamp.to_sec())
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
@@ -1528,6 +1530,11 @@ class PositionFeedbackPushNode:
             self.arm_mode = 'vel_mode'
             rospy.sleep(self.post_controller_switch_sleep)
 
+    def shutdown_hook(self):
+        rospy.loginfo('Cleaning up node on shutdown')
+        self.controller_io.close_out_file()
+        # TODO: stop moving the arms on shutdown
+
     #
     # Main Control Loop
     #
@@ -1540,6 +1547,7 @@ class PositionFeedbackPushNode:
         self.init_arms()
         self.switch_to_cart_controllers()
         rospy.loginfo('Done initializing feedback pushing node.')
+        rospy.on_shutdown(self.shutdown_hook)
         rospy.spin()
 
 if __name__ == '__main__':

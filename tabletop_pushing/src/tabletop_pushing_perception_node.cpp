@@ -1117,7 +1117,7 @@ class TabletopPushingPerceptionNode
         }
       }
     }
-    ROS_INFO_STREAM("Chosen idx is : " << chosen_idx);
+    ROS_DEBUG_STREAM("Chosen idx is : " << chosen_idx);
     p.start_point.x = push_pts[chosen_idx][0];
     p.start_point.y = push_pts[chosen_idx][1];
     p.start_point.z = centroid[2];
@@ -1208,7 +1208,7 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
-    ROS_INFO_STREAM("pushTrackerGoalCB(): starting tracking");
+    ROS_DEBUG_STREAM("pushTrackerGoalCB(): starting tracking");
     if (obj_tracker_->isInitialized())
     {
       obj_tracker_->unpause();
