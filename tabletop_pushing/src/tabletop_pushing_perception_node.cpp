@@ -213,7 +213,7 @@ class ObjectTracker25D
   }
 
   ProtoObject findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
-                               bool& no_objects)
+                               bool& no_objects, bool init=false)
   {
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
     if (objs.size() == 0)
@@ -228,7 +228,7 @@ class ObjectTracker25D
     if (objs.size() == 1)
     {
     }
-    else if (frame_count_ == 0)
+    else if (init || frame_count_ == 0)
     {
       // Assume we care about the biggest currently
       unsigned int max_size = 0;
@@ -240,18 +240,21 @@ class ObjectTracker25D
           chosen_idx = i;
         }
       }
+
+      // TODO: Extract color histogram
     }
     else // Find closest object to last time
     {
       double min_dist = 1000.0;
       for (unsigned int i = 0; i < objs.size(); ++i)
       {
-        double centroid_dist = sqrDistXY(objs[i].centroid, previous_state_.x);
+        double centroid_dist = pcl_segmenter_->sqrDist(objs[i].centroid, previous_obj_.centroid);
         if (centroid_dist  < min_dist)
         {
           min_dist = centroid_dist;
           chosen_idx = i;
         }
+        // TODO: Match color histogram
       }
     }
 
@@ -294,7 +297,7 @@ class ObjectTracker25D
     frame_count_ = 0;
     record_count_ = 0;
     frame_set_count_++;
-    ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects);
+    ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects, true);
     initialized_ = true;
     PushTrackerState state;
     state.header.seq = 0;
