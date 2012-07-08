@@ -359,6 +359,10 @@ class ObjectTracker25D
       state.x_dot = previous_state_.x_dot;
       state.z = previous_state_.z;
       ROS_WARN_STREAM("Using previous state, but updating time!");
+      if (use_displays_ || write_to_disk_)
+      {
+        trackerIO(in_frame, previous_obj_, previous_obj_ellipse_);
+      }
     }
     else
     {
