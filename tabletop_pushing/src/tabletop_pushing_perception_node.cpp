@@ -207,7 +207,7 @@ class ObjectTracker25D
       pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
       frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
       base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
-      paused_(false)
+      paused_(false), frame_set_count_(0)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -292,6 +292,8 @@ class ObjectTracker25D
     swap_orientation_ = false;
     bool no_objects = false;
     frame_count_ = 0;
+    record_count_ = 0;
+    frame_set_count_++;
     ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects);
     initialized_ = true;
     PushTrackerState state;
@@ -418,6 +420,15 @@ class ObjectTracker25D
     return state;
   }
 
+  void pausedUpdate(cv::Mat in_frame)
+  {
+    if (use_displays_ || write_to_disk_)
+    {
+      trackerIO(in_frame, previous_obj_, previous_obj_ellipse_);
+    }
+    record_count_++;
+  }
+
   //
   // Helper functions
   //
@@ -516,8 +527,8 @@ class ObjectTracker25D
     if (write_to_disk_)
     {
       std::stringstream out_name;
-      out_name << base_output_path_ << "ellipse_axes" << record_count_
-               << ".png";
+      out_name << base_output_path_ << "ellipse_axes_" << frame_set_count_ << "_"
+               << record_count_ << ".png";
       cv::imwrite(out_name.str(), centroid_frame);
     }
 
@@ -538,6 +549,7 @@ class ObjectTracker25D
   int record_count_;
   bool swap_orientation_;
   bool paused_;
+  int frame_set_count_;
 };
 
 class TabletopPushingPerceptionNode
@@ -778,6 +790,22 @@ class TabletopPushingPerceptionNode
           }
         }
       }
+    }
+    else if (obj_tracker_->isPaused())
+    {
+      obj_tracker_->pausedUpdate(cur_color_frame_);
+      PointStamped start_point;
+      PointStamped end_point;
+      PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
+      start_point.header.frame_id = workspace_frame_;
+      end_point.header.frame_id = workspace_frame_;
+      start_point.point.x = tracker_state.x.x;
+      start_point.point.y = tracker_state.x.y;
+      start_point.point.z = tracker_state.z;
+      end_point.point.x = tracker_goal_pose_.x;
+      end_point.point.y = tracker_goal_pose_.y;
+      end_point.point.z = start_point.point.z;
+      displayPushVector(cur_color_frame_, start_point, end_point);
     }
 
     // Display junk
@@ -1170,6 +1198,7 @@ class TabletopPushingPerceptionNode
 
   PushTrackerState startTracking()
   {
+    frame_set_count_++;
     return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
   }
 
@@ -1296,8 +1325,8 @@ class TabletopPushingPerceptionNode
     {
       // Write to disk to create video output
       std::stringstream push_out_name;
-      push_out_name << base_output_path_ << "goal_vector" << goal_out_count_++
-                    << ".png";
+      push_out_name << base_output_path_ << "goal_vector_" << frame_set_count_ << "_"
+                    << goal_out_count_++ << ".png";
       cv::imwrite(push_out_name.str(), disp_img);
     }
   }
@@ -1364,6 +1393,7 @@ class TabletopPushingPerceptionNode
   bool just_spun_;
   double major_axis_spin_pos_scale_;
   bool spin_to_heading_;
+  int frame_set_count_;
 };
 
 int main(int argc, char ** argv)
