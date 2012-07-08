@@ -744,7 +744,7 @@ class TabletopPushingPerceptionNode
       start_point.point.z = tracker_state.z;
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
-      end_point.point.z = start_point.point.z;
+      end_point.point.z = table_centroid_.pose.position.z; // start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
       // make sure that the action hasn't been canceled
@@ -808,7 +808,7 @@ class TabletopPushingPerceptionNode
       start_point.point.z = tracker_state.z;
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
-      end_point.point.z = start_point.point.z;
+      end_point.point.z = table_centroid_.pose.position.z;// start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
     }
 
@@ -1293,6 +1293,7 @@ class TabletopPushingPerceptionNode
                     << p.pose.position.x << ", "
                     << p.pose.position.y << ", "
                     << p.pose.position.z << ")");
+    table_centroid_ = p;
     return p;
   }
 
