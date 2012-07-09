@@ -41,6 +41,8 @@ from tabletop_pushing.msg import *
 from geometry_msgs.msg import Pose2D, Twist
 import sys
 import rospy
+from pylab import *
+from math import cos, sin
 
 _HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time'
 
@@ -111,3 +113,50 @@ class ControlAnalysisIO:
 
     def close_out_file(self):
         self.data_out.close()
+
+
+def plot_results(file_name):
+    io = ControlAnalysisIO()
+    controls = io.read_in_data_file(file_name)
+    XS = [c.x.x for c in controls]
+    YS = [c.x.y for c in controls]
+    Thetas = [c.x.y for c in controls]
+    init_x = XS[0]
+    init_y = YS[0]
+    goal_x = controls[0].x_desired.x
+    goal_y = controls[0].x_desired.y
+    goal_theta = controls[0].x_desired.theta
+    figure()
+    plot(XS,YS)
+    show()
+    print ylim()
+    print xlim(xlim()[1]-(ylim()[1]-ylim()[0]), xlim()[1])
+    scatter(XS,YS)
+    ax = gca()
+    headings = [Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
+    arrows = [ax.add_patch(h) for h in headings]
+    init_arrow = Arrow(controls[0].x.x, controls[0].x.y,
+                       cos(controls[0].x.theta)*0.01,
+                       sin(controls[0].x.theta)*0.01, 0.05,
+                       axes=ax, facecolor='red')
+    goal_arrow = Arrow(controls[0].x_desired.x, controls[0].x_desired.y,
+                       cos(controls[0].x_desired.theta)*0.01,
+                       sin(controls[0].x_desired.theta)*0.01, 0.05,
+                       axes=ax, facecolor='green')
+    ax.add_patch(goal_arrow)
+    ax.add_patch(init_arrow)
+    scatter(init_x, init_y, c='r')
+    scatter(goal_x, goal_y, c='g')
+    xlabel('x (meters)')
+    ylabel('y (meters)')
+    title('Tracker Ouput')
+    show()
+    figure()
+    ux = [c.u.linear.x for c in controls]
+    uy = [c.u.linear.y for c in controls]
+    plot(ux)
+    plot(uy)
+    xlabel('Time')
+    ylabel('Velocity (m/s)')
+    legend(['u_x', 'u_y'])
+    title('Control Input')
