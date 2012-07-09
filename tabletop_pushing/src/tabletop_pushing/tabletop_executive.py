@@ -312,7 +312,11 @@ class TabletopExecutive:
                     return
             elif _WAIT_BEFORE_STRAIGHT_PUSH or not _SPIN_FIRST:
                 if not _SPIN_FIRST:
-                    goal_pose = self.generateRandomTablePose()
+                    # goal_pose = self.generateRandomTablePose()
+                    goal_pose = Pose2D()
+                    goal_pose.x = 0.7
+                    goal_pose.y = 0.0
+                    goal_pose.theta = 0.0
                     code_in = raw_input('Set object in start pose and press <Enter>: ')
                 else:
                     code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
