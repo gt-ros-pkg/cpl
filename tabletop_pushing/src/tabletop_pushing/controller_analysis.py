@@ -38,10 +38,20 @@ import tf.transformations as tr
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
+from geometry_msgs.msg import Pose2D, Twist
 import sys
 import rospy
 
-_HEADER_LINE = 'x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time'
+_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time'
+
+class ControlTimeStep:
+    def __init__(self, x, x_dot, x_desired, theta0, u, t):
+        self.x = x
+        self.x_dot = x_dot
+        self.x_desired = x_desired
+        self.theta0 = theta0
+        self.u = u
+        self.t = t
 
 class ControlAnalysisIO:
     def __init__(self):
@@ -61,12 +71,36 @@ class ControlAnalysisIO:
         self.data_out.flush()
 
     def parse_line(self, line):
-        # TODO: Read in the stuff and display / analyze it
-        pass
+        if line.startswith('#'):
+            return None
+        data = [float(s) for s in line.split()]
+        x = Pose2D()
+        x_dot = Pose2D()
+        x_desired = Pose2D()
+        u = Twist()
+        x.x = data[0]
+        x.y = data[1]
+        x.theta = data[2]
+        x_dot.x = data[3]
+        x_dot.y = data[4]
+        x_dot.theta = data[5]
+        x_desired.x = data[6]
+        x_desired.y = data[7]
+        x_desired.theta = data[8]
+        theta0 = data[9]
+        u.linear.x = data[10]
+        u.linear.y = data[11]
+        u.linear.z = data[12]
+        u.angular.x = data[13]
+        u.angular.y = data[14]
+        u.angular.z = data[15]
+        t = data[16]
+        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t)
+        return cts
 
     def read_in_data_file(self, file_name):
         data_in = file(file_name, 'r')
-        x = [self.parse_line(l) for l in data_in.readlines()]
+        x = [self.parse_line(l) for l in data_in.readlines()[1:]]
         data_in.close()
         return filter(None, x)
 
