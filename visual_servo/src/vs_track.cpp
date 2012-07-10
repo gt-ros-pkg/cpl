@@ -225,8 +225,6 @@ public:
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
       camera_initialized_ = true;
       initializeService();
-      first_depth_frame_ = depth_frame.clone();
-      first_point_cloud_ = cloud;
     }
 
     
@@ -257,7 +255,7 @@ public:
     pcl::PointXYZ origin = origin_xyz.workspace;
     std::vector<pcl::PointXYZ> pts; pts.clear();
 
-    origin.x -= 0.18;
+    origin.x -= 0.15;
     origin.z += 0.10;
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
@@ -278,7 +276,7 @@ public:
     //////////////////////
     // Target
     // 
-    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_ - target_hue_threshold_, target_hue_value_ + target_hue_threshold_, 40, 100, 40, 100);
+    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_, target_hue_threshold_);
 
     cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7,7));
     cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
@@ -286,44 +284,50 @@ public:
 
     // find the three largest blues
     cv::Mat in = mask_t;
+    unsigned int max_num = 1;
     std::vector<std::vector<cv::Point> > contours; contours.clear();
     cv::findContours(in, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
     // std::vector<cv::Moments> ms_t = findMoments(mask_t, cur_color_frame_, 1);
-    
-    cv::drawContours(cur_orig_color_frame_, contours, -1, cv::Scalar(140, 255, 255), 2);
-    std::vector<cv::Moments> moments; moments.clear();
 
-    unsigned int bigInd = 0; double bigM = 0; 
+    std::vector<cv::Moments> moments; moments.clear();
+    
+    unsigned int bigInd = 0;
     for (unsigned int i = 0; i < contours.size(); i++) {
       cv::Moments m = cv::moments(contours[i]);
-      if (m.m00 > min_contour_size_)
-      {
-        if (m.m00 > bigM)
-        {
-          bigInd = i;
-          bigM = m.m00;
+      if (m.m00 > min_contour_size_) {
+        // first add the forth element
+        moments.push_back(m);
+        // find the smallest element of 4 and remove that
+        if (moments.size() > max_num) {
+          double small(moments.at(0).m00);
+          unsigned int smallInd(0);
+          for (unsigned int j = 1; j < moments.size(); j++){
+            if (moments.at(j).m00 < small) {
+              small = moments.at(j).m00;
+              smallInd = j;
+            }
+            else bigInd = j;
+          }
+          moments.erase(moments.begin() + smallInd);
         }
       }
     }
 
+    std::vector<cv::Moments> ms_t = moments;
+    std::vector<cv::Point> ps = contours.at(bigInd);
     // impossible then
-    if (contours.size() < 1)
+    if (ms_t.size() < 1 || ps.size() < 1)
     {
       ROS_WARN("No target Found");
       return srv;
     }
-    std::vector<cv::Point> ps = contours.at(bigInd);
+    
+    // instead of finding a big moment, try searching for corners
 
-    // instead of finding a big moment, try searchi\ng for corners
-    int low_x(ps.at(0).x),high_x(0), low_y(ps.at(0).y); 
-    int low_x_ind(0), high_x_ind(0), low_y_ind(0);
+    int low_x(ps.at(0).x),high_x(0); 
+    int low_x_ind(0), high_x_ind(0);
     for (unsigned int i = 0; i < ps.size(); i++) 
     {
-      if (ps.at(i).y > low_y)
-      {
-        low_y = ps.at(i).y;
-        low_y_ind = i;
-      }
       if (ps.at(i).x > high_x) 
       {
         high_x = ps.at(i).x;
@@ -338,11 +342,10 @@ public:
     
     cv::circle(cur_orig_color_frame_, ps.at(low_x_ind), 3, cv::Scalar(30, 230, 140), 2);
     cv::circle(cur_orig_color_frame_, ps.at(high_x_ind), 3, cv::Scalar(30, 230, 140), 2);
-    cv::circle(cur_orig_color_frame_, ps.at(low_y_ind), 3, cv::Scalar(30, 230, 140), 2);
     int desired_pt_x = (ps.at(low_x_ind).x + ps.at(high_x_ind).x)/2;
-    int desired_pt_y = (ps.at(low_x_ind).y + ps.at(low_y_ind).y + ps.at(high_x_ind).y)/3;
+    int desired_pt_y = (ps.at(low_x_ind).y + ps.at(high_x_ind).y)/2;
     std::vector<cv::Point> pts_t; pts_t.clear();
-    pts_t.push_back(cv::Point(desired_pt_x, desired_pt_y));
+    pts_t.push_back(cv::Point( desired_pt_x, desired_pt_y));
     
     /**
     // get the center of the moment
@@ -352,7 +355,7 @@ public:
     **/
 
     // convert the features into proper form 
-    std::vector<VSXYZ> desire = PointToVSXYZ(cur_point_cloud_, first_depth_frame_, pts_t);
+    std::vector<VSXYZ> desire = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts_t);
 
     std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desire.front());
     if (JACOBIAN_TYPE_AVG == jacobian_type_)
@@ -900,12 +903,10 @@ protected:
   cv::Mat cur_color_frame_;
   cv::Mat cur_orig_color_frame_;
   cv::Mat cur_depth_frame_;
-  cv::Mat first_depth_frame_;
   cv::Mat cur_workspace_mask_;
   std_msgs::Header cur_camera_header_;
   std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
-  XYZPointCloud first_point_cloud_;
 
   bool have_depth_data_;
   int display_wait_ms_;
