@@ -2733,13 +2733,10 @@ class ObjectSingulationNode
     // Convert images to OpenCV format
     cv::Mat color_frame;
     cv::Mat depth_frame;
-    cv::Mat self_mask;
     cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
     cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
-    cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
     color_frame = color_cv_ptr->image;
     depth_frame = depth_cv_ptr->image;
-    self_mask = mask_cv_ptr->image;
 
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
