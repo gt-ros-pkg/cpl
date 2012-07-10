@@ -115,7 +115,7 @@ class ControlAnalysisIO:
         self.data_out.close()
 
 
-def plot_results(file_name):
+def plot_results(file_name, spin=False):
     io = ControlAnalysisIO()
     controls = io.read_in_data_file(file_name)
     XS = [c.x.x for c in controls]
@@ -128,11 +128,10 @@ def plot_results(file_name):
     goal_theta = controls[0].x_desired.theta
     figure()
     plot(XS,YS)
-    show()
-    print ylim()
-    print xlim(xlim()[1]-(ylim()[1]-ylim()[0]), xlim()[1])
     scatter(XS,YS)
     ax = gca()
+    print ylim()
+    print ax.set_xlim(xlim()[1]-(ylim()[1]-ylim()[0]), xlim()[1])
     headings = [Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
     arrows = [ax.add_patch(h) for h in headings]
     init_arrow = Arrow(controls[0].x.x, controls[0].x.y,
@@ -150,13 +149,60 @@ def plot_results(file_name):
     xlabel('x (meters)')
     ylabel('y (meters)')
     title('Tracker Ouput')
-    show()
+    savefig('/home/thermans/sandbox/tracker-output.png')
     figure()
     ux = [c.u.linear.x for c in controls]
     uy = [c.u.linear.y for c in controls]
+    if spin:
+        uy = [c.u.linear.z for c in controls]
     plot(ux)
     plot(uy)
     xlabel('Time')
     ylabel('Velocity (m/s)')
     legend(['u_x', 'u_y'])
-    title('Control Input')
+    title('Feedback Controller - Input Velocities')
+    savefig('/home/thermans/sandbox/feedback-input.png')
+    figure()
+    xdots = [c.x_dot.x for c in controls]
+    ydots = [c.x_dot.y for c in controls]
+    plot(xdots)
+    plot(ydots)
+    xlabel('Time')
+    ylabel('Velocity (m/s)')
+    title('Tracker Velocities')
+    legend(['x_dot', 'y_dot'])
+    savefig('/home/thermans/sandbox/tracker-velocities.png')
+    figure()
+    thetadots = [c.x_dot.theta for c in controls]
+    plot(thetadots,c='r')
+    xlabel('Time')
+    ylabel('Velocity (rad/s)')
+    title('Tracker Velocities')
+    legend(['theta_dot'])
+    savefig('/home/thermans/sandbox/tracker-theta-vel.png')
+    figure()
+    x_err = [c.x_desired.x - c.x.x for c in controls]
+    y_err = [c.x_desired.y - c.x.y for c in controls]
+    plot(x_err)
+    plot(y_err)
+    xlabel('Time')
+    ylabel('Error (meters)')
+    title('Position Error')
+    savefig('/home/thermans/sandbox/pos-err.png')
+    figure()
+    if spin:
+        theta_err = [c.x_desired.theta - c.x.theta for c in controls]
+    else:
+        theta_err = [c.theta0 - c.x.theta for c in controls]
+    plot(theta_err, c='r')
+    xlabel('Time')
+    ylabel('Error (radians)')
+    if spin:
+        title('Error in Orientation')
+    else:
+        title('Heading Deviation from Initial')
+    savefig('/home/thermans/sandbox/theta-err.png')
+    show()
+
+if __name__ == '__main__':
+    plot_results(sys.argv[1], True)
