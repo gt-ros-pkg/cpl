@@ -86,6 +86,7 @@ class DepthSaliencyNode
     ROS_INFO_STREAM("input_frame.type()" << input_frame.type());
     cv::imshow("input_frame", input_frame);
     cv::imshow("depth_frame", depth_frame);
+    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
     // Save frames to disk
     cv::Mat depth_to_save(input_frame.size(), CV_16UC1);

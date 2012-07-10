@@ -45,7 +45,8 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include <cv_bridge/CvBridge.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
 #include <actionlib/server/simple_action_server.h>
 
 // TF
@@ -674,9 +675,15 @@ class TabletopPushingPerceptionNode
       ROS_DEBUG_STREAM("Cam info: " << cam_info_);
     }
     // Convert images to OpenCV format
-    cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
-    cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-    cv::Mat self_mask(bridge_.imgMsgToCv(mask_msg));
+    cv::Mat color_frame;
+    cv::Mat depth_frame;
+    cv::Mat self_mask;
+    cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
+    cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
+    cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
+    color_frame = color_cv_ptr->image;
+    depth_frame = depth_cv_ptr->image;
+    self_mask = mask_cv_ptr->image;
 
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
@@ -1440,7 +1447,6 @@ class TabletopPushingPerceptionNode
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
   sensor_msgs::CameraInfo cam_info_;
-  sensor_msgs::CvBridge bridge_;
   shared_ptr<tf::TransformListener> tf_;
   ros::ServiceServer push_pose_server_;
   ros::ServiceServer table_location_server_;

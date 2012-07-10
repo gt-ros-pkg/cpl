@@ -51,6 +51,7 @@
 #include <pcl/segmentation/segment_differences.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/search/search.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/extract_indices.h>
@@ -65,7 +66,8 @@
 // #define DISPLAY_CLOUD_DIFF 1
 #define randf() static_cast<float>(rand())/RAND_MAX
 
-typedef pcl::KdTree<pcl::PointXYZ>::Ptr KdTreePtr;
+typedef pcl::search::KdTree<pcl::PointXYZ>::Ptr KdTreePtr;
+// typedef pcl::search::Search::Ptr KdTreePtr;
 
 namespace tabletop_pushing
 {
@@ -241,8 +243,9 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
 {
   std::vector<pcl::PointIndices> clusters;
   pcl::EuclideanClusterExtraction<pcl::PointXYZ> pcl_cluster;
-  KdTreePtr clusters_tree =
-      boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZ> > ();
+  const KdTreePtr clusters_tree(new pcl::search::KdTree<pcl::PointXYZ>);
+  clusters_tree->setInputCloud(objects_cloud.makeShared());
+
   pcl_cluster.setClusterTolerance(cluster_tolerance_);
   pcl_cluster.setMinClusterSize(min_cluster_size_);
   pcl_cluster.setMaxClusterSize(max_cluster_size_);
