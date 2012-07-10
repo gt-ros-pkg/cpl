@@ -130,17 +130,17 @@ Mat CenterSurroundMapper::operator()(Mat& frame, bool use_gradient)
   }
 
 
-  Mat scaled;
-  scaled = scaleMap(saliency_map);
-
+  Mat scaled = scaleMap(saliency_map);
+  Mat display_scaled = upSampleResponse(scaled, min_delta_, frame.size());
 #ifdef DISPLAY_SALIENCY_MAPS
   if (use_gradient)
     cv::imshow("Top Down map", gradient_map);
   cv::imshow("Saliency", scaled);
+  cv::imshow("Map", saliency_map);
   cv::waitKey();
 #endif // DISPLAY_SALIENCY_MAPS
 
-  return scaled;
+  return display_scaled;
 }
 
 
@@ -175,12 +175,11 @@ Mat CenterSurroundMapper::operator()(Mat& frame, Mat& depth_map)
                   normalize(depth_o, bar_max)*0.125);
   Mat scaled;
   scaled = scaleMap(saliency_map);
-
+  Mat display_scaled = upSampleResponse(scaled, min_delta_, frame.size());
 #ifdef DISPLAY_SALIENCY_MAPS
   Mat display_fs = upSampleResponse(frame_saliency, min_delta_, frame.size());
   Mat display_i = upSampleResponse(depth_i, min_delta_, frame.size());
   Mat display_o = upSampleResponse(depth_o, min_delta_, frame.size());
-  Mat display_scaled = upSampleResponse(scaled, min_delta_, frame.size());
   cv::imshow("Frame Saliency", display_fs);
   cv::imshow("Depth i", display_i);
   cv::imshow("Depth o", display_o);
@@ -188,7 +187,7 @@ Mat CenterSurroundMapper::operator()(Mat& frame, Mat& depth_map)
   // cv::waitKey();
 #endif // DISPLAY_SALIENCY_MAPS
 
-  return scaled;
+  return display_scaled;
 }
 
 //
@@ -396,7 +395,10 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
   {
     // Test for max value for normalization
     I_cs[i] = normalize(I_cs[i], I_max);
-    C_cs.push_back(normalize(RG_cs[i], C_max) + normalize(BY_cs[i], C_max));
+    cv::Mat rg_norm = normalize(RG_cs[i], C_max);
+    cv::Mat by_norm = normalize(BY_cs[i], C_max);
+    cv::Mat c_csi = rg_norm + by_norm;
+    C_cs.push_back(c_csi);
     for (int a = 0; a < N_; ++a)
     {
       O_theta_cs[a][i] = normalize(O_theta_cs[a][i], O_theta_max[a]);
@@ -463,17 +465,33 @@ Mat CenterSurroundMapper::getSaliencyMap(Mat& frame)
 
   // Build the saliency map as the combination of the feature maps
   Mat saliency_map(I_bar.rows, I_bar.cols, CV_32FC1);
-  saliency_map = (normalize(I_bar, bar_max)*(1/3.0) +
-                  normalize(C_bar, bar_max)*(1/3.0) +
-                  normalize(O_bar, bar_max)*(1/3.0));
+  Mat I_bar_norm = normalize(I_bar, bar_max);
+  Mat C_bar_norm = normalize(C_bar, bar_max);
+  Mat O_bar_norm = normalize(O_bar, bar_max);
+  saliency_map = (I_bar_norm*(1/3.0)+C_bar_norm*(1/3.0)+O_bar_norm*(1/3.0));
 
 #ifdef DISPLAY_SALIENCY_MAPS
   Mat display_I_bar = upSampleResponse(I_bar, min_delta_, frame.size());
   Mat display_C_bar = upSampleResponse(C_bar, min_delta_, frame.size());
   Mat display_O_bar = upSampleResponse(O_bar, min_delta_, frame.size());
-  cv::imshow("I bar", display_I_bar);
+  cv::imshow("C bar small", C_bar);
+  // cv::imshow("I bar", display_I_bar);
   cv::imshow("C bar", display_C_bar);
   cv::imshow("O bar", display_O_bar);
+  double min_val = 0;
+  double max_val = 0;
+  cv::minMaxLoc(display_O_bar, &min_val, &max_val);
+  std::cout << "O_bar Min_val: " << min_val << std::endl;
+  std::cout << "O_bar Max_val: " << max_val << std::endl;
+  cv::minMaxLoc(display_C_bar, &min_val, &max_val);
+  std::cout << "C_bar Min_val: " << min_val << std::endl;
+  std::cout << "C_bar Max_val: " << max_val << std::endl;
+  cv::minMaxLoc(display_I_bar, &min_val, &max_val);
+  std::cout << "I_bar Min_val: " << min_val << std::endl;
+  std::cout << "I_bar Max_val: " << max_val << std::endl;
+  cv::minMaxLoc(saliency_map, &min_val, &max_val);
+  std::cout << "sal_map Min_val: " << min_val << std::endl;
+  std::cout << "sal_map Max_val: " << max_val << std::endl;
 #endif // DISPLAY_SALIENCY_MAPS
   return saliency_map;
 }
@@ -943,16 +961,33 @@ Mat CenterSurroundMapper::normalize(Mat& map, float M)
     }
   }
 
+  if (cur_max_val == 0)
+  {
+    std::cout << "Max value is 0, don't want to get nans..." << std::endl;
+    std::cout << "M value is: " << M << std::endl;
+    cur_max_val = M;
+    // cur_max_val = 1;
+  }
+
   Mat normalized = map * (M/float(cur_max_val));
   float thresh = M*0.20;
+  // float thresh = 0;
 
   // Find the local maxima
   vector<float> maxima;
+  int nan_count = 0;
   for(int r = 0; r < map.rows; ++r)
   {
     for(int c = 0; c < map.cols; ++c)
     {
       float val = map.at<float>(r,c);
+      if (isnan(val))
+      {
+        // std::cout << "have nan value" << std::endl;
+        nan_count++;
+        val = 0;
+        map.at<float>(r,c) = 0;
+      }
       if (val > thresh)
       {
         // Test if maximal over the 3 by 3 window
@@ -986,6 +1021,10 @@ Mat CenterSurroundMapper::normalize(Mat& map, float M)
     }
   }
 
+  if (nan_count > 0)
+  {
+    std::cout << "Image has: " << nan_count << " nans" << std::endl;
+  }
   // Get mean of the local maxima
   float m_bar = 0;
 
@@ -1025,14 +1064,26 @@ cv::Mat CenterSurroundMapper::upSampleResponse(cv::Mat& m_s, int s, cv::Size siz
   // Calculate the correct sizes to up sample to
   std::vector<cv::Size> sizes;
   cv::Size current_size = size0;
-  for (int i = 0; i < s; i++)
+  while (true)
   {
     sizes.push_back(current_size);
     current_size.width /= 2;
     current_size.height /= 2;
+    if (current_size.width == m_s.cols)
+    {
+      break;
+    }
+    else if (current_size.width-1 == m_s.cols)
+    {
+      std::cout << "Breaking on -1" << std::endl;
+    }
+    else if (current_size.width+1 == m_s.cols)
+    {
+      std::cout << "Breaking on +1" << std::endl;
+    }
   }
-
-  for (int i = 0; i < s; i++)
+  int num_ups = sizes.size();
+  for (int i = 0; i < num_ups; i++)
   {
     cv::Size up_size;
     up_size = sizes.back();
