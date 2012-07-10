@@ -37,10 +37,10 @@
 #include <math.h>
 
 #include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include <cv_bridge/CvBridge.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -77,9 +77,12 @@ class DepthSaliencyNode
                 const sensor_msgs::ImageConstPtr& depth_msg)
   {
     // Convert images to OpenCV format
-    cv::Mat input_frame(bridge_.imgMsgToCv(img_msg));
-    cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-    cv::cvtColor(input_frame, input_frame, CV_RGB2BGR);
+    cv::Mat input_frame;
+    cv::Mat depth_frame;
+    cv_bridge::CvImagePtr input_cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
+    cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
+    input_frame = input_cv_ptr->image;
+    depth_frame = depth_cv_ptr->image;
     ROS_INFO_STREAM("input_frame.type()" << input_frame.type());
     cv::imshow("input_frame", input_frame);
     cv::imshow("depth_frame", depth_frame);
@@ -174,11 +177,9 @@ class DepthSaliencyNode
   ros::NodeHandle n_;
   message_filters::Subscriber<sensor_msgs::Image> image_sub_;
   message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
-  // message_filters::TimeSynchronizer<sensor_msgs::Image,
-  //                                   sensor_msgs::Image> sync_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
   cpl_visual_features::CenterSurroundMapper csm;
-  sensor_msgs::CvBridge bridge_;
+  // sensor_msgs::CvBridge bridge_;
   int img_count_;
 };
 

@@ -55,3 +55,4 @@ target_link_libraries(run_saliency cpl_visual_features_base cpl_visual_features_
 target_link_libraries(saliency_depth_node cpl_visual_features_base cpl_visual_features_saliency ${OpenCV_LIBRARIES})
 target_link_libraries(train_sift_codebook cpl_visual_features_base ${OpenCV_LIBRARIES})
 target_link_libraries(shape_context cpl_visual_features_base cpl_lap_cpp ${OpenCV_LIBRARIES})
+rosbuild_link_boost(saliency_depth_node signals)
