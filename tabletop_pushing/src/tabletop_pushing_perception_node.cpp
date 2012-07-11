@@ -883,10 +883,13 @@ class TabletopPushingPerceptionNode
    */
   bool learnPushCallback(LearnPush::Request& req, LearnPush::Response& res)
   {
+    ROS_INFO_STREAM("learnPushCallback()");
     if ( have_depth_data_ )
     {
+      ROS_INFO_STREAM("learnPushCallback(): have_depth_data_");
       if (req.initialize)
       {
+        ROS_INFO_STREAM("Initializing");
         record_count_ = 0;
         learn_callback_count_ = 0;
         // Initialize stuff if necessary (i.e. angle to push from)
@@ -895,18 +898,21 @@ class TabletopPushingPerceptionNode
       }
       else if (req.analyze_previous)
       {
+        ROS_INFO_STREAM("Analyzing previous");
         res = getAnalysisVector(req.push_angle);
         res.no_push = true;
         recording_input_ = false;
       }
       else if (req.spin_push)
       {
+        ROS_INFO_STREAM("Getting spin push start pose");
         res = getSpinPushStartPose(req);
         recording_input_ = !res.no_objects;
         res.no_push = false;
       }
       else
       {
+        ROS_INFO_STREAM("Getting push start pose");
         res = getPushStartPose(req);
         recording_input_ = !res.no_objects;
         res.no_push = false;
