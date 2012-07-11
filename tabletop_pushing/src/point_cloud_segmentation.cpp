@@ -49,9 +49,10 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/segmentation/segment_differences.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/kdtree/impl/kdtree_flann.hpp>
+// #include <pcl/kdtree/kdtree_flann.h>
+// #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/search/search.h>
+#include <pcl/search/kdtree.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/extract_indices.h>
@@ -67,7 +68,7 @@
 #define randf() static_cast<float>(rand())/RAND_MAX
 
 typedef pcl::search::KdTree<pcl::PointXYZ>::Ptr KdTreePtr;
-// typedef pcl::search::Search::Ptr KdTreePtr;
+typedef pcl::search::KdTree<pcl::PointXYZ>::KdTreeFLANNPtr KdTreeFLANNPtr;
 
 namespace tabletop_pushing
 {
@@ -244,6 +245,7 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
   std::vector<pcl::PointIndices> clusters;
   pcl::EuclideanClusterExtraction<pcl::PointXYZ> pcl_cluster;
   const KdTreePtr clusters_tree(new pcl::search::KdTree<pcl::PointXYZ>);
+  // const KdTreePtr clusters_tree(new pcl::search::KdTreeFLANN<pcl::PointXYZ, flann::L2_Simple<float> >);
   clusters_tree->setInputCloud(objects_cloud.makeShared());
 
   pcl_cluster.setClusterTolerance(cluster_tolerance_);
