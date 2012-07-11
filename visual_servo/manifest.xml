@@ -20,16 +20,12 @@
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
   <depend package="hrl_pr2_lib"/>
-  <depend package="actionlib"/>
-  <depend package="actionlib_msgs"/>
+  <!-- depend package="actionlib"/> -->
+  <!-- <depend package="actionlib_msgs"/> -->
   <depend package="hrl_pr2_arms"/>
-<<<<<<< HEAD
   <depend package="robot_mechanism_controllers"/>
-  <depend package="tabletop_pushing"/>
-  <!-- <depend package="pr2_controllers_msgs"/> -->
-=======
-  <!-- <depend package="robot_mechanism_controllers"/> -->
->>>>>>> 04206a0d0c433a3c0ca22cced7672835d0b6a8a5
+  <!-- <depend package="tabletop_pushing"/> -->
+  <rosdep name="opencv2.3"/>
 </package>
 
 

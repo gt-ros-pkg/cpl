@@ -22,10 +22,16 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-# rosbuild_genmsg()
+rosbuild_genmsg()
 rosbuild_gensrv()
 
-rosbuild_add_executable(visual_servo_node src/visual_servo.cpp)
+rosbuild_add_boost_directories()
+# rosbuild_add_executable(visual_servo_node src/visual_servo.cpp)
 #rosbuild_add_executable(visual_servo_node src/vs_line.cpp)
-rosbuild_add_executable(visual_servo_node src/vs_track.cpp)
+rosbuild_add_executable(visual_servo_node src/vs_grasp.cpp)
+rosbuild_link_boost(visual_servo_node signals)
+find_library(LOG4CXX_LIB log4cxx)
+target_link_libraries(visual_servo_node ${LOG4CXX_LIB})
+
+# target_link_libraries(visual_servo_node libboost_signals.so liblog4cxx.so ${Boost_SYSTEM_LIBRARY} )
 #rosbuild_add_executable(visual_servo_node src/vs_pt.cpp)

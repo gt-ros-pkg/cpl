@@ -49,7 +49,7 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <image_transport/image_transport.h>
-#include <cv_bridge/CvBridge.h>
+#include <cv_bridge/cv_bridge.h>
 
 // TF
 #include <tf/transform_listener.h>
@@ -85,9 +85,15 @@
 
 // Others
 #include <visual_servo/VisualServoTwist.h>
+#include <visual_servo/VisualServoPose.h>
 #include "visual_servo.cpp"
 
 #define DEBUG_MODE 0
+
+#define INIT        0
+#define POSE_CONTR  1
+#define VS_CONTR    2
+#define TERM        3
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
@@ -106,7 +112,9 @@ typedef struct {
 */
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
+using geometry_msgs::PoseStamped;
 using visual_servo::VisualServoTwist;
+using visual_servo::VisualServoPose;
 
 /**
  * We are taping robot hand with three blue painter's tape 
@@ -123,7 +131,7 @@ public:
   cloud_sub_(n, "point_cloud_topic", 1),
   sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
   it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-  desire_points_initialized_(false)
+  desire_points_initialized_(false), PHASE(INIT) 
   {
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -175,9 +183,22 @@ public:
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
                       const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
+    // Store camera information only once
+    if (!camera_initialized_)
+    {
+      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
+      camera_initialized_ = true;
+    }
+
     // Preparing the image
-    cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
-    cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
+    //cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
+    //cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
+    cv::Mat color_frame, depth_frame;
+    cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
+    cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
+    
+    color_frame = color_cv_ptr->image;
+    depth_frame = depth_cv_ptr->image;
 
     // Swap kinect color channel order
     cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
@@ -219,76 +240,88 @@ public:
     cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
 
-    // Store camera information only once
-    if (!camera_initialized_)
-    {
-      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
-      camera_initialized_ = true;
-      initializeService();
-    }
 
-    
-    // compute the twist if everything is good to go
-    visual_servo::VisualServoTwist srv = getTwist();
+    switch(PHASE)
+    {
+      case INIT:
+        {
+          if (initializeDesired())
+          {
+            initializeService();
+            PHASE++;
+          }
+        }
+        break;
 
-    // calling the service provider to move
-    if (client_.call(srv))
-    {
-      // on success
-    }
-    else
-    {
-      // on failure
-      // ROS_WARN("Service FAILED...");
+      case POSE_CONTR:
+        {
+          visual_servo::VisualServoPose p_srv;
+          VSXYZ d = desired_.front();
+          p_srv.request.p.header.stamp = ros::Time::now();
+          p_srv.request.p.header.frame_id = "torso_lift_link";
+          p_srv.request.p.pose.position.x = d.workspace.x;
+          p_srv.request.p.pose.position.y = d.workspace.y;
+          p_srv.request.p.pose.position.z = d.workspace.z + 0.5;
+
+          if (p_client_.call(p_srv))
+          {
+            ros::Duration(2.0).sleep();
+            // on success
+            int code = p_srv.response.result;
+            if (0 == code)
+              PHASE++;
+          }
+          else
+          {
+          }
+        }
+        break;
+
+      case VS_CONTR:
+        {
+          // compute the twist if everything is good to go
+          visual_servo::VisualServoTwist v_srv = getTwist();
+
+          // calling the service provider to move
+          if (v_client_.call(v_srv))
+          {
+            // on success
+          }
+          else
+          {
+            // on failure
+            // ROS_WARN("Service FAILED...");
+          }
+        }
+        break;
+
+      default:
+        {
+          ROS_INFO("Reached TERM state");
+          ros::shutdown();
+        }
+        break;
     }
   }   
   
-  void initializeService()
+  bool initializeDesired()
   {
-    ROS_DEBUG("Hooking Up The Service");
-    ros::NodeHandle n;
-    client_ = n.serviceClient<visual_servo::VisualServoTwist>("movearm");
-  }
-
-  std::vector<VSXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
-  {
-    pcl::PointXYZ origin = origin_xyz.workspace;
-    std::vector<pcl::PointXYZ> pts; pts.clear();
-
-    origin.x -= 0.15;
-    origin.z += 0.10;
-    pcl::PointXYZ two = origin;
-    pcl::PointXYZ three = origin;
-    two.y -= 0.05; 
-    three.x -= 0.05;
     
-    pts.push_back(origin);
-    pts.push_back(two);
-    pts.push_back(three);
-    return Point3DToVSXYZ(pts);
-  }
-  
-  // Service method
-  visual_servo::VisualServoTwist getTwist()
-  {
-    visual_servo::VisualServoTwist srv;
-    
-    //////////////////////
-    // Target
-    // 
     cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_, target_hue_threshold_);
 
     cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7,7));
-    cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
-    cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
+    //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
+    //cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
+    
+    // eroding is good enough (since we are getting rid of false positives)
+    cv::erode(mask_t, mask_t, element_t);
 
-    // find the three largest blues
+    // find the largest red
     cv::Mat in = mask_t;
-    unsigned int max_num = 1;
     std::vector<std::vector<cv::Point> > contours; contours.clear();
     cv::findContours(in, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
-    // std::vector<cv::Moments> ms_t = findMoments(mask_t, cur_color_frame_, 1);
 
+    /*
     std::vector<cv::Moments> moments; moments.clear();
     
     unsigned int bigInd = 0;
@@ -312,56 +345,92 @@ public:
         }
       }
     }
-
     std::vector<cv::Moments> ms_t = moments;
     std::vector<cv::Point> ps = contours.at(bigInd);
+    
     // impossible then
     if (ms_t.size() < 1 || ps.size() < 1)
     {
       ROS_WARN("No target Found");
       return srv;
     }
-    
-    // instead of finding a big moment, try searching for corners
+     */
 
-    int low_x(ps.at(0).x),high_x(0); 
-    int low_x_ind(0), high_x_ind(0);
-    for (unsigned int i = 0; i < ps.size(); i++) 
+    if (contours.size() < 1)
     {
-      if (ps.at(i).x > high_x) 
+      ROS_WARN("No target Found");
+      return false;
+    }
+
+    unsigned int cont_max = contours.at(0).size();
+    unsigned int cont_max_ind = 0;
+    for (unsigned int i = 1; i < contours.size(); i++) 
+    {
+      if (contours.at(i).size() > cont_max)
       {
-        high_x = ps.at(i).x;
-        high_x_ind = i;
-      }
-      else if (ps.at(i).x < low_x) 
-      {
-        low_x = ps.at(i).x;
-        low_x_ind = i;
+        cont_max = contours.at(i).size();
+        cont_max_ind = i;
       }
     }
     
-    cv::circle(cur_orig_color_frame_, ps.at(low_x_ind), 3, cv::Scalar(30, 230, 140), 2);
-    cv::circle(cur_orig_color_frame_, ps.at(high_x_ind), 3, cv::Scalar(30, 230, 140), 2);
-    int desired_pt_x = (ps.at(low_x_ind).x + ps.at(high_x_ind).x)/2;
-    int desired_pt_y = (ps.at(low_x_ind).y + ps.at(high_x_ind).y)/2;
-    std::vector<cv::Point> pts_t; pts_t.clear();
-    pts_t.push_back(cv::Point( desired_pt_x, desired_pt_y));
+    std::vector<cv::Point> ps = contours.at(cont_max_ind);
+    int max_y = 0; 
+    int max_y_ind = 0;
+    for (unsigned int i = 0; i < ps.size(); i++)
+    {
+      if (ps.at(i).y > max_y)
+      {
+        max_y = ps.at(i).y;
+        max_y_ind = i;
+      }
+    }
     
-    /**
-    // get the center of the moment
     std::vector<cv::Point> pts_t; pts_t.clear();
-    cv::Moments m = ms_t.front();
-    pts_t.push_back(cv::Point(m.m10/m.m00, m.m01/m.m00));
-    **/
+    pts_t.push_back(cv::Point(ps.at(max_y_ind).x, max_y));
+    
+    // convert to proper internal struct 
+    desired_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts_t);
 
-    // convert the features into proper form 
-    std::vector<VSXYZ> desire = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts_t);
-
-    std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desire.front());
-    if (JACOBIAN_TYPE_AVG == jacobian_type_)
-      vs_->setDesiredInteractionMatrix(desired_vsxyz);
+    std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_.front());
     desired_locations_ = desired_vsxyz;
 
+    // for jacobian avg, we need IM at desired location as well
+    if (JACOBIAN_TYPE_AVG == jacobian_type_)
+      return vs_->setDesiredInteractionMatrix(desired_vsxyz);
+  
+    return true;
+  }
+
+  void initializeService()
+  {
+    ROS_DEBUG("Hooking Up The Service");
+    ros::NodeHandle n;
+    v_client_ = n.serviceClient<visual_servo::VisualServoTwist>("vs_twist");
+    p_client_ = n.serviceClient<visual_servo::VisualServoPose>("vs_pose");
+  }
+
+  std::vector<VSXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
+  {
+    pcl::PointXYZ origin = origin_xyz.workspace;
+    std::vector<pcl::PointXYZ> pts; pts.clear();
+
+    origin.y += 0.025;
+    origin.z += 0.20;
+    pcl::PointXYZ two = origin;
+    pcl::PointXYZ three = origin;
+    two.y -= 0.05; 
+    three.z += 0.05;
+    
+    pts.push_back(origin);
+    pts.push_back(two);
+    pts.push_back(three);
+    return Point3DToVSXYZ(pts);
+  }
+  
+  // Service method
+  visual_servo::VisualServoTwist getTwist()
+  {
+    visual_servo::VisualServoTwist srv;
     //////////////////////
     // Hand 
     // get all the blues 
@@ -428,6 +497,7 @@ public:
     }
     return e;
   }
+
   /**
    * Still in construction:
    * to fix the orientation of the wrist, we now take a look at how the hand is positioned
@@ -898,7 +968,6 @@ protected:
   message_filters::Synchronizer<MySyncPolicy> sync_;
   image_transport::ImageTransport it_;
   sensor_msgs::CameraInfo cam_info_;
-  sensor_msgs::CvBridge bridge_;
   shared_ptr<tf::TransformListener> tf_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_orig_color_frame_;
@@ -946,42 +1015,16 @@ protected:
   double gain_vel_;
   double gain_rot_;
   double term_threshold_;
+  
+  unsigned int PHASE;
 
   cv::Mat desired_jacobian_;
   std::vector<VSXYZ> desired_locations_;
+  std::vector<VSXYZ> desired_;
   cv::Mat K;
 
-  ros::ServiceServer twistServer;
-  ros::ServiceClient client_;
-
-#ifdef SIMULATION
-  // simulation
-  double sim_hand_x_;
-  double sim_hand_y_;
-  double sim_hand_z_;
-  double sim_hand_wx_;
-  double sim_hand_wy_;
-  double sim_hand_wz_;
-
-  double sim_desired_x_;
-  double sim_desired_y_;
-  double sim_desired_z_;
-  double sim_desired_wx_;
-  double sim_desired_wy_;
-  double sim_desired_wz_;
-  
-  double sim_camera_x_;
-  double sim_camera_y_;
-  double sim_camera_z_;
-  double sim_camera_wx_;
-  double sim_camera_wy_;
-  double sim_camera_wz_; 
-
-  double sim_time_;
-  int sim_feature_size_;
-  double sim_noise_z_;
-  cv::Mat P;
-#endif
+  ros::ServiceClient v_client_;
+  ros::ServiceClient p_client_;
 };
 
 int main(int argc, char ** argv)
@@ -995,5 +1038,4 @@ int main(int argc, char ** argv)
   ros::NodeHandle n;
   VisualServoNode vs_node(n);
   vs_node.spin();
-  return 0;
 }

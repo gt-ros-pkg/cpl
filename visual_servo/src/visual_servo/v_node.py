@@ -60,7 +60,8 @@ class VNode:
         
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
-        self.cart_pub = self.pn.l_arm_cart_vel_pub
+        self.l_cart_twist_pub = self.pn.l_arm_cart_vel_pub
+        self.l_cart_pub = self.pn.l_arm_cart_pub
         self.pn.init_spine_pose()
         self.pn.init_head_pose(self.pn.head_pose_cam_frame)
         self.pn.init_arms()
@@ -94,8 +95,17 @@ class VNode:
         ret = -self.vel_sat
       return ret 
 
+    def handle_pose_request(self, req):
+      pose = req.p # PoseStamped
+      pose.pose.angular.x = 0
+      pose.pose.angular.y = 0
+      pose.pose.angular.z = 0.7071
+      pose.pose.angular.w = -0.7071
 
-    def handle_move_request(self, req):
+      self.pn.move_to_cart_pose(pose, 'l')
+      return VisualServoTwistResponse(0)
+
+    def handle_twist_request(self, req):
       t = req.twist # service call
       e = req.error
       self.vel_scale = sqrt(e + self.vel_scale_param)
@@ -114,7 +124,7 @@ class VNode:
         twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
         twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
         twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-        self.cart_pub.publish(twist)
+        self.l_cart_twist_pub.publish(twist)
 
         # after(before) adjustment
         rospy.loginfo('[e=%.4f][sca=%.4f][sat=%.4f] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', e, self.vel_scale, self.vel_sat, \
@@ -134,7 +144,8 @@ if __name__ == '__main__':
     node = VNode()
     
     rospy.loginfo('Done initializing... Now advertise the Service')
-    s = rospy.Service('movearm', VisualServoTwist , node.handle_move_request)
+    rospy.Service('vs_pose', VisualServoPose , node.handle_pose_request)
+    rospy.Service('vs_twist', VisualServoTwist , node.handle_twist_request)
     rospy.loginfo('Ready to move arm')
     rospy.spin()
   

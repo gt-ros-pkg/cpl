@@ -92,7 +92,7 @@ typedef struct {
   pcl::PointXYZ workspace_angular;
 } VSXYZ;
 
-using boost::shared_ptr;
+// using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PointStamped;
 using visual_servo::VisualServoTwist;
@@ -164,8 +164,8 @@ public:
     tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));  
 
     // twist transformation from optical frame to workspace frame
-    btVector3 out_rot = transform.getBasis() * twist_rot;
-    btVector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
+    tf::Vector3 out_rot = transform.getBasis() * twist_rot;
+    tf::Vector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
     
     // multiple the velocity and rotation by gain defined in the parameter
     srv.request.twist.twist.linear.x  = out_vel.x()*gain_vel_;
