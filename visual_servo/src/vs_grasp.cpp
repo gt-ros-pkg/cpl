@@ -136,13 +136,13 @@ public:
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
-    std::string default_optical_frame = "/openni_rgb_optical_frame";
+    std::string default_optical_frame = "/head_mount_kinect_rgb_optical_frame";
     n_private_.param("optical_frame", optical_frame_, default_optical_frame);
  
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
     n_private_.param("num_downsamples", num_downsamples_, 2);
-    std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
+    std::string cam_info_topic_def = "/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
     
     n_private_.param("crop_min_x", crop_min_x_, 0);
@@ -759,7 +759,7 @@ public:
     in_c.z = t.at<float>(2,0);
     
     // really doesn't matter which frame they are in. ignored for now.
-    cv::Point img = projectPointIntoImage(in_c, "/openni_rgb_optical_frame", "/openni_rgb_optical_frame");
+    cv::Point img = projectPointIntoImage(in_c, default_optical_frame, default_optical_frame);
     cv::Mat temp = projectImagePointToPoint(img);
 
     float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));

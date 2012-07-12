@@ -1,9 +1,9 @@
 <launch>
   <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> 
   <node name="vs_node" pkg="visual_servo" type="visual_servo_node" respawn="false" output="screen">
-    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
-    <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
-    <remap from="point_cloud_topic" to="/kinect_head/depth/points"/>
+    <remap from="color_image_topic" to="/rgb/image_raw"/>
+    <remap from="depth_image_topic" to="/depth/image"/>
+    <remap from="point_cloud_topic" to="/depth/points"/>
 
     <param name="target_hue_value" value="345" type="int"/>
     <param name="target_hue_threshold" value="40" type="int"/>

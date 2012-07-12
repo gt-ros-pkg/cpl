@@ -36,7 +36,9 @@ import rospy
 from geometry_msgs.msg import TwistStamped
 import tf
 from visual_servo.srv import *
-import tabletop_pushing.position_feedback_push_node as pn
+# import tabletop_pushing.position_feedback_push_node as pn
+
+import visual_servo.position_feedback_push_node as pn
 import sys
 import numpy as np
 from math import sqrt
