@@ -46,7 +46,8 @@ import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import sin, cos, pi, fabs, sqrt
+from math import sin, cos, pi, fabs, sqrt, atan2
+from controller_analysis import ControlAnalysisIO
 import sys
 
 # Setup joints stolen from Kelsey's code.
@@ -114,10 +115,26 @@ _POSTURES = {
     'elbowdownl': [-0.0088195719039858515, 1.2834828245284853, 0.20338442004843196, -1.5565279256852611, -0.096340012666916802, -1.0235018652439782, 1.7990893054129216]
 }
 
+def subPIAngle(theta):
+    while theta < -pi:
+        theta += 2.0*pi
+    while theta > pi:
+        theta -= 2.0*pi
+    return theta
+
+def sign(x):
+    if x < 0:
+        return -1
+    return 1
+
 class PositionFeedbackPushNode:
 
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
+        self.controller_io = ControlAnalysisIO()
+        out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
+        rospy.loginfo('Opening controller output file: '+out_file_name)
+        self.controller_io.open_out_file(out_file_name)
 
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
@@ -128,6 +145,7 @@ class PositionFeedbackPushNode:
                                                     0.30)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
+        # TODO: Base this value on the tallest tabletop object
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
@@ -145,6 +163,15 @@ class PositionFeedbackPushNode:
                                                              0.005)
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
+
+        self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
+        self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
+        self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
+        self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
+        self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
+        self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
+        self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
+        self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
         # Setup cartesian controller parameters
@@ -198,13 +225,12 @@ class PositionFeedbackPushNode:
                          self.controller_state_msg,
                          self.r_arm_cart_state_callback)
 
-        # TODO: setup velocity controller callback methods
-        # rospy.Subscriber('/l'+self.base_vel_controller_name+'/state',
-        #                  self.vel_controller_state_msg,
-        #                  self.l_arm_vel_state_callback)
-        # rospy.Subscriber('/r'+self.base_vel_controller_name+'/state',
-        #                  self.vel_controller_state_msg,
-        #                  self.r_arm_vel_state_callback)
+        rospy.Subscriber('/l'+self.base_vel_controller_name+'/state',
+                         self.vel_controller_state_msg,
+                         self.l_arm_vel_state_callback)
+        rospy.Subscriber('/r'+self.base_vel_controller_name+'/state',
+                         self.vel_controller_state_msg,
+                         self.r_arm_vel_state_callback)
 
         self.l_pressure_listener = pl.PressureListener(
             '/pressure/l_gripper_motor', self.pressure_safety_limit)
@@ -223,9 +249,16 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = None
         self.r_arm_F = None
 
+        self.spin_to_heading = False
+
         # Open callback services
-        self.gripper_feedback_push_srv = rospy.Service(
-            'gripper_feedback_push', GripperPush, self.gripper_feedback_push)
+        self.overhead_feedback_push_srv = rospy.Service(
+            'overhead_feedback_push', GripperPush, self.overhead_feedback_push)
+        self.overhead_feedback_post_push_srv = rospy.Service(
+            'overhead_feedback_post_push', GripperPush,
+            self.overhead_feedback_post_push)
+
+
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
                                                   GripperPush,
                                                   self.gripper_pre_push)
@@ -350,7 +383,7 @@ class PositionFeedbackPushNode:
     #
     # Behavior functions
     #
-    def gripper_feedback_push(self, request):
+    def overhead_feedback_push(self, request):
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
@@ -376,14 +409,17 @@ class PositionFeedbackPushNode:
 
         # Start pushing forward
         # self.vel_push_forward(which_arm)
+        self.stop_moving_vel(which_arm)
         done_cb = None
         active_cb = None
-        feedback_cb = self.tracker_feedback_gripper_push
+        feedback_cb = self.tracker_feedback_overhead_push
         goal = VisFeedbackPushTrackingGoal()
         goal.which_arm = which_arm
         goal.header.frame_id = request.start_point.header.frame_id
         goal.desired_pose = request.goal_pose
         self.desired_pose = request.goal_pose
+        goal.spin_to_heading = request.spin_to_heading
+        self.spin_to_heading = request.spin_to_heading
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
         # Block until done
@@ -395,40 +431,164 @@ class PositionFeedbackPushNode:
         # TODO: send back info
         return response
 
-    def tracker_feedback_gripper_push(self, feedback):
+    def tracker_feedback_overhead_push(self, feedback):
+        if self.feedback_count == 0:
+            self.theta0 = feedback.x.theta
+            self.x0 = feedback.x.x
+            self.y0 = feedback.x.y
         which_arm = self.active_arm
-        update_twist = TwistStamped()
-        update_twist.header.frame_id = 'torso_lift_link'
-        update_twist.header.stamp = rospy.Time(0)
-        update_twist.twist.linear.z = 0.0
-        update_twist.twist.angular.x = 0.0
-        update_twist.twist.angular.y = 0.0
-        update_twist.twist.angular.z = 0.0
-
-        # Push centroid towards the desired goal
-        goal_x_dot = self.desired_pose.x - feedback.x.x
-        goal_y_dot = self.desired_pose.y - feedback.x.y
-
-        # Add in direction to corect for spinning
-        # TODO: Correct component based on transform in object pose
-        spin_x_dot = sin(feedback.x.theta)*feedback.x_dot.theta
-        spin_y_dot = cos(feedback.x.theta)*feedback.x_dot.theta
-
-        k_g = 0.1
-        k_s = 0.03
-
-        update_twist.twist.linear.x = k_g*goal_x_dot + k_s*spin_x_dot
-        update_twist.twist.linear.y = k_g*goal_y_dot + k_s*spin_y_dot
-        if self.feedback_count % 15 == 0:
-            rospy.loginfo('Desired pose: ' + str(self.desired_pose))
-            rospy.loginfo('Current pose: ' + str(feedback.x))
-            rospy.loginfo('q_goal_dot: (' + str(k_g*goal_x_dot) + ', ' + str(k_g*goal_y_dot) + ')')
-            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' + str(spin_y_dot) + ')')
-            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' + str(update_twist.twist.linear.y) + ')\n')
-        update_twist.twist.linear.x = k_g*goal_x_dot
-        update_twist.twist.linear.y = k_g*goal_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
+                          str(self.desired_pose.y) + ', ' +
+                          str(self.desired_pose.theta) + ')')
+            rospy.loginfo('X: (' + str(feedback.x.x) + ', ' + str(feedback.x.y)
+                          + ', ' + str(feedback.x.theta) + ')')
+            rospy.loginfo('X_dot: (' + str(feedback.x_dot.x) + ', ' +
+                          str(feedback.x_dot.y) + ', ' +
+                          str(feedback.x_dot.theta) + ')')
+            rospy.loginfo('X_error: (' + str(self.desired_pose.x - feedback.x.x) + ', ' +
+                          str(self.desired_pose.y - feedback.x.y) + ', ' +
+                          str(self.desired_pose.theta - feedback.x.theta) + ')')
+        # TODO: Add new pushing visual feedback controllers here
+        if self.spin_to_heading:
+            update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
+        else:
+            update_twist = self.spinCompensationController(feedback, self.desired_pose)
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
+                          str(update_twist.twist.linear.y) + ', ' +
+                          str(update_twist.twist.linear.z) + ')\n')
+        self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                      update_twist.twist, update_twist.header.stamp.to_sec())
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
+
+    def spinCompensationController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time(0)
+        # TODO: Make this a function of the measured pressure?
+        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
+        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
+        # Add in direction to corect for spinning
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        # transform_angle = t0_error
+        spin_x_dot = -sin(transform_angle)*(self.k_s_d*cur_state.x_dot.theta +
+                                            -self.k_s_p*t0_error)
+        spin_y_dot =  cos(transform_angle)*(self.k_s_d*cur_state.x_dot.theta +
+                                            -self.k_s_p*t0_error)
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot + spin_x_dot
+        u.twist.linear.y = goal_y_dot + spin_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
+                          str(spin_y_dot) + ')')
+        return u
+
+    def spinHeadingController(self, cur_state, desired_state, which_arm):
+        u = TwistStamped()
+        u.header.frame_id = which_arm+'_gripper_palm_link'
+        u.header.stamp = rospy.Time(0)
+        # TODO: Make this a function of the measured pressure?
+        u.twist.linear.x = 0.0 # -self.overhead_fb_down_vel
+        # TODO: Track object rotation with gripper angle
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
+        s_theta = sign(t_error)
+        t_dist = fabs(t_error)
+        heading_x_dot = self.k_h_f*t_dist
+        heading_y_dot = s_theta*self.k_h_in#*t_dist
+        u.twist.linear.z = min(heading_x_dot, self.max_heading_u_x)
+        u.twist.linear.y = heading_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('heading_x_dot: (' + str(heading_x_dot) + ')')
+            rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
+        return u
+
+    def slidingModeController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time(0)
+        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = desired_state.theta - cur_state.x.theta
+
+    def overhead_feedback_post_push(self, request):
+        response = GripperPushResponse()
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+
+        if request.left_arm:
+            ready_joints = LEFT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = LEFT_ARM_PULL_READY_JOINTS
+            which_arm = 'l'
+            wrist_pitch = 0.5*pi
+        else:
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = RIGHT_ARM_PULL_READY_JOINTS
+            which_arm = 'r'
+            wrist_pitch = -0.5*pi
+
+        rospy.logdebug('Moving gripper up')
+        pose_err, err_dist = self.move_relative_gripper(
+            np.matrix([-self.gripper_raise_dist, 0.0, 0.0]).T, which_arm,
+            move_cart_count_thresh=self.post_move_count_thresh)
+        rospy.logdebug('Done moving up')
+        rospy.logdebug('Pushing reverse')
+        pose_err, err_dist = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, -0.03]).T, which_arm,
+            move_cart_count_thresh=self.post_move_count_thresh)
+        rospy.loginfo('Done pushing reverse')
+
+
+        rospy.logdebug('Moving up to end point')
+        wrist_yaw = request.wrist_yaw
+        end_pose = PoseStamped()
+        end_pose.header = request.start_point.header
+
+        # Move straight up to point above the current EE pose
+        if request.left_arm:
+            cur_pose = self.l_arm_pose
+        else:
+            cur_pose = self.r_arm_pose
+
+        end_pose.pose.position.x = cur_pose.pose.position.x
+        end_pose.pose.position.y = cur_pose.pose.position.y
+        end_pose.pose.position.z = self.high_arm_init_z
+        q = tf.transformations.quaternion_from_euler(0.0, 0.5*pi, wrist_yaw)
+        end_pose.pose.orientation.x = q[0]
+        end_pose.pose.orientation.y = q[1]
+        end_pose.pose.orientation.z = q[2]
+        end_pose.pose.orientation.w = q[3]
+        self.move_to_cart_pose(end_pose, which_arm,
+                               self.post_move_count_thresh)
+        rospy.loginfo('Done moving up to end point')
+
+        if request.arm_reset:
+            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        return response
+
 
     def gripper_push(self, request):
         response = GripperPushResponse()
@@ -490,7 +650,6 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper:
-            # TODO: open gripper
             res = robot_gripper.open(block=True, position=0.05)
 
         if request.high_arm_init:
@@ -544,7 +703,6 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper:
-            # TODO: Close gripper
             res = robot_gripper.close(block=True)
 
         if request.high_arm_init:
@@ -771,8 +929,7 @@ class PositionFeedbackPushNode:
             # self.move_down_until_contact(which_arm)
 
         # Move to offset pose
-        self.move_to_cart_pose(start_pose, which_arm,
-                               self.pre_push_count_thresh)
+        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
 
         return response
@@ -879,7 +1036,7 @@ class PositionFeedbackPushNode:
 
         # rospy.logdebug('Got torso client result')
         new_torso_position = np.asarray(self.robot.torso.pose()).ravel()[0]
-        # rospy.logdebug('New torso position is: ' + str(new_torso_position))
+        rospy.loginfo('New spine height is ' + str(new_torso_position))
 
         # Get torso_lift_link position in base_link frame
 
@@ -1300,6 +1457,22 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = state_msg.xd
         self.r_arm_F = state_msg.F
 
+    def l_arm_vel_state_callback(self, state_msg):
+        x_err = state_msg.x_err
+        x_d = state_msg.xd
+        self.l_arm_pose = state_msg.x
+        self.l_arm_x_err = x_err
+        self.l_arm_x_d = x_d
+        self.l_arm_F = state_msg.F
+
+    def r_arm_vel_state_callback(self, state_msg):
+        x_err = state_msg.x_err
+        x_d = state_msg.xd
+        self.r_arm_pose = state_msg.x
+        self.r_arm_x_err = state_msg.x_err
+        self.r_arm_x_d = state_msg.xd
+        self.r_arm_F = state_msg.F
+
     #
     # Controller setup methods
     #
@@ -1357,6 +1530,11 @@ class PositionFeedbackPushNode:
             self.arm_mode = 'vel_mode'
             rospy.sleep(self.post_controller_switch_sleep)
 
+    def shutdown_hook(self):
+        rospy.loginfo('Cleaning up node on shutdown')
+        self.controller_io.close_out_file()
+        # TODO: stop moving the arms on shutdown
+
     #
     # Main Control Loop
     #
@@ -1369,6 +1547,7 @@ class PositionFeedbackPushNode:
         self.init_arms()
         self.switch_to_cart_controllers()
         rospy.loginfo('Done initializing feedback pushing node.')
+        rospy.on_shutdown(self.shutdown_hook)
         rospy.spin()
 
 if __name__ == '__main__':
