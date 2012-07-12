@@ -36,6 +36,7 @@
 #include <ros/package.h>
 
 #include <std_msgs/Header.h>
+#include <std_msgs/String.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Pose2D.h>
@@ -86,6 +87,7 @@
 // Others
 #include <visual_servo/VisualServoTwist.h>
 #include "visual_servo.cpp"
+#include <sstream>
 
 #define DEBUG_MODE 0
 
@@ -281,6 +283,7 @@ public:
 #else     
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
+    chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
 #endif
   }
 
@@ -290,12 +293,14 @@ public:
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
                       const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
+    ros::Time start = ros::Time::now();
+
     // Preparing the image
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
 
     // Swap kinect color channel order
-    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
+    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
     XYZPointCloud cloud; 
     pcl::fromROSMsg(*cloud_msg, cloud);
@@ -383,6 +388,15 @@ public:
         ROS_WARN("Service FAILED...");
       }
     }
+
+    ros::Time end = ros::Time::now();
+
+    std::stringstream ss;
+    ss << "Time it took is " << (end - start).toSec();
+    std_msgs::String msg;
+    msg.data = ss.str();
+    chatter_pub_.publish(msg);
+
   }   
   
   void initializeService()
@@ -1164,6 +1178,7 @@ protected:
   ros::ServiceServer twistServer;
   ros::ServiceClient client_;
 
+  ros::Publisher chatter_pub_;
 #ifdef SIMULATION
   // simulation
   double sim_hand_x_;

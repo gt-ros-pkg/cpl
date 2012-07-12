@@ -110,7 +110,7 @@ public:
   {
     // user must specify the jacobian type
     jacobian_type_ = jacobian_type;
-    std::string default_optical_frame = "/openni_rgb_optical_frame";
+    std::string default_optical_frame = "/head_mount_kinect_rgb_optical_frame";
     n_private_.param("optical_frame", optical_frame_, default_optical_frame);
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
@@ -120,12 +120,11 @@ public:
     n_private_.param("gain_rot", gain_rot_, 1.0);
     // n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
     
-    ros::Time now = ros::Time(0);
     try 
     {
-      tf::TransformListener listener;
-      listener.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(2.0));
-      listener.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
+      ros::Time now = ros::Time(0);
+      listener_.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(2.0));
+      listener_.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
     }
     catch (tf::TransformException e)
     {
@@ -142,6 +141,9 @@ public:
     
     cv::Mat twist = computeTwistCamera(desired_locations, hand_features);
     cv::Mat temp = twist.clone(); 
+      
+    ros::Time now = ros::Time(0);
+    listener_.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
     /*
     tf::StampedTransform transform; 
     ros::Time now = ros::Time(0);
@@ -223,6 +225,7 @@ protected:
   std::string optical_frame_;
   tf::StampedTransform transform;
  
+  tf::TransformListener listener_;
   // others
   int jacobian_type_;
   double gain_vel_;

@@ -34,6 +34,7 @@
 import roslib; roslib.load_manifest('visual_servo')
 import rospy
 from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import PoseStamped
 import tf
 from visual_servo.srv import *
 # import tabletop_pushing.position_feedback_push_node as pn
@@ -99,13 +100,15 @@ class VNode:
 
     def handle_pose_request(self, req):
       pose = req.p # PoseStamped
-      pose.pose.angular.x = 0
-      pose.pose.angular.y = 0
-      pose.pose.angular.z = 0.7071
-      pose.pose.angular.w = -0.7071
+      pose.pose.orientation.x = -0.7071
+      pose.pose.orientation.y = 0
+      pose.pose.orientation.z = 0.7071
+      pose.pose.orientation.w = 0
 
       self.pn.move_to_cart_pose(pose, 'l')
-      return VisualServoTwistResponse(0)
+      rospy.loginfo(pose)
+      return {'result': 0}
+      # return VisualServoTwistResponse('{0}')
 
     def handle_twist_request(self, req):
       t = req.twist # service call

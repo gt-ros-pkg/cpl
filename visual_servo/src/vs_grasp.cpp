@@ -36,6 +36,7 @@
 #include <ros/package.h>
 
 #include <std_msgs/Header.h>
+#include <std_msgs/String.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Pose2D.h>
@@ -82,6 +83,7 @@
 #include <math.h>
 #include <time.h> // for srand(time(NULL))
 #include <cstdlib> // for MAX_RAND
+#include <sstream>
 
 // Others
 #include <visual_servo/VisualServoTwist.h>
@@ -133,6 +135,7 @@ public:
   it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
   desire_points_initialized_(false), PHASE(INIT) 
   {
+
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
@@ -142,7 +145,7 @@ public:
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
     n_private_.param("num_downsamples", num_downsamples_, 2);
-    std::string cam_info_topic_def = "/rgb/camera_info";
+    std::string cam_info_topic_def = "/camera/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
     
     n_private_.param("crop_min_x", crop_min_x_, 0);
@@ -175,6 +178,9 @@ public:
   
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
+    
+    chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
+    ROS_DEBUG("Initialization 1 Done");
   }
 
   /**
@@ -183,11 +189,15 @@ public:
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
                       const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
+
+    ros::Time start = ros::Time::now();
+
     // Store camera information only once
     if (!camera_initialized_)
     {
-      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(2.0));
+      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(3.0));
       camera_initialized_ = true;
+      ROS_DEBUG("Initialization: Camera Info");
     }
 
     // Preparing the image
@@ -201,7 +211,8 @@ public:
     depth_frame = depth_cv_ptr->image;
 
     // Swap kinect color channel order
-    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
+    // new Fuerte may not need this line
+    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
     XYZPointCloud cloud; 
     pcl::fromROSMsg(*cloud_msg, cloud);
@@ -233,14 +244,13 @@ public:
         }
       }
     }
-
+    
     // focus only on the tabletop setting. do not care about anything far or too close
     color_frame.copyTo(cur_color_frame_, workspace_mask);
     cur_orig_color_frame_ = color_frame.clone();
     cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
-
-
+  
     switch(PHASE)
     {
       case INIT:
@@ -248,7 +258,13 @@ public:
           if (initializeDesired())
           {
             initializeService();
-            PHASE++;
+            PHASE = POSE_CONTR;
+            ros::Duration(7.0).sleep();
+            ROS_INFO("Phase %d, Moving to next phase in 7.0 seconds", PHASE);
+          }
+          else
+          {
+            ROS_INFO("Failed. Retrying initialization in 2 seconds");
           }
         }
         break;
@@ -261,15 +277,20 @@ public:
           p_srv.request.p.header.frame_id = "torso_lift_link";
           p_srv.request.p.pose.position.x = d.workspace.x;
           p_srv.request.p.pose.position.y = d.workspace.y;
-          p_srv.request.p.pose.position.z = d.workspace.z + 0.5;
+          p_srv.request.p.pose.position.z = d.workspace.z + 0.1;
 
           if (p_client_.call(p_srv))
           {
             ros::Duration(2.0).sleep();
             // on success
             int code = p_srv.response.result;
+            printf("Code [%d]. Moving to Next if Code=0\n", code);
             if (0 == code)
-              PHASE++;
+            {
+              ros::Duration(7.0).sleep();
+              ROS_INFO("Phase %d, Moving to next phase in 7.0 seconds", PHASE);
+              PHASE = VS_CONTR;
+            }
           }
           else
           {
@@ -302,6 +323,18 @@ public:
         }
         break;
     }
+
+    //cv::imshow("in", cur_orig_color_frame_); 
+    //cv::waitKey(display_wait_ms_);
+
+    ros::Time end = ros::Time::now();
+    
+    std::stringstream ss;
+    ss << "Time it took is " << (end - start).toSec();
+    std_msgs::String msg;
+    msg.data = ss.str();
+    chatter_pub_.publish(msg);
+    // ROS_INFO("Time it took is %f", (end - start).toSec());
   }   
   
   bool initializeDesired()
@@ -463,8 +496,7 @@ public:
       cv::Point p = features.at(i).image;
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
     }
-    cv::imshow("in", cur_orig_color_frame_); 
-    cv::waitKey(display_wait_ms_);
+
     
     /* 
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
@@ -940,6 +972,10 @@ public:
           size++;
           value += temp;
         }
+        else
+        {
+          printf("I DON'T LIKE THIS VALUE! [%d, %d] %f\n", x, y, temp); 
+        }
       }
     }
     if (size == 0)
@@ -1025,6 +1061,8 @@ protected:
 
   ros::ServiceClient v_client_;
   ros::ServiceClient p_client_;
+
+  ros::Publisher chatter_pub_;
 };
 
 int main(int argc, char ** argv)

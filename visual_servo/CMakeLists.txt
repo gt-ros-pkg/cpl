@@ -30,6 +30,8 @@ rosbuild_add_boost_directories()
 #rosbuild_add_executable(visual_servo_node src/vs_line.cpp)
 rosbuild_add_executable(visual_servo_node src/vs_grasp.cpp)
 rosbuild_link_boost(visual_servo_node signals)
+#rosbuild_add_executable(vsp src/vs_pt.cpp)
+#rosbuild_link_boost(vsp signals)
 find_library(LOG4CXX_LIB log4cxx)
 target_link_libraries(visual_servo_node ${LOG4CXX_LIB})
 
