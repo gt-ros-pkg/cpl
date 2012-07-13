@@ -979,7 +979,11 @@ public:
       }
     }
     if (size == 0)
+    {
+      // mark source of 
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(255, 255, 0), 1);
       return -1;
+    }
     return value/size;
   }
  
