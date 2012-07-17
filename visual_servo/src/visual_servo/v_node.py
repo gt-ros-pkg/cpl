@@ -68,7 +68,8 @@ class VNode:
         self.pn.init_spine_pose()
         self.pn.init_head_pose(self.pn.head_pose_cam_frame)
         self.pn.init_arms()
-        self.init_arm_servo()
+        # self.pn.gripper_open()
+        # self.init_arm_servo()
         self.pn.switch_to_cart_controllers()
         rospy.loginfo('Done moving to robot initial pose')
 
@@ -100,10 +101,10 @@ class VNode:
 
     def handle_pose_request(self, req):
       pose = req.p # PoseStamped
-      pose.pose.orientation.x = -0.7071
-      pose.pose.orientation.y = 0
-      pose.pose.orientation.z = 0.7071
-      pose.pose.orientation.w = 0
+      #pose.pose.orientation.x = -0.7071
+      #pose.pose.orientation.y = 0
+      #pose.pose.orientation.z = 0.7071
+      #pose.pose.orientation.w = 0
 
       self.pn.move_to_cart_pose(pose, 'l')
       rospy.loginfo(pose)

@@ -2,17 +2,18 @@
   <!-- <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> -->
   <!-- <include file="$(find visual_servo)/launch/kinect_head.launch"/>  -->
   <node name="vs_node" pkg="visual_servo" type="visual_servo_node" respawn="false" output="screen">
-    <!-- <remap from="color_image_topic" to="/camera/rgb/image_color"/> -->
-    <!-- <remap from="depth_image_topic" to="/camera/depth/image"/> -->
-    <!-- <remap from="point_cloud_topic" to="/camera/depth/points"/> -->
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
+    <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
+    <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
+    <param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/>
 
-    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
-    <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
-    <remap from="point_cloud_topic" to="/kinect_head/depth/points"/>
+    <!-- <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> -->
+    <!--<remap from="depth_image_topic" to="/kinect_head/depth/image"/> -->
+    <!--<remap from="point_cloud_topic" to="/kinect_head/depth/points"/> -->
+    <!--<param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/> -->
 
-
-    <param name="target_hue_value" value="345" type="int"/>
-    <param name="target_hue_threshold" value="40" type="int"/>
+    <param name="target_hue_value" value="350" type="int"/>
+    <param name="target_hue_threshold" value="48" type="int"/>
     
     <param name="tape_hue_value" value="200" type="int"/>
     <param name="tape_hue_threshold" value="50" type="int"/>
@@ -20,7 +21,7 @@
     <param name="default_sat_top_value" value="100" type="int"/>
     <param name="default_val_value" value="100" type="int"/>
  
-    <param name="jacobian_type" value="3" type="int"/>
+    <param name="jacobian_type" value="1" type="int"/>
     <param name="gain_rot" value="0.3" type="double"/>
     <param name="gain_vel" value="2.5" type="double"/>
     
@@ -53,7 +54,6 @@
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="workspace_frame" value="/torso_lift_link" type="string"/>
     <param name="optical_frame" value="/head_mount_kinect_rgb_optical_frame" type="string"/>
-    <param name="cam_info_topic" value="/camera/rgb/camera_info" type="string"/>
 
 
     <param name="crop_min_x" value="20" type="int"/>

@@ -94,8 +94,9 @@
 
 #define INIT        0
 #define POSE_CONTR  1
-#define VS_CONTR    2
-#define TERM        3
+#define POSE_CONTR_2 2
+#define VS_CONTR    3
+#define TERM        4
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
@@ -145,7 +146,7 @@ public:
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
     n_private_.param("num_downsamples", num_downsamples_, 2);
-    std::string cam_info_topic_def = "/camera/rgb/camera_info";
+    std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
     
     n_private_.param("crop_min_x", crop_min_x_, 0);
@@ -180,7 +181,7 @@ public:
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
     
     chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
-    ROS_DEBUG("Initialization 1 Done");
+    ROS_DEBUG("Initialization 0: Node init & Register Callback Done");
   }
 
   /**
@@ -197,7 +198,7 @@ public:
     {
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(3.0));
       camera_initialized_ = true;
-      ROS_DEBUG("Initialization: Camera Info");
+      ROS_DEBUG("Initialization: Camera Info Done");
     }
 
     // Preparing the image
@@ -255,12 +256,13 @@ public:
     {
       case INIT:
         {
+          ROS_DEBUG("Phase Init");
           if (initializeDesired())
           {
             initializeService();
             PHASE = POSE_CONTR;
-            ros::Duration(7.0).sleep();
-            ROS_INFO("Phase %d, Moving to next phase in 7.0 seconds", PHASE);
+            // ros::Duration(3.0).sleep(); // blocking sleep
+            ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
           }
           else
           {
@@ -271,24 +273,36 @@ public:
 
       case POSE_CONTR:
         {
+          ROS_DEBUG("Phase Pose Control");
           visual_servo::VisualServoPose p_srv;
           VSXYZ d = desired_.front();
           p_srv.request.p.header.stamp = ros::Time::now();
           p_srv.request.p.header.frame_id = "torso_lift_link";
           p_srv.request.p.pose.position.x = d.workspace.x;
           p_srv.request.p.pose.position.y = d.workspace.y;
-          p_srv.request.p.pose.position.z = d.workspace.z + 0.1;
-
+          p_srv.request.p.pose.position.z = d.workspace.z + 0.05;
+          
+          p_srv.request.p.pose.orientation.x = -0.7071;
+          p_srv.request.p.pose.orientation.y = 0;
+          p_srv.request.p.pose.orientation.z = 0.7071;
+          p_srv.request.p.pose.orientation.w = 0;
+          
+          /*
+          p_srv.request.p.pose.orientation.x = 0;
+          p_srv.request.p.pose.orientation.y = 1;
+          p_srv.request.p.pose.orientation.z = 0;
+          p_srv.request.p.pose.orientation.w = 0;
+          */
+          ROS_DEBUG(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.5);
           if (p_client_.call(p_srv))
           {
-            ros::Duration(2.0).sleep();
             // on success
             int code = p_srv.response.result;
             printf("Code [%d]. Moving to Next if Code=0\n", code);
             if (0 == code)
             {
-              ros::Duration(7.0).sleep();
-              ROS_INFO("Phase %d, Moving to next phase in 7.0 seconds", PHASE);
+              ros::Duration(2.0).sleep();
+              ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
               PHASE = VS_CONTR;
             }
           }
@@ -297,7 +311,7 @@ public:
           }
         }
         break;
-
+      
       case VS_CONTR:
         {
           // compute the twist if everything is good to go
@@ -323,9 +337,23 @@ public:
         }
         break;
     }
+    
+    if (PHASE > INIT)
+    {
+      VSXYZ d = desired_.front();
+      cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
 
-    //cv::imshow("in", cur_orig_color_frame_); 
-    //cv::waitKey(display_wait_ms_);
+      // Draw the dots on image to be displayed
+      for (unsigned int i = 0; i < desired_locations_.size(); i++)
+      {
+        cv::Point p = desired_locations_.at(i).image;
+        cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
+      }
+    }
+
+    cv::imshow("in", cur_orig_color_frame_); 
+    cv::waitKey(display_wait_ms_);
+
 
     ros::Time end = ros::Time::now();
     
@@ -340,54 +368,18 @@ public:
   bool initializeDesired()
   {
     
-    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_, target_hue_threshold_);
-
-    cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7,7));
+    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_ - target_hue_threshold_ , target_hue_value_ + target_hue_threshold_, 50, 100, 25, 100);
+    cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
     //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
-    //cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
+    cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
     
     // eroding is good enough (since we are getting rid of false positives)
-    cv::erode(mask_t, mask_t, element_t);
+    // cv::erode(mask_t, mask_t, element_t);
 
     // find the largest red
     cv::Mat in = mask_t;
     std::vector<std::vector<cv::Point> > contours; contours.clear();
     cv::findContours(in, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
-
-    /*
-    std::vector<cv::Moments> moments; moments.clear();
-    
-    unsigned int bigInd = 0;
-    for (unsigned int i = 0; i < contours.size(); i++) {
-      cv::Moments m = cv::moments(contours[i]);
-      if (m.m00 > min_contour_size_) {
-        // first add the forth element
-        moments.push_back(m);
-        // find the smallest element of 4 and remove that
-        if (moments.size() > max_num) {
-          double small(moments.at(0).m00);
-          unsigned int smallInd(0);
-          for (unsigned int j = 1; j < moments.size(); j++){
-            if (moments.at(j).m00 < small) {
-              small = moments.at(j).m00;
-              smallInd = j;
-            }
-            else bigInd = j;
-          }
-          moments.erase(moments.begin() + smallInd);
-        }
-      }
-    }
-    std::vector<cv::Moments> ms_t = moments;
-    std::vector<cv::Point> ps = contours.at(bigInd);
-    
-    // impossible then
-    if (ms_t.size() < 1 || ps.size() < 1)
-    {
-      ROS_WARN("No target Found");
-      return srv;
-    }
-     */
 
     if (contours.size() < 1)
     {
@@ -405,7 +397,8 @@ public:
         cont_max_ind = i;
       }
     }
-    
+
+    cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255)); 
     std::vector<cv::Point> ps = contours.at(cont_max_ind);
     int max_y = 0; 
     int max_y_ind = 0;
@@ -418,12 +411,21 @@ public:
       }
     }
     
+    int desired_x = ps.at(max_y_ind).x;
+    int desired_y = max_y; 
     std::vector<cv::Point> pts_t; pts_t.clear();
-    pts_t.push_back(cv::Point(ps.at(max_y_ind).x, max_y));
+    pts_t.push_back(cv::Point(desired_x, desired_y));
     
+    ROS_DEBUG(">> Desired Point in Image: [%d, %d]", desired_x, desired_y);
+
     // convert to proper internal struct 
     desired_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts_t);
-
+    
+    VSXYZ temp_d = desired_.front();
+    ROS_DEBUG(">> Desired Point in Camera: [%f, %f, %f]", temp_d.camera.x,
+        temp_d.camera.y, temp_d.camera.z);
+    ROS_DEBUG(">> Desired Point in World : [%f, %f, %f]", temp_d.workspace.x,
+        temp_d.workspace.y, temp_d.workspace.z);
     std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_.front());
     desired_locations_ = desired_vsxyz;
 
@@ -436,7 +438,7 @@ public:
 
   void initializeService()
   {
-    ROS_DEBUG("Hooking Up The Service");
+    ROS_DEBUG(">> Hooking Up The Service");
     ros::NodeHandle n;
     v_client_ = n.serviceClient<visual_servo::VisualServoTwist>("vs_twist");
     p_client_ = n.serviceClient<visual_servo::VisualServoPose>("vs_pose");
@@ -447,11 +449,12 @@ public:
     pcl::PointXYZ origin = origin_xyz.workspace;
     std::vector<pcl::PointXYZ> pts; pts.clear();
 
-    origin.y += 0.025;
-    origin.z += 0.20;
+    origin.y -= 0.05;
+    origin.z += 0.05;
+
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
-    two.y -= 0.05; 
+    two.y += 0.05; 
     three.z += 0.05;
     
     pts.push_back(origin);
@@ -485,12 +488,7 @@ public:
 
 #define DISPLAY 0
 #ifdef DISPLAY
-    // Draw the dots on image to be displayed
-    for (unsigned int i = 0; i < desired_locations_.size(); i++)
-    {
-      cv::Point p = desired_locations_.at(i).image;
-      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
+
     for (unsigned int i = 0; i < features.size(); i++)
     {
       cv::Point p = features.at(i).image;
@@ -974,14 +972,13 @@ public:
         }
         else
         {
-          printf("I DON'T LIKE THIS VALUE! [%d, %d] %f\n", x, y, temp); 
         }
       }
     }
     if (size == 0)
     {
       // mark source of 
-      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(255, 255, 0), 1);
+      cv::circle(cur_orig_color_frame_, cv::Point(x, y), 2, cv::Scalar(255, 255, 0), 1);
       return -1;
     }
     return value/size;

@@ -125,7 +125,7 @@ class PositionFeedbackPushNode:
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
                                                    'head_mount_kinect_rgb_link')
         self.default_torso_height = rospy.get_param('~default_torso_height',
-                                                    0.30)
+                                                    0.23)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
@@ -1299,6 +1299,22 @@ class PositionFeedbackPushNode:
         self.r_arm_x_err = state_msg.x_err
         self.r_arm_x_d = state_msg.xd
         self.r_arm_F = state_msg.F
+
+    def gripper_open(self, which_arm='l'):
+        '''
+        Move the arm to the initial pose to be out of the way for viewing the
+        tabletop
+        '''
+        if which_arm == 'l':
+            robot_gripper = self.robot.left_gripper
+        else:
+            robot_gripper = self.robot.right_gripper
+
+
+        rospy.loginfo('Opening %s_gripper' % which_arm)
+        res = robot_gripper.open(block=True)
+        rospy.loginfo('Opening %s_gripper' % which_arm)
+
 
     #
     # Controller setup methods
