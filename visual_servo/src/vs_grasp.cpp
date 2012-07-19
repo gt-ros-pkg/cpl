@@ -220,7 +220,6 @@ public:
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
         cloud.header.stamp, ros::Duration(0.5));
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
-    prev_camera_header_ = cur_camera_header_;
     cur_camera_header_ = img_msg->header;
 
     cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
@@ -1011,7 +1010,6 @@ protected:
   cv::Mat cur_depth_frame_;
   cv::Mat cur_workspace_mask_;
   std_msgs::Header cur_camera_header_;
-  std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
 
   bool have_depth_data_;
