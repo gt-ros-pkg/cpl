@@ -68,7 +68,8 @@ class VNode:
         self.pn.init_spine_pose()
         self.pn.init_head_pose(self.pn.head_pose_cam_frame)
         self.pn.init_arms()
-        # self.pn.gripper_open()
+        self.pn.gripper_open()
+
         # self.init_arm_servo()
         self.pn.switch_to_cart_controllers()
         rospy.loginfo('Done moving to robot initial pose')
@@ -124,9 +125,10 @@ class VNode:
         twist.header.stamp = rospy.Time(0)
         twist.header.frame_id = 'torso_lift_link'
 
-        twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x)
-        twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y)
-        twist.twist.linear.z  = self.adjust_velocity(t.twist.linear.z)
+        # task specific gain control. we know that we are aligned in y... 
+        twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x) / 1.5
+        twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y) / 10
+        twist.twist.linear.z  = self.adjust_velocity(t.twist.linear.z) 
         twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
         twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
         twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)

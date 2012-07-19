@@ -92,11 +92,12 @@
 
 #define DEBUG_MODE 0
 
-#define INIT        0
-#define POSE_CONTR  1
-#define POSE_CONTR_2 2
-#define VS_CONTR    3
-#define TERM        4
+#define SETTLE        0
+#define INIT          1
+#define POSE_CONTR    2
+#define POSE_CONTR_2  3
+#define VS_CONTR      4
+#define TERM          5
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
@@ -134,7 +135,7 @@ public:
   cloud_sub_(n, "point_cloud_topic", 1),
   sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
   it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-  desire_points_initialized_(false), PHASE(INIT) 
+  desire_points_initialized_(false), PHASE(SETTLE) 
   {
 
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
@@ -175,12 +176,14 @@ public:
     n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
     
-    n_private_.param("term_threshold", term_threshold_, 0.05);
+    n_private_.param("term_threshold", term_threshold_, 0.008);
   
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
     
     chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
+
+    alarm_ = ros::Time(0);
     ROS_DEBUG("Initialization 0: Node init & Register Callback Done");
   }
 
@@ -217,12 +220,15 @@ public:
 
     XYZPointCloud cloud; 
     pcl::fromROSMsg(*cloud_msg, cloud);
+    
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
         cloud.header.stamp, ros::Duration(0.5));
+    
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
     prev_camera_header_ = cur_camera_header_;
     cur_camera_header_ = img_msg->header;
-
+     
+    
     cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
                            cv::Scalar(255));
 
@@ -252,92 +258,102 @@ public:
     cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
   
-    switch(PHASE)
+    if (sleepNonblock())
     {
-      case INIT:
-        {
-          ROS_DEBUG("Phase Init");
-          if (initializeDesired())
+      switch(PHASE)
+      {
+        case SETTLE:
           {
-            initializeService();
-            PHASE = POSE_CONTR;
-            // ros::Duration(3.0).sleep(); // blocking sleep
-            ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
+            ROS_INFO("Phase Settle: Try to wait 2.0 secs until TF is settled");
+            setSleepNonblock(2.0);
+            PHASE = INIT;
           }
-          else
+          break;
+        case INIT:
           {
-            ROS_INFO("Failed. Retrying initialization in 2 seconds");
-          }
-        }
-        break;
-
-      case POSE_CONTR:
-        {
-          ROS_DEBUG("Phase Pose Control");
-          visual_servo::VisualServoPose p_srv;
-          VSXYZ d = desired_.front();
-          p_srv.request.p.header.stamp = ros::Time::now();
-          p_srv.request.p.header.frame_id = "torso_lift_link";
-          p_srv.request.p.pose.position.x = d.workspace.x;
-          p_srv.request.p.pose.position.y = d.workspace.y;
-          p_srv.request.p.pose.position.z = d.workspace.z + 0.05;
-          
-          p_srv.request.p.pose.orientation.x = -0.7071;
-          p_srv.request.p.pose.orientation.y = 0;
-          p_srv.request.p.pose.orientation.z = 0.7071;
-          p_srv.request.p.pose.orientation.w = 0;
-          
-          /*
-          p_srv.request.p.pose.orientation.x = 0;
-          p_srv.request.p.pose.orientation.y = 1;
-          p_srv.request.p.pose.orientation.z = 0;
-          p_srv.request.p.pose.orientation.w = 0;
-          */
-          ROS_DEBUG(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.5);
-          if (p_client_.call(p_srv))
-          {
-            // on success
-            int code = p_srv.response.result;
-            printf("Code [%d]. Moving to Next if Code=0\n", code);
-            if (0 == code)
+            ROS_DEBUG("Phase Init");
+            if (initializeDesired())
             {
-              ros::Duration(2.0).sleep();
+              initializeService();
+              PHASE = POSE_CONTR;
+              // ros::Duration(3.0).sleep(); // blocking sleep
               ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
-              PHASE = VS_CONTR;
+              setSleepNonblock(3.0);
+            }
+            else
+            {
+              ROS_INFO("Failed. Retrying initialization in 2 seconds");
+              setSleepNonblock(2.0);
             }
           }
-          else
-          {
-          }
-        }
-        break;
-      
-      case VS_CONTR:
-        {
-          // compute the twist if everything is good to go
-          visual_servo::VisualServoTwist v_srv = getTwist();
+          break;
 
-          // calling the service provider to move
-          if (v_client_.call(v_srv))
+        case POSE_CONTR:
           {
-            // on success
-          }
-          else
-          {
-            // on failure
-            // ROS_WARN("Service FAILED...");
-          }
-        }
-        break;
+            ROS_DEBUG("Phase Pose Control");
+            visual_servo::VisualServoPose p_srv;
+            VSXYZ d = desired_.front();
+            p_srv.request.p.header.stamp = ros::Time::now();
+            p_srv.request.p.header.frame_id = "torso_lift_link";
+            p_srv.request.p.pose.position.x = d.workspace.x;
+            p_srv.request.p.pose.position.y = d.workspace.y;
+            p_srv.request.p.pose.position.z = d.workspace.z + 0.05;
 
-      default:
-        {
-          ROS_INFO("Reached TERM state");
-          ros::shutdown();
-        }
-        break;
+            /* 
+               p_srv.request.p.pose.orientation.x = -0.7071;
+               p_srv.request.p.pose.orientation.y = 0;
+               p_srv.request.p.pose.orientation.z = 0.7071;
+               p_srv.request.p.pose.orientation.w = 0;
+             */
+            p_srv.request.p.pose.orientation.x = -0.4582;
+            p_srv.request.p.pose.orientation.y = 0;
+            p_srv.request.p.pose.orientation.z = 0.8889;
+            p_srv.request.p.pose.orientation.w = 0;
+            ROS_DEBUG(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.15);
+            if (p_client_.call(p_srv))
+            {
+              // on success
+              int code = p_srv.response.result;
+              ROS_INFO(">> Phase %d, Pose Control: Code [%d]", POSE_CONTR, code);
+              if (0 == code)
+              {
+                ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
+                setSleepNonblock(3.0);
+                PHASE = VS_CONTR;
+              }
+            }
+          }
+          break;
+
+        case VS_CONTR:
+          {
+            // compute the twist if everything is good to go
+            visual_servo::VisualServoTwist v_srv = getTwist();
+            
+            // terminal condition
+            if (v_srv.request.error < term_threshold_)
+              PHASE = TERM;
+            // calling the service provider to move
+            if (v_client_.call(v_srv))
+            {
+              // on success
+            }
+            else
+            {
+              // on failure
+              // ROS_WARN("Service FAILED...");
+            }
+          }
+          break;
+
+        default:
+          {
+            ROS_INFO("Reached TERM state");
+            ros::shutdown();
+          }
+          break;
+      }
     }
-    
     if (PHASE > INIT)
     {
       VSXYZ d = desired_.front();
@@ -365,6 +381,25 @@ public:
     // ROS_INFO("Time it took is %f", (end - start).toSec());
   }   
   
+  
+  void setSleepNonblock(float time)
+  {
+    ros::Time alarm = ros::Time::now() + ros::Duration(time);
+    alarm_ = alarm;
+  }
+
+  bool sleepNonblock()
+  {
+    ros::Duration d = ros::Time::now() - alarm_;
+    if (d.toSec() > 0)
+    {
+      // set alarm to zero to be safe
+      alarm_ = ros::Time(0);
+      return true;
+    }
+    return false; 
+  }
+
   bool initializeDesired()
   {
     
@@ -400,19 +435,25 @@ public:
 
     cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255)); 
     std::vector<cv::Point> ps = contours.at(cont_max_ind);
-    int max_y = 0; 
-    int max_y_ind = 0;
+    int min_y = 480; 
+    int min_y_ind = 0;
     for (unsigned int i = 0; i < ps.size(); i++)
     {
-      if (ps.at(i).y > max_y)
+      if (ps.at(i).y < min_y)
       {
-        max_y = ps.at(i).y;
-        max_y_ind = i;
+        min_y = ps.at(i).y;
+        min_y_ind = i;
       }
     }
     
-    int desired_x = ps.at(max_y_ind).x;
-    int desired_y = max_y; 
+    int desired_x = ps.at(min_y_ind).x;
+    int desired_y = min_y;    
+    /*
+    int desired_x = 320;
+    int desired_y = 300; 
+     */
+
+
     std::vector<cv::Point> pts_t; pts_t.clear();
     pts_t.push_back(cv::Point(desired_x, desired_y));
     
@@ -426,6 +467,10 @@ public:
         temp_d.camera.y, temp_d.camera.z);
     ROS_DEBUG(">> Desired Point in World : [%f, %f, %f]", temp_d.workspace.x,
         temp_d.workspace.y, temp_d.workspace.z);
+
+    if (isnan(temp_d.workspace.x) || isnan(temp_d.workspace.y) ||
+      isnan(temp_d.workspace.z))
+      return false;
     std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_.front());
     desired_locations_ = desired_vsxyz;
 
@@ -450,13 +495,15 @@ public:
     std::vector<pcl::PointXYZ> pts; pts.clear();
 
     origin.y -= 0.05;
-    origin.z += 0.05;
+    origin.z += 0.15;
+    origin.x -= 0.02;
 
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
     two.y += 0.05; 
     three.z += 0.05;
-    
+    three.x += 0.02;
+
     pts.push_back(origin);
     pts.push_back(two);
     pts.push_back(three);
@@ -519,6 +566,10 @@ public:
   {
     float e(0.0);
     unsigned int size = a.size() <= b.size() ? a.size() : b.size();
+
+    if (size < 3)
+      return 1;
+
     for (unsigned int i = 0; i < size; i++)
     {
       pcl::PointXYZ a_c= a.at(i).camera;
@@ -541,7 +592,7 @@ public:
     // Desired location: center of the screen
     std::vector<pcl::PointXYZ> pts; pts.clear();
     pcl::PointXYZ origin = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2);
-    origin.z += 0.10;
+    origin.z += 0.20;
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
     two.y -= 0.07; 
@@ -1064,6 +1115,8 @@ protected:
   ros::ServiceClient p_client_;
 
   ros::Publisher chatter_pub_;
+
+  ros::Time alarm_;
 };
 
 int main(int argc, char ** argv)
