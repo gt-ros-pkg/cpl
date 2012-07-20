@@ -85,6 +85,12 @@
 #include <cstdlib> // for MAX_RAND
 #include <sstream>
 
+// PR2_GRIPPER_SENSOR_ACTION
+#include <pr2_controllers_msgs/Pr2GripperCommandAction.h>
+#include <pr2_gripper_sensor_msgs/PR2GripperGrabAction.h>
+#include <pr2_gripper_sensor_msgs/PR2GripperReleaseAction.h>
+#include <actionlib/client/simple_action_client.h>
+
 // Others
 #include <visual_servo/VisualServoTwist.h>
 #include <visual_servo/VisualServoPose.h>
@@ -93,16 +99,25 @@
 #define DEBUG_MODE 0
 
 #define SETTLE        0
-#define INIT          1
-#define POSE_CONTR    2
-#define POSE_CONTR_2  3
-#define VS_CONTR      4
-#define TERM          5
+#define INIT_HAND     1
+#define INIT_DESIRED  2
+#define POSE_CONTR    3
+#define POSE_CONTR_2  4
+#define VS_CONTR      5
+#define GRAB          6
+#define RELEASE       7
+#define TERM          8
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::PointCloud2> MySyncPolicy;
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
+
+// Our Action interface type, provided as a typedef for convenience
+typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperGrabAction> GrabClient;
+// Our Action interface type, provided as a typedef for convenience
+typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperReleaseAction> ReleaseClient; 
+
 /*
 typedef struct {
   // pixels
@@ -184,6 +199,20 @@ public:
     chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
 
     alarm_ = ros::Time(0);
+    
+    //Initialize the client for the Action interface to the gripper controller
+    //and tell the action client that we want to spin a thread by default
+    grab_client_  = new GrabClient("l_gripper_sensor_controller/grab",true);
+    release_client_  = new ReleaseClient("l_gripper_sensor_controller/release",true);
+
+    while(!grab_client_->waitForServer(ros::Duration(5.0))){
+      ROS_INFO("Waiting for the r_gripper_sensor_controller/grab action server to come up");
+    }
+
+    while(!release_client_->waitForServer(ros::Duration(5.0))){
+      ROS_INFO("Waiting for the r_gripper_sensor_controller/release action server to come up");
+    }    
+    
     ROS_DEBUG("Initialization 0: Node init & Register Callback Done");
   }
 
@@ -257,18 +286,97 @@ public:
     cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
   
+    executeStatemachine();
+
+    if (PHASE > INIT_DESIRED)
+    {
+      VSXYZ d = desired_.front();
+      cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
+
+      // Draw the dots on image to be displayed
+      for (unsigned int i = 0; i < desired_locations_.size(); i++)
+      {
+        cv::Point p = desired_locations_.at(i).image;
+        cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
+      }
+    }
+
+    cv::imshow("in", cur_orig_color_frame_); 
+    cv::waitKey(display_wait_ms_);
+
+
+    ros::Time end = ros::Time::now();
+    
+    std::stringstream ss;
+    ss << "Time it took is " << (end - start).toSec();
+    std_msgs::String msg;
+    msg.data = ss.str();
+    chatter_pub_.publish(msg);
+    // ROS_INFO("Time it took is %f", (end - start).toSec());
+  }   
+  
+  void executeStatemachine()
+  {
     if (sleepNonblock())
     {
       switch(PHASE)
       {
         case SETTLE:
           {
-            ROS_INFO("Phase Settle: Try to wait 2.0 secs until TF is settled");
-            setSleepNonblock(2.0);
-            PHASE = INIT;
+            ROS_INFO("Phase Settle: Move Gripper to Init Position");
+            // Move Hand to Some Preset Pose
+            visual_servo::VisualServoPose p_srv;
+            p_srv.request.p.header.stamp = ros::Time::now();
+            p_srv.request.p.header.frame_id = "torso_lift_link";
+            p_srv.request.p.pose.position.x = 0.6;
+            p_srv.request.p.pose.position.y = 0;
+            p_srv.request.p.pose.position.z = 0.5;
+            p_srv.request.p.pose.orientation.x = -0.4582;
+            p_srv.request.p.pose.orientation.y = 0;
+            p_srv.request.p.pose.orientation.z = 0.8889;
+            p_srv.request.p.pose.orientation.w = 0;
+
+            p_client_.call(p_srv);
+            setSleepNonblock(3.0);
+
+            PHASE = INIT_HAND;
           }
           break;
-        case INIT:
+        case INIT_HAND:
+          {
+            ROS_DEBUG("Phase Init Hand: Remembering Blue Tape Positions");
+
+            // get all the blues 
+            cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
+                tape_hue_threshold_);
+
+            // make it clearer with morphology
+            cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+            cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
+
+            // find the three largest blues
+            std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
+
+            // order the blue tapes
+            std::vector<cv::Point> pts = getMomentCoordinates(ms);
+          
+            // remember the difference between each points
+            pcl::PointXYZ tape0 = cur_point_cloud_.at(pts.at(0).x, pts.at(0).y);
+            pcl::PointXYZ tape1 = cur_point_cloud_.at(pts.at(1).x, pts.at(1).y);
+            pcl::PointXYZ tape2 = cur_point_cloud_.at(pts.at(2).x, pts.at(2).y);
+            tape1_loc_.x = tape1.x - tape0.x;
+            tape1_loc_.y = tape1.y - tape0.y;
+            tape1_loc_.z = tape1.z - tape0.z;
+            tape2_loc_.x = tape2.x - tape0.x;
+            tape2_loc_.y = tape2.y - tape0.y;
+            tape2_loc_.z = tape2.z - tape0.z;
+
+            PHASE = INIT_DESIRED;
+            setSleepNonblock(2.0);
+
+          }
+          break;
+        case INIT_DESIRED:
           {
             ROS_DEBUG("Phase Init");
             if (initializeDesired())
@@ -277,16 +385,16 @@ public:
               PHASE = POSE_CONTR;
               // ros::Duration(3.0).sleep(); // blocking sleep
               ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
-              setSleepNonblock(3.0);
+
             }
             else
             {
               ROS_INFO("Failed. Retrying initialization in 2 seconds");
               setSleepNonblock(2.0);
             }
+
           }
           break;
-
         case POSE_CONTR:
           {
             ROS_DEBUG("Phase Pose Control");
@@ -331,7 +439,8 @@ public:
             
             // terminal condition
             if (v_srv.request.error < term_threshold_)
-              PHASE = TERM;
+              PHASE = GRAB;
+            
             // calling the service provider to move
             if (v_client_.call(v_srv))
             {
@@ -344,7 +453,22 @@ public:
             }
           }
           break;
-
+        
+        case GRAB:
+          {
+            grab();
+            setSleepNonblock(2.0);
+            PHASE = RELEASE;
+          }
+          break;
+        
+        case RELEASE:
+          {
+            release();
+            setSleepNonblock(2.0);
+            PHASE = TERM;
+          }
+          break;
         default:
           {
             ROS_INFO("Reached TERM state");
@@ -353,34 +477,51 @@ public:
           break;
       }
     }
-    if (PHASE > INIT)
-    {
-      VSXYZ d = desired_.front();
-      cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
+  }
 
-      // Draw the dots on image to be displayed
-      for (unsigned int i = 0; i < desired_locations_.size(); i++)
-      {
-        cv::Point p = desired_locations_.at(i).image;
-        cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
-      }
-    }
+  /**
+   * Gripper
+   **/
 
-    cv::imshow("in", cur_orig_color_frame_); 
-    cv::waitKey(display_wait_ms_);
-
-
-    ros::Time end = ros::Time::now();
+  //Open the gripper, find contact on both fingers, and go into slip-servo control mode
+  void grab(){
+    pr2_gripper_sensor_msgs::PR2GripperGrabGoal grip;
+    grip.command.hardness_gain = 0.03;
     
-    std::stringstream ss;
-    ss << "Time it took is " << (end - start).toSec();
-    std_msgs::String msg;
-    msg.data = ss.str();
-    chatter_pub_.publish(msg);
-    // ROS_INFO("Time it took is %f", (end - start).toSec());
-  }   
+    ROS_INFO("Sending grab goal");
+    grab_client_->sendGoal(grip);
+    grab_client_->waitForResult(ros::Duration(20.0));
+    if(grab_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+      ROS_INFO("Successfully completed Grab");
+    else
+      ROS_INFO("Grab Failed");
+  }
+
+  // Look for side impact, finerpad slip, or contact acceleration signals and release the object once these occur
+  void release(){
+    pr2_gripper_sensor_msgs::PR2GripperReleaseGoal place;
+    // set the robot to release on a figner-side impact, fingerpad slip, or acceleration impact with hand/arm
+    place.command.event.trigger_conditions = place.command.event.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;  
+    // set the acceleration impact to trigger on to 5 m/s^2
+    place.command.event.acceleration_trigger_magnitude = 5.0; 
+    // set our slip-gain to release on to .005
+    place.command.event.slip_trigger_magnitude = .01;
+
+
+    ROS_INFO("Waiting for object placement contact...");
+    release_client_->sendGoal(place);
+    release_client_->waitForResult();
+    if(release_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+      ROS_INFO("Release Success");
+    else
+      ROS_INFO("Place Failure");
+
+  }
+
   
-  
+  /**
+   * HELPER
+   **/
   void setSleepNonblock(float time)
   {
     ros::Time alarm = ros::Time::now() + ros::Duration(time);
@@ -499,9 +640,18 @@ public:
 
     pcl::PointXYZ two = origin;
     pcl::PointXYZ three = origin;
+    /*
     two.y += 0.05; 
     three.z += 0.05;
     three.x += 0.02;
+    */
+    two.x = origin.x + tape1_loc_.x;
+    two.y = origin.y + tape1_loc_.y;
+    two.z = origin.z + tape1_loc_.z;
+            
+    three.x = origin.x + tape2_loc_.x;
+    three.y = origin.y + tape2_loc_.y;
+    three.z = origin.z + tape2_loc_.z;
 
     pts.push_back(origin);
     pts.push_back(two);
@@ -1115,6 +1265,11 @@ protected:
   ros::Publisher chatter_pub_;
 
   ros::Time alarm_;
+  pcl::PointXYZ tape1_loc_;
+  pcl::PointXYZ tape2_loc_;
+
+  GrabClient* grab_client_;
+  ReleaseClient* release_client_;
 };
 
 int main(int argc, char ** argv)
