@@ -308,7 +308,7 @@ class ObjectTracker25D
     {
       state.no_detection = true;
     }
-
+    ROS_INFO_STREAM("Finding ellipse");
     cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
@@ -320,6 +320,7 @@ class ObjectTracker25D
 
     if (use_displays_ || write_to_disk_)
     {
+      ROS_INFO_STREAM("TrackerIO()");
       trackerIO(in_frame, cur_obj, obj_ellipse);
     }
 
@@ -940,6 +941,7 @@ class TabletopPushingPerceptionNode
     }
     else
     {
+      ROS_INFO_STREAM("Starting tracker");
       cur_state = startTracking();
     }
     ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " <<

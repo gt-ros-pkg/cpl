@@ -390,10 +390,8 @@ class PositionFeedbackPushNode:
         push_dist = request.desired_push_dist
 
         if request.left_arm:
-            ready_joints = LEFT_ARM_READY_JOINTS
             which_arm = 'l'
         else:
-            ready_joints = RIGHT_ARM_READY_JOINTS
             which_arm = 'r'
 
         self.active_arm = which_arm
@@ -432,6 +430,15 @@ class PositionFeedbackPushNode:
         return response
 
     def tracker_feedback_overhead_push(self, feedback):
+        return self.tracker_feedback_push(action_primitive='overhead')
+
+    def tracker_feedback_gripper_push(self, feedback):
+        return self.tracker_feedback_push(action_primitive='gripper')
+
+    def tracker_feedback_sweep(self, feedback):
+        return self.tracker_feedback_push(action_primitive='sweep')
+
+    def tracker_feedback_push(self, feedback, action_primitive):
         if self.feedback_count == 0:
             self.theta0 = feedback.x.theta
             self.x0 = feedback.x.x
@@ -450,6 +457,7 @@ class PositionFeedbackPushNode:
                           str(self.desired_pose.y - feedback.x.y) + ', ' +
                           str(self.desired_pose.theta - feedback.x.theta) + ')')
         # TODO: Add new pushing visual feedback controllers here
+        # TODO: Setup selection of action primitives here too, currently they all use the same controllers
         if self.spin_to_heading:
             update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
         else:
@@ -519,19 +527,6 @@ class PositionFeedbackPushNode:
             rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
         return u
 
-    def slidingModeController(self, cur_state, desired_state):
-        u = TwistStamped()
-        u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time(0)
-        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
-        u.twist.angular.x = 0.0
-        u.twist.angular.y = 0.0
-        u.twist.angular.z = 0.0
-        # Push centroid towards the desired goal
-        x_error = desired_state.x - cur_state.x.x
-        y_error = desired_state.y - cur_state.x.y
-        t_error = desired_state.theta - cur_state.x.theta
-
     def overhead_feedback_post_push(self, request):
         response = GripperPushResponse()
         start_point = request.start_point.point
@@ -589,6 +584,51 @@ class PositionFeedbackPushNode:
             self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
+    def gripper_feedback_push(self, request):
+        response = GripperPushResponse()
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+        push_dist = request.desired_push_dist
+
+        if request.left_arm:
+            which_arm = 'l'
+        else:
+            which_arm = 'r'
+
+        self.active_arm = which_arm
+        rospy.loginfo('Creating ac')
+        ac = actionlib.SimpleActionClient('push_tracker',
+                                          VisFeedbackPushTrackingAction)
+        rospy.loginfo('waiting for server')
+        if not ac.wait_for_server(rospy.Duration(5.0)):
+            rospy.loginfo('Failed to connect to push tracker server')
+            return response
+        ac.cancel_all_goals()
+        self.feedback_count = 0
+
+        # Start pushing forward
+        # self.vel_push_forward(which_arm)
+        self.stop_moving_vel(which_arm)
+        done_cb = None
+        active_cb = None
+        feedback_cb = self.tracker_feedback_gripper_push
+        goal = VisFeedbackPushTrackingGoal()
+        goal.which_arm = which_arm
+        goal.header.frame_id = request.start_point.header.frame_id
+        goal.desired_pose = request.goal_pose
+        self.desired_pose = request.goal_pose
+        goal.spin_to_heading = request.spin_to_heading
+        self.spin_to_heading = request.spin_to_heading
+        rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+        ac.send_goal(goal, done_cb, active_cb, feedback_cb)
+        # Block until done
+        rospy.loginfo('Waiting for result')
+        ac.wait_for_result(rospy.Duration(0))
+        rospy.loginfo('Result received')
+        self.stop_moving_vel(which_arm)
+
+        # TODO: send back info
+        return response
 
     def gripper_push(self, request):
         response = GripperPushResponse()
