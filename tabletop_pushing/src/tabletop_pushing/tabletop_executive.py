@@ -131,8 +131,13 @@ class TabletopExecutive:
                 'gripper_feedback_push', GripperPush)
             self.gripper_feedback_post_push_proxy = rospy.ServiceProxy(
                 'gripper_feedback_post_push', GripperPush)
+            self.gripper_feedback_sweep_proxy = rospy.ServiceProxy(
+                'gripper_feedback_sweep', GripperPush)
+            self.gripper_feedback_post_sweep_proxy = rospy.ServiceProxy(
+                'gripper_feedback_post_sweep', GripperPush)
             self.overhead_feedback_pre_push_proxy = self.overhead_pre_push_proxy
             self.gripper_feedback_pre_push_proxy = self.gripper_pre_push_proxy
+            self.gripper_feedback_pre_sweep_proxy = self.gripper_pre_sweep_proxy
             # Proxy to setup spine and head
             self.raise_and_look_proxy = rospy.ServiceProxy('raise_and_look',
                                                            RaiseAndLook)
@@ -420,11 +425,11 @@ class TabletopExecutive:
                 self.overhead_feedback_push_object(push_dist, which_arm, push_vector_res.push,
                                                    goal_pose, high_init, spin=spin)
             if push_opt == GRIPPER_SWEEP:
-                self.sweep_object(push_dist, which_arm, push_vector_res.push,
+                self.feedback_sweep_object(push_dist, which_arm, push_vector_res.push,
                                   high_init)
             if push_opt == GRIPPER_PUSH:
-                self.gripper_push_object(push_dist, which_arm,
-                                         push_vector_res.push, high_init)
+                self.gripper_feedback_push_object(push_dist, which_arm,
+                                                  push_vector_res.push, high_init)
             if push_opt == OVERHEAD_PULL:
                 self.overhead_pull_object(push_dist, which_arm,
                                           push_vector_res.push, high_init)
@@ -844,6 +849,53 @@ class TabletopExecutive:
             push_res = self.gripper_feedback_push_proxy(push_req)
         rospy.loginfo("Calling gripper feedback post push service")
         post_push_res = self.gripper_feedback_post_push_proxy(push_req)
+
+    def feedback_sweep_object(self, push_dist, which_arm, push_vector, goal_pose,
+                              high_init=True, open_gripper=False, spin=False):
+        # Convert pose response to correct push request format
+        push_req = GripperPushRequest()
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
+        push_req.arm_init = True
+        push_req.arm_reset = True
+        push_req.open_gripper = open_gripper
+        push_req.goal_pose = goal_pose
+
+        # if push_req.left_arm:
+        if push_vector.push_angle > 0:
+            y_offset_dir = -1
+            wrist_yaw = push_vector.push_angle - pi/2
+        else:
+            y_offset_dir = +1
+            wrist_yaw = push_vector.push_angle + pi/2
+
+        push_req.wrist_yaw = wrist_yaw
+        push_req.desired_push_dist = -y_offset_dir*push_dist
+
+        # Offset pose to not hit the object immediately
+        push_req.start_point.point.x += -self.sweep_offset_dist*sin(wrist_yaw)
+        push_req.start_point.point.y += y_offset_dir*self.sweep_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.z = self.sweep_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+        push_req.high_arm_init = high_init
+
+
+        rospy.loginfo('Gripper sweep augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
+
+        rospy.loginfo("Calling feedback pre sweep service")
+        pre_push_res = self.gripper_feedback_pre_sweep_proxy(push_req)
+        rospy.loginfo("Calling feedback sweep service")
+        push_req.spin_to_heading = spin
+        if spin and _TEST_SPIN_POSE:
+            raw_input('waiting for input to recall arm: ')
+        else:
+            push_res = self.gripper_feedback_sweep_proxy(push_req)
+        rospy.loginfo("Calling feedback post sweep service")
+        post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)
