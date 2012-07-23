@@ -258,6 +258,11 @@ class PositionFeedbackPushNode:
             'overhead_feedback_post_push', GripperPush,
             self.overhead_feedback_post_push)
 
+        self.gripper_feedback_push_srv = rospy.Service(
+            'gripper_feedback_push', GripperPush, self.gripper_feedback_push)
+        self.gripper_feedback_post_push_srv = rospy.Service(
+            'gripper_feedback_post_push', GripperPush,
+            self.gripper_feedback_post_push)
 
         self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
                                                   GripperPush,
@@ -628,6 +633,67 @@ class PositionFeedbackPushNode:
         self.stop_moving_vel(which_arm)
 
         # TODO: send back info
+        return response
+
+    def gripper_feedback_post_push(self, request):
+        response = GripperPushResponse()
+        start_point = request.start_point.point
+        wrist_yaw = request.wrist_yaw
+
+        if request.left_arm:
+            ready_joints = LEFT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = LEFT_ARM_PULL_READY_JOINTS
+            which_arm = 'l'
+            robot_gripper = self.robot.left_gripper
+        else:
+            ready_joints = RIGHT_ARM_READY_JOINTS
+            if request.high_arm_init:
+                ready_joints = RIGHT_ARM_PULL_READY_JOINTS
+            which_arm = 'r'
+            robot_gripper = self.robot.right_gripper
+
+        rospy.logdebug('Moving gripper up')
+        pose_err, err_dist = self.move_relative_gripper(
+            np.matrix([0.0, 0.0, -self.gripper_raise_dist]).T, which_arm,
+            move_cart_count_thresh=self.post_move_count_thresh)
+        rospy.logdebug('Done moving up')
+        rospy.logdebug('Pushing reverse')
+        pose_err, err_dist = self.move_relative_gripper(
+            np.matrix([-0.03, 0.0, 0.0]).T, which_arm,
+            move_cart_count_thresh=self.post_move_count_thresh)
+        rospy.loginfo('Done pushing reverse')
+
+        rospy.logdebug('Moving up to end point')
+        wrist_yaw = request.wrist_yaw
+        end_pose = PoseStamped()
+        end_pose.header = request.start_point.header
+
+        # Move straight up to point above the current EE pose
+        if request.left_arm:
+            cur_pose = self.l_arm_pose
+        else:
+            cur_pose = self.r_arm_pose
+
+        end_pose.pose.position.x = cur_pose.pose.position.x
+        end_pose.pose.position.y = cur_pose.pose.position.y
+        end_pose.pose.position.z = self.high_arm_init_z
+        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
+        end_pose.pose.orientation.x = q[0]
+        end_pose.pose.orientation.y = q[1]
+        end_pose.pose.orientation.z = q[2]
+        end_pose.pose.orientation.w = q[3]
+        self.move_to_cart_pose(end_pose, which_arm,
+                               self.post_move_count_thresh)
+        rospy.loginfo('Done moving up to end point')
+
+        if request.open_gripper:
+            rospy.loginfo('Closing gripper')
+            res = robot_gripper.close(block=True)
+            rospy.loginfo('Done closing gripper')
+
+        if request.arm_reset:
+            self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     def gripper_push(self, request):

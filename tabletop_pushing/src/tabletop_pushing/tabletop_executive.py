@@ -97,12 +97,7 @@ class TabletopExecutive:
                                             -0.27)
         # Setup service proxies
         if not _OFFLINE:
-            self.overhead_feedback_push_proxy = rospy.ServiceProxy(
-                'overhead_feedback_push', GripperPush)
-            self.overhead_feedback_post_push_proxy = rospy.ServiceProxy(
-                'overhead_feedback_post_push', GripperPush)
-            self.overhead_feedback_pre_push_proxy = rospy.ServiceProxy(
-                'overhead_pre_push', GripperPush)
+            # Old pushing proxies, some are coppied for feedback
             self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
                                                          GripperPush)
             self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
@@ -127,6 +122,18 @@ class TabletopExecutive:
                                                           GripperPush)
             self.overhead_post_pull_proxy = rospy.ServiceProxy('overhead_post_pull',
                                                                GripperPush)
+            # New visual feedback proxies
+            self.overhead_feedback_push_proxy = rospy.ServiceProxy(
+                'overhead_feedback_push', GripperPush)
+            self.overhead_feedback_post_push_proxy = rospy.ServiceProxy(
+                'overhead_feedback_post_push', GripperPush)
+            self.gripper_feedback_push_proxy = rospy.ServiceProxy(
+                'gripper_feedback_push', GripperPush)
+            self.gripper_feedback_post_push_proxy = rospy.ServiceProxy(
+                'gripper_feedback_post_push', GripperPush)
+            self.overhead_feedback_pre_push_proxy = self.overhead_pre_push_proxy
+            self.gripper_feedback_pre_push_proxy = self.gripper_pre_push_proxy
+            # Proxy to setup spine and head
             self.raise_and_look_proxy = rospy.ServiceProxy('raise_and_look',
                                                            RaiseAndLook)
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
@@ -796,6 +803,47 @@ class TabletopExecutive:
             push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
+
+    def gripper_feedback_push_object(self, push_dist, which_arm, push_vector, goal_pose,
+                                     high_init=True, open_gripper=False, spin=False):
+        # Convert pose response to correct push request format
+        push_req = GripperPushRequest()
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
+        push_req.arm_init = True
+        push_req.arm_reset = True
+        push_req.open_gripper = open_gripper
+        push_req.goal_pose = goal_pose
+
+        # Use the sent wrist yaw
+        wrist_yaw = push_vector.push_angle
+        push_req.wrist_yaw = wrist_yaw
+        push_req.desired_push_dist = push_dist
+
+        # Offset pose to not hit the object immediately
+        push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -self.gripper_offset_dist*sin(wrist_yaw)
+        push_req.start_point.point.z = self.gripper_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+        push_req.high_arm_init = high_init
+
+
+        rospy.loginfo('Gripper push augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
+
+        rospy.loginfo("Calling gripper feedback pre push service")
+        pre_push_res = self.gripper_feedback_pre_push_proxy(push_req)
+        rospy.loginfo("Calling gripper feedback push service")
+        push_req.spin_to_heading = spin
+        if spin and _TEST_SPIN_POSE:
+            raw_input('waiting for input to recall arm: ')
+        else:
+            push_res = self.gripper_feedback_push_proxy(push_req)
+        rospy.loginfo("Calling gripper feedback post push service")
+        post_push_res = self.gripper_feedback_post_push_proxy(push_req)
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)
