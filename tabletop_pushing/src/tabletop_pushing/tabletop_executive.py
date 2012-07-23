@@ -311,10 +311,9 @@ class TabletopExecutive:
                         if not res:
                             return
 
-    def run_feedback_testing(self):
+    def run_feedback_testing(self, push_opt):
         push_dist = 0.0
         high_init = True
-        push_opt = OVERHEAD_PUSH
         use_spin_push = _SPIN_FIRST
         while True:
             if use_spin_push:
@@ -935,9 +934,10 @@ if __name__ == '__main__':
     use_learning = True
     use_guided = True
     max_pushes = 50
+    push_opt = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
-        node.run_feedback_testing()
+        node.run_feedback_testing(push_opt)
         node.finish_learning()
