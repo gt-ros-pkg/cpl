@@ -289,21 +289,7 @@ public:
     executeStatemachine();
 
     if (PHASE > INIT_DESIRED)
-    {
-      VSXYZ d = desired_.front();
-      cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
-
-      // Draw the dots on image to be displayed
-      for (unsigned int i = 0; i < desired_locations_.size(); i++)
-      {
-        cv::Point p = desired_locations_.at(i).image;
-        cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
-      }
-    }
-
-    cv::imshow("in", cur_orig_color_frame_); 
-    cv::waitKey(display_wait_ms_);
-
+      setDisplay();
 
     ros::Time end = ros::Time::now();
     
@@ -479,6 +465,32 @@ public:
     }
   }
 
+  void setDisplay()
+  {
+
+    VSXYZ d = desired_.front();
+    cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
+
+    // Draw on Desired Locations
+    for (unsigned int i = 0; i < desired_locations_.size(); i++)
+    {
+      cv::Point p = desired_locations_.at(i).image;
+      cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
+    }
+    
+    // Draw Features
+    for (unsigned int i = 0; i < features_.size(); i++)
+    {
+      cv::Point p = features_.at(i).image;
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+    }
+
+    
+    cv::imshow("in", cur_orig_color_frame_); 
+    cv::waitKey(display_wait_ms_);
+  }
+
+
   /**
    * Gripper
    **/
@@ -573,7 +585,9 @@ public:
       }
     }
 
+    // Draw
     cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255)); 
+
     std::vector<cv::Point> ps = contours.at(cont_max_ind);
     int min_y = 480; 
     int min_y_ind = 0;
@@ -588,11 +602,6 @@ public:
     
     int desired_x = ps.at(min_y_ind).x;
     int desired_y = min_y;    
-    /*
-    int desired_x = 320;
-    int desired_y = 300; 
-     */
-
 
     std::vector<cv::Point> pts_t; pts_t.clear();
     pts_t.push_back(cv::Point(desired_x, desired_y));
@@ -682,16 +691,11 @@ public:
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
 
+    features_ = features;
 #define DISPLAY 0
 #ifdef DISPLAY
 
-    for (unsigned int i = 0; i < features.size(); i++)
-    {
-      cv::Point p = features.at(i).image;
-      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
 
-    
     /* 
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
     {
@@ -1270,6 +1274,8 @@ protected:
 
   GrabClient* grab_client_;
   ReleaseClient* release_client_;
+  
+  std::vector<VSXYZ> features_;
 };
 
 int main(int argc, char ** argv)
