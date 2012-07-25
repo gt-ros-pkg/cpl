@@ -140,7 +140,7 @@ class PositionFeedbackPushNode:
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
         self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
-                                                   'openni_rgb_frame')
+                                                   'head_mount_kinect_rgb_link')
         self.default_torso_height = rospy.get_param('~default_torso_height',
                                                     0.3)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
