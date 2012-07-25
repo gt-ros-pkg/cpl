@@ -407,13 +407,13 @@ class PositionFeedbackPushNode:
         return self.feedback_push_behavior(request, feedback_cb)
 
     def tracker_feedback_overhead_push(self, feedback):
-        return self.tracker_feedback_push(action_primitive='overhead')
+        return self.tracker_feedback_push(feedback, action_primitive='overhead')
 
     def tracker_feedback_gripper_push(self, feedback):
-        return self.tracker_feedback_push(action_primitive='gripper')
+        return self.tracker_feedback_push(feedback, action_primitive='gripper')
 
     def tracker_feedback_gripper_sweep(self, feedback):
-        return self.tracker_feedback_push(action_primitive='sweep')
+        return self.tracker_feedback_push(feedback, action_primitive='sweep')
 
     def feedback_push_behavior(self, request, feedback_cb):
         response = GripperPushResponse()
@@ -460,7 +460,7 @@ class PositionFeedbackPushNode:
         # TODO: send back info
         return response
 
-    def tracker_feedback_push(self, feedback, action_primitive):
+    def tracker_feedback_push(self, feedback, action_primitive='overhead'):
         if self.feedback_count == 0:
             self.theta0 = feedback.x.theta
             self.x0 = feedback.x.x

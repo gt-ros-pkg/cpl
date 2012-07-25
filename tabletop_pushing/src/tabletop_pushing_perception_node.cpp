@@ -503,7 +503,7 @@ class ObjectTracker25D
     pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
                                  cur_obj.centroid[2]);
     const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-        centroid_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+        centroid_point, cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
     // double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
     double theta = getThetaFromEllipse(obj_ellipse);
     if(swap_orientation_)
@@ -522,9 +522,9 @@ class ObjectTracker25D
     pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
                                   centroid_point.z);
     const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
-        table_min_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+        table_min_point, cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-        table_maj_point, cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+        table_maj_point, cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
     cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
     cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
     cv::Size img_size;
@@ -687,7 +687,7 @@ class TabletopPushingPerceptionNode
     self_mask = mask_cv_ptr->image;
 
     // Swap kinect color channel order
-    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
+    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
@@ -1169,7 +1169,7 @@ class TabletopPushingPerceptionNode
       {
         ROS_DEBUG_STREAM("Point " << i << " is: " << push_pts[i]);
         const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
-            push_pts[i], cur_obj.cloud.header.frame_id, "openni_rgb_optical_frame");
+            push_pts[i], cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
         cv::Scalar draw_color;
         if (i == chosen_idx)
         {
@@ -1399,13 +1399,13 @@ class TabletopPushingPerceptionNode
     pcl::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
                                       centroid.point.z);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-        table_heading_point, centroid.header.frame_id, "openni_rgb_optical_frame");
+        table_heading_point, centroid.header.frame_id, "head_mount_kinect_rgb_optical_frame");
     const float goal_x_rad = (std::cos(goal_theta)*obj_ellipse.size.height*0.5);
     const float goal_y_rad = (std::sin(goal_theta)*obj_ellipse.size.height*0.5);
     pcl::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
                                      centroid.point.z);
     cv::Point2f img_goal_idx = pcl_segmenter_->projectPointIntoImage(
-        goal_heading_point, centroid.header.frame_id, "openni_rgb_optical_frame");
+        goal_heading_point, centroid.header.frame_id, "head_mount_kinect_rgb_optical_frame");
     // TODO: Draw partially shaded ellipse showing angle error
     float img_start_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                                img_maj_idx.x-img_c_idx.x));

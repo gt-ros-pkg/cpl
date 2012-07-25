@@ -589,7 +589,7 @@ class TabletopExecutive:
             table_req.recalculate = True
         raise_req = RaiseAndLookRequest()
         raise_req.point_head_only = True
-        raise_req.camera_frame = 'openni_rgb_frame'
+        raise_req.camera_frame = 'head_mount_kinect_rgb_link'
         # First make sure the head is looking the correct way before estimating
         # the table centroid
         # Also make sure the arms are out of the way
