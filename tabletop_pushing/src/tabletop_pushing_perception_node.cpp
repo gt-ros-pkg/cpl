@@ -419,11 +419,11 @@ class ObjectTracker25D
       {
         trackerIO(in_frame, cur_obj, obj_ellipse);
       }
+      previous_obj_ = cur_obj;
+      previous_obj_ellipse_ = obj_ellipse;
     }
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
-    previous_obj_ = cur_obj;
-    previous_obj_ellipse_ = obj_ellipse;
     frame_count_++;
     record_count_++;
     return state;
