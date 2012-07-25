@@ -425,13 +425,10 @@ class TabletopExecutive:
                                                    goal_pose, high_init, spin=spin)
             if push_opt == GRIPPER_SWEEP:
                 self.feedback_sweep_object(push_dist, which_arm, push_vector_res.push,
-                                  high_init)
+                                           goal_pose, high_init, spin=spin)
             if push_opt == GRIPPER_PUSH:
-                self.gripper_feedback_push_object(push_dist, which_arm,
-                                                  push_vector_res.push, high_init)
-            if push_opt == OVERHEAD_PULL:
-                self.overhead_pull_object(push_dist, which_arm,
-                                          push_vector_res.push, high_init)
+                self.gripper_feedback_push_object(push_dist, which_arm, push_vector_res.push,
+                                                   goal_pose, high_init, spin=spin)
         push_time = time.time() - start_time
         rospy.loginfo('Done performing push behavior.')
         if spin:
