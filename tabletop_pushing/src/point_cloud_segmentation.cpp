@@ -725,8 +725,8 @@ cv::Point PointCloudSegmentation::projectPointIntoImage(
   {
     ROS_ERROR_STREAM("Error projecting 3D point into image plane.");
     ROS_ERROR_STREAM(e.what());
-    ROS_WARN_STREAM("cur point header is: " << cur_point.header.frame_id);
-    ROS_WARN_STREAM("target frame is: " << target_frame);
+    ROS_ERROR_STREAM("cur point header is: " << cur_point.header.frame_id);
+    ROS_ERROR_STREAM("target frame is: " << target_frame);
   }
   return img_loc;
 }
