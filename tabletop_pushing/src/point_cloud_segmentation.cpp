@@ -242,19 +242,32 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
 
   // TODO: Get table plane
   // TODO: Create objects
+  ProtoObjects objs;
   for (size_t i = 0; i < regions.size (); i++)
   {
-    Eigen::Vector3f centroid = regions[i].getCentroid ();
+    ProtoObject po;
+    po.push_history.clear();
+    po.boundary_angle_dist.clear();
+    po.id = i;
+    // pcl16::copyPointCloud(objects_cloud, clusters[i], po.cloud);
+    po.centroid[0] = regions[i].getCentroid()[0];
+    po.centroid[1] = regions[i].getCentroid()[1];
+    po.centroid[2] = regions[i].getCentroid()[2];
+    po.centroid[3] = 1.0;
+    po.moved = false;
+    po.transform = Eigen::Matrix4f::Identity();
+    po.singulated = false;
+    objs.push_back(po);
     Eigen::Vector4f model = regions[i].getCoefficients ();
     //pcl16::PointCloud boundary_cloud;
     XYZPointCloud boundary_cloud;
     boundary_cloud.points = regions[i].getContour ();
+    po.cloud = boundary_cloud;
     printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
-            centroid[0], centroid[1], centroid[2],
+            po.centroid[0], po.centroid[1], po.centroid[2],
             model[0], model[1], model[2], model[3],
             boundary_cloud.points.size ());
   }
-  ProtoObjects objs;
   return objs;
 }
 

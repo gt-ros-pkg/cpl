@@ -204,11 +204,11 @@ class ObjectTracker25D
  public:
   ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
-                   std::string base_output_path="") :
+                   std::string base_output_path="", std::string camera_frame="") :
       pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
       frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
       base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
-      paused_(false), frame_set_count_(0)
+      paused_(false), frame_set_count_(0), camera_frame_(camera_frame)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -503,7 +503,7 @@ class ObjectTracker25D
     pcl16::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
                                  cur_obj.centroid[2]);
     const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-        centroid_point, cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
+        centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
     // double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
     double theta = getThetaFromEllipse(obj_ellipse);
     if(swap_orientation_)
@@ -522,9 +522,9 @@ class ObjectTracker25D
     pcl16::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
                                   centroid_point.z);
     const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
-        table_min_point, cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
+        table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-        table_maj_point, cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
+        table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
     cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
     cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
     cv::Size img_size;
@@ -566,6 +566,7 @@ class ObjectTracker25D
   bool swap_orientation_;
   bool paused_;
   int frame_set_count_;
+  std::string camera_frame_;
 };
 
 class TabletopPushingPerceptionNode
@@ -603,6 +604,8 @@ class TabletopPushingPerceptionNode
     std::string default_workspace_frame = "torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_,
                      default_workspace_frame);
+    std::string default_camera_frame = "head_mount_kinect_rgb_optical_frame";
+    n_private_.param("camera_frame", camera_frame_, default_camera_frame);
 
     std::string output_path_def = "~";
     n_private_.param("img_output_path", base_output_path_, output_path_def);
@@ -642,7 +645,7 @@ class TabletopPushingPerceptionNode
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
-                             base_output_path_));
+                             base_output_path_, camera_frame_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -1169,7 +1172,7 @@ class TabletopPushingPerceptionNode
       {
         ROS_DEBUG_STREAM("Point " << i << " is: " << push_pts[i]);
         const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
-            push_pts[i], cur_obj.cloud.header.frame_id, "head_mount_kinect_rgb_optical_frame");
+            push_pts[i], cur_obj.cloud.header.frame_id, camera_frame_);
         cv::Scalar draw_color;
         if (i == chosen_idx)
         {
@@ -1399,13 +1402,13 @@ class TabletopPushingPerceptionNode
     pcl16::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
                                       centroid.point.z);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-        table_heading_point, centroid.header.frame_id, "head_mount_kinect_rgb_optical_frame");
+        table_heading_point, centroid.header.frame_id, camera_frame_);
     const float goal_x_rad = (std::cos(goal_theta)*obj_ellipse.size.height*0.5);
     const float goal_y_rad = (std::sin(goal_theta)*obj_ellipse.size.height*0.5);
     pcl16::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
                                      centroid.point.z);
     cv::Point2f img_goal_idx = pcl_segmenter_->projectPointIntoImage(
-        goal_heading_point, centroid.header.frame_id, "head_mount_kinect_rgb_optical_frame");
+        goal_heading_point, centroid.header.frame_id, camera_frame_);
     // TODO: Draw partially shaded ellipse showing angle error
     float img_start_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                                img_maj_idx.x-img_c_idx.x));
@@ -1478,6 +1481,7 @@ class TabletopPushingPerceptionNode
   std::string base_output_path_;
   int num_downsamples_;
   std::string workspace_frame_;
+  std::string camera_frame_;
   PoseStamped table_centroid_;
   bool camera_initialized_;
   std::string cam_info_topic_;
