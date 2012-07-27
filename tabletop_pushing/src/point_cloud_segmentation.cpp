@@ -49,6 +49,7 @@
 #include <pcl16/segmentation/sac_segmentation.h>
 #include <pcl16/segmentation/extract_clusters.h>
 #include <pcl16/segmentation/segment_differences.h>
+#include <pcl16/segmentation/organized_multi_plane_segmentation.h>
 // #include <pcl16/kdtree/kdtree_flann.h>
 // #include <pcl16/kdtree/impl/kdtree_flann.hpp>
 #include <pcl16/search/search.h>
@@ -58,6 +59,7 @@
 #include <pcl16/filters/extract_indices.h>
 #include <pcl16/surface/concave_hull.h>
 #include <pcl16/registration/icp.h>
+#include <pcl16/features/integral_image_normal.h>
 
 // STL
 #include <sstream>
@@ -210,8 +212,52 @@ ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cl
 {
   XYZPointCloud table_cloud;
   return findTabletopObjects(input_cloud, objs_cloud, table_cloud);
-
+  // return findTabletopObjectsMPS(input_cloud, objs_cloud, table_cloud);
 }
+
+ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input_cloud,
+                                                            XYZPointCloud& objs_cloud,
+                                                            XYZPointCloud& plane_cloud)
+{
+  // TODO: Compute Normals with integral image
+  pcl16::IntegralImageNormalEstimation<pcl16::PointXYZ, pcl16::Normal> ne;
+  ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
+  ne.setMaxDepthChangeFactor (0.02f);
+  ne.setNormalSmoothingSize (20.0f);
+  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
+  ne.setInputCloud(input_cloud.makeShared());
+  ne.compute(*normal_cloud);
+
+  pcl16::OrganizedMultiPlaneSegmentation<pcl16::PointXYZ, pcl16::Normal, pcl16::Label> mps;
+  // pcl16::OrganizedMultiPlaneSegmentation mps;
+  mps.setMinInliers(10000);
+  mps.setAngularThreshold(0.017453 * 2.0); // 2 degrees
+  mps.setDistanceThreshold(0.02); // 2cm
+  mps.setInputNormals(normal_cloud);
+  mps.setInputCloud(input_cloud.makeShared());
+  // std::vector<pcl16::PlanarRegion<pcl16::PointXYZ>, Eigen::aligned_allocator<pcl16::PlanarRegion<pcl16::PointXYZ> > >
+  //     regions;
+  std::vector<pcl16::PlanarRegion<pcl16::PointXYZ> > regions;
+  mps.segmentAndRefine(regions);
+
+  // TODO: Get table plane
+  // TODO: Create objects
+  for (size_t i = 0; i < regions.size (); i++)
+  {
+    Eigen::Vector3f centroid = regions[i].getCentroid ();
+    Eigen::Vector4f model = regions[i].getCoefficients ();
+    //pcl16::PointCloud boundary_cloud;
+    XYZPointCloud boundary_cloud;
+    boundary_cloud.points = regions[i].getContour ();
+    printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
+            centroid[0], centroid[1], centroid[2],
+            model[0], model[1], model[2], model[3],
+            boundary_cloud.points.size ());
+  }
+  ProtoObjects objs;
+  return objs;
+}
+
 
 /**
  * Function to segment independent spatial regions from a supporting plane

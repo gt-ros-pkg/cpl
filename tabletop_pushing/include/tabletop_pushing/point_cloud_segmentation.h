@@ -127,6 +127,9 @@ class PointCloudSegmentation
                                    XYZPointCloud& objs_cloud,
                                    XYZPointCloud& plane_cloud);
 
+  ProtoObjects findTabletopObjectsMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
+                                      XYZPointCloud& plane_cloud);
+
   /**
    * Function to segment point cloud regions using euclidean clustering
    *
