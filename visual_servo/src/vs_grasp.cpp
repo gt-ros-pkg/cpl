@@ -94,19 +94,22 @@
 // Others
 #include <visual_servo/VisualServoTwist.h>
 #include <visual_servo/VisualServoPose.h>
+#include <std_srvs/Empty.h>
 #include "visual_servo.cpp"
 
 #define DEBUG_MODE 0
 
-#define SETTLE        0
-#define INIT_HAND     1
-#define INIT_DESIRED  2
-#define POSE_CONTR    3
-#define POSE_CONTR_2  4
-#define VS_CONTR      5
-#define GRAB          6
-#define RELEASE       7
-#define TERM          8
+#define INIT          0
+#define SETTLE        1
+#define INIT_HAND     2
+#define INIT_DESIRED  3
+#define POSE_CONTR    4
+#define POSE_CONTR_2  5
+#define VS_CONTR      6
+#define GRAB          7
+#define RELOCATE      8
+#define RELEASE       9
+#define TERM          10
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
@@ -117,6 +120,7 @@ typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperGrabAction> GrabClient;
 // Our Action interface type, provided as a typedef for convenience
 typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperReleaseAction> ReleaseClient; 
+typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient; 
 
 /*
 typedef struct {
@@ -150,7 +154,7 @@ public:
   cloud_sub_(n, "point_cloud_topic", 1),
   sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
   it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-  desire_points_initialized_(false), PHASE(SETTLE) 
+  desire_points_initialized_(false), PHASE(INIT) 
   {
 
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
@@ -158,13 +162,13 @@ public:
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
     std::string default_optical_frame = "/head_mount_kinect_rgb_optical_frame";
     n_private_.param("optical_frame", optical_frame_, default_optical_frame);
- 
+
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
     n_private_.param("num_downsamples", num_downsamples_, 2);
     std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
-    
+
     n_private_.param("crop_min_x", crop_min_x_, 0);
     n_private_.param("crop_max_x", crop_max_x_, 640);
     n_private_.param("crop_min_y", crop_min_y_, 0);
@@ -175,7 +179,7 @@ public:
     n_private_.param("max_workspace_x", max_workspace_x_, 1.75);
     n_private_.param("max_workspace_y", max_workspace_y_, 1.2);
     n_private_.param("max_workspace_z", max_workspace_z_, 0.6);
-    
+
     // color segmentation parameters
     n_private_.param("target_hue_value", target_hue_value_, 10);
     n_private_.param("target_hue_threshold", target_hue_threshold_, 20);
@@ -185,34 +189,22 @@ public:
     n_private_.param("default_sat_top_value", default_sat_top_value_, 40);
     n_private_.param("default_val_value", default_val_value_, 200);
     n_private_.param("min_contour_size", min_contour_size_, 10.0);
-    
+
     // others
     n_private_.param("gain_vel", gain_vel_, 1.0);
     n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
-    
-    n_private_.param("term_threshold", term_threshold_, 0.008);
-  
+
+    n_private_.param("term_threshold", term_threshold_, 0.001);
+
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
-    
+
     chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
 
     alarm_ = ros::Time(0);
-    
-    //Initialize the client for the Action interface to the gripper controller
-    //and tell the action client that we want to spin a thread by default
-    grab_client_  = new GrabClient("l_gripper_sensor_controller/grab",true);
-    release_client_  = new ReleaseClient("l_gripper_sensor_controller/release",true);
 
-    while(!grab_client_->waitForServer(ros::Duration(5.0))){
-      ROS_INFO("Waiting for the r_gripper_sensor_controller/grab action server to come up");
-    }
 
-    while(!release_client_->waitForServer(ros::Duration(5.0))){
-      ROS_INFO("Waiting for the r_gripper_sensor_controller/release action server to come up");
-    }    
-    
     ROS_DEBUG("Initialization 0: Node init & Register Callback Done");
   }
 
@@ -239,7 +231,7 @@ public:
     cv::Mat color_frame, depth_frame;
     cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
     cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
-    
+
     color_frame = color_cv_ptr->image;
     depth_frame = depth_cv_ptr->image;
 
@@ -249,14 +241,14 @@ public:
 
     XYZPointCloud cloud; 
     pcl::fromROSMsg(*cloud_msg, cloud);
-    
+
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
         cloud.header.stamp, ros::Duration(0.5));
-    
+
     pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
     cur_camera_header_ = img_msg->header;
-     
-    
+
+
     cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
                            cv::Scalar(255));
 
@@ -279,53 +271,69 @@ public:
         }
       }
     }
-    
+
     // focus only on the tabletop setting. do not care about anything far or too close
     color_frame.copyTo(cur_color_frame_, workspace_mask);
     cur_orig_color_frame_ = color_frame.clone();
     cur_depth_frame_ = depth_frame.clone();
     cur_point_cloud_ = cloud;
-  
+
     executeStatemachine();
 
-    if (PHASE > INIT_DESIRED)
-      setDisplay();
+    setDisplay();
 
     ros::Time end = ros::Time::now();
-    
+
     std::stringstream ss;
     ss << "Time it took is " << (end - start).toSec();
     std_msgs::String msg;
     msg.data = ss.str();
     chatter_pub_.publish(msg);
     // ROS_INFO("Time it took is %f", (end - start).toSec());
-  }   
-  
+  }
+
   void executeStatemachine()
   {
     if (sleepNonblock())
     {
       switch(PHASE)
       {
+        case INIT:
+          {
+            initializeService();
+            std_srvs::Empty e;
+            i_client_.call(e);
+            // gripper needs to be controlled from here
+            open();
+            PHASE = SETTLE;
+            setSleepNonblock(3.0);
+          }
+          break;
         case SETTLE:
           {
+
             ROS_INFO("Phase Settle: Move Gripper to Init Position");
             // Move Hand to Some Preset Pose
             visual_servo::VisualServoPose p_srv;
             p_srv.request.p.header.stamp = ros::Time::now();
             p_srv.request.p.header.frame_id = "torso_lift_link";
-            p_srv.request.p.pose.position.x = 0.6;
-            p_srv.request.p.pose.position.y = 0;
-            p_srv.request.p.pose.position.z = 0.5;
+            p_srv.request.p.pose.position.x = 0.62;
+            p_srv.request.p.pose.position.y = 0.05;
+            p_srv.request.p.pose.position.z = -0.1;
             p_srv.request.p.pose.orientation.x = -0.4582;
             p_srv.request.p.pose.orientation.y = 0;
             p_srv.request.p.pose.orientation.z = 0.8889;
             p_srv.request.p.pose.orientation.w = 0;
 
-            p_client_.call(p_srv);
-            setSleepNonblock(3.0);
-
-            PHASE = INIT_HAND;
+            if (p_client_.call(p_srv))
+            {
+              setSleepNonblock(3.0);
+              PHASE = INIT_HAND;
+            }
+            else
+            {
+              ROS_WARN("Failed to put the hand in initial configuration");
+            }
           }
           break;
         case INIT_HAND:
@@ -345,29 +353,38 @@ public:
 
             // order the blue tapes
             std::vector<cv::Point> pts = getMomentCoordinates(ms);
-          
-            // remember the difference between each points
-            pcl::PointXYZ tape0 = cur_point_cloud_.at(pts.at(0).x, pts.at(0).y);
-            pcl::PointXYZ tape1 = cur_point_cloud_.at(pts.at(1).x, pts.at(1).y);
-            pcl::PointXYZ tape2 = cur_point_cloud_.at(pts.at(2).x, pts.at(2).y);
-            tape1_loc_.x = tape1.x - tape0.x;
-            tape1_loc_.y = tape1.y - tape0.y;
-            tape1_loc_.z = tape1.z - tape0.z;
-            tape2_loc_.x = tape2.x - tape0.x;
-            tape2_loc_.y = tape2.y - tape0.y;
-            tape2_loc_.z = tape2.z - tape0.z;
+            temp_draw_ = pts;
 
-            PHASE = INIT_DESIRED;
-            setSleepNonblock(2.0);
+            if (pts.size() == 3)
+            {
+              // remember the difference between each points
+              pcl::PointXYZ tape0 = cur_point_cloud_.at(pts.at(0).x, pts.at(0).y);
+              pcl::PointXYZ tape1 = cur_point_cloud_.at(pts.at(1).x, pts.at(1).y);
+              pcl::PointXYZ tape2 = cur_point_cloud_.at(pts.at(2).x, pts.at(2).y);
+              tape1_loc_.x = tape1.x - tape0.x;
+              tape1_loc_.y = tape1.y - tape0.y;
+              tape1_loc_.z = tape1.z - tape0.z;
+              tape2_loc_.x = tape2.x - tape0.x;
+              tape2_loc_.y = tape2.y - tape0.y;
+              tape2_loc_.z = tape2.z - tape0.z;
 
+              PHASE = INIT_DESIRED;
+              setSleepNonblock(5.0);
+            }
+            else
+            {
+              // can't find hands
+              ROS_WARN("Cannot find the hand. Please reinitialize the hand");
+              PHASE = SETTLE;
+            }
           }
           break;
         case INIT_DESIRED:
           {
-            ROS_DEBUG("Phase Init");
+            temp_draw_.clear();
+            ROS_DEBUG("Phase Initialize Desired Points");
             if (initializeDesired())
             {
-              initializeService();
               PHASE = POSE_CONTR;
               // ros::Duration(3.0).sleep(); // blocking sleep
               ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
@@ -390,7 +407,7 @@ public:
             p_srv.request.p.header.frame_id = "torso_lift_link";
             p_srv.request.p.pose.position.x = d.workspace.x;
             p_srv.request.p.pose.position.y = d.workspace.y;
-            p_srv.request.p.pose.position.z = d.workspace.z + 0.05;
+            p_srv.request.p.pose.position.z = d.workspace.z + 0.035;
 
             /* 
                p_srv.request.p.pose.orientation.x = -0.7071;
@@ -411,8 +428,9 @@ public:
               if (0 == code)
               {
                 ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
-                setSleepNonblock(3.0);
+                setSleepNonblock(10.0);
                 PHASE = VS_CONTR;
+                ROS_INFO("Start Visual Servoing");
               }
             }
           }
@@ -422,11 +440,27 @@ public:
           {
             // compute the twist if everything is good to go
             visual_servo::VisualServoTwist v_srv = getTwist();
-            
+
             // terminal condition
             if (v_srv.request.error < term_threshold_)
+            {
               PHASE = GRAB;
-            
+
+              //Initialize the client for the Action interface to the gripper controller
+              //and tell the action client that we want to spin a thread by default
+              gripper_client_  = new GripperClient("l_gripper_controller/gripper_action",true);
+              grab_client_  = new GrabClient("l_gripper_sensor_controller/grab",true);
+              release_client_  = new ReleaseClient("l_gripper_sensor_controller/release",true);
+
+              while(!grab_client_->waitForServer(ros::Duration(5.0))){
+                ROS_INFO("Waiting for the r_gripper_sensor_controller/grab action server to come up");
+              }
+
+              while(!release_client_->waitForServer(ros::Duration(5.0))){
+                ROS_INFO("Waiting for the r_gripper_sensor_controller/release action server to come up");
+              }
+
+            }
             // calling the service provider to move
             if (v_client_.call(v_srv))
             {
@@ -439,15 +473,33 @@ public:
             }
           }
           break;
-        
+
         case GRAB:
           {
             grab();
             setSleepNonblock(2.0);
-            PHASE = RELEASE;
+            PHASE = RELOCATE;
           }
           break;
-        
+        case RELOCATE:
+        {
+          visual_servo::VisualServoPose p_srv;
+          p_srv.request.p.header.stamp = ros::Time::now();
+          p_srv.request.p.header.frame_id = "torso_lift_link";
+          p_srv.request.p.pose.position.x = 0.65;
+          p_srv.request.p.pose.position.y = -0.2;
+          p_srv.request.p.pose.position.z = -0.1;
+          p_srv.request.p.pose.orientation.x = -0.4582;
+          p_srv.request.p.pose.orientation.y = 0;
+          p_srv.request.p.pose.orientation.z = 0.8889;
+          p_srv.request.p.pose.orientation.w = 0;
+          if (p_client_.call(p_srv))
+          {
+            setSleepNonblock(2.0);
+            PHASE = RELEASE;
+          }
+        }
+        break;
         case RELEASE:
           {
             release();
@@ -467,9 +519,17 @@ public:
 
   void setDisplay()
   {
+    for (unsigned int i = 0; i < temp_draw_.size(); i++)
+    {
+      cv::Point p = temp_draw_.at(i);
+      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(127, 255, 0), 1);
+    }
 
-    VSXYZ d = desired_.front();
-    cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
+    if (desired_.size() > 0)
+    {
+      VSXYZ d = desired_.front();
+      cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
+    }
 
     // Draw on Desired Locations
     for (unsigned int i = 0; i < desired_locations_.size(); i++)
@@ -477,7 +537,7 @@ public:
       cv::Point p = desired_locations_.at(i).image;
       cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
     }
-    
+
     // Draw Features
     for (unsigned int i = 0; i < features_.size(); i++)
     {
@@ -485,7 +545,14 @@ public:
       cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
     }
 
-    
+    if (PHASE > INIT_DESIRED)
+    {
+      float e = getError(desired_locations_, features_);
+      std::stringstream stm;
+      std::string msg("Error: ");
+      stm << msg << e;
+      cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(10, 10), 2, 0.5, cv::Scalar(50, 50, 255),1);
+    }
     cv::imshow("in", cur_orig_color_frame_); 
     cv::waitKey(display_wait_ms_);
   }
@@ -495,11 +562,28 @@ public:
    * Gripper
    **/
 
+  void open()
+  {
+    pr2_controllers_msgs::Pr2GripperCommandGoal open;
+    open.command.position = 0.08;
+    open.command.max_effort = -1.0;
+
+    ROS_INFO("Sending open goal");
+    gripper_client_->sendGoal(open);
+    gripper_client_->waitForResult(ros::Duration(20.0));
+    if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+      ROS_INFO("Successfully completed Grab");
+    else
+      ROS_INFO("Grab Failed");
+
+  }
+
   //Open the gripper, find contact on both fingers, and go into slip-servo control mode
-  void grab(){
+  void grab()
+  {
     pr2_gripper_sensor_msgs::PR2GripperGrabGoal grip;
     grip.command.hardness_gain = 0.03;
-    
+
     ROS_INFO("Sending grab goal");
     grab_client_->sendGoal(grip);
     grab_client_->waitForResult(ros::Duration(20.0));
@@ -510,10 +594,11 @@ public:
   }
 
   // Look for side impact, finerpad slip, or contact acceleration signals and release the object once these occur
-  void release(){
+  void release()
+  {
     pr2_gripper_sensor_msgs::PR2GripperReleaseGoal place;
     // set the robot to release on a figner-side impact, fingerpad slip, or acceleration impact with hand/arm
-    place.command.event.trigger_conditions = place.command.event.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;  
+    place.command.event.trigger_conditions = place.command.event.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;
     // set the acceleration impact to trigger on to 5 m/s^2
     place.command.event.acceleration_trigger_magnitude = 5.0; 
     // set our slip-gain to release on to .005
@@ -527,10 +612,8 @@ public:
       ROS_INFO("Release Success");
     else
       ROS_INFO("Place Failure");
-
   }
 
-  
   /**
    * HELPER
    **/
@@ -554,12 +637,12 @@ public:
 
   bool initializeDesired()
   {
-    
+
     cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_ - target_hue_threshold_ , target_hue_value_ + target_hue_threshold_, 50, 100, 25, 100);
     cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
     //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
     cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
-    
+
     // eroding is good enough (since we are getting rid of false positives)
     // cv::erode(mask_t, mask_t, element_t);
 
@@ -599,18 +682,18 @@ public:
         min_y_ind = i;
       }
     }
-    
+
     int desired_x = ps.at(min_y_ind).x;
-    int desired_y = min_y;    
+    int desired_y = min_y;
 
     std::vector<cv::Point> pts_t; pts_t.clear();
     pts_t.push_back(cv::Point(desired_x, desired_y));
-    
+
     ROS_DEBUG(">> Desired Point in Image: [%d, %d]", desired_x, desired_y);
 
     // convert to proper internal struct 
     desired_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts_t);
-    
+
     VSXYZ temp_d = desired_.front();
     ROS_DEBUG(">> Desired Point in Camera: [%f, %f, %f]", temp_d.camera.x,
         temp_d.camera.y, temp_d.camera.z);
@@ -618,7 +701,7 @@ public:
         temp_d.workspace.y, temp_d.workspace.z);
 
     if (isnan(temp_d.workspace.x) || isnan(temp_d.workspace.y) ||
-      isnan(temp_d.workspace.z))
+        isnan(temp_d.workspace.z))
       return false;
     std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_.front());
     desired_locations_ = desired_vsxyz;
@@ -626,7 +709,7 @@ public:
     // for jacobian avg, we need IM at desired location as well
     if (JACOBIAN_TYPE_AVG == jacobian_type_)
       return vs_->setDesiredInteractionMatrix(desired_vsxyz);
-  
+
     return true;
   }
 
@@ -636,6 +719,7 @@ public:
     ros::NodeHandle n;
     v_client_ = n.serviceClient<visual_servo::VisualServoTwist>("vs_twist");
     p_client_ = n.serviceClient<visual_servo::VisualServoPose>("vs_pose");
+    i_client_ = n.serviceClient<std_srvs::Empty>("vs_init");
   }
 
   std::vector<VSXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
@@ -643,8 +727,8 @@ public:
     pcl::PointXYZ origin = origin_xyz.workspace;
     std::vector<pcl::PointXYZ> pts; pts.clear();
 
-    origin.y -= 0.05;
-    origin.z += 0.15;
+    origin.y -= 0.025;
+    origin.z += 0.06;
     origin.x -= 0.02;
 
     pcl::PointXYZ two = origin;
@@ -657,7 +741,7 @@ public:
     two.x = origin.x + tape1_loc_.x;
     two.y = origin.y + tape1_loc_.y;
     two.z = origin.z + tape1_loc_.z;
-            
+
     three.x = origin.x + tape2_loc_.x;
     three.y = origin.y + tape2_loc_.y;
     three.z = origin.z + tape2_loc_.z;
@@ -667,7 +751,7 @@ public:
     pts.push_back(three);
     return Point3DToVSXYZ(pts);
   }
-  
+
   // Service method
   visual_servo::VisualServoTwist getTwist()
   {
@@ -677,39 +761,22 @@ public:
     // get all the blues 
     cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
         tape_hue_threshold_);
-    
+
     // make it clearer with morphology
     cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
     cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
 
     // find the three largest blues
     std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-    
+
     // order the blue tapes
     std::vector<cv::Point> pts = getMomentCoordinates(ms);
-    
+
     // convert the features into proper form 
     std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
 
     features_ = features;
-#define DISPLAY 0
-#ifdef DISPLAY
 
-
-    /* 
-    for (unsigned int i = 0; i < desired_locations_.size(); i++)
-    {
-      printVSXYZ(desired_locations_.at(i));
-    }
-    for (unsigned int i = 0; i < features.size(); i++)
-    {
-      printVSXYZ(features.at(i));
-    }
-    
-    printf("%+.5f\t%+.5f\t%+.5f\n", srv.request.twist.twist.linear.x, 
-        srv.request.twist.twist.linear.y, srv.request.twist.twist.linear.z);
-    */
-#endif
     srv = vs_->computeTwist(desired_locations_, features);
     srv.request.error = getError(desired_locations_, features);
     return srv;
@@ -732,29 +799,6 @@ public:
     return e;
   }
 
-  /**
-   * Still in construction:
-   * to fix the orientation of the wrist, we now take a look at how the hand is positioned
-   * and use it to compute the desired positions.
-   */
-  std::vector<VSXYZ> setDesiredPosition()
-  {
-    std::vector<VSXYZ> desired; desired.clear();
-    // Looking up the hand
-    // Setting the Desired Location of the wrist
-    // Desired location: center of the screen
-    std::vector<pcl::PointXYZ> pts; pts.clear();
-    pcl::PointXYZ origin = cur_point_cloud_.at(cur_color_frame_.cols/2, cur_color_frame_.rows/2);
-    origin.z += 0.20;
-    pcl::PointXYZ two = origin;
-    pcl::PointXYZ three = origin;
-    two.y -= 0.07; 
-    three.x -= 0.06;
-    
-    pts.push_back(origin); pts.push_back(two); pts.push_back(three);
-    return Point3DToVSXYZ(pts);
-  }
-  
   /************************************
    * PERCEPTION
    ************************************/
@@ -781,7 +825,7 @@ public:
         centroids[i][0] = x0; 
         centroids[i][1] = y0; 
       }
-      
+
       // find the top left corner using distance scheme
       cv::Mat vect = cv::Mat::zeros(3,2, CV_32F); 
       vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
@@ -790,12 +834,12 @@ public:
       vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
       vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
       vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];       
-      
+
       double angle[3];
       angle[0] = abs(vect.row(0).dot(vect.row(1))); 
       angle[1] = abs(vect.row(0).dot(vect.row(2))); 
       angle[2] = abs(vect.row(1).dot(vect.row(2))); 
-      
+
       // printMatrix(vect); 
       double min = angle[0]; 
       int one = 0;
@@ -808,7 +852,7 @@ public:
           one = i;
         }
       }
-      
+
       // index of others depending on the index of the origin
       int a = one == 0 ? 1 : 0;
       int b = one == 2 ? 1 : 2; 
@@ -821,7 +865,7 @@ public:
       cv::Point pto(centroids[one][0], centroids[one][1]);
       cv::Point pta(centroids[a][0], centroids[a][1]);
       cv::Point ptb(centroids[b][0], centroids[b][1]);
-      
+
       // cross-product: simplified assuming that z = 0 for both
       result = vX1*vY0 - vX0*vY1;
       ret.push_back(pto);
@@ -1255,7 +1299,7 @@ protected:
   double gain_vel_;
   double gain_rot_;
   double term_threshold_;
-  
+
   unsigned int PHASE;
 
   cv::Mat desired_jacobian_;
@@ -1265,6 +1309,7 @@ protected:
 
   ros::ServiceClient v_client_;
   ros::ServiceClient p_client_;
+  ros::ServiceClient i_client_;
 
   ros::Publisher chatter_pub_;
 
@@ -1272,20 +1317,23 @@ protected:
   pcl::PointXYZ tape1_loc_;
   pcl::PointXYZ tape2_loc_;
 
+
+  GripperClient* gripper_client_;
   GrabClient* grab_client_;
   ReleaseClient* release_client_;
-  
+
   std::vector<VSXYZ> features_;
+  std::vector<cv::Point> temp_draw_;
 };
 
 int main(int argc, char ** argv)
 {
   srand(time(NULL));
   ros::init(argc, argv, "visual_servo_node");
-  
+
   log4cxx::LoggerPtr my_logger = log4cxx::Logger::getLogger(ROSCONSOLE_DEFAULT_NAME);
   my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Debug]);
-  
+
   ros::NodeHandle n;
   VisualServoNode vs_node(n);
   vs_node.spin();
