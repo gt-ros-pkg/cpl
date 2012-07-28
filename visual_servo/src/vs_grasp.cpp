@@ -88,6 +88,7 @@
 // PR2_GRIPPER_SENSOR_ACTION
 #include <pr2_controllers_msgs/Pr2GripperCommandAction.h>
 #include <pr2_gripper_sensor_msgs/PR2GripperGrabAction.h>
+#include <pr2_gripper_sensor_msgs/PR2GripperEventDetectorAction.h>
 #include <pr2_gripper_sensor_msgs/PR2GripperReleaseAction.h>
 #include <actionlib/client/simple_action_client.h>
 
@@ -108,31 +109,32 @@
 #define VS_CONTR      6
 #define GRAB          7
 #define RELOCATE      8
-#define RELEASE       9
-#define TERM          10
+#define DESCEND_INIT  9
+#define DESCEND       10
+#define RELEASE       11
+#define TERM          12
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::PointCloud2> MySyncPolicy;
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 
-// Our Action interface type, provided as a typedef for convenience
 typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperGrabAction> GrabClient;
-// Our Action interface type, provided as a typedef for convenience
+typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperEventDetectorAction> EventDetectorClient;
 typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperReleaseAction> ReleaseClient; 
 typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient; 
 
 /*
-typedef struct {
-  // pixels
-  cv::Point image;
-  // meters, note that xyz for this is different from the other one
-  pcl::PointXYZ camera;
-  // the 3d location in workspace frame
-  pcl::PointXYZ workspace;
-  pcl::PointXYZ workspace_angular;
+   typedef struct {
+// pixels
+cv::Point image;
+// meters, note that xyz for this is different from the other one
+pcl::PointXYZ camera;
+// the 3d location in workspace frame
+pcl::PointXYZ workspace;
+pcl::PointXYZ workspace_angular;
 } VSXYZ;
-*/
+ */
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PoseStamped;
@@ -146,15 +148,15 @@ using visual_servo::VisualServoPose;
  */
 class VisualServoNode
 {
-public:
-  VisualServoNode(ros::NodeHandle &n) :
-  n_(n), n_private_("~"),
-  image_sub_(n, "color_image_topic", 1),
-  depth_sub_(n, "depth_image_topic", 1),
-  cloud_sub_(n, "point_cloud_topic", 1),
-  sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
-  it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-  desire_points_initialized_(false), PHASE(INIT) 
+  public:
+    VisualServoNode(ros::NodeHandle &n) :
+      n_(n), n_private_("~"),
+      image_sub_(n, "color_image_topic", 1),
+      depth_sub_(n, "depth_image_topic", 1),
+      cloud_sub_(n, "point_cloud_topic", 1),
+      sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
+      it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
+      desire_points_initialized_(false), PHASE(INIT), is_detected_(false)
   {
 
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
@@ -194,1136 +196,1221 @@ public:
     n_private_.param("gain_vel", gain_vel_, 1.0);
     n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
-
     n_private_.param("term_threshold", term_threshold_, 0.001);
 
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
 
     chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
-
     alarm_ = ros::Time(0);
-
 
     ROS_DEBUG("Initialization 0: Node init & Register Callback Done");
   }
 
-  /**
-   * Called when Kinect information is avaiable. Refresh rate of about 100Hz 
-   */
-  void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
-                      const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
-  {
-
-    ros::Time start = ros::Time::now();
-
-    // Store camera information only once
-    if (!camera_initialized_)
-    {
-      cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(3.0));
-      camera_initialized_ = true;
-      ROS_DEBUG("Initialization: Camera Info Done");
-    }
-
-    // Preparing the image
-    //cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
-    //cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-    cv::Mat color_frame, depth_frame;
-    cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
-    cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
-
-    color_frame = color_cv_ptr->image;
-    depth_frame = depth_cv_ptr->image;
-
-    // Swap kinect color channel order
-    // new Fuerte may not need this line
-    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
-
-    XYZPointCloud cloud; 
-    pcl::fromROSMsg(*cloud_msg, cloud);
-
-    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-        cloud.header.stamp, ros::Duration(0.5));
-
-    pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
-    cur_camera_header_ = img_msg->header;
-
-
-    cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
-                           cv::Scalar(255));
-
-    // Black out pixels in color and depth images outside of workspace
-    // As well as outside of the crop window
-    for (int r = 0; r < color_frame.rows; ++r)
-    {
-      uchar* workspace_row = workspace_mask.ptr<uchar>(r);
-      for (int c = 0; c < color_frame.cols; ++c)
-      {
-        // NOTE: Cloud is accessed by at(column, row)
-        pcl::PointXYZ cur_pt = cloud.at(c, r);
-        if (cur_pt.x < min_workspace_x_ || cur_pt.x > max_workspace_x_ ||
-            cur_pt.y < min_workspace_y_ || cur_pt.y > max_workspace_y_ ||
-            cur_pt.z < min_workspace_z_ || cur_pt.z > max_workspace_z_ ||
-            r < crop_min_y_ || c < crop_min_x_ || r > crop_max_y_ ||
-            c > crop_max_x_ )
-        {
-          workspace_row[c] = 0;
-        }
-      }
-    }
-
-    // focus only on the tabletop setting. do not care about anything far or too close
-    color_frame.copyTo(cur_color_frame_, workspace_mask);
-    cur_orig_color_frame_ = color_frame.clone();
-    cur_depth_frame_ = depth_frame.clone();
-    cur_point_cloud_ = cloud;
-
-    executeStatemachine();
-
-    setDisplay();
-
-    ros::Time end = ros::Time::now();
-
-    std::stringstream ss;
-    ss << "Time it took is " << (end - start).toSec();
-    std_msgs::String msg;
-    msg.data = ss.str();
-    chatter_pub_.publish(msg);
-    // ROS_INFO("Time it took is %f", (end - start).toSec());
-  }
-
-  void executeStatemachine()
-  {
-    if (sleepNonblock())
-    {
-      switch(PHASE)
-      {
-        case INIT:
-          {
-            initializeService();
-            std_srvs::Empty e;
-            i_client_.call(e);
-            // gripper needs to be controlled from here
-            open();
-            PHASE = SETTLE;
-            setSleepNonblock(3.0);
-          }
-          break;
-        case SETTLE:
-          {
-
-            ROS_INFO("Phase Settle: Move Gripper to Init Position");
-            // Move Hand to Some Preset Pose
-            visual_servo::VisualServoPose p_srv;
-            p_srv.request.p.header.stamp = ros::Time::now();
-            p_srv.request.p.header.frame_id = "torso_lift_link";
-            p_srv.request.p.pose.position.x = 0.62;
-            p_srv.request.p.pose.position.y = 0.05;
-            p_srv.request.p.pose.position.z = -0.1;
-            p_srv.request.p.pose.orientation.x = -0.4582;
-            p_srv.request.p.pose.orientation.y = 0;
-            p_srv.request.p.pose.orientation.z = 0.8889;
-            p_srv.request.p.pose.orientation.w = 0;
-
-            if (p_client_.call(p_srv))
-            {
-              setSleepNonblock(3.0);
-              PHASE = INIT_HAND;
-            }
-            else
-            {
-              ROS_WARN("Failed to put the hand in initial configuration");
-            }
-          }
-          break;
-        case INIT_HAND:
-          {
-            ROS_DEBUG("Phase Init Hand: Remembering Blue Tape Positions");
-
-            // get all the blues 
-            cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
-                tape_hue_threshold_);
-
-            // make it clearer with morphology
-            cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
-            cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
-
-            // find the three largest blues
-            std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-
-            // order the blue tapes
-            std::vector<cv::Point> pts = getMomentCoordinates(ms);
-            temp_draw_ = pts;
-
-            if (pts.size() == 3)
-            {
-              // remember the difference between each points
-              pcl::PointXYZ tape0 = cur_point_cloud_.at(pts.at(0).x, pts.at(0).y);
-              pcl::PointXYZ tape1 = cur_point_cloud_.at(pts.at(1).x, pts.at(1).y);
-              pcl::PointXYZ tape2 = cur_point_cloud_.at(pts.at(2).x, pts.at(2).y);
-              tape1_loc_.x = tape1.x - tape0.x;
-              tape1_loc_.y = tape1.y - tape0.y;
-              tape1_loc_.z = tape1.z - tape0.z;
-              tape2_loc_.x = tape2.x - tape0.x;
-              tape2_loc_.y = tape2.y - tape0.y;
-              tape2_loc_.z = tape2.z - tape0.z;
-
-              PHASE = INIT_DESIRED;
-              setSleepNonblock(5.0);
-            }
-            else
-            {
-              // can't find hands
-              ROS_WARN("Cannot find the hand. Please reinitialize the hand");
-              PHASE = SETTLE;
-            }
-          }
-          break;
-        case INIT_DESIRED:
-          {
-            temp_draw_.clear();
-            ROS_DEBUG("Phase Initialize Desired Points");
-            if (initializeDesired())
-            {
-              PHASE = POSE_CONTR;
-              // ros::Duration(3.0).sleep(); // blocking sleep
-              ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
-
-            }
-            else
-            {
-              ROS_INFO("Failed. Retrying initialization in 2 seconds");
-              setSleepNonblock(2.0);
-            }
-
-          }
-          break;
-        case POSE_CONTR:
-          {
-            ROS_DEBUG("Phase Pose Control");
-            visual_servo::VisualServoPose p_srv;
-            VSXYZ d = desired_.front();
-            p_srv.request.p.header.stamp = ros::Time::now();
-            p_srv.request.p.header.frame_id = "torso_lift_link";
-            p_srv.request.p.pose.position.x = d.workspace.x;
-            p_srv.request.p.pose.position.y = d.workspace.y;
-            p_srv.request.p.pose.position.z = d.workspace.z + 0.035;
-
-            /* 
-               p_srv.request.p.pose.orientation.x = -0.7071;
-               p_srv.request.p.pose.orientation.y = 0;
-               p_srv.request.p.pose.orientation.z = 0.7071;
-               p_srv.request.p.pose.orientation.w = 0;
-             */
-            p_srv.request.p.pose.orientation.x = -0.4582;
-            p_srv.request.p.pose.orientation.y = 0;
-            p_srv.request.p.pose.orientation.z = 0.8889;
-            p_srv.request.p.pose.orientation.w = 0;
-            ROS_DEBUG(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.15);
-            if (p_client_.call(p_srv))
-            {
-              // on success
-              int code = p_srv.response.result;
-              ROS_INFO(">> Phase %d, Pose Control: Code [%d]", POSE_CONTR, code);
-              if (0 == code)
-              {
-                ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
-                setSleepNonblock(10.0);
-                PHASE = VS_CONTR;
-                ROS_INFO("Start Visual Servoing");
-              }
-            }
-          }
-          break;
-
-        case VS_CONTR:
-          {
-            // compute the twist if everything is good to go
-            visual_servo::VisualServoTwist v_srv = getTwist();
-
-            // terminal condition
-            if (v_srv.request.error < term_threshold_)
-            {
-              PHASE = GRAB;
-
-              //Initialize the client for the Action interface to the gripper controller
-              //and tell the action client that we want to spin a thread by default
-              gripper_client_  = new GripperClient("l_gripper_controller/gripper_action",true);
-              grab_client_  = new GrabClient("l_gripper_sensor_controller/grab",true);
-              release_client_  = new ReleaseClient("l_gripper_sensor_controller/release",true);
-
-              while(!grab_client_->waitForServer(ros::Duration(5.0))){
-                ROS_INFO("Waiting for the r_gripper_sensor_controller/grab action server to come up");
-              }
-
-              while(!release_client_->waitForServer(ros::Duration(5.0))){
-                ROS_INFO("Waiting for the r_gripper_sensor_controller/release action server to come up");
-              }
-
-            }
-            // calling the service provider to move
-            if (v_client_.call(v_srv))
-            {
-              // on success
-            }
-            else
-            {
-              // on failure
-              // ROS_WARN("Service FAILED...");
-            }
-          }
-          break;
-
-        case GRAB:
-          {
-            grab();
-            setSleepNonblock(2.0);
-            PHASE = RELOCATE;
-          }
-          break;
-        case RELOCATE:
-        {
-          visual_servo::VisualServoPose p_srv;
-          p_srv.request.p.header.stamp = ros::Time::now();
-          p_srv.request.p.header.frame_id = "torso_lift_link";
-          p_srv.request.p.pose.position.x = 0.65;
-          p_srv.request.p.pose.position.y = -0.2;
-          p_srv.request.p.pose.position.z = -0.1;
-          p_srv.request.p.pose.orientation.x = -0.4582;
-          p_srv.request.p.pose.orientation.y = 0;
-          p_srv.request.p.pose.orientation.z = 0.8889;
-          p_srv.request.p.pose.orientation.w = 0;
-          if (p_client_.call(p_srv))
-          {
-            setSleepNonblock(2.0);
-            PHASE = RELEASE;
-          }
-        }
-        break;
-        case RELEASE:
-          {
-            release();
-            setSleepNonblock(2.0);
-            PHASE = TERM;
-          }
-          break;
-        default:
-          {
-            ROS_INFO("Reached TERM state");
-            ros::shutdown();
-          }
-          break;
-      }
-    }
-  }
-
-  void setDisplay()
-  {
-    for (unsigned int i = 0; i < temp_draw_.size(); i++)
-    {
-      cv::Point p = temp_draw_.at(i);
-      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(127, 255, 0), 1);
-    }
-
-    if (desired_.size() > 0)
-    {
-      VSXYZ d = desired_.front();
-      cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
-    }
-
-    // Draw on Desired Locations
-    for (unsigned int i = 0; i < desired_locations_.size(); i++)
-    {
-      cv::Point p = desired_locations_.at(i).image;
-      cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
-    }
-
-    // Draw Features
-    for (unsigned int i = 0; i < features_.size(); i++)
-    {
-      cv::Point p = features_.at(i).image;
-      cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-    }
-
-    if (PHASE > INIT_DESIRED)
-    {
-      float e = getError(desired_locations_, features_);
-      std::stringstream stm;
-      std::string msg("Error: ");
-      stm << msg << e;
-      cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(10, 10), 2, 0.5, cv::Scalar(50, 50, 255),1);
-    }
-    cv::imshow("in", cur_orig_color_frame_); 
-    cv::waitKey(display_wait_ms_);
-  }
-
-
-  /**
-   * Gripper
-   **/
-
-  void open()
-  {
-    pr2_controllers_msgs::Pr2GripperCommandGoal open;
-    open.command.position = 0.08;
-    open.command.max_effort = -1.0;
-
-    ROS_INFO("Sending open goal");
-    gripper_client_->sendGoal(open);
-    gripper_client_->waitForResult(ros::Duration(20.0));
-    if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-      ROS_INFO("Successfully completed Grab");
-    else
-      ROS_INFO("Grab Failed");
-
-  }
-
-  //Open the gripper, find contact on both fingers, and go into slip-servo control mode
-  void grab()
-  {
-    pr2_gripper_sensor_msgs::PR2GripperGrabGoal grip;
-    grip.command.hardness_gain = 0.03;
-
-    ROS_INFO("Sending grab goal");
-    grab_client_->sendGoal(grip);
-    grab_client_->waitForResult(ros::Duration(20.0));
-    if(grab_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-      ROS_INFO("Successfully completed Grab");
-    else
-      ROS_INFO("Grab Failed");
-  }
-
-  // Look for side impact, finerpad slip, or contact acceleration signals and release the object once these occur
-  void release()
-  {
-    pr2_gripper_sensor_msgs::PR2GripperReleaseGoal place;
-    // set the robot to release on a figner-side impact, fingerpad slip, or acceleration impact with hand/arm
-    place.command.event.trigger_conditions = place.command.event.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;
-    // set the acceleration impact to trigger on to 5 m/s^2
-    place.command.event.acceleration_trigger_magnitude = 5.0; 
-    // set our slip-gain to release on to .005
-    place.command.event.slip_trigger_magnitude = .01;
-
-
-    ROS_INFO("Waiting for object placement contact...");
-    release_client_->sendGoal(place);
-    release_client_->waitForResult();
-    if(release_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-      ROS_INFO("Release Success");
-    else
-      ROS_INFO("Place Failure");
-  }
-
-  /**
-   * HELPER
-   **/
-  void setSleepNonblock(float time)
-  {
-    ros::Time alarm = ros::Time::now() + ros::Duration(time);
-    alarm_ = alarm;
-  }
-
-  bool sleepNonblock()
-  {
-    ros::Duration d = ros::Time::now() - alarm_;
-    if (d.toSec() > 0)
-    {
-      // set alarm to zero to be safe
-      alarm_ = ros::Time(0);
-      return true;
-    }
-    return false; 
-  }
-
-  bool initializeDesired()
-  {
-
-    cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_ - target_hue_threshold_ , target_hue_value_ + target_hue_threshold_, 50, 100, 25, 100);
-    cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
-    //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
-    cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
-
-    // eroding is good enough (since we are getting rid of false positives)
-    // cv::erode(mask_t, mask_t, element_t);
-
-    // find the largest red
-    cv::Mat in = mask_t;
-    std::vector<std::vector<cv::Point> > contours; contours.clear();
-    cv::findContours(in, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
-
-    if (contours.size() < 1)
-    {
-      ROS_WARN("No target Found");
-      return false;
-    }
-
-    unsigned int cont_max = contours.at(0).size();
-    unsigned int cont_max_ind = 0;
-    for (unsigned int i = 1; i < contours.size(); i++) 
-    {
-      if (contours.at(i).size() > cont_max)
-      {
-        cont_max = contours.at(i).size();
-        cont_max_ind = i;
-      }
-    }
-
-    // Draw
-    cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255)); 
-
-    std::vector<cv::Point> ps = contours.at(cont_max_ind);
-    int min_y = 480; 
-    int min_y_ind = 0;
-    for (unsigned int i = 0; i < ps.size(); i++)
-    {
-      if (ps.at(i).y < min_y)
-      {
-        min_y = ps.at(i).y;
-        min_y_ind = i;
-      }
-    }
-
-    int desired_x = ps.at(min_y_ind).x;
-    int desired_y = min_y;
-
-    std::vector<cv::Point> pts_t; pts_t.clear();
-    pts_t.push_back(cv::Point(desired_x, desired_y));
-
-    ROS_DEBUG(">> Desired Point in Image: [%d, %d]", desired_x, desired_y);
-
-    // convert to proper internal struct 
-    desired_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts_t);
-
-    VSXYZ temp_d = desired_.front();
-    ROS_DEBUG(">> Desired Point in Camera: [%f, %f, %f]", temp_d.camera.x,
-        temp_d.camera.y, temp_d.camera.z);
-    ROS_DEBUG(">> Desired Point in World : [%f, %f, %f]", temp_d.workspace.x,
-        temp_d.workspace.y, temp_d.workspace.z);
-
-    if (isnan(temp_d.workspace.x) || isnan(temp_d.workspace.y) ||
-        isnan(temp_d.workspace.z))
-      return false;
-    std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_.front());
-    desired_locations_ = desired_vsxyz;
-
-    // for jacobian avg, we need IM at desired location as well
-    if (JACOBIAN_TYPE_AVG == jacobian_type_)
-      return vs_->setDesiredInteractionMatrix(desired_vsxyz);
-
-    return true;
-  }
-
-  void initializeService()
-  {
-    ROS_DEBUG(">> Hooking Up The Service");
-    ros::NodeHandle n;
-    v_client_ = n.serviceClient<visual_servo::VisualServoTwist>("vs_twist");
-    p_client_ = n.serviceClient<visual_servo::VisualServoPose>("vs_pose");
-    i_client_ = n.serviceClient<std_srvs::Empty>("vs_init");
-  }
-
-  std::vector<VSXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
-  {
-    pcl::PointXYZ origin = origin_xyz.workspace;
-    std::vector<pcl::PointXYZ> pts; pts.clear();
-
-    origin.y -= 0.025;
-    origin.z += 0.06;
-    origin.x -= 0.02;
-
-    pcl::PointXYZ two = origin;
-    pcl::PointXYZ three = origin;
-    /*
-    two.y += 0.05; 
-    three.z += 0.05;
-    three.x += 0.02;
-    */
-    two.x = origin.x + tape1_loc_.x;
-    two.y = origin.y + tape1_loc_.y;
-    two.z = origin.z + tape1_loc_.z;
-
-    three.x = origin.x + tape2_loc_.x;
-    three.y = origin.y + tape2_loc_.y;
-    three.z = origin.z + tape2_loc_.z;
-
-    pts.push_back(origin);
-    pts.push_back(two);
-    pts.push_back(three);
-    return Point3DToVSXYZ(pts);
-  }
-
-  // Service method
-  visual_servo::VisualServoTwist getTwist()
-  {
-    visual_servo::VisualServoTwist srv;
-    //////////////////////
-    // Hand 
-    // get all the blues 
-    cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
-        tape_hue_threshold_);
-
-    // make it clearer with morphology
-    cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
-    cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
-
-    // find the three largest blues
-    std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
-
-    // order the blue tapes
-    std::vector<cv::Point> pts = getMomentCoordinates(ms);
-
-    // convert the features into proper form 
-    std::vector<VSXYZ> features = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-
-    features_ = features;
-
-    srv = vs_->computeTwist(desired_locations_, features);
-    srv.request.error = getError(desired_locations_, features);
-    return srv;
-  }
-
-  float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
-  {
-    float e(0.0);
-    unsigned int size = a.size() <= b.size() ? a.size() : b.size();
-
-    if (size < 3)
-      return 1;
-
-    for (unsigned int i = 0; i < size; i++)
-    {
-      pcl::PointXYZ a_c= a.at(i).camera;
-      pcl::PointXYZ b_c= b.at(i).camera;
-      e += pow(a_c.x - b_c.x ,2) + pow(a_c.y - b_c.y ,2);
-    }
-    return e;
-  }
-
-  /************************************
-   * PERCEPTION
-   ************************************/
-
-  /**
-   * Take three biggest moments of specific color and returns 
-   * the three biggest blobs or moments. This method assumes that
-   * the features are in QR code like configuration
-   * @param ms   All moments of color segmented
-   * @return     returns vectors of cv::Point. Ordered in specific way 
-   *             (1. top left, 2. top right, and 3. bottom left)
-   **/
-  std::vector<cv::Point> getMomentCoordinates(std::vector<cv::Moments> ms)
-  {
-    std::vector<cv::Point> ret;
-    ret.clear();
-    if (ms.size() == 3) { 
-      double centroids[3][2];
-      for (int i = 0; i < 3; i++) {
-        cv::Moments m0 = ms.at(i);
-        double x0, y0;
-        x0 = m0.m10/m0.m00;
-        y0 = m0.m01/m0.m00;
-        centroids[i][0] = x0; 
-        centroids[i][1] = y0; 
-      }
-
-      // find the top left corner using distance scheme
-      cv::Mat vect = cv::Mat::zeros(3,2, CV_32F); 
-      vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
-      vect.at<float>(0,1) = centroids[0][1] - centroids[1][1];
-      vect.at<float>(1,0) = centroids[0][0] - centroids[2][0];
-      vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
-      vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
-      vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];       
-
-      double angle[3];
-      angle[0] = abs(vect.row(0).dot(vect.row(1))); 
-      angle[1] = abs(vect.row(0).dot(vect.row(2))); 
-      angle[2] = abs(vect.row(1).dot(vect.row(2))); 
-
-      // printMatrix(vect); 
-      double min = angle[0]; 
-      int one = 0;
-      for (int i = 0; i < 3; i++)
-      {
-        // printf("[%d, %f]\n", i, angle[i]);
-        if (angle[i] < min)
-        {
-          min = angle[i];
-          one = i;
-        }
-      }
-
-      // index of others depending on the index of the origin
-      int a = one == 0 ? 1 : 0;
-      int b = one == 2 ? 1 : 2; 
-      // vectors of origin to a point
-      double vX0, vY0, vX1, vY1, result;
-      vX0 = centroids[a][0] - centroids[one][0];
-      vY0 = centroids[a][1] - centroids[one][1];
-      vX1 = centroids[b][0] - centroids[one][0];
-      vY1 = centroids[b][1] - centroids[one][1];
-      cv::Point pto(centroids[one][0], centroids[one][1]);
-      cv::Point pta(centroids[a][0], centroids[a][1]);
-      cv::Point ptb(centroids[b][0], centroids[b][1]);
-
-      // cross-product: simplified assuming that z = 0 for both
-      result = vX1*vY0 - vX0*vY1;
-      ret.push_back(pto);
-      if (result >= 0) {
-        ret.push_back(ptb);
-        ret.push_back(pta);
-      }
-      else {
-        ret.push_back(pta);
-        ret.push_back(ptb);
-      }
-    }
-    return ret;
-  } 
-  
-  /**
-   * 
-   * @param in  single channel image input
-   * @param color_frame  need the original image for debugging and imshow
-   * 
-   * @return    returns ALL moment of specific color in the image
-   **/
-  std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame, unsigned int max_num = 3) 
-  {
-    cv::Mat temp = in.clone();
-    std::vector<std::vector<cv::Point> > contours; contours.clear();
-    cv::findContours(temp, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
-    std::vector<cv::Moments> moments; moments.clear();
-    
-    for (unsigned int i = 0; i < contours.size(); i++) {
-      cv::Moments m = cv::moments(contours[i]);
-      if (m.m00 > min_contour_size_) {
-        // first add the forth element
-        moments.push_back(m);
-        // find the smallest element of 4 and remove that
-        if (moments.size() > max_num) {
-          double small(moments.at(0).m00);
-          unsigned int smallInd(0);
-          for (unsigned int j = 1; j < moments.size(); j++){
-            if (moments.at(j).m00 < small) {
-              small = moments.at(j).m00;
-              smallInd = j;
-            }
-          }
-          moments.erase(moments.begin() + smallInd);
-        }
-      }
-    }
-    return moments;
-  }
-  
-  cv::Mat colorSegment(cv::Mat color_frame, int hue, int threshold)
-  {
-    /*
-     * Often value = 0 or 255 are very useless. 
-     * The distance at those end points get very close and it is not useful
-     * Same with saturation 0. Low saturation makes everything more gray scaled
-     * So the default setting are below 
+    /**
+     * Called when Kinect information is avaiable. Refresh rate of about 100Hz 
      */
-    return colorSegment(color_frame, hue - threshold, hue + threshold,  
-        default_sat_bot_value_, default_sat_top_value_, 40, default_val_value_);
-  }
-  
-  /** 
-   * Very Basic Color Segmentation done in HSV space
-   * Takes in Hue value and threshold as input to compute the distance in color space
-   *
-   * @param color_frame   color input from image
-   *
-   * @return  mask from the color segmentation 
-   */
-  cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
-  {
-    cv::Mat temp (color_frame.clone());
-    cv::cvtColor(temp, temp, CV_BGR2HSV);
-    std::vector<cv::Mat> hsv;
-    cv::split(temp, hsv);
-   
-    // so it can support hue near 0 & 360
-    _hue_n = (_hue_n + 360);
-    _hue_p = (_hue_p + 360);
-
-    // masking out values that do not fall between the condition 
-    cv::Mat wm(color_frame.rows, color_frame.cols, CV_8UC1, cv::Scalar(0));
-    for (int r = 0; r < temp.rows; r++)
+    void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
+        const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     {
-      uchar* workspace_row = wm.ptr<uchar>(r);
-      for (int c = 0; c < temp.cols; c++)
+
+      ros::Time start = ros::Time::now();
+
+      // Store camera information only once
+      if (!camera_initialized_)
       {
-        int hue     = 2*(int)hsv[0].at<uchar>(r, c) + 360;  
-        float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
-        float value = 0.392*(int)hsv[2].at<uchar>(r, c);
+        cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(3.0));
+        camera_initialized_ = true;
+        ROS_DEBUG("Initialization: Camera Info Done");
+      }
 
-        if (_hue_n < hue && hue < _hue_p)
-          if (_sat_n < sat && sat < _sat_p)
-            if (_value_n < value && value < _value_p)
-              workspace_row[c] = 255;
-      } 
+      // Preparing the image
+      //cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
+      //cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
+      cv::Mat color_frame, depth_frame;
+      cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
+      cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
+
+      color_frame = color_cv_ptr->image;
+      depth_frame = depth_cv_ptr->image;
+
+      // Swap kinect color channel order
+      // new Fuerte may not need this line
+      // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
+
+      XYZPointCloud cloud; 
+      pcl::fromROSMsg(*cloud_msg, cloud);
+
+      tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
+          cloud.header.stamp, ros::Duration(0.5));
+
+      pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+      cur_camera_header_ = img_msg->header;
+
+      // do not really need the masking
+      /*
+      cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
+          cv::Scalar(255));
+      // Black out pixels in color and depth images outside of workspace
+      // As well as outside of the crop window
+      for (int r = 0; r < color_frame.rows; ++r)
+      {
+        uchar* workspace_row = workspace_mask.ptr<uchar>(r);
+        for (int c = 0; c < color_frame.cols; ++c)
+        {
+          // NOTE: Cloud is accessed by at(column, row)
+          pcl::PointXYZ cur_pt = cloud.at(c, r);
+          if (cur_pt.x < min_workspace_x_ || cur_pt.x > max_workspace_x_ ||
+              cur_pt.y < min_workspace_y_ || cur_pt.y > max_workspace_y_ ||
+              cur_pt.z < min_workspace_z_ || cur_pt.z > max_workspace_z_ ||
+              r < crop_min_y_ || c < crop_min_x_ || r > crop_max_y_ ||
+              c > crop_max_x_ )
+          {
+            workspace_row[c] = 0;
+          }
+        }
+      }
+
+      // focus only on the tabletop setting. do not care about anything far or too close
+      color_frame.copyTo(cur_color_frame_, workspace_mask);
+      */
+      cur_color_frame_ = color_frame;
+      cur_orig_color_frame_ = color_frame.clone();
+      cur_depth_frame_ = depth_frame.clone();
+      cur_point_cloud_ = cloud;
+
+      // need profiling on this
+      updateFeatures();
+
+      executeStatemachine();
+
+#define DISPLAY 1
+#ifdef DISPLAY
+      // show a pretty imshow
+      setDisplay();
+#endif
+      // for profiling purpose
+      ros::Time end = ros::Time::now();
+      std::stringstream ss;
+      ss << "Time it took is " << (end - start).toSec();
+      std_msgs::String msg;
+      msg.data = ss.str();
+      chatter_pub_.publish(msg);
+      // ROS_INFO("Time it took is %f", (end - start).toSec());
     }
-    
-    /*
-    // REMOVE
-    printf("[hn=%d hp=%d]", _hue_n, _hue_p);
-    int r = 0; int c = temp.cols-1;
-    int hue     = 2*(int)hsv[0].at<uchar>(r, c);  
-    float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
-    float value = 0.392*(int)hsv[2].at<uchar>(r, c);
-    printf("[%d,%d][%d, %.1f, %.1f]\n", r, c, hue,sat,value);
-    */
 
-    // removing unwanted parts by applying mask to the original image
-    return wm;
-  }
- 
-
-  /**************************** 
-   * Projection & Conversions
-   ****************************/
-  std::vector<VSXYZ> Point3DToVSXYZ(std::vector<pcl::PointXYZ> in)  
-  {
-    std::vector<VSXYZ> ret;
-    for (unsigned int i = 0; i < in.size(); i++)
+    void executeStatemachine()
     {
-      ret.push_back(convertFrom3DPointToVSXYZ(in.at(i)));
+      if (sleepNonblock())
+      {
+        temp_draw_.clear();
+        switch(PHASE)
+        {
+          case INIT:
+            {
+              initializeService();
+
+              // try to initialize the arm
+              std_srvs::Empty e;
+              i_client_.call(e);
+
+              // gripper needs to be controlled from here
+              open();
+              PHASE = SETTLE;
+              setSleepNonblock(3.0);
+            }
+            break;
+          case SETTLE:
+            {
+              ROS_INFO("Phase Settle: Move Gripper to Init Position");
+              // Move Hand to Some Preset Pose
+              visual_servo::VisualServoPose p_srv;
+              p_srv.request.p.header.stamp = ros::Time::now();
+              p_srv.request.p.header.frame_id = "torso_lift_link";
+              p_srv.request.p.pose.position.x = 0.62;
+              p_srv.request.p.pose.position.y = 0.05;
+              p_srv.request.p.pose.position.z = -0.1;
+              p_srv.request.p.pose.orientation.x = -0.4582;
+              p_srv.request.p.pose.orientation.y = 0;
+              p_srv.request.p.pose.orientation.z = 0.8889;
+              p_srv.request.p.pose.orientation.w = 0;
+
+              if (p_client_.call(p_srv))
+              {
+                setSleepNonblock(3.0);
+                PHASE = INIT_HAND;
+              }
+              else
+              {
+                ROS_WARN("Failed to put the hand in initial configuration");
+              }
+            }
+            break;
+
+          case INIT_HAND:
+            {
+              ROS_DEBUG("Phase Init Hand: Remembering Blue Tape Positions");
+
+              if (features_.size() == 3)
+              {
+                pcl::PointXYZ tape0 = features_.at(0).workspace;
+                pcl::PointXYZ tape1 = features_.at(1).workspace;
+                pcl::PointXYZ tape2 = features_.at(2).workspace;
+
+                // remember the difference between each points
+                tape1_loc_.x = tape1.x - tape0.x;
+                tape1_loc_.y = tape1.y - tape0.y;
+                tape1_loc_.z = tape1.z - tape0.z;
+                tape2_loc_.x = tape2.x - tape0.x;
+                tape2_loc_.y = tape2.y - tape0.y;
+                tape2_loc_.z = tape2.z - tape0.z;
+
+                PHASE = INIT_DESIRED;
+                setSleepNonblock(5.0);
+              }
+              else
+              {
+                // can't find hands
+                ROS_WARN("Cannot find the hand. Please reinitialize the hand");
+                PHASE = SETTLE;
+              }
+            }
+            break;
+
+          case INIT_DESIRED:
+            {
+              ROS_DEBUG("Phase Initialize Desired Points");
+              if (initializeDesired())
+              {
+                PHASE = POSE_CONTR;
+                // ros::Duration(3.0).sleep(); // blocking sleep
+                ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
+              }
+              else
+              {
+                ROS_INFO("Failed. Retrying initialization in 2 seconds");
+                setSleepNonblock(2.0);
+              }
+
+            }
+            break;
+
+          case POSE_CONTR:
+            {
+              ROS_DEBUG("Phase Pose Control");
+              visual_servo::VisualServoPose p_srv;
+              VSXYZ d = desired_;
+              p_srv.request.p.header.stamp = ros::Time::now();
+              p_srv.request.p.header.frame_id = "torso_lift_link";
+              p_srv.request.p.pose.position.x = d.workspace.x;
+              p_srv.request.p.pose.position.y = d.workspace.y;
+              p_srv.request.p.pose.position.z = d.workspace.z + 0.035;
+
+              /* 
+                 p_srv.request.p.pose.orientation.x = -0.7071;
+                 p_srv.request.p.pose.orientation.y = 0;
+                 p_srv.request.p.pose.orientation.z = 0.7071;
+                 p_srv.request.p.pose.orientation.w = 0;
+               */
+              p_srv.request.p.pose.orientation.x = -0.4582;
+              p_srv.request.p.pose.orientation.y = 0;
+              p_srv.request.p.pose.orientation.z = 0.8889;
+              p_srv.request.p.pose.orientation.w = 0;
+              ROS_DEBUG(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.15);
+              if (p_client_.call(p_srv))
+              {
+                // on success
+                int code = p_srv.response.result;
+                ROS_INFO(">> Phase %d, Pose Control: Code [%d]", POSE_CONTR, code);
+                if (0 == code)
+                {
+                  ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
+                  setSleepNonblock(10.0);
+                  PHASE = VS_CONTR;
+                  ROS_INFO("Start Visual Servoing");
+                }
+              }
+            }
+            break;
+
+          case VS_CONTR:
+            {
+              // compute the twist if everything is good to go
+              visual_servo::VisualServoTwist v_srv = getTwist();
+
+              // terminal condition
+              if (v_srv.request.error < term_threshold_)
+              {
+                // record the height at which the object wasd picked
+                object_z_ = features_.front().workspace.z;
+
+                PHASE = GRAB;
+              }
+              // calling the service provider to move
+              if (v_client_.call(v_srv))
+              {
+                // on success
+              }
+              else
+              {
+                // on failure
+                // ROS_WARN("Service FAILED...");
+              }
+            }
+            break;
+
+          case GRAB:
+            {
+              grab();
+              setSleepNonblock(2.0);
+              PHASE = RELOCATE;
+            }
+            break;
+          case RELOCATE:
+            {
+              visual_servo::VisualServoPose p_srv;
+              p_srv.request.p.header.stamp = ros::Time::now();
+              p_srv.request.p.header.frame_id = "torso_lift_link";
+              p_srv.request.p.pose.position.x = 0.65;
+              p_srv.request.p.pose.position.y = -0.2;
+              p_srv.request.p.pose.position.z = -0.1;
+              p_srv.request.p.pose.orientation.x = -0.4582;
+              p_srv.request.p.pose.orientation.y = 0;
+              p_srv.request.p.pose.orientation.z = 0.8889;
+              p_srv.request.p.pose.orientation.w = 0;
+              if (p_client_.call(p_srv))
+              {
+                setSleepNonblock(2.0);
+                PHASE = DESCEND_INIT;
+              }
+            }
+            break;
+          case DESCEND_INIT:
+            {
+              // inits callback for sensing collision
+              place();
+              PHASE = DESCEND;
+            }
+          case DESCEND:
+            {
+              visual_servo::VisualServoTwist v_srv;
+
+              // if collision is detected || if hand is around where we picked up
+              float cur_hand_z = features_.front().workspace.z;
+              if (is_detected_ || object_z_ - 0.01 > cur_hand_z)
+              {
+                PHASE = RELEASE;
+              }
+              else
+              {
+                // move down very slowly (3cm/sec)
+                v_srv.request.twist.twist.linear.z = -0.003;
+              }
+
+              // if collision is detected, 0 velocity should be commanded
+              v_client_.call(v_srv);
+            }
+            break;
+          case RELEASE:
+            {
+              release();
+              setSleepNonblock(2.0);
+              PHASE = TERM;
+            }
+            break;
+          default:
+            {
+              ROS_INFO("Reached TERM state");
+              ros::shutdown();
+            }
+            break;
+        }
+      }
     }
-    return ret;
-  }
 
-  /*
-  cv::Mat pointXYZToMat(pcl::PointXYZ in)
-  {
-    cv::Mat ret = cv::Mat::ones(4,1,CV_32F);
-    ret.at<float>(0,0) = in.x;
-    ret.at<float>(1,0) = in.y;
-    ret.at<float>(2,0) = in.z;
-    return ret;
-  }
-  
-  pcl::PointXYZ matToPointXYZ(cv::Mat in)
-  {
-    return pcl::PointXYZ(in.at<float>(0,0), in.at<float>(1,0),
-    in.at<float>(2,0));
-  }
-  */
+    void setDisplay()
+    {
+      for (unsigned int i = 0; i < temp_draw_.size(); i++)
+      {
+        cv::Point p = temp_draw_.at(i);
+        cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(127, 255, 0), 1);
+      }
 
-#ifdef SIMULATION
-  // separate function for simulation since we can't utilize 
-  // TF for rotation
-  VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
-  {
-    // [X,Y,Z] -> [u,v] -> [x,y,z]
-    VSXYZ ret;
-    
-    // 3D point in world frame
-    pcl::PointXYZ in_c = in;
+      if (desired_locations_.size() > 0)
+      {
+        VSXYZ d = desired_;
+        cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
+      }
 
-    // temporary to apply the transformation
-    cv::Mat t = cv::Mat::ones(4,1, CV_32F);
-    t.at<float>(0,0) = in_c.x;
-    t.at<float>(1,0) = in_c.y;
-    t.at<float>(2,0) = in_c.z;
-    cv::Mat R = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
-      sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
-    
-    // apply the rotation
-    t = R.inv() * t;
-    in_c.x = t.at<float>(0,0);
-    in_c.y = t.at<float>(1,0);
-    in_c.z = t.at<float>(2,0);
-    
-    // really doesn't matter which frame they are in. ignored for now.
-    cv::Point img = projectPointIntoImage(in_c, default_optical_frame, default_optical_frame);
-    cv::Mat temp = projectImagePointToPoint(img);
+      // Draw on Desired Locations
+      for (unsigned int i = 0; i < desired_locations_.size(); i++)
+      {
+        cv::Point p = desired_locations_.at(i).image;
+        cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
+      }
 
-    float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
-    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
-    
-    ret.image = img;
-    // for simpler simulator, this will be the same
-    ret.camera = _2d;
-    ret.workspace= in;
-    return ret;
-  }
-#else
-  VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
-  {
-    // [X,Y,Z] -> [u,v] -> [x,y,z]
-    VSXYZ ret;
-    
-    // 3D point in world frame
-    pcl::PointXYZ in_c = in;
-    cv::Point img = projectPointIntoImage(in_c, workspace_frame_, optical_frame_);
-    cv::Mat temp = projectImagePointToPoint(img);
+      // Draw Features
+      for (unsigned int i = 0; i < features_.size(); i++)
+      {
+        cv::Point p = features_.at(i).image;
+        cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+      }
 
-    float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
-    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
-    
-    ret.image = img;
-    // for simpler simulator, this will be the same
-    ret.camera = _2d;
-    ret.workspace= in;
-    return ret;
-  }
+      if (PHASE > INIT_DESIRED)
+      {
+        float e = getError(desired_locations_, features_);
+        std::stringstream stm;
+        std::string msg("Error: ");
+        stm << msg << e;
+        cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(10, 10), 2, 0.5, cv::Scalar(50, 50, 255),1);
+      }
+      cv::imshow("in", cur_orig_color_frame_); 
+      cv::waitKey(display_wait_ms_);
+    }
+
+
+    /**
+     * Gripper Actions: These are all blocking
+     **/
+
+    //move into event_detector mode to detect object contact
+    void place()
+    {
+      detector_client_ = new EventDetectorClient("l_gripper_sensor_controller/event_detector",true);
+      while(!detector_client_->waitForServer(ros::Duration(5.0))){
+        ROS_INFO("Waiting for the r_gripper_sensor_controller/event_detector action server to come up");
+      }
+      pr2_gripper_sensor_msgs::PR2GripperEventDetectorGoal place_goal;
+      place_goal.command.trigger_conditions = place_goal.command.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;  
+      place_goal.command.acceleration_trigger_magnitude = 4.0;  // set the contact acceleration to n m/s^2
+      place_goal.command.slip_trigger_magnitude = .005;
+
+      ROS_INFO("Waiting for object placement contact...");
+      detector_client_->sendGoal(place_goal,
+          boost::bind(&VisualServoNode::placeDoneCB, this, _1, _2));
+    }
+
+    void placeDoneCB(const actionlib::SimpleClientGoalState& state,
+      const pr2_gripper_sensor_msgs::PR2GripperEventDetectorResultConstPtr& result)
+    {
+      if(state == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("Place Success");
+      else
+        ROS_INFO("Place Failure");
+
+      is_detected_ = true;
+      // The debug message for clients are so annoying
+      free(detector_client_);
+    }
+    void open()
+    {
+      gripper_client_  = new GripperClient("l_gripper_controller/gripper_action",true);
+      while(!gripper_client_->waitForServer(ros::Duration(5.0))){
+        ROS_INFO("Waiting for the r_gripper_sensor_controller/event_detector action server to come up");
+      }
+
+      pr2_controllers_msgs::Pr2GripperCommandGoal open;
+      open.command.position = 0.08;
+      open.command.max_effort = -1.0;
+
+      ROS_INFO("Sending open goal");
+      gripper_client_->sendGoal(open);
+      gripper_client_->waitForResult(ros::Duration(20.0));
+      if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("Successfully completed Grab");
+      else
+        ROS_INFO("Grab Failed");
+      // The debug message for clients are so annoying
+      free(gripper_client_);
+    }
+
+    //Open the gripper, find contact on both fingers, and go into slip-servo control mode
+    void grab()
+    {
+      grab_client_  = new GrabClient("l_gripper_sensor_controller/grab",true);
+      while(!grab_client_->waitForServer(ros::Duration(5.0))){
+        ROS_INFO("Waiting for the r_gripper_sensor_controller/grab action server to come up");
+      }
+
+      pr2_gripper_sensor_msgs::PR2GripperGrabGoal grip;
+      grip.command.hardness_gain = 0.03;
+
+      ROS_INFO("Sending grab goal");
+      grab_client_->sendGoal(grip);
+      grab_client_->waitForResult(ros::Duration(20.0));
+      if(grab_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("Successfully completed Grab");
+      else
+        ROS_INFO("Grab Failed");
+      // The debug message for clients are so annoying
+      free(grab_client_);
+    }
+
+    // Look for side impact, finerpad slip, or contact acceleration signals and release the object once these occur
+    void release()
+    {
+      release_client_  = new ReleaseClient("l_gripper_sensor_controller/release",true);
+      while(!release_client_->waitForServer(ros::Duration(5.0))){
+        ROS_INFO("Waiting for the r_gripper_sensor_controller/release action server to come up");
+      }
+      pr2_gripper_sensor_msgs::PR2GripperReleaseGoal place;
+      // set the robot to release on a figner-side impact, fingerpad slip, or acceleration impact with hand/arm
+      place.command.event.trigger_conditions = place.command.event.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;
+      // set the acceleration impact to trigger on to 5 m/s^2
+      place.command.event.acceleration_trigger_magnitude = 5.0; 
+      // set our slip-gain to release on to .005
+      place.command.event.slip_trigger_magnitude = .01;
+
+      ROS_INFO("Waiting for object placement contact...");
+      release_client_->sendGoal(place);
+      release_client_->waitForResult();
+      if(release_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("Release Success");
+      else
+        ROS_INFO("Place Failure");
+
+      // The debug message for clients are so annoying
+      free(release_client_);
+    }
+
+    /**
+     * HELPER
+     **/
+    void setSleepNonblock(float time)
+    {
+      ros::Time alarm = ros::Time::now() + ros::Duration(time);
+      alarm_ = alarm;
+    }
+
+    bool sleepNonblock()
+    {
+      ros::Duration d = ros::Time::now() - alarm_;
+      if (d.toSec() > 0)
+      {
+        // set alarm to zero to be safe
+        alarm_ = ros::Time(0);
+        return true;
+      }
+      return false; 
+    }
+
+    bool initializeDesired()
+    {
+
+      cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_ - target_hue_threshold_ , target_hue_value_ + target_hue_threshold_, 50, 100, 25, 100);
+      cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+      //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
+      cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
+
+      // eroding is good enough (since we are getting rid of false positives)
+      // cv::erode(mask_t, mask_t, element_t);
+
+      // find the largest red
+      cv::Mat in = mask_t;
+      std::vector<std::vector<cv::Point> > contours; contours.clear();
+      cv::findContours(in, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
+
+      if (contours.size() < 1)
+      {
+        ROS_WARN("No target Found");
+        return false;
+      }
+
+      unsigned int cont_max = contours.at(0).size();
+      unsigned int cont_max_ind = 0;
+      for (unsigned int i = 1; i < contours.size(); i++) 
+      {
+        if (contours.at(i).size() > cont_max)
+        {
+          cont_max = contours.at(i).size();
+          cont_max_ind = i;
+        }
+      }
+      std::vector<cv::Point> ps = contours.at(cont_max_ind);
+      cv::Rect r = cv::boundingRect(ps);
+
+#ifdef DISPLAY
+      // for prettiness
+      cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255)); 
+      cv::rectangle(cur_orig_color_frame_, r, cv::Scalar(60,60,60));
 #endif
 
-  std::vector<VSXYZ> PointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
-  {
-    std::vector<VSXYZ> ret;
-    for (unsigned int i = 0; i < in.size(); i++)
-    {
-      ret.push_back(convertFromPointToVSXYZ(cloud, depth_frame, in.at(i)));
-    }
-    return ret;
-  }
-  
-  VSXYZ convertFromPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in) 
-  {
-    // [u,v] -> [x,y,z] (from camera intrinsics) & [X, Y, Z] (from PointCloud)
-    VSXYZ ret;
-    // pixel to meter value (using inverse of camera intrinsic) 
-    cv::Mat temp = projectImagePointToPoint(in);
-
-    // getZValue averages out z-value in a window to reduce noises
-    pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), getZValue(depth_frame, in.x, in.y));
-    pcl::PointXYZ _3d = cloud.at(in.x, in.y);
-    
-    ret.image = in;
-    ret.camera = _2d;
-    ret.workspace= _3d;
-    return ret;
-  }
-
-  
-  /**
-   * transforms a point in pixels to meter using the inverse of 
-   * image intrinsic K
-   * @param in a point to be transformed
-   * @return returns meter value of the point in cv::Mat
-   */ 
-  cv::Mat projectImagePointToPoint(cv::Point in) 
-  {
-    if (K.rows == 0 || K.cols == 0) {
-      
-      // Camera intrinsic matrix
-      K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
-      K.convertTo(K, CV_32F);
-    }
-    
-    cv::Mat k_inv = K.inv();
-    
-    cv::Mat mIn  = cv::Mat(3,1,CV_32F);
-    mIn.at<float>(0,0) = in.x; 
-    mIn.at<float>(1,0) = in.y; 
-    mIn.at<float>(2,0) = 1; 
-    return k_inv * mIn;
-  }
-  
-  /**
-   * transforms a cv::Mat in pixels to meter using the inverse 
-   * Image Intrinsic K
-   * @param in  cv::Mat input to be transformed
-   * @return    returns meter in cv::Mat
-   */ 
-  cv::Mat projectImageMatToPoint(cv::Mat in)   
-  { 
-    cv::Point p(in.at<float>(0,0), in.at<float>(1,0));
-    return projectImagePointToPoint(p);
-  }
-  
-  /** 
-   * Transforms a point in Point Cloud to Image Frame (pixels)
-   * @param cur_point_pcl  The point to be transformed in pcl::PointXYZ
-   * @param point_frame    The frame that the PointCloud is in
-   * @param target_frame   Image frame
-   * @return               returns the pixel value of the PointCloud in image frame
-   */
-  cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
-                                  std::string point_frame, std::string target_frame)
-  {
-    PointStamped cur_point;
-    cur_point.header.frame_id = point_frame;
-    cur_point.point.x = cur_point_pcl.x;
-    cur_point.point.y = cur_point_pcl.y;
-    cur_point.point.z = cur_point_pcl.z;
-    return projectPointIntoImage(cur_point, target_frame);
-  }
-  
-  cv::Point projectPointIntoImage(PointStamped cur_point,
-                                  std::string target_frame)
-  {
-    if (K.rows == 0 || K.cols == 0) {
-      // Camera intrinsic matrix
-      K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
-      K.convertTo(K, CV_32F);
-    }
-    cv::Point img_loc;
-    try
-    {
-      // Transform point into the camera frame
-      PointStamped image_frame_loc_m;
-      tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
-      // Project point onto the image
-      img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
-                                    K.at<float>(0,2)*image_frame_loc_m.point.z) /
-                                   image_frame_loc_m.point.z);
-      img_loc.y = static_cast<int>((K.at<float>(1,1)*image_frame_loc_m.point.y +
-                                    K.at<float>(1,2)*image_frame_loc_m.point.z) /
-                                   image_frame_loc_m.point.z);
-    }
-    catch (tf::TransformException e)
-    {
-      ROS_ERROR_STREAM(e.what());
-    }
-    return img_loc;
-  }
-
-  /**********************
-   * HELPER METHODS
-   **********************/
-  void printMatrix(cv::Mat_<double> in)
-  {
-    for (int i = 0; i < in.rows; i++) {
-      for (int j = 0; j < in.cols; j++) {
-        printf("%+.5f\t", in(i,j)); 
-      }
-      printf("\n");
-    }
-  }
-  
-  void printVSXYZ(VSXYZ i)
-  {
-    printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
-     i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
-  }
-
-  float getZValue(cv::Mat depth_frame, int x, int y)
-  {
-    int window_size = 3;
-    float value = 0;
-    int size = 0; 
-    for (int i = 0; i < window_size; i++) 
-    {
-      for (int j = 0; j < window_size; j++) 
+      int size = r.width * r.height * 0.5;
+      float temp[size]; int ind = 0;
+      // this is much smaller than 480 x 640
+      for(int i = r.x; i < r.width + r.x; i++)
       {
-        // depth camera has x and y flipped. depth_frame.at(y,x)
-        float temp = depth_frame.at<float>(y-(int)(window_size/2)+j, x-(int)(window_size/2)+i);
-        // printf("[%d %d] %f\n", x-(int)(window_size/2)+i, y-(int)(window_size/2)+j, temp);
-        if (!isnan(temp) && temp > 0 && temp < 2.0) 
+        // top 50% of the rectangle area (speed trick)
+        for (int j = r.y; i < r.height*0.5 + r.y; j++)
         {
-          size++;
-          value += temp;
-        }
-        else
-        {
+          pcl::PointXYZ p = cur_point_cloud_.at(i, j);
+          temp[ind++] = p.z;
         }
       }
+      std::sort(temp, temp + size);
+
+      float max_z = temp[size - 1];
+      float thresh = max_z - 0.2*(max_z - temp[0]);
+
+      float mean_x = 0, mean_y =0, mean_z = 0;
+      int quant = 0;
+      for(int i = r.x; i < r.width + r.x; i++)
+      {
+        for (int j = r.y; i < r.height*0.5 + r.y; j++)
+        {
+          pcl::PointXYZ p = cur_point_cloud_.at(i, j);
+          if (p.z > thresh)
+          {
+            quant++;
+            mean_x += p.x;
+            mean_y += p.y;
+            mean_z += p.z;
+          }
+        }
+      }
+      pcl::PointXYZ desired(mean_x/quant, mean_y/quant, mean_z/quant);
+      desired_ = convertFrom3DPointToVSXYZ(desired);
+
+      ROS_DEBUG(">> Desired Point in Image: [%d, %d]", desired_.image.x, desired_.image.y);
+      ROS_DEBUG(">> Desired Point in Camera: [%f, %f, %f]", desired_.camera.x,
+          desired_.camera.y, desired_.camera.z);
+      ROS_DEBUG(">> Desired Point in World : [%f, %f, %f]", desired_.workspace.x,
+          desired_.workspace.y, desired_.workspace.z);
+
+      if (isnan(desired_.workspace.x) || isnan(desired_.workspace.y) ||
+          isnan(desired_.workspace.z))
+        return false;
+      std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_);
+      desired_locations_ = desired_vsxyz;
+
+      // for jacobian avg, we need IM at desired location as well
+      if (JACOBIAN_TYPE_AVG == jacobian_type_)
+        return vs_->setDesiredInteractionMatrix(desired_vsxyz);
+
+      return true;
     }
-    if (size == 0)
+
+    void initializeService()
     {
-      // mark source of 
-      cv::circle(cur_orig_color_frame_, cv::Point(x, y), 2, cv::Scalar(255, 255, 0), 1);
-      return -1;
+      ROS_DEBUG(">> Hooking Up The Service");
+      ros::NodeHandle n;
+      v_client_ = n.serviceClient<visual_servo::VisualServoTwist>("vs_twist");
+      p_client_ = n.serviceClient<visual_servo::VisualServoPose>("vs_pose");
+      i_client_ = n.serviceClient<std_srvs::Empty>("vs_init");
     }
-    return value/size;
-  }
- 
 
-  /**
-   * Executive control function for launching the node.
-   */
-  void spin()
-  {
-    while(n_.ok())
+    std::vector<VSXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
     {
-      ros::spinOnce();
+      pcl::PointXYZ origin = origin_xyz.workspace;
+      std::vector<pcl::PointXYZ> pts; pts.clear();
+
+      origin.y -= 0.025;
+      origin.z += 0.06;
+      origin.x -= 0.02;
+
+      pcl::PointXYZ two = origin;
+      pcl::PointXYZ three = origin;
+      /*
+         two.y += 0.05; 
+         three.z += 0.05;
+         three.x += 0.02;
+       */
+      two.x = origin.x + tape1_loc_.x;
+      two.y = origin.y + tape1_loc_.y;
+      two.z = origin.z + tape1_loc_.z;
+
+      three.x = origin.x + tape2_loc_.x;
+      three.y = origin.y + tape2_loc_.y;
+      three.z = origin.z + tape2_loc_.z;
+
+      pts.push_back(origin);
+      pts.push_back(two);
+      pts.push_back(three);
+      return Point3DToVSXYZ(pts);
     }
-  }
-  
-protected:
-  ros::NodeHandle n_;
-  ros::NodeHandle n_private_;
-  message_filters::Subscriber<sensor_msgs::Image> image_sub_;
-  message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
-  message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
-  message_filters::Synchronizer<MySyncPolicy> sync_;
-  image_transport::ImageTransport it_;
-  sensor_msgs::CameraInfo cam_info_;
-  shared_ptr<tf::TransformListener> tf_;
-  cv::Mat cur_color_frame_;
-  cv::Mat cur_orig_color_frame_;
-  cv::Mat cur_depth_frame_;
-  cv::Mat cur_workspace_mask_;
-  std_msgs::Header cur_camera_header_;
-  XYZPointCloud cur_point_cloud_;
 
-  bool have_depth_data_;
-  int display_wait_ms_;
-  int num_downsamples_;
-  std::string workspace_frame_;
-  std::string optical_frame_;
-  bool camera_initialized_;
-  bool desire_points_initialized_;
-  std::string cam_info_topic_;
-  int tracker_count_;
+    // Service method
+    visual_servo::VisualServoTwist getTwist()
+    {
+      visual_servo::VisualServoTwist srv;
+      srv = vs_->computeTwist(desired_locations_, features_);
+      srv.request.error = getError(desired_locations_, features_);
+      return srv;
+    }
 
-  // filtering 
-  double min_workspace_x_;
-  double max_workspace_x_;
-  double min_workspace_y_;
-  double max_workspace_y_;
-  double min_workspace_z_;
-  double max_workspace_z_;
-  int crop_min_x_;
-  int crop_max_x_;
-  int crop_min_y_;
-  int crop_max_y_;
+    // Detect Tapes on Gripepr and update its position
+    void updateFeatures()
+    {
+      //////////////////////
+      // Hand 
+      // get all the blues 
+      cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
+          tape_hue_threshold_);
 
-  // segmenting
-  int target_hue_value_;
-  int target_hue_threshold_;
-  int tape_hue_value_;
-  int tape_hue_threshold_;
-  int default_sat_bot_value_;
-  int default_sat_top_value_;
-  int default_val_value_;
-  double min_contour_size_;
+      // make it clearer with morphology
+      cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+      cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
 
-  // others    
-  shared_ptr<VisualServo> vs_;
-  int jacobian_type_;
-  double gain_vel_;
-  double gain_rot_;
-  double term_threshold_;
+      // find the three largest blues
+      std::vector<cv::Moments> ms = findMoments(tape_mask, cur_color_frame_); 
 
-  unsigned int PHASE;
+      // order the blue tapes
+      std::vector<cv::Point> pts = getMomentCoordinates(ms);
 
-  cv::Mat desired_jacobian_;
-  std::vector<VSXYZ> desired_locations_;
-  std::vector<VSXYZ> desired_;
-  cv::Mat K;
-
-  ros::ServiceClient v_client_;
-  ros::ServiceClient p_client_;
-  ros::ServiceClient i_client_;
-
-  ros::Publisher chatter_pub_;
-
-  ros::Time alarm_;
-  pcl::PointXYZ tape1_loc_;
-  pcl::PointXYZ tape2_loc_;
+      // convert the features into proper form 
+      features_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
 
 
-  GripperClient* gripper_client_;
-  GrabClient* grab_client_;
-  ReleaseClient* release_client_;
+    }
 
-  std::vector<VSXYZ> features_;
-  std::vector<cv::Point> temp_draw_;
+    float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
+    {
+      float e(0.0);
+      unsigned int size = a.size() <= b.size() ? a.size() : b.size();
+
+      if (size < 3)
+        return 1;
+
+      for (unsigned int i = 0; i < size; i++)
+      {
+        pcl::PointXYZ a_c= a.at(i).camera;
+        pcl::PointXYZ b_c= b.at(i).camera;
+        e += pow(a_c.x - b_c.x ,2) + pow(a_c.y - b_c.y ,2);
+      }
+      return e;
+    }
+
+    /************************************
+     * PERCEPTION
+     ************************************/
+
+    /**
+     * Take three biggest moments of specific color and returns 
+     * the three biggest blobs or moments. This method assumes that
+     * the features are in QR code like configuration
+     * @param ms   All moments of color segmented
+     * @return     returns vectors of cv::Point. Ordered in specific way 
+     *             (1. top left, 2. top right, and 3. bottom left)
+     **/
+    std::vector<cv::Point> getMomentCoordinates(std::vector<cv::Moments> ms)
+    {
+      std::vector<cv::Point> ret;
+      ret.clear();
+      if (ms.size() == 3) { 
+        double centroids[3][2];
+        for (int i = 0; i < 3; i++) {
+          cv::Moments m0 = ms.at(i);
+          double x0, y0;
+          x0 = m0.m10/m0.m00;
+          y0 = m0.m01/m0.m00;
+          centroids[i][0] = x0; 
+          centroids[i][1] = y0; 
+        }
+
+        // find the top left corner using distance scheme
+        cv::Mat vect = cv::Mat::zeros(3,2, CV_32F); 
+        vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
+        vect.at<float>(0,1) = centroids[0][1] - centroids[1][1];
+        vect.at<float>(1,0) = centroids[0][0] - centroids[2][0];
+        vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
+        vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
+        vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];       
+
+        double angle[3];
+        angle[0] = abs(vect.row(0).dot(vect.row(1))); 
+        angle[1] = abs(vect.row(0).dot(vect.row(2))); 
+        angle[2] = abs(vect.row(1).dot(vect.row(2))); 
+
+        // printMatrix(vect); 
+        double min = angle[0]; 
+        int one = 0;
+        for (int i = 0; i < 3; i++)
+        {
+          // printf("[%d, %f]\n", i, angle[i]);
+          if (angle[i] < min)
+          {
+            min = angle[i];
+            one = i;
+          }
+        }
+
+        // index of others depending on the index of the origin
+        int a = one == 0 ? 1 : 0;
+        int b = one == 2 ? 1 : 2; 
+        // vectors of origin to a point
+        double vX0, vY0, vX1, vY1, result;
+        vX0 = centroids[a][0] - centroids[one][0];
+        vY0 = centroids[a][1] - centroids[one][1];
+        vX1 = centroids[b][0] - centroids[one][0];
+        vY1 = centroids[b][1] - centroids[one][1];
+        cv::Point pto(centroids[one][0], centroids[one][1]);
+        cv::Point pta(centroids[a][0], centroids[a][1]);
+        cv::Point ptb(centroids[b][0], centroids[b][1]);
+
+        // cross-product: simplified assuming that z = 0 for both
+        result = vX1*vY0 - vX0*vY1;
+        ret.push_back(pto);
+        if (result >= 0) {
+          ret.push_back(ptb);
+          ret.push_back(pta);
+        }
+        else {
+          ret.push_back(pta);
+          ret.push_back(ptb);
+        }
+      }
+      return ret;
+    } 
+
+    /**
+     * 
+     * @param in  single channel image input
+     * @param color_frame  need the original image for debugging and imshow
+     * 
+     * @return    returns ALL moment of specific color in the image
+     **/
+    std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame, unsigned int max_num = 3) 
+    {
+      cv::Mat temp = in.clone();
+      std::vector<std::vector<cv::Point> > contours; contours.clear();
+      cv::findContours(temp, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
+      std::vector<cv::Moments> moments; moments.clear();
+
+      for (unsigned int i = 0; i < contours.size(); i++) {
+        cv::Moments m = cv::moments(contours[i]);
+        if (m.m00 > min_contour_size_) {
+          // first add the forth element
+          moments.push_back(m);
+          // find the smallest element of 4 and remove that
+          if (moments.size() > max_num) {
+            double small(moments.at(0).m00);
+            unsigned int smallInd(0);
+            for (unsigned int j = 1; j < moments.size(); j++){
+              if (moments.at(j).m00 < small) {
+                small = moments.at(j).m00;
+                smallInd = j;
+              }
+            }
+            moments.erase(moments.begin() + smallInd);
+          }
+        }
+      }
+      return moments;
+    }
+
+    cv::Mat colorSegment(cv::Mat color_frame, int hue, int threshold)
+    {
+      /*
+       * Often value = 0 or 255 are very useless. 
+       * The distance at those end points get very close and it is not useful
+       * Same with saturation 0. Low saturation makes everything more gray scaled
+       * So the default setting are below 
+       */
+      return colorSegment(color_frame, hue - threshold, hue + threshold,  
+          default_sat_bot_value_, default_sat_top_value_, 40, default_val_value_);
+    }
+
+    /** 
+     * Very Basic Color Segmentation done in HSV space
+     * Takes in Hue value and threshold as input to compute the distance in color space
+     *
+     * @param color_frame   color input from image
+     *
+     * @return  mask from the color segmentation 
+     */
+    cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
+    {
+      cv::Mat temp (color_frame.clone());
+      cv::cvtColor(temp, temp, CV_BGR2HSV);
+      std::vector<cv::Mat> hsv;
+      cv::split(temp, hsv);
+
+      // so it can support hue near 0 & 360
+      _hue_n = (_hue_n + 360);
+      _hue_p = (_hue_p + 360);
+
+      // masking out values that do not fall between the condition 
+      cv::Mat wm(color_frame.rows, color_frame.cols, CV_8UC1, cv::Scalar(0));
+      for (int r = 0; r < temp.rows; r++)
+      {
+        uchar* workspace_row = wm.ptr<uchar>(r);
+        for (int c = 0; c < temp.cols; c++)
+        {
+          int hue     = 2*(int)hsv[0].at<uchar>(r, c) + 360;  
+          float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
+          float value = 0.392*(int)hsv[2].at<uchar>(r, c);
+
+          if (_hue_n < hue && hue < _hue_p)
+            if (_sat_n < sat && sat < _sat_p)
+              if (_value_n < value && value < _value_p)
+                workspace_row[c] = 255;
+        } 
+      }
+
+      /*
+      // REMOVE
+      printf("[hn=%d hp=%d]", _hue_n, _hue_p);
+      int r = 0; int c = temp.cols-1;
+      int hue     = 2*(int)hsv[0].at<uchar>(r, c);  
+      float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
+      float value = 0.392*(int)hsv[2].at<uchar>(r, c);
+      printf("[%d,%d][%d, %.1f, %.1f]\n", r, c, hue,sat,value);
+       */
+
+      // removing unwanted parts by applying mask to the original image
+      return wm;
+    }
+
+
+    /**************************** 
+     * Projection & Conversions
+     ****************************/
+    std::vector<VSXYZ> Point3DToVSXYZ(std::vector<pcl::PointXYZ> in)  
+    {
+      std::vector<VSXYZ> ret;
+      for (unsigned int i = 0; i < in.size(); i++)
+      {
+        ret.push_back(convertFrom3DPointToVSXYZ(in.at(i)));
+      }
+      return ret;
+    }
+
+    /*
+       cv::Mat pointXYZToMat(pcl::PointXYZ in)
+       {
+       cv::Mat ret = cv::Mat::ones(4,1,CV_32F);
+       ret.at<float>(0,0) = in.x;
+       ret.at<float>(1,0) = in.y;
+       ret.at<float>(2,0) = in.z;
+       return ret;
+       }
+
+       pcl::PointXYZ matToPointXYZ(cv::Mat in)
+       {
+       return pcl::PointXYZ(in.at<float>(0,0), in.at<float>(1,0),
+       in.at<float>(2,0));
+       }
+     */
+
+#ifdef SIMULATION
+    // separate function for simulation since we can't utilize 
+    // TF for rotation
+    VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
+    {
+      // [X,Y,Z] -> [u,v] -> [x,y,z]
+      VSXYZ ret;
+
+      // 3D point in world frame
+      pcl::PointXYZ in_c = in;
+
+      // temporary to apply the transformation
+      cv::Mat t = cv::Mat::ones(4,1, CV_32F);
+      t.at<float>(0,0) = in_c.x;
+      t.at<float>(1,0) = in_c.y;
+      t.at<float>(2,0) = in_c.z;
+      cv::Mat R = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
+          sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
+
+      // apply the rotation
+      t = R.inv() * t;
+      in_c.x = t.at<float>(0,0);
+      in_c.y = t.at<float>(1,0);
+      in_c.z = t.at<float>(2,0);
+
+      // really doesn't matter which frame they are in. ignored for now.
+      cv::Point img = projectPointIntoImage(in_c, default_optical_frame, default_optical_frame);
+      cv::Mat temp = projectImagePointToPoint(img);
+
+      float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
+      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
+
+      ret.image = img;
+      // for simpler simulator, this will be the same
+      ret.camera = _2d;
+      ret.workspace= in;
+      return ret;
+    }
+#else
+    VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
+    {
+      // [X,Y,Z] -> [u,v] -> [x,y,z]
+      VSXYZ ret;
+
+      // 3D point in world frame
+      pcl::PointXYZ in_c = in;
+      cv::Point img = projectPointIntoImage(in_c, workspace_frame_, optical_frame_);
+      cv::Mat temp = projectImagePointToPoint(img);
+
+      float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
+      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
+
+      ret.image = img;
+      // for simpler simulator, this will be the same
+      ret.camera = _2d;
+      ret.workspace= in;
+      return ret;
+    }
+#endif
+
+    std::vector<VSXYZ> PointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
+    {
+      std::vector<VSXYZ> ret;
+      for (unsigned int i = 0; i < in.size(); i++)
+      {
+        ret.push_back(convertFromPointToVSXYZ(cloud, depth_frame, in.at(i)));
+      }
+      return ret;
+    }
+
+    VSXYZ convertFromPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in) 
+    {
+      // [u,v] -> [x,y,z] (from camera intrinsics) & [X, Y, Z] (from PointCloud)
+      VSXYZ ret;
+      // pixel to meter value (using inverse of camera intrinsic) 
+      cv::Mat temp = projectImagePointToPoint(in);
+
+      // getZValue averages out z-value in a window to reduce noises
+      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), getZValue(depth_frame, in.x, in.y));
+      pcl::PointXYZ _3d = cloud.at(in.x, in.y);
+
+      ret.image = in;
+      ret.camera = _2d;
+      ret.workspace= _3d;
+      return ret;
+    }
+
+
+    /**
+     * transforms a point in pixels to meter using the inverse of 
+     * image intrinsic K
+     * @param in a point to be transformed
+     * @return returns meter value of the point in cv::Mat
+     */ 
+    cv::Mat projectImagePointToPoint(cv::Point in) 
+    {
+      if (K.rows == 0 || K.cols == 0) {
+
+        // Camera intrinsic matrix
+        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+        K.convertTo(K, CV_32F);
+      }
+
+      cv::Mat k_inv = K.inv();
+
+      cv::Mat mIn  = cv::Mat(3,1,CV_32F);
+      mIn.at<float>(0,0) = in.x; 
+      mIn.at<float>(1,0) = in.y; 
+      mIn.at<float>(2,0) = 1; 
+      return k_inv * mIn;
+    }
+
+    /**
+     * transforms a cv::Mat in pixels to meter using the inverse 
+     * Image Intrinsic K
+     * @param in  cv::Mat input to be transformed
+     * @return    returns meter in cv::Mat
+     */ 
+    cv::Mat projectImageMatToPoint(cv::Mat in)   
+    { 
+      cv::Point p(in.at<float>(0,0), in.at<float>(1,0));
+      return projectImagePointToPoint(p);
+    }
+
+    /** 
+     * Transforms a point in Point Cloud to Image Frame (pixels)
+     * @param cur_point_pcl  The point to be transformed in pcl::PointXYZ
+     * @param point_frame    The frame that the PointCloud is in
+     * @param target_frame   Image frame
+     * @return               returns the pixel value of the PointCloud in image frame
+     */
+    cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
+        std::string point_frame, std::string target_frame)
+    {
+      PointStamped cur_point;
+      cur_point.header.frame_id = point_frame;
+      cur_point.point.x = cur_point_pcl.x;
+      cur_point.point.y = cur_point_pcl.y;
+      cur_point.point.z = cur_point_pcl.z;
+      return projectPointIntoImage(cur_point, target_frame);
+    }
+
+    cv::Point projectPointIntoImage(PointStamped cur_point,
+        std::string target_frame)
+    {
+      if (K.rows == 0 || K.cols == 0) {
+        // Camera intrinsic matrix
+        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+        K.convertTo(K, CV_32F);
+      }
+      cv::Point img_loc;
+      try
+      {
+        // Transform point into the camera frame
+        PointStamped image_frame_loc_m;
+        tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
+        // Project point onto the image
+        img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
+              K.at<float>(0,2)*image_frame_loc_m.point.z) /
+            image_frame_loc_m.point.z);
+        img_loc.y = static_cast<int>((K.at<float>(1,1)*image_frame_loc_m.point.y +
+              K.at<float>(1,2)*image_frame_loc_m.point.z) /
+            image_frame_loc_m.point.z);
+      }
+      catch (tf::TransformException e)
+      {
+        ROS_ERROR_STREAM(e.what());
+      }
+      return img_loc;
+    }
+
+    /**********************
+     * HELPER METHODS
+     **********************/
+    void printMatrix(cv::Mat_<double> in)
+    {
+      for (int i = 0; i < in.rows; i++) {
+        for (int j = 0; j < in.cols; j++) {
+          printf("%+.5f\t", in(i,j)); 
+        }
+        printf("\n");
+      }
+    }
+
+    void printVSXYZ(VSXYZ i)
+    {
+      printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
+          i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
+    }
+
+    float getZValue(cv::Mat depth_frame, int x, int y)
+    {
+      int window_size = 3;
+      float value = 0;
+      int size = 0; 
+      for (int i = 0; i < window_size; i++) 
+      {
+        for (int j = 0; j < window_size; j++) 
+        {
+          // depth camera has x and y flipped. depth_frame.at(y,x)
+          float temp = depth_frame.at<float>(y-(int)(window_size/2)+j, x-(int)(window_size/2)+i);
+          // printf("[%d %d] %f\n", x-(int)(window_size/2)+i, y-(int)(window_size/2)+j, temp);
+          if (!isnan(temp) && temp > 0 && temp < 2.0) 
+          {
+            size++;
+            value += temp;
+          }
+          else
+          {
+          }
+        }
+      }
+      if (size == 0)
+      {
+        // mark source of 
+        cv::circle(cur_orig_color_frame_, cv::Point(x, y), 2, cv::Scalar(255, 255, 0), 1);
+        return -1;
+      }
+      return value/size;
+    }
+
+
+    /**
+     * Executive control function for launching the node.
+     */
+    void spin()
+    {
+      while(n_.ok())
+      {
+        ros::spinOnce();
+      }
+    }
+
+  protected:
+    ros::NodeHandle n_;
+    ros::NodeHandle n_private_;
+    message_filters::Subscriber<sensor_msgs::Image> image_sub_;
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
+    message_filters::Synchronizer<MySyncPolicy> sync_;
+    image_transport::ImageTransport it_;
+    sensor_msgs::CameraInfo cam_info_;
+    shared_ptr<tf::TransformListener> tf_;
+    cv::Mat cur_color_frame_;
+    cv::Mat cur_orig_color_frame_;
+    cv::Mat cur_depth_frame_;
+    cv::Mat cur_workspace_mask_;
+    std_msgs::Header cur_camera_header_;
+    XYZPointCloud cur_point_cloud_;
+
+    bool have_depth_data_;
+    int display_wait_ms_;
+    int num_downsamples_;
+    std::string workspace_frame_;
+    std::string optical_frame_;
+    bool camera_initialized_;
+    bool desire_points_initialized_;
+    std::string cam_info_topic_;
+    int tracker_count_;
+
+    // filtering 
+    double min_workspace_x_;
+    double max_workspace_x_;
+    double min_workspace_y_;
+    double max_workspace_y_;
+    double min_workspace_z_;
+    double max_workspace_z_;
+    int crop_min_x_;
+    int crop_max_x_;
+    int crop_min_y_;
+    int crop_max_y_;
+
+    // segmenting
+    int target_hue_value_;
+    int target_hue_threshold_;
+    int tape_hue_value_;
+    int tape_hue_threshold_;
+    int default_sat_bot_value_;
+    int default_sat_top_value_;
+    int default_val_value_;
+    double min_contour_size_;
+
+    // others    
+    shared_ptr<VisualServo> vs_;
+    int jacobian_type_;
+    double gain_vel_;
+    double gain_rot_;
+    double term_threshold_;
+
+    unsigned int PHASE;
+
+    cv::Mat desired_jacobian_;
+    std::vector<VSXYZ> desired_locations_;
+    VSXYZ desired_;
+    cv::Mat K;
+
+    ros::ServiceClient v_client_;
+    ros::ServiceClient p_client_;
+    ros::ServiceClient i_client_;
+
+    ros::Publisher chatter_pub_;
+
+    ros::Time alarm_;
+    pcl::PointXYZ tape1_loc_;
+    pcl::PointXYZ tape2_loc_;
+
+
+    GripperClient* gripper_client_;
+    GrabClient* grab_client_;
+    ReleaseClient* release_client_;
+    EventDetectorClient* detector_client_;
+
+    std::vector<VSXYZ> features_;
+    std::vector<cv::Point> temp_draw_;
+
+    // collision detection
+    bool is_detected_;
+
+    float object_z_;
 };
 
 int main(int argc, char ** argv)
