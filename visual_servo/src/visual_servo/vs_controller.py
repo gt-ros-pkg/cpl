@@ -75,6 +75,7 @@ class VNode:
         self.pn.switch_to_cart_controllers()
         rospy.loginfo('Done moving to robot initial pose')
 
+        self.pn.gripper_pose()
 
     # util
     #

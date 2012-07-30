@@ -207,8 +207,17 @@ class VisualServoNode
     ROS_INFO("Initialization 0: Node init & Register Callback Done");
   }
 
+  ~VisualServoNode()
+  {
+    delete chatter_pub_;
+    delete gripper_client_;
+    delete grab_client_;
+    delete release_client_;
+    delete detector_client_;
+  }
+
     /**
-     * Called when Kinect information is avaiable. Refresh rate of about 100Hz 
+     * Called when Kinect information is avaiable. Refresh rate of about 30Hz 
      */
     void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
         const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
@@ -592,7 +601,7 @@ class VisualServoNode
 
       pr2_gripper_sensor_msgs::PR2GripperEventDetectorGoal place_goal;
       place_goal.command.trigger_conditions = place_goal.command.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;
-      place_goal.command.acceleration_trigger_magnitude = 4.0;  // set the contact acceleration to n m/s^2
+      place_goal.command.acceleration_trigger_magnitude = 3.0;  // set the contact acceleration to n m/s^2
       place_goal.command.slip_trigger_magnitude = .005;
 
       ROS_INFO("Waiting for object placement contact...");
@@ -625,14 +634,13 @@ class VisualServoNode
         ROS_INFO("Successfully completed Grab");
       else
         ROS_INFO("Grab Failed");
-      // The debug message for clients are so annoying
     }
 
     //Open the gripper, find contact on both fingers, and go into slip-servo control mode
     void grab()
     {
       pr2_gripper_sensor_msgs::PR2GripperGrabGoal grip;
-      grip.command.hardness_gain = 0.03;
+      grip.command.hardness_gain = 0.02;
 
       ROS_INFO("Sending grab goal");
       grab_client_->sendGoal(grip);

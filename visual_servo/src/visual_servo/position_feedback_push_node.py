@@ -1300,17 +1300,25 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = state_msg.xd
         self.r_arm_F = state_msg.F
 
+    def gripper_pose(self, which_arm="l"):
+        if which_arm == 'l':
+          robot_gripper = self.robot.left_gripper
+          gripper_joint = 'l_gripper_joint'
+        else:
+          robot_gripper = self.robot.right_gripper
+          gripper_joint = 'r_gripper_joint'
+        joint_state = robot_gripper.pose(gripper_joint);
+        print joint_state
+
     def gripper_open(self, which_arm='l'):
         '''
         Move the arm to the initial pose to be out of the way for viewing the
         tabletop
         '''
         if which_arm == 'l':
-            robot_gripper = self.robot.left_gripper
+          robot_gripper = self.robot.left_gripper
         else:
-            robot_gripper = self.robot.right_gripper
-
-
+          robot_gripper = self.robot.right_gripper
         rospy.loginfo('Opening %s_gripper' % which_arm)
         res = robot_gripper.open(block=True)
         rospy.loginfo('Opening %s_gripper' % which_arm)
