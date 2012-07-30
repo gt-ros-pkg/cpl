@@ -699,8 +699,6 @@ class VisualServoNode
       cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
       //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
       cv::morphologyEx(mask_t, mask_t, cv::MORPH_OPEN, element_t);
-
-      // eroding is good enough (since we are getting rid of false positives)
       cv::dilate(mask_t, mask_t, element_t);
 
       // find the largest red
