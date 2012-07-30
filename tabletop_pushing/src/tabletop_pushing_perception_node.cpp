@@ -53,20 +53,20 @@
 #include <tf/transform_listener.h>
 
 // PCL
-#include <pcl16/point_cloud.h>
-#include <pcl16/point_types.h>
-#include <pcl16/common/common.h>
-#include <pcl16/common/eigen.h>
-#include <pcl16/common/centroid.h>
-#include <pcl16/io/io.h>
-#include <pcl16_ros/transforms.h>
-#include <pcl16/ros/conversions.h>
-#include <pcl16/ModelCoefficients.h>
-#include <pcl16/registration/transformation_estimation_svd.h>
-#include <pcl16/sample_consensus/method_types.h>
-#include <pcl16/sample_consensus/model_types.h>
-#include <pcl16/segmentation/sac_segmentation.h>
-#include <pcl16/filters/extract_indices.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/common/common.h>
+#include <pcl/common/eigen.h>
+#include <pcl/common/centroid.h>
+#include <pcl/io/io.h>
+#include <pcl_ros/transforms.h>
+#include <pcl/ros/conversions.h>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/registration/transformation_estimation_svd.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/filters/extract_indices.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -119,12 +119,12 @@ using tabletop_pushing::PushVector;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
-typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
+typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
-typedef pcl16::registration::TransformationEstimationSVD<pcl16::PointXYZ, pcl16::PointXYZ>
+typedef pcl::registration::TransformationEstimationSVD<pcl::PointXYZ, pcl::PointXYZ>
 TransformEstimator;
 using tabletop_pushing::PointCloudSegmentation;
 using tabletop_pushing::ProtoObject;
@@ -145,7 +145,7 @@ struct Tracker25DKeyPoint
   {
   }
 
-  Tracker25DKeyPoint(cv::Point point2D, pcl16::PointXYZ point3D,
+  Tracker25DKeyPoint(cv::Point point2D, pcl::PointXYZ point3D,
                      FeatureVector descriptor) :
       point2D_(point2D), point3D_(point3D), descriptor_(descriptor),
       delta2D_(0,0), delta3D_(0,0,0)
@@ -169,9 +169,9 @@ struct Tracker25DKeyPoint
     delta3D_.z = point3D_.z - prev.point3D_.z;
   }
 
-  pcl16::PointXYZ getPrevious3DPoint()
+  pcl::PointXYZ getPrevious3DPoint()
   {
-    pcl16::PointXYZ prev;
+    pcl::PointXYZ prev;
     prev.x = point3D_.x - delta3D_.x;
     prev.y = point3D_.y - delta3D_.y;
     prev.z = point3D_.z - delta3D_.z;
@@ -180,10 +180,10 @@ struct Tracker25DKeyPoint
   static const int NULL_X = -1;
   static const int NULL_Y = -1;
   cv::Point point2D_;
-  pcl16::PointXYZ point3D_;
+  pcl::PointXYZ point3D_;
   FeatureVector descriptor_;
   cv::Point delta2D_;
-  pcl16::PointXYZ delta3D_;
+  pcl::PointXYZ delta3D_;
 };
 
 static inline double sqrDistXY(Eigen::Vector4f a, Pose2D b)
@@ -500,7 +500,7 @@ class ObjectTracker25D
   {
     cv::Mat centroid_frame;
     in_frame.copyTo(centroid_frame);
-    pcl16::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
+    pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
                                  cur_obj.centroid[2]);
     const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
         centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
@@ -515,11 +515,11 @@ class ObjectTracker25D
     }
     const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
     const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
-    pcl16::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
+    pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
                                   centroid_point.z);
     const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
     const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
-    pcl16::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
+    pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
                                   centroid_point.z);
     const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
         table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
@@ -694,10 +694,10 @@ class TabletopPushingPerceptionNode
 
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
-    pcl16::fromROSMsg(*cloud_msg, cloud);
+    pcl::fromROSMsg(*cloud_msg, cloud);
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
                           cloud.header.stamp, ros::Duration(0.5));
-    pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+    pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
 
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
@@ -993,7 +993,7 @@ class TabletopPushingPerceptionNode
     // Get vector through centroid and determine start point and distance
     Eigen::Vector3f push_unit_vec(std::cos(desired_push_angle),
                                   std::sin(desired_push_angle), 0.0f);
-    std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud, push_unit_vec,
+    std::vector<pcl::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud, push_unit_vec,
                                                                                            cur_obj.centroid);
     p.start_point.x = end_points[0].x;
     p.start_point.y = end_points[0].y;
@@ -1059,11 +1059,11 @@ class TabletopPushingPerceptionNode
                                std::sin(cur_state.x.theta), 0.0f);
     Eigen::Vector3f minor_axis(std::cos(cur_state.x.theta+0.5*M_PI),
                                std::sin(cur_state.x.theta+0.5*M_PI), 0.0f);
-    std::vector<pcl16::PointXYZ> major_pts;
+    std::vector<pcl::PointXYZ> major_pts;
     major_pts = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud,
                                                                major_axis,
                                                                cur_obj.centroid);
-    std::vector<pcl16::PointXYZ> minor_pts;
+    std::vector<pcl::PointXYZ> minor_pts;
     minor_pts = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud,
                                                                minor_axis,
                                                                cur_obj.centroid);
@@ -1399,13 +1399,13 @@ class TabletopPushingPerceptionNode
     cv::RotatedRect obj_ellipse = obj_tracker_->getMostRecentEllipse();
     const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
     const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
-    pcl16::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
+    pcl::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
                                       centroid.point.z);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
         table_heading_point, centroid.header.frame_id, camera_frame_);
     const float goal_x_rad = (std::cos(goal_theta)*obj_ellipse.size.height*0.5);
     const float goal_y_rad = (std::sin(goal_theta)*obj_ellipse.size.height*0.5);
-    pcl16::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
+    pcl::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
                                      centroid.point.z);
     cv::Point2f img_goal_idx = pcl_segmenter_->projectPointIntoImage(
         goal_heading_point, centroid.header.frame_id, camera_frame_);

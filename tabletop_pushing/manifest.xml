@@ -12,8 +12,8 @@
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
   <depend package="geometry_msgs"/>
-  <depend package="pcl16"/>
-  <depend package="pcl16_ros"/>
+  <depend package="pcl"/>
+  <depend package="pcl_ros"/>
   <depend package="tf"/>
   <depend package="tf_conversions"/>
   <depend package="cpl_visual_features"/>
