@@ -235,13 +235,16 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   mps.setDistanceThreshold(0.02); // 2cm
   mps.setInputNormals(normal_cloud);
   mps.setInputCloud(input_cloud.makeShared());
-  // std::vector<pcl16::PlanarRegion<pcl16::PointXYZ>, Eigen::aligned_allocator<pcl16::PlanarRegion<pcl16::PointXYZ> > >
-  //     regions;
   std::vector<pcl16::PlanarRegion<pcl16::PointXYZ> > regions;
-  mps.segmentAndRefine(regions);
+  std::vector<pcl16::ModelCoefficients> coefficients;
+  std::vector<pcl16::PointIndices> point_indices;
+  pcl16::OrganizedMultiPlaneSegmentation<pcl16::PointXYZ, pcl16::Normal, pcl16::Label>::PointCloudLPtr labels;
+  std::vector<pcl16::PointIndices> label_indices;
+  std::vector<pcl16::PointIndices> boundary_indices;
+  mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
 
   // TODO: Get table plane
-  // TODO: Create objects
+  // TODO: Create objects and their clouds
   ProtoObjects objs;
   for (size_t i = 0; i < regions.size (); i++)
   {
@@ -249,7 +252,8 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     po.push_history.clear();
     po.boundary_angle_dist.clear();
     po.id = i;
-    // pcl16::copyPointCloud(objects_cloud, clusters[i], po.cloud);
+    // TODO: Get object point cloud
+    pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
     po.centroid[0] = regions[i].getCentroid()[0];
     po.centroid[1] = regions[i].getCentroid()[1];
     po.centroid[2] = regions[i].getCentroid()[2];
@@ -260,9 +264,9 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     objs.push_back(po);
     Eigen::Vector4f model = regions[i].getCoefficients ();
     //pcl16::PointCloud boundary_cloud;
+    // TODO: Save object counter
     XYZPointCloud boundary_cloud;
     boundary_cloud.points = regions[i].getContour ();
-    po.cloud = boundary_cloud;
     printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
             po.centroid[0], po.centroid[1], po.centroid[2],
             model[0], model[1], model[2], model[3],
