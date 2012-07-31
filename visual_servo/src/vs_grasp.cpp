@@ -157,37 +157,24 @@ class VisualServoNode
     std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
 
-    n_private_.param("crop_min_x", crop_min_x_, 0);
-    n_private_.param("crop_max_x", crop_max_x_, 640);
-    n_private_.param("crop_min_y", crop_min_y_, 0);
-    n_private_.param("crop_max_y", crop_max_y_, 480);
-    n_private_.param("min_workspace_x", min_workspace_x_, -1.0);
-    n_private_.param("min_workspace_y", min_workspace_y_, -1.2);
-    n_private_.param("min_workspace_z", min_workspace_z_, -0.8);
-    n_private_.param("max_workspace_x", max_workspace_x_, 1.75);
-    n_private_.param("max_workspace_y", max_workspace_y_, 1.2);
-    n_private_.param("max_workspace_z", max_workspace_z_, 0.6);
-
     // color segmentation parameters
     n_private_.param("target_hue_value", target_hue_value_, 10);
     n_private_.param("target_hue_threshold", target_hue_threshold_, 20);
-    n_private_.param("tape_hue_value", tape_hue_value_, 180);
-    n_private_.param("tape_hue_threshold", tape_hue_threshold_, 50);
+    n_private_.param("gripper_tape_hue_value", gripper_tape_hue_value_, 180);
+    n_private_.param("gripper_tape_hue_threshold", gripper_tape_hue_threshold_, 50);
     n_private_.param("default_sat_bot_value", default_sat_bot_value_, 40);
     n_private_.param("default_sat_top_value", default_sat_top_value_, 40);
     n_private_.param("default_val_value", default_val_value_, 200);
     n_private_.param("min_contour_size", min_contour_size_, 10.0);
 
     // others
-    n_private_.param("gain_vel", gain_vel_, 1.0);
-    n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
-    n_private_.param("term_threshold", term_threshold_, 0.001);
+    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.001);
     n_private_.param("pose_servo_z_offset", pose_servo_z_offset_, 0.045);
     n_private_.param("place_z_velocity", place_z_velocity_, -0.025);
-    n_private_.param("tape1_offset_x", tape1_offset_x_, 0.02);
-    n_private_.param("tape1_offset_y", tape1_offset_y_, -0.025);
-    n_private_.param("tape1_offset_z", tape1_offset_z_, 0.07);
+    n_private_.param("gripper_tape1_offset_x", tape1_offset_x_, 0.02);
+    n_private_.param("gripper_tape1_offset_y", tape1_offset_y_, -0.025);
+    n_private_.param("gripper_tape1_offset_z", tape1_offset_z_, 0.07);
 
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
@@ -398,7 +385,7 @@ class VisualServoNode
               visual_servo::VisualServoTwist v_srv = getTwist(desired_wp_);
 
               // term condition
-              if (v_srv.request.error < term_threshold_)
+              if (v_srv.request.error < vs_err_term_threshold_)
               {
                 PHASE = VS_CONTR_2;
               }
@@ -414,7 +401,7 @@ class VisualServoNode
               visual_servo::VisualServoTwist v_srv = getTwist(desired_locations_);
 
               // terminal condition
-              if (v_srv.request.error < term_threshold_)
+              if (v_srv.request.error < vs_err_term_threshold_)
               {
                 // record the height at which the object wasd picked
                 object_z_ = features_.front().workspace.z;
@@ -562,7 +549,7 @@ class VisualServoNode
         std::string msg("Error: ");
         stm << msg << e;
         cv::Scalar color;
-        if (e > term_threshold_)
+        if (e > vs_err_term_threshold_)
           color = cv::Scalar(50, 50, 255);
         else
           color = cv::Scalar(50, 255, 50);
@@ -890,8 +877,7 @@ class VisualServoNode
       //////////////////////
       // Hand 
       // get all the blues 
-      cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), tape_hue_value_, 
-          tape_hue_threshold_);
+      cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), gripper_tape_hue_value_, gripper_tape_hue_threshold_);
 
       // make it clearer with morphology
       cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
@@ -1424,23 +1410,12 @@ class VisualServoNode
     std::string cam_info_topic_;
     int tracker_count_;
 
-    // filtering 
-    double min_workspace_x_;
-    double max_workspace_x_;
-    double min_workspace_y_;
-    double max_workspace_y_;
-    double min_workspace_z_;
-    double max_workspace_z_;
-    int crop_min_x_;
-    int crop_max_x_;
-    int crop_min_y_;
-    int crop_max_y_;
 
     // segmenting
     int target_hue_value_;
     int target_hue_threshold_;
-    int tape_hue_value_;
-    int tape_hue_threshold_;
+    int gripper_tape_hue_value_;
+    int gripper_tape_hue_threshold_;
     int default_sat_bot_value_;
     int default_sat_top_value_;
     int default_val_value_;
@@ -1448,9 +1423,7 @@ class VisualServoNode
 
     // Other params
     int jacobian_type_;
-    double gain_vel_;
-    double gain_rot_;
-    double term_threshold_;
+    double vs_err_term_threshold_;
     double pose_servo_z_offset_;
     double place_z_velocity_;
     double tape1_offset_x_;
