@@ -112,7 +112,8 @@
 #define DESCEND_INIT  9
 #define DESCEND       10
 #define RELEASE       11
-#define TERM          12
+#define FINISH        12
+#define TERM          13
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
@@ -209,7 +210,6 @@ class VisualServoNode
 
   ~VisualServoNode()
   {
-    delete chatter_pub_;
     delete gripper_client_;
     delete grab_client_;
     delete release_client_;
@@ -418,7 +418,7 @@ class VisualServoNode
               p_srv.request.p.header.frame_id = "torso_lift_link";
               p_srv.request.p.pose.position.x = d.workspace.x;
               p_srv.request.p.pose.position.y = d.workspace.y;
-              p_srv.request.p.pose.position.z = d.workspace.z + 0.035;
+              p_srv.request.p.pose.position.z = d.workspace.z + 0.045;
 
               /* 
                  p_srv.request.p.pose.orientation.x = -0.7071;
@@ -488,7 +488,7 @@ class VisualServoNode
               p_srv.request.p.header.frame_id = "torso_lift_link";
               p_srv.request.p.pose.position.x = 0.5;
               p_srv.request.p.pose.position.y = 0.3;
-              p_srv.request.p.pose.position.z = -0.1;
+              p_srv.request.p.pose.position.z = 0.10 + object_z_;
               p_srv.request.p.pose.orientation.x = -0.4582;
               p_srv.request.p.pose.orientation.y = 0;
               p_srv.request.p.pose.orientation.z = 0.8889;
@@ -513,16 +513,14 @@ class VisualServoNode
               visual_servo::VisualServoTwist v_srv;
               v_srv.request.error = 1; // for scaling
               // if collision is detected || if hand is around where we picked up
-              float cur_hand_z = features_.front().workspace.z;
-              if (is_detected_ || object_z_ - 0.20 > cur_hand_z)
+              if (is_detected_)
               {
-                ROS_INFO_STREAM(">> Collision Detected. [Old Z:" << object_z_ << "][" << cur_hand_z << "]" );
                 PHASE = RELEASE;
               }
               else
               {
                 // move down very slowly (7cm/sec)
-                v_srv.request.twist.twist.linear.z = -0.007;
+                v_srv.request.twist.twist.linear.z = -0.022;
               }
 
               // if collision is detected, 0 velocity should be commanded
@@ -533,7 +531,26 @@ class VisualServoNode
             {
               release();
               setSleepNonblock(2.0);
-              PHASE = TERM;
+              PHASE = FINISH;
+            }
+            break;
+          case FINISH:
+            {
+              visual_servo::VisualServoPose p_srv;
+              p_srv.request.p.header.stamp = ros::Time::now();
+              p_srv.request.p.header.frame_id = "torso_lift_link";
+              p_srv.request.p.pose.position.x = 0.5;
+              p_srv.request.p.pose.position.y = 0.3;
+              p_srv.request.p.pose.position.z = 0.10 + object_z_;
+              p_srv.request.p.pose.orientation.x = -0.4582;
+              p_srv.request.p.pose.orientation.y = 0;
+              p_srv.request.p.pose.orientation.z = 0.8889;
+              p_srv.request.p.pose.orientation.w = 0;
+              if (p_client_.call(p_srv))
+              {
+                setSleepNonblock(2.0);
+                PHASE = TERM;
+              }
             }
             break;
           default:
@@ -601,7 +618,7 @@ class VisualServoNode
 
       pr2_gripper_sensor_msgs::PR2GripperEventDetectorGoal place_goal;
       place_goal.command.trigger_conditions = place_goal.command.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;
-      place_goal.command.acceleration_trigger_magnitude = 3.0;  // set the contact acceleration to n m/s^2
+      place_goal.command.acceleration_trigger_magnitude = 2.6;  // set the contact acceleration to n m/s^2
       place_goal.command.slip_trigger_magnitude = .005;
 
       ROS_INFO("Waiting for object placement contact...");
@@ -624,7 +641,7 @@ class VisualServoNode
     {
 
       pr2_controllers_msgs::Pr2GripperCommandGoal open;
-      open.command.position = 0.08;
+      open.command.position = 0.1;
       open.command.max_effort = -1.0;
 
       ROS_INFO("Sending open goal");
@@ -702,7 +719,7 @@ class VisualServoNode
       cv::dilate(mask_t, mask_t, element_t);
 
       // find the largest red
-      cv::Mat in = mask_t;
+      cv::Mat in = mask_t.clone();
       std::vector<std::vector<cv::Point> > contours; contours.clear();
       cv::findContours(in, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
 
@@ -729,7 +746,7 @@ class VisualServoNode
 
 #ifdef DISPLAY
       // for prettiness
-      cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255)); 
+      cv::drawContours(cur_orig_color_frame_, contours, cont_max_ind, cv::Scalar(255, 255, 255));
 #endif
 
       int size = r.width * (r.height * 0.5 + 1);
@@ -740,13 +757,21 @@ class VisualServoNode
         // top 50% of the rectangle area (speed trick)
         for (int j = r.y; j < r.height * 0.5 + r.y; j++)
         {
-          pcl::PointXYZ p = cur_point_cloud_.at(i, j);
-          if (!isnan(p.z))
-            temp[ind++] = p.z;
+          uchar t = mask_t.at<uchar>(j,i);
+          if (t > 0)
+          {
+            pcl::PointXYZ p = cur_point_cloud_.at(i, j);
+            if (!isnan(p.z) && p.z > -1.5)
+            {
+              temp[ind++] = p.z;
+              cv::circle(cur_orig_color_frame_, cv::Point(i, j), 1, cv::Scalar(127, 255, 0), 1);
+            }
+          }
         }
       }
-      std::sort(temp, temp + size);
+      std::sort(temp, temp + ind);
       float max_z = temp[ind - 1];
+
       float thresh = max_z - 0.2*(max_z - temp[0]);
 
       float mean_x = 0, mean_y =0, mean_z = 0;
@@ -827,7 +852,7 @@ class VisualServoNode
 
       origin.y -= 0.025;
       origin.z += 0.07;
-      origin.x += 0.0;
+      origin.x += 0.02;
 
       pcl::PointXYZ two = origin;
       pcl::PointXYZ three = origin;

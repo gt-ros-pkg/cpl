@@ -59,8 +59,8 @@ class VNode:
     def __init__(self):
 
         # Setup parameters
-        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.15)
-        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.1)
+        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.20)
+        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.13)
 
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
@@ -75,7 +75,7 @@ class VNode:
         self.pn.switch_to_cart_controllers()
         rospy.loginfo('Done moving to robot initial pose')
 
-        self.pn.gripper_pose()
+        # self.pn.gripper_pose()
 
     # util
     #
