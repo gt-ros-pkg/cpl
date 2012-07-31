@@ -164,14 +164,22 @@ class PositionFeedbackPushNode:
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
 
+        self.use_contact_pt_compensation = rospy.get_param('~use_control_pt_compensation_control', False)
+
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
         self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
         self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
+
+        self.k_contact_g = rospy.get_param('~push_control_contact_goal_gain', 0.05)
+        self.k_contact_d = rospy.get_param('~push_control_contact_gain', 0.05)
+
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
+
         self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
+
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
         # Setup cartesian controller parameters
@@ -480,8 +488,16 @@ class PositionFeedbackPushNode:
                           str(self.desired_pose.theta - feedback.x.theta) + ')')
         # TODO: Add new pushing visual feedback controllers here
         # TODO: Setup selection of action primitives here too, currently they all use the same controllers
+        # TODO: Select controller through service call better
         if self.spin_to_heading:
             update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
+        elif self.use_contact_pt_compensation:
+            if which_arm == 'l':
+                ee_pose = self.l_arm_pose
+            else:
+                ee_pose = self.r_arm_pose
+            update_twist = self.contactCompensationController(feedback, self.desired_pose,
+                                                              ee_pose)
         else:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
         if self.feedback_count % 5 == 0:
@@ -551,6 +567,44 @@ class PositionFeedbackPushNode:
         if self.feedback_count % 5 == 0:
             rospy.loginfo('heading_x_dot: (' + str(heading_x_dot) + ')')
             rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
+        return u
+
+    def contactCompensationController(self, cur_state, desired_state, ee_pose):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time(0)
+        # TODO: Make this a function of the measured pressure?
+        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # Push centroid towards the desired goal
+        centroid = cur_state.x
+        ee = ee_pose.x
+        x_error = desired_state.x - centroid.x
+        y_error = desired_state.y - centroid.y
+        goal_x_dot = self.k_contact_g*x_error
+        goal_y_dot = self.k_contact_g*y_error
+
+        # Add in direction to corect for not pushing through the centroid
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        m = (((ee.x - centroid.x)*x_error + (ee.y - centroid.y)*y_error) /
+             sqrt(x_error*x_error + y_error*y_error))
+        tan_pt_x = centroid.x + m*x_error
+        tan_pt_y = centroid.y + m*y_error
+
+        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
+        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
+        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
+                          str(spin_y_dot) + ')')
         return u
 
     #
