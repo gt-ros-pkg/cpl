@@ -34,13 +34,14 @@
     <param name="camera_wy" value="0.5" type="double"/>
     <param name="camera_wz" value="0" type="double"/>
 
-
     <param name="desired_x" value="0.3" type="double"/>
     <param name="desired_y" value="0.0" type="double"/>
     <param name="desired_z" value="0.8" type="double"/>
     <param name="desired_wx" value="0.3" type="double"/>
     <param name="desired_wy" value="0.1" type="double"/>
     <param name="desired_wz" value="0" type="double"/>
+
+    <param name="tape_offset_x" value="0.02" type="double"/>
 
     <param name="hand_x" value="-5.0" type="double"/>
     <param name="hand_y" value="-4.5" type="double"/>

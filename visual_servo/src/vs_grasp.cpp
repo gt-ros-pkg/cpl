@@ -106,14 +106,15 @@
 #define INIT_DESIRED  3
 #define POSE_CONTR    4
 #define POSE_CONTR_2  5
-#define VS_CONTR      6
-#define GRAB          7
-#define RELOCATE      8
-#define DESCEND_INIT  9
-#define DESCEND       10
-#define RELEASE       11
-#define FINISH        12
-#define TERM          13
+#define VS_CONTR_1    6
+#define VS_CONTR_2    7
+#define GRAB          8
+#define RELOCATE      9
+#define DESCEND_INIT  10
+#define DESCEND       11
+#define RELEASE       12
+#define FINISH        13
+#define TERM          14
 
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
@@ -125,28 +126,12 @@ typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperEventDe
 typedef actionlib::SimpleActionClient<pr2_gripper_sensor_msgs::PR2GripperReleaseAction> ReleaseClient; 
 typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient; 
 
-/*
-   typedef struct {
-// pixels
-cv::Point image;
-// meters, note that xyz for this is different from the other one
-pcl::PointXYZ camera;
-// the 3d location in workspace frame
-pcl::PointXYZ workspace;
-pcl::PointXYZ workspace_angular;
-} VSXYZ;
- */
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PoseStamped;
 using visual_servo::VisualServoTwist;
 using visual_servo::VisualServoPose;
 
-/**
- * We are taping robot hand with three blue painter's tape 
- * and use those three features to do the image-based visual servoing
- * Uses Kinect as image sensor and provide a twist computation service
- */
 class VisualServoNode
 {
   public:
@@ -198,16 +183,24 @@ class VisualServoNode
     n_private_.param("gain_rot", gain_rot_, 1.0);
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
     n_private_.param("term_threshold", term_threshold_, 0.001);
+    n_private_.param("pose_servo_z_offset", pose_servo_z_offset_, 0.045);
+    n_private_.param("place_z_velocity", place_z_velocity_, -0.025);
+    n_private_.param("tape1_offset_x", tape1_offset_x_, 0.02);
+    n_private_.param("tape1_offset_y", tape1_offset_y_, -0.025);
+    n_private_.param("tape1_offset_z", tape1_offset_z_, 0.07);
 
     // Setup ros node connections
     sync_.registerCallback(&VisualServoNode::sensorCallback, this);
 
+#ifdef EXPERIMENT
     chatter_pub_ = n_.advertise<std_msgs::String>("chatter", 100);
     alarm_ = ros::Time(0);
+#endif
 
     ROS_INFO("Initialization 0: Node init & Register Callback Done");
   }
 
+  // destructor
   ~VisualServoNode()
   {
     delete gripper_client_;
@@ -233,9 +226,6 @@ class VisualServoNode
         ROS_INFO("Initialization: Camera Info Done");
       }
 
-      // Preparing the image
-      //cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
-      //cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
       cv::Mat color_frame, depth_frame;
       cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
       cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
@@ -243,54 +233,19 @@ class VisualServoNode
       color_frame = color_cv_ptr->image;
       depth_frame = depth_cv_ptr->image;
 
-      // Swap kinect color channel order
-      // new Fuerte may not need this line
-      // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
-
       XYZPointCloud cloud; 
       pcl::fromROSMsg(*cloud_msg, cloud);
-
       tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
           cloud.header.stamp, ros::Duration(0.5));
-
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
-
-      // do not really need the masking
-      /*
-      cv::Mat workspace_mask(color_frame.rows, color_frame.cols, CV_8UC1,
-          cv::Scalar(255));
-      // Black out pixels in color and depth images outside of workspace
-      // As well as outside of the crop window
-      for (int r = 0; r < color_frame.rows; ++r)
-      {
-        uchar* workspace_row = workspace_mask.ptr<uchar>(r);
-        for (int c = 0; c < color_frame.cols; ++c)
-        {
-          // NOTE: Cloud is accessed by at(column, row)
-          pcl::PointXYZ cur_pt = cloud.at(c, r);
-          if (cur_pt.x < min_workspace_x_ || cur_pt.x > max_workspace_x_ ||
-              cur_pt.y < min_workspace_y_ || cur_pt.y > max_workspace_y_ ||
-              cur_pt.z < min_workspace_z_ || cur_pt.z > max_workspace_z_ ||
-              r < crop_min_y_ || c < crop_min_x_ || r > crop_max_y_ ||
-              c > crop_max_x_ )
-          {
-            workspace_row[c] = 0;
-          }
-        }
-      }
-
-      // focus only on the tabletop setting. do not care about anything far or too close
-      color_frame.copyTo(cur_color_frame_, workspace_mask);
-      */
       cur_color_frame_ = color_frame;
       cur_orig_color_frame_ = color_frame.clone();
       cur_depth_frame_ = depth_frame.clone();
       cur_point_cloud_ = cloud;
 
-      // need profiling on this
+      // need to profile this
       updateFeatures();
-
       executeStatemachine();
 
 #define DISPLAY 1
@@ -298,6 +253,7 @@ class VisualServoNode
       // show a pretty imshow
       setDisplay();
 #endif
+#ifdef EXPERIMENT
       // for profiling purpose
       ros::Time end = ros::Time::now();
       std::stringstream ss;
@@ -305,7 +261,7 @@ class VisualServoNode
       std_msgs::String msg;
       msg.data = ss.str();
       chatter_pub_.publish(msg);
-      // ROS_INFO("Time it took is %f", (end - start).toSec());
+#endif
     }
 
     void executeStatemachine()
@@ -412,24 +368,11 @@ class VisualServoNode
           case POSE_CONTR:
             {
               ROS_INFO("Phase Pose Control");
-              visual_servo::VisualServoPose p_srv;
               VSXYZ d = desired_;
-              p_srv.request.p.header.stamp = ros::Time::now();
-              p_srv.request.p.header.frame_id = "torso_lift_link";
+              visual_servo::VisualServoPose p_srv = formPoseService();
               p_srv.request.p.pose.position.x = d.workspace.x;
               p_srv.request.p.pose.position.y = d.workspace.y;
-              p_srv.request.p.pose.position.z = d.workspace.z + 0.045;
-
-              /* 
-                 p_srv.request.p.pose.orientation.x = -0.7071;
-                 p_srv.request.p.pose.orientation.y = 0;
-                 p_srv.request.p.pose.orientation.z = 0.7071;
-                 p_srv.request.p.pose.orientation.w = 0;
-               */
-              p_srv.request.p.pose.orientation.x = -0.4582;
-              p_srv.request.p.pose.orientation.y = 0;
-              p_srv.request.p.pose.orientation.z = 0.8889;
-              p_srv.request.p.pose.orientation.w = 0;
+              p_srv.request.p.pose.position.z = d.workspace.z + pose_servo_z_offset_;
               ROS_INFO(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.15);
               if (p_client_.call(p_srv))
               {
@@ -440,17 +383,35 @@ class VisualServoNode
                 {
                   ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
                   setSleepNonblock(10.0);
-                  PHASE = VS_CONTR;
+                  PHASE = VS_CONTR_1;
                   ROS_INFO("Start Visual Servoing");
                 }
               }
             }
             break;
 
-          case VS_CONTR:
+          case VS_CONTR_1:
+            {
+              // Servo to WayPoint before
+              // Gripper landed ON object while VSing
+              // This waypoint will correct X & Y first and then correct Z (going down)
+              visual_servo::VisualServoTwist v_srv = getTwist(desired_wp_);
+
+              // term condition
+              if (v_srv.request.error < term_threshold_)
+              {
+                PHASE = VS_CONTR_2;
+              }
+              // calling the service provider to move
+              if (v_client_.call(v_srv)){}
+              else{}
+            }
+            break;
+
+          case VS_CONTR_2:
             {
               // compute the twist if everything is good to go
-              visual_servo::VisualServoTwist v_srv = getTwist();
+              visual_servo::VisualServoTwist v_srv = getTwist(desired_locations_);
 
               // terminal condition
               if (v_srv.request.error < term_threshold_)
@@ -461,10 +422,8 @@ class VisualServoNode
                 PHASE = GRAB;
               }
               // calling the service provider to move
-              if (v_client_.call(v_srv))
-              {
-                // on success
-              }
+              if (v_client_.call(v_srv)){}
+
               else
               {
                 // on failure
@@ -472,31 +431,31 @@ class VisualServoNode
               }
             }
             break;
-
           case GRAB:
             {
-              grab();
-              setSleepNonblock(2.0);
-              PHASE = RELOCATE;
+              if(grab())
+              {
+                setSleepNonblock(2.0);
+                PHASE = RELOCATE;
+              }
+              else
+              {
+                ROS_WARN(">> Failed at grabbing. Going back to Init Desired");
+                PHASE = INIT_DESIRED;
+              }
             }
             break;
           case RELOCATE:
             {
               ROS_INFO("Phase Relocate. Move arm to new pose");
-              visual_servo::VisualServoPose p_srv;
-              p_srv.request.p.header.stamp = ros::Time::now();
-              p_srv.request.p.header.frame_id = "torso_lift_link";
+              visual_servo::VisualServoPose p_srv = formPoseService();
               p_srv.request.p.pose.position.x = 0.5;
               p_srv.request.p.pose.position.y = 0.3;
               p_srv.request.p.pose.position.z = 0.10 + object_z_;
-              p_srv.request.p.pose.orientation.x = -0.4582;
-              p_srv.request.p.pose.orientation.y = 0;
-              p_srv.request.p.pose.orientation.z = 0.8889;
-              p_srv.request.p.pose.orientation.w = 0;
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(2.0);
-                PHASE = DESCEND_INIT;
+                PHASE = RELEASE;
               }
             }
             break;
@@ -515,12 +474,11 @@ class VisualServoNode
               // if collision is detected || if hand is around where we picked up
               if (is_detected_)
               {
-                PHASE = RELEASE;
+                PHASE = FINISH;
               }
               else
               {
-                // move down very slowly (7cm/sec)
-                v_srv.request.twist.twist.linear.z = -0.022;
+                v_srv.request.twist.twist.linear.z = place_z_velocity_;
               }
 
               // if collision is detected, 0 velocity should be commanded
@@ -531,21 +489,15 @@ class VisualServoNode
             {
               release();
               setSleepNonblock(2.0);
-              PHASE = FINISH;
+              PHASE = DESCEND;
             }
             break;
           case FINISH:
             {
-              visual_servo::VisualServoPose p_srv;
-              p_srv.request.p.header.stamp = ros::Time::now();
-              p_srv.request.p.header.frame_id = "torso_lift_link";
+              visual_servo::VisualServoPose p_srv = formPoseService();
               p_srv.request.p.pose.position.x = 0.5;
               p_srv.request.p.pose.position.y = 0.3;
               p_srv.request.p.pose.position.z = 0.10 + object_z_;
-              p_srv.request.p.pose.orientation.x = -0.4582;
-              p_srv.request.p.pose.orientation.y = 0;
-              p_srv.request.p.pose.orientation.z = 0.8889;
-              p_srv.request.p.pose.orientation.w = 0;
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(2.0);
@@ -555,14 +507,29 @@ class VisualServoNode
             break;
           default:
             {
-              ROS_INFO("Reached TERM state");
-              ros::shutdown();
+              ROS_INFO("Routine Ended.");
+              std::cout << "Press Enter if you want to do it again: ";
+              int x;
+              std::cin >> x;
+              if (x != -1)
+              {
+                std::cout << "You have pressed " << x << "\n";
+                printf("Reset the arm and repeat Pick and Place in 5 seconds\n");
+                // reset the arm
+                // try to initialize the arm
+                std_srvs::Empty e;
+                i_client_.call(e);
+
+                setSleepNonblock(5.0);
+                PHASE = INIT_DESIRED;
+              }
             }
             break;
         }
       }
     }
 
+#ifdef DISPLAY
     void setDisplay()
     {
       if (desired_locations_.size() > 0)
@@ -594,8 +561,14 @@ class VisualServoNode
         std::stringstream stm;
         std::string msg("Error: ");
         stm << msg << e;
-        cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(10, 10), 2, 0.5, cv::Scalar(50, 50, 255),1);
+        cv::Scalar color;
+        if (e > term_threshold_)
+          color = cv::Scalar(50, 50, 255);
+        else
+          color = cv::Scalar(50, 255, 50);
+        cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(10, 10), 2, 0.5, color,1);
       }
+
 
       for (unsigned int i = 0; i < temp_draw_.size(); i++)
       {
@@ -606,7 +579,7 @@ class VisualServoNode
       cv::imshow("in", cur_orig_color_frame_); 
       cv::waitKey(display_wait_ms_);
     }
-
+#endif
 
     /**
      * Gripper Actions: These are all blocking
@@ -654,18 +627,21 @@ class VisualServoNode
     }
 
     //Open the gripper, find contact on both fingers, and go into slip-servo control mode
-    void grab()
+    bool grab()
     {
+      bool ret;
       pr2_gripper_sensor_msgs::PR2GripperGrabGoal grip;
       grip.command.hardness_gain = 0.02;
 
       ROS_INFO("Sending grab goal");
       grab_client_->sendGoal(grip);
       grab_client_->waitForResult(ros::Duration(20.0));
-      if(grab_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+      ret = grab_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED;
+      if(ret)
         ROS_INFO("Successfully completed Grab");
       else
         ROS_INFO("Grab Failed");
+      return ret;
     }
 
     // Look for side impact, finerpad slip, or contact acceleration signals and release the object once these occur
@@ -675,18 +651,34 @@ class VisualServoNode
       // set the robot to release on a figner-side impact, fingerpad slip, or acceleration impact with hand/arm
       place.command.event.trigger_conditions = place.command.event.FINGER_SIDE_IMPACT_OR_SLIP_OR_ACC;
       // set the acceleration impact to trigger on to 5 m/s^2
-      place.command.event.acceleration_trigger_magnitude = 5.0; 
+      place.command.event.acceleration_trigger_magnitude = 2.5;
       // set our slip-gain to release on to .005
-      place.command.event.slip_trigger_magnitude = .01;
+      place.command.event.slip_trigger_magnitude = .005;
 
       ROS_INFO("Waiting for object placement contact...");
-      release_client_->sendGoal(place);
+      release_client_->sendGoal(place,
+      boost::bind(&VisualServoNode::releaseDoneCB, this, _1, _2));
+      /**
       release_client_->waitForResult();
       if(release_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
         ROS_INFO("Release Success");
       else
         ROS_INFO("Place Failure");
+       **/
     }
+
+    void releaseDoneCB(const actionlib::SimpleClientGoalState& state,
+        const pr2_gripper_sensor_msgs::PR2GripperReleaseResultConstPtr& result)
+    {
+      if(state == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("Place Success");
+      else
+        ROS_INFO("Place Failure");
+      is_detected_ = true;
+      // stop the gripper right away
+      sendZeroVelocity();
+    }
+
 
     /**
      * HELPER
@@ -793,6 +785,7 @@ class VisualServoNode
           }
         }
       }
+
       pcl::PointXYZ desired(mean_x/quant, mean_y/quant, mean_z/quant);
       desired_ = convertFrom3DPointToVSXYZ(desired);
 
@@ -808,8 +801,18 @@ class VisualServoNode
         ROS_ERROR("Desired Values have NaN. Unable to Proceed Further");
         return false;
       }
-      std::vector<VSXYZ> desired_vsxyz = getFeaturesFromXYZ(desired_);
+
+      std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
+      std::vector<VSXYZ> desired_vsxyz = Point3DToVSXYZ(temp_features);
       desired_locations_ = desired_vsxyz;
+
+      // Before we servo to right pose, we want to get X, Y correct
+      // so gripper doesn't land ON object while VSing
+      for (unsigned int i = 0; i < temp_features.size(); i++)
+      {
+        temp_features.at(i).z += pose_servo_z_offset_;
+      }
+      desired_wp_ = Point3DToVSXYZ(temp_features);
 
       // for jacobian avg, we need IM at desired location as well
       if (JACOBIAN_TYPE_AVG == jacobian_type_)
@@ -845,22 +848,19 @@ class VisualServoNode
 
     }
 
-    std::vector<VSXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
+    std::vector<pcl::PointXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
     {
       pcl::PointXYZ origin = origin_xyz.workspace;
       std::vector<pcl::PointXYZ> pts; pts.clear();
 
-      origin.y -= 0.025;
-      origin.z += 0.07;
-      origin.x += 0.02;
+      // the One has to be offset due to tape orientation
+      origin.x += tape1_offset_y_;
+      origin.y += tape1_offset_y_;
+      origin.z += tape1_offset_z_;
 
       pcl::PointXYZ two = origin;
       pcl::PointXYZ three = origin;
-      /*
-         two.y += 0.05; 
-         three.z += 0.05;
-         three.x += 0.02;
-       */
+
       two.x = origin.x + tape1_loc_.x;
       two.y = origin.y + tape1_loc_.y;
       two.z = origin.z + tape1_loc_.z;
@@ -872,15 +872,15 @@ class VisualServoNode
       pts.push_back(origin);
       pts.push_back(two);
       pts.push_back(three);
-      return Point3DToVSXYZ(pts);
+      return pts;
     }
 
     // Service method
-    visual_servo::VisualServoTwist getTwist()
+    visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> desire)
     {
       visual_servo::VisualServoTwist srv;
-      srv = vs_->computeTwist(desired_locations_, features_);
-      srv.request.error = getError(desired_locations_, features_);
+      srv = vs_->computeTwist(desire, features_);
+      srv.request.error = getError(desire, features_);
       return srv;
     }
 
@@ -1312,6 +1312,29 @@ class VisualServoNode
     /**********************
      * HELPER METHODS
      **********************/
+
+    bool sendZeroVelocity()
+    {
+      // assume everything is init to zero
+      visual_servo::VisualServoTwist v_srv;
+
+      // need this to mvoe the arm
+      v_srv.request.error = 1;
+      return v_client_.call(v_srv);
+    }
+
+    visual_servo::VisualServoPose formPoseService()
+    {
+      visual_servo::VisualServoPose p_srv;
+      p_srv.request.p.header.stamp = ros::Time::now();
+      p_srv.request.p.header.frame_id = "torso_lift_link";
+      p_srv.request.p.pose.orientation.x = -0.4582;
+      p_srv.request.p.pose.orientation.y = 0;
+      p_srv.request.p.pose.orientation.z = 0.8889;
+      p_srv.request.p.pose.orientation.w = 0;
+      return p_srv;
+    }
+
     void printMatrix(cv::Mat_<double> in)
     {
       for (int i = 0; i < in.rows; i++) {
@@ -1388,6 +1411,9 @@ class VisualServoNode
     std_msgs::Header cur_camera_header_;
     XYZPointCloud cur_point_cloud_;
 
+    // visual servo object
+    shared_ptr<VisualServo> vs_;
+
     bool have_depth_data_;
     int display_wait_ms_;
     int num_downsamples_;
@@ -1420,42 +1446,52 @@ class VisualServoNode
     int default_val_value_;
     double min_contour_size_;
 
-    // others    
-    shared_ptr<VisualServo> vs_;
+    // Other params
     int jacobian_type_;
     double gain_vel_;
     double gain_rot_;
     double term_threshold_;
+    double pose_servo_z_offset_;
+    double place_z_velocity_;
+    double tape1_offset_x_;
+    double tape1_offset_y_;
+    double tape1_offset_z_;
 
+    // State machine variable
     unsigned int PHASE;
 
+    // desired location/current gripper location
     cv::Mat desired_jacobian_;
+    std::vector<VSXYZ> desired_wp_;
     std::vector<VSXYZ> desired_locations_;
+    std::vector<VSXYZ> features_;
     VSXYZ desired_;
     cv::Mat K;
 
+    // for debugging purpose
+    ros::Publisher chatter_pub_;
+    ros::Time alarm_;
+
+    pcl::PointXYZ tape1_loc_;
+    pcl::PointXYZ tape2_loc_;
+
+    // clients to services provided by vs_controller.py
     ros::ServiceClient v_client_;
     ros::ServiceClient p_client_;
     ros::ServiceClient i_client_;
 
-    ros::Publisher chatter_pub_;
-
-    ros::Time alarm_;
-    pcl::PointXYZ tape1_loc_;
-    pcl::PointXYZ tape2_loc_;
-
-
+    // gripper sensor action clients
     GripperClient* gripper_client_;
     GrabClient* grab_client_;
     ReleaseClient* release_client_;
     EventDetectorClient* detector_client_;
 
-    std::vector<VSXYZ> features_;
+    //  drawing
     std::vector<cv::Point> temp_draw_;
     cv::Rect original_box_;
+
     // collision detection
     bool is_detected_;
-
     float object_z_;
 };
 
