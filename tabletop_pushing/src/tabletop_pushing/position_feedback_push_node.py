@@ -164,7 +164,8 @@ class PositionFeedbackPushNode:
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
 
-        self.use_contact_pt_compensation = rospy.get_param('~use_control_pt_compensation_control', False)
+        self.use_contact_pt_compensation = rospy.get_param('~use_contact_pt_compensation_control',
+                                                           False)
 
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
         self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
@@ -581,7 +582,7 @@ class PositionFeedbackPushNode:
 
         # Push centroid towards the desired goal
         centroid = cur_state.x
-        ee = ee_pose.x
+        ee = ee_pose.pose.position
         x_error = desired_state.x - centroid.x
         y_error = desired_state.y - centroid.y
         goal_x_dot = self.k_contact_g*x_error
@@ -594,17 +595,18 @@ class PositionFeedbackPushNode:
              sqrt(x_error*x_error + y_error*y_error))
         tan_pt_x = centroid.x + m*x_error
         tan_pt_y = centroid.y + m*y_error
-
         contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
         contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
         # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot + contact_pt_x_dot
         u.twist.linear.y = goal_y_dot + contact_pt_y_dot
         if self.feedback_count % 5 == 0:
+            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
+            rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
             rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
                           str(goal_y_dot) + ')')
-            rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
-                          str(spin_y_dot) + ')')
+            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
+                          str(contact_pt_y_dot) + ')')
         return u
 
     #
