@@ -49,6 +49,9 @@
 #include <sensor_msgs/image_encodings.h>
 #include <actionlib/server/simple_action_server.h>
 
+#include <pr2_manipulation_controllers/JTTaskControllerState.h>
+#include <pr2_manipulation_controllers/JinvTeleopControllerState.h>
+
 // TF
 #include <tf/transform_listener.h>
 
@@ -657,6 +660,19 @@ class TabletopPushingPerceptionNode
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
 
+    // TODO: Setup arm controller state callbacks
+    jtteleop_l_arm_subscriber_ = n_.subscribe("/l_cart_transpose_push/state", 1,
+                                              &TabletopPushingPerceptionNode::lArmStateCartCB,
+                                              this);
+    jtteleop_r_arm_subscriber_ = n_.subscribe("/r_cart_transpose_push/state", 1,
+                                              &TabletopPushingPerceptionNode::rArmStateCartCB,
+                                              this);
+    jinv_l_arm_subscriber_  = n_.subscribe("/l_cart_jinv_push/state", 1,
+                                           &TabletopPushingPerceptionNode::lArmStateVelCB,
+                                           this);
+    jinv_r_arm_subscriber_ = n_.subscribe("/r_cart_jinv_push/state", 1,
+                                          &TabletopPushingPerceptionNode::rArmStateVelCB,
+                                          this);
     // Setup push tracking action server
     as_.registerGoalCallback(
         boost::bind(&TabletopPushingPerceptionNode::pushTrackerGoalCB, this));
@@ -813,7 +829,7 @@ class TabletopPushingPerceptionNode
           obj_tracker_->pause();
         }
         // TODO: Check hand between object and goal
-        else if (!spin_to_heading_ && isGripperBetweenGoalAndCentroid())
+        else if (!spin_to_heading_ && isGripperBetweenGoalAndCentroid(tracker_state.x))
         {
           ROS_WARN_STREAM("Gripper is between obejct and goal. Aborting");
           PushTrackerResult res;
@@ -1272,6 +1288,23 @@ class TabletopPushingPerceptionNode
     return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
   }
 
+  void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
+  {
+    l_arm_pose_ = l_arm_state.x;
+  }
+  void rArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState r_arm_state)
+  {
+    r_arm_pose_ = r_arm_state.x;
+  }
+  void lArmStateVelCB(const pr2_manipulation_controllers::JinvTeleopControllerState l_arm_state)
+  {
+    l_arm_pose_ = l_arm_state.x;
+  }
+  void rArmStateVelCB(const pr2_manipulation_controllers::JinvTeleopControllerState r_arm_state)
+  {
+    r_arm_pose_ = r_arm_state.x;
+  }
+
   void pushTrackerGoalCB()
   {
     ROS_DEBUG_STREAM("pushTrackerGoalCB(): starting tracking");
@@ -1301,10 +1334,49 @@ class TabletopPushingPerceptionNode
     as_.setPreempted();
   }
 
-  bool isGripperBetweenGoalAndCentroid()
+  bool isGripperBetweenGoalAndCentroid(Pose2D& obj_state)
   {
-    return false;
+    if (pushing_arm_ == "l")
+    {
+      return pointIsBetweenOthers(l_arm_pose_.pose.position, obj_state, tracker_goal_pose_);
+    }
+    else
+    {
+      return pointIsBetweenOthers(r_arm_pose_.pose.position, obj_state, tracker_goal_pose_);
+    }
   }
+
+  bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2)
+  {
+    // Project the vector pt->x2 onto the vector x1->x2
+    const float a_x = x2.x - pt.x;
+    const float a_y = x2.y - pt.y;
+    const float b_x = x2.x - x1.x;
+    const float b_y = x2.y - x1.y;
+    const float a_dot_b = a_x*b_x + a_y*b_y;
+    const float b_dot_b = b_x*b_x + b_y*b_y;
+
+    // If the (squared) distance of the projection is less than the vector from x1->x2 then it is between them
+    const float a_onto_b = a_dot_b/b_dot_b;
+    const float d_1_x = a_onto_b*b_x;
+    const float d_1_y = a_onto_b*b_y;
+    const float d_1 = d_1_x*d_1_x + d_1_y*d_1_y;
+    const float d_2 = b_x*b_x + b_y*b_y;
+
+    // if (frame_callback_count_ % 15)
+    // {
+    //   ROS_INFO_STREAM("ee_pose (" << pt.x << ", " << pt.y << ")");
+    //   ROS_INFO_STREAM("goal_pose (" << x2.x << ", " << x2.y << ")");
+    //   ROS_INFO_STREAM("obj_pose (" << x1.x << ", " << x1.y << ")");
+    //   ROS_INFO_STREAM("a: (" << a_x << ", " << a_y << ")");
+    //   ROS_INFO_STREAM("b: (" << b_x << ", " << b_y << ")");
+    //   ROS_INFO_STREAM("a_onto_b: (" << d_1_x << ", " << d_1_y << ")");
+    //   ROS_INFO_STREAM("Distance d_1 is: " << d_1);
+    //   ROS_INFO_STREAM("Distance d_2 is: " << d_2 << "\n");
+    // }
+    return d_1 < d_2;
+  }
+
   /**
    * ROS Service callback method for determining the location of a table in the
    * scene
@@ -1477,6 +1549,10 @@ class TabletopPushingPerceptionNode
   shared_ptr<tf::TransformListener> tf_;
   ros::ServiceServer push_pose_server_;
   ros::ServiceServer table_location_server_;
+  ros::Subscriber jinv_l_arm_subscriber_;
+  ros::Subscriber jinv_r_arm_subscriber_;
+  ros::Subscriber jtteleop_l_arm_subscriber_;
+  ros::Subscriber jtteleop_r_arm_subscriber_;
   actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
@@ -1518,6 +1594,8 @@ class TabletopPushingPerceptionNode
   double major_axis_spin_pos_scale_;
   bool spin_to_heading_;
   int frame_set_count_;
+  PoseStamped l_arm_pose_;
+  PoseStamped r_arm_pose_;
 };
 
 int main(int argc, char ** argv)
