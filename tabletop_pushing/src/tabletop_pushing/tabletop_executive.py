@@ -248,73 +248,11 @@ class TabletopExecutive:
             rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
                           ' objects')
 
-    def run_learning_collect(self, num_trials, push_angle, push_dist):
-        push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        arms = ['l', 'r']
-        high_inits = [False, True]
-        rospy.loginfo('Place item at new initial pose')
-        for t in xrange(num_trials):
-            for high_init in high_inits:
-                for arm in arms:
-                    for push_opt in push_options:
-                        code_in = raw_input('Reset obj and press <Enter>: ')
-                        if code_in.startswith('q'):
-                            return False
-                        push_vector_res = self.request_learning_push(push_angle,
-                                                                     push_dist)
-                        res = self.learning_trial(arm, int(push_opt), high_init,
-                                                  push_vector_res, push_dist)
-                        if not res:
-                            return False
-        return True
-
-    def run_rand_learning_collect(self, num_trials, push_dist, push_angle=0.0,
-                                  rand_angle=True, goal_pose=None):
-        push_options = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
-        # push_options = [OVERHEAD_PUSH]
-        push_options = [GRIPPER_PUSH]
-        arms = ['l', 'r']
-        # high_inits = [True, False]
-        high_inits = [True]
-        push_angle_in = push_angle
-        for t in xrange(num_trials):
-            # xpush_angle = push_angle_in + pi*float(t)/num_trials - 0.5*pi
-            for high_init in high_inits:
-                for arm in arms:
-                    # if arm == 'l':
-                    #     push_angle = -push_angle_in
-                    # else:
-                    #     push_angle = push_angle_in
-                    for push_opt in push_options:
-                        get_push = True
-                        first = True
-                        while get_push:
-                            if first:
-                                code_in = raw_input('Set object in first pose and press <Enter>: ')
-                                if code_in.startswith('q'):
-                                    return
-                            first = False
-                            push_vec = self.request_learning_push(push_angle,
-                                                                  push_dist,
-                                                                  rand_angle,
-                                                                  goal_pose)
-                            if push_vec is None:
-                                return
-                            if push_vec.no_objects:
-                                code_in = raw_input('No objects found. Place object and press <Enter>: ')
-                                if code_in.startswith('q'):
-                                    return
-                            else:
-                                get_push = False
-                        res = self.learning_trial(arm, int(push_opt), high_init,
-                                                  push_vec, push_dist, goal_pose)
-                        if not res:
-                            return
-
     def run_feedback_testing(self, push_opt):
         push_dist = 0.0
         high_init = True
         use_spin_push = _SPIN_FIRST
+        continuing = False
         while True:
             if use_spin_push:
                 goal_pose = self.generateRandomTablePose()
@@ -328,7 +266,11 @@ class TabletopExecutive:
                     goal_pose.x = 0.7
                     goal_pose.y = 0.0
                     goal_pose.theta = 0.0
-                    code_in = raw_input('Set object in start pose and press <Enter>: ')
+                    if continuing:
+                        code_in = ''
+                        continuing = False
+                    else:
+                        code_in = raw_input('Set object in start pose and press <Enter>: ')
                 else:
                     code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
                 if code_in.startswith('q'):
@@ -344,10 +286,15 @@ class TabletopExecutive:
             which_arm = self.choose_arm(push_vec_res.push, spin=use_spin_push)
             res = self.learning_trial(which_arm, int(push_opt), high_init,
                                       push_vec_res, push_dist, goal_pose, spin=use_spin_push)
+            if res == 'aborted':
+                rospy.loginfo('Continuing after abortion')
+                continuing = True
+                continue
+
             # NOTE: Alternate between spinning and pushing
             if not _TEST_SPIN_POSE and _SPIN_FIRST:
                 use_spin_push = (not use_spin_push)
-            if not res:
+            if not res or res == 'quit':
                 return
 
     def get_feedback_push_start_pose(self, goal_pose, use_spin_push):
@@ -419,25 +366,34 @@ class TabletopExecutive:
         rospy.loginfo('Push angle: ' + str(push_angle))
         rospy.loginfo('Push dist: ' + str(push_dist))
         start_time = time.time()
+        # TODO: Unify framework here, to call with push_opt to a single feedback behavior
         if not _OFFLINE:
             if push_opt == OVERHEAD_PUSH:
-                self.overhead_feedback_push_object(push_dist, which_arm, push_vector_res.push,
-                                                   goal_pose, high_init, spin=spin)
+                result = self.overhead_feedback_push_object(push_dist, which_arm,
+                                                            push_vector_res.push, goal_pose,
+                                                            high_init, spin=spin)
             if push_opt == GRIPPER_SWEEP:
-                self.feedback_sweep_object(push_dist, which_arm, push_vector_res.push,
-                                           goal_pose, high_init, spin=spin)
+                result = self.feedback_sweep_object(push_dist, which_arm, push_vector_res.push,
+                                                    goal_pose, high_init, spin=spin)
             if push_opt == GRIPPER_PUSH:
-                self.gripper_feedback_push_object(push_dist, which_arm, push_vector_res.push,
-                                                   goal_pose, high_init, spin=spin)
+                result = self.gripper_feedback_push_object(push_dist, which_arm,
+                                                           push_vector_res.push, goal_pose,
+                                                           high_init, spin=spin)
+        # TODO: Make this more robust to other use cases
+        # If the call aborted, recall with the same settings
+        if result.action_aborted:
+            rospy.logwarn('Push was aborted. Calling push behavior again.')
+            return 'aborted'
+
         push_time = time.time() - start_time
         rospy.loginfo('Done performing push behavior.')
         if spin:
-            return True
+            return 'spin_done'
 
         if _OFFLINE:
             code_in = raw_input('Press <Enter> to get analysis vector: ')
             if code_in.startswith('q'):
-                return False
+                return 'quit'
 
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
@@ -485,7 +441,7 @@ class TabletopExecutive:
             self.learn_io.data_out.write(out_str)
             self.learn_io.data_out.flush()
 
-        return True
+        return 'done'
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequest()
@@ -804,6 +760,7 @@ class TabletopExecutive:
             push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
         post_push_res = self.overhead_feedback_post_push_proxy(push_req)
+        return push_res
 
     def gripper_feedback_push_object(self, push_dist, which_arm, push_vector, goal_pose,
                                      high_init=True, open_gripper=False, spin=False):
@@ -845,6 +802,7 @@ class TabletopExecutive:
             push_res = self.gripper_feedback_push_proxy(push_req)
         rospy.loginfo("Calling gripper feedback post push service")
         post_push_res = self.gripper_feedback_post_push_proxy(push_req)
+        return push_res
 
     def feedback_sweep_object(self, push_dist, which_arm, push_vector, goal_pose,
                               high_init=True, open_gripper=False, spin=False):
@@ -892,6 +850,7 @@ class TabletopExecutive:
             push_res = self.gripper_feedback_sweep_proxy(push_req)
         rospy.loginfo("Calling feedback post sweep service")
         post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
+        return push_res
 
     def test_new_controller(self):
         # self.raise_and_look(request_table=False, init_arms=True)

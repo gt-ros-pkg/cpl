@@ -784,6 +784,7 @@ class TabletopPushingPerceptionNode
         float y_dist = fabs(y_error);
         float theta_dist = fabs(theta_error);
 
+        // TODO: Better abstract the goal and validity (abort) checks here
         if (spin_to_heading_ && theta_dist < tracker_angle_thresh_)
         {
           ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
@@ -793,6 +794,7 @@ class TabletopPushingPerceptionNode
           ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
                           << theta_dist << ")");
           PushTrackerResult res;
+          res.aborted = false;
           as_.setSucceeded(res);
           obj_tracker_->pause();
         }
@@ -806,7 +808,17 @@ class TabletopPushingPerceptionNode
           ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
                           << theta_dist << ")");
           PushTrackerResult res;
+          res.aborted = false;
           as_.setSucceeded(res);
+          obj_tracker_->pause();
+        }
+        // TODO: Check hand between object and goal
+        else if (!spin_to_heading_ && isGripperBetweenGoalAndCentroid())
+        {
+          ROS_WARN_STREAM("Gripper is between obejct and goal. Aborting");
+          PushTrackerResult res;
+          res.aborted = true;
+          as_.setAborted(res);
           obj_tracker_->pause();
         }
         else
@@ -1289,6 +1301,10 @@ class TabletopPushingPerceptionNode
     as_.setPreempted();
   }
 
+  bool isGripperBetweenGoalAndCentroid()
+  {
+    return false;
+  }
   /**
    * ROS Service callback method for determining the location of a table in the
    * scene

@@ -3,11 +3,13 @@ std_msgs/Header header
 geometry_msgs/Pose2D desired_pose
 string which_arm
 bool spin_to_heading
+string controller_name
 ---
 # Result Definition
 std_msgs/Header header
 geometry_msgs/Pose2D x
 geometry_msgs/Pose2D x_error
+bool aborted
 ---
 # Feedback Definition
 std_msgs/Header header
@@ -15,3 +17,4 @@ geometry_msgs/Pose2D x
 geometry_msgs/Pose2D x_dot
 float64 z
 bool no_detection
+string controller_name

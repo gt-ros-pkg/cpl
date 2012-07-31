@@ -465,8 +465,9 @@ class PositionFeedbackPushNode:
         ac.wait_for_result(rospy.Duration(0))
         rospy.loginfo('Result received')
         self.stop_moving_vel(which_arm)
-
-        # TODO: send back info
+        result = ac.get_result()
+        response.action_aborted = result.aborted
+        # TODO: send back more information?
         return response
 
     def tracker_feedback_push(self, feedback, action_primitive='overhead'):
