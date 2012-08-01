@@ -144,16 +144,15 @@ class VisualServoNode
       it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
       desire_points_initialized_(false), PHASE(INIT), is_detected_(false)
   {
-
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
+
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
+
     std::string default_optical_frame = "/head_mount_kinect_rgb_optical_frame";
     n_private_.param("optical_frame", optical_frame_, default_optical_frame);
-
     std::string default_workspace_frame = "/torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
-    n_private_.param("num_downsamples", num_downsamples_, 2);
     std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
 
@@ -877,7 +876,7 @@ class VisualServoNode
       //////////////////////
       // Hand 
       // get all the blues 
-      cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), gripper_tape_hue_value_, gripper_tape_hue_threshold_);
+/bin/bash: :q: command not found
 
       // make it clearer with morphology
       cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
