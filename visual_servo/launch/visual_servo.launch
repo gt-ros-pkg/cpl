@@ -13,9 +13,8 @@
     <!--<param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/> -->
 
     <!-- IMPORTANT ONE -->
-    <param name="vs_err_term_thres" value="0.0095" type="double"/>
+    <param name="vs_err_term_thres" value="0.00095" type="double"/>
     <param name="jacobian_type" value="1" type="int"/>
-    <!------------------->
 
     <param name="target_hue_value" value="350" type="int"/>
     <param name="target_hue_threshold" value="48" type="int"/>
@@ -27,6 +26,7 @@
 
     <!-- gripper_tape1_offset_[x,y,z]: offset from fingers -->
     <param name="gripper_tape1_offset_x" value="0.02" type="double"/>
+    <param name="gripper_tape1_offset_z" value="0.07" type="double"/>
 
     <param name="place_z_velocity" value="-0.025" type="double"/>
 

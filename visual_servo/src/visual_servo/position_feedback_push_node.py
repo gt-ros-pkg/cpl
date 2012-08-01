@@ -125,7 +125,7 @@ class PositionFeedbackPushNode:
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
                                                    'head_mount_kinect_rgb_link')
         self.default_torso_height = rospy.get_param('~default_torso_height',
-                                                    0.23)
+                                                    0.28)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
@@ -283,9 +283,9 @@ class PositionFeedbackPushNode:
         self.set_arm_joint_pose(setup_joints, which_arm)
         rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
-        rospy.loginfo('Closing %s_gripper' % which_arm)
-        res = robot_gripper.close(block=True)
-        rospy.loginfo('Closed %s_gripper' % which_arm)
+        #rospy.loginfo('Closing %s_gripper' % which_arm)
+        #res = robot_gripper.close(block=True)
+        #rospy.loginfo('Closed %s_gripper' % which_arm)
 
 
     def reset_arm_pose(self, force_ready=False, which_arm='l',
