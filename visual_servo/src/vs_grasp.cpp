@@ -323,7 +323,7 @@ class VisualServoNode
                 temp_draw_.push_back(features_.at(2).image);
 
                 PHASE = INIT_DESIRED;
-                setSleepNonblock(5.0);
+                setSleepNonblock(0.25);
               }
               else
               {
@@ -340,7 +340,6 @@ class VisualServoNode
               if (initializeDesired())
               {
                 PHASE = POSE_CONTR;
-                // ros::Duration(3.0).sleep(); // blocking sleep
                 ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
               }
               else
@@ -382,16 +381,29 @@ class VisualServoNode
               // Servo to WayPoint before
               // Gripper landed ON object while VSing
               // This waypoint will correct X & Y first and then correct Z (going down)
-              visual_servo::VisualServoTwist v_srv = getTwist(desired_wp_);
-
-              // term condition
-              if (v_srv.request.error < vs_err_term_threshold_)
+              if (features_.size() == desired_locations_.size())
               {
-                PHASE = VS_CONTR_2;
+                std::vector<cv::Point> few_pixels_up; few_pixels_up.clear();
+                float offset = (features_.at(0).image.y - desired_locations_.at(0).image.y)/2;
+                for (unsigned int i = 0; i < desired_locations_.size(); i++)
+                {
+                  cv::Point p = desired_locations_.at(i).image;
+                  p.y += offset; // arbitrary pixel numbers & scale
+                  few_pixels_up.push_back(p);
+                }
+                desired_wp_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
+
+                visual_servo::VisualServoTwist v_srv = getTwist(desired_wp_);
+
+                // term condition
+                if (v_srv.request.error < vs_err_term_threshold_)
+                {
+                  PHASE = VS_CONTR_2;
+                }
+                // calling the service provider to move
+                if (v_client_.call(v_srv)){}
+                else{}
               }
-              // calling the service provider to move
-              if (v_client_.call(v_srv)){}
-              else{}
             }
             break;
 
@@ -420,6 +432,8 @@ class VisualServoNode
             break;
           case GRAB:
             {
+              // so hand doesn't move
+              sendZeroVelocity();
               if(grab())
               {
                 setSleepNonblock(2.0);
@@ -452,15 +466,16 @@ class VisualServoNode
               // inits callback for sensing collision
               place();
               PHASE = DESCEND;
+              ROS_INFO("Phase Descend: descend slowly until reached a ground");
             }
           case DESCEND:
             {
-              ROS_INFO("Phase Descend: descend slowly until reached a ground");
               visual_servo::VisualServoTwist v_srv;
               v_srv.request.error = 1; // for scaling
               // if collision is detected || if hand is around where we picked up
               if (is_detected_)
               {
+                setSleepNonblock(1.5);
                 PHASE = FINISH;
               }
               else
@@ -475,7 +490,7 @@ class VisualServoNode
           case RELEASE:
             {
               release();
-              setSleepNonblock(2.0);
+              setSleepNonblock(0.5);
               PHASE = DESCEND;
             }
             break;
@@ -495,21 +510,23 @@ class VisualServoNode
           default:
             {
               ROS_INFO("Routine Ended.");
-              std::cout << "Press Enter if you want to do it again: ";
-              int x;
-              std::cin >> x;
-              if (x != -1)
+              std::cout << "Press [Enter] if you want to do it again: ";
+              while(true )
               {
-                std::cout << "You have pressed " << x << "\n";
-                printf("Reset the arm and repeat Pick and Place in 5 seconds\n");
-                // reset the arm
-                // try to initialize the arm
-                std_srvs::Empty e;
-                i_client_.call(e);
-
-                setSleepNonblock(5.0);
-                PHASE = INIT_DESIRED;
+                int c = std::cin.get();
+                if (c  == '\n')
+                  break;
               }
+
+              printf("Reset the arm and repeat Pick and Place in 3 seconds\n");
+              // try to initialize the arm
+              std_srvs::Empty e;
+              i_client_.call(e);
+
+              is_detected_ = false;
+
+              setSleepNonblock(3.0);
+              PHASE = INIT_DESIRED;
             }
             break;
         }
@@ -519,6 +536,13 @@ class VisualServoNode
 #ifdef DISPLAY
     void setDisplay()
     {
+      char phase_char[10];
+      sprintf(phase_char, "Phase: %d", PHASE);
+      std::string phase_str = phase_char;
+      cv::putText(cur_orig_color_frame_, phase_str, cv::Point(529, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
+      cv::putText(cur_orig_color_frame_, phase_str, cv::Point(531, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
+      cv::putText(cur_orig_color_frame_, phase_str, cv::Point(530, 18), 2, 0.60, cv::Scalar(40, 40, 40), 1);
+
       if (desired_locations_.size() > 0)
       {
         VSXYZ d = desired_;
@@ -532,30 +556,39 @@ class VisualServoNode
         cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
       }
 
+      // Draw on Desired Locations
+      for (unsigned int i = 0; i < desired_wp_.size(); i++)
+      {
+        cv::Point p = desired_wp_.at(i).image;
+        cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(100*i, 0, 110*(2-i)), 1);
+      }
+
       // Draw Features
       for (unsigned int i = 0; i < features_.size(); i++)
       {
         cv::Point p = features_.at(i).image;
         cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
       }
+
       if (PHASE == INIT_DESIRED)
       {
         cv::rectangle(cur_orig_color_frame_, original_box_, cv::Scalar(0,255,255));
       }
-      if (PHASE > INIT_DESIRED)
+
+      if (PHASE == VS_CONTR_1 || PHASE == VS_CONTR_2)
       {
         float e = getError(desired_locations_, features_);
+        if (PHASE == VS_CONTR_1)
+          e = getError(desired_wp_, features_);
         std::stringstream stm;
-        std::string msg("Error: ");
-        stm << msg << e;
+        stm << "Error :" << e;
         cv::Scalar color;
         if (e > vs_err_term_threshold_)
           color = cv::Scalar(50, 50, 255);
         else
           color = cv::Scalar(50, 255, 50);
-        cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(10, 10), 2, 0.5, color,1);
+        cv::putText(cur_orig_color_frame_, stm.str(), cv::Point(5, 12), 2, 0.5, color,1);
       }
-
 
       for (unsigned int i = 0; i < temp_draw_.size(); i++)
       {
@@ -795,12 +828,22 @@ class VisualServoNode
 
       // Before we servo to right pose, we want to get X, Y correct
       // so gripper doesn't land ON object while VSing
+      /*
       for (unsigned int i = 0; i < temp_features.size(); i++)
       {
         temp_features.at(i).z += pose_servo_z_offset_;
       }
-      desired_wp_ = Point3DToVSXYZ(temp_features);
+      std::vector<cv::Point> few_pixels_up;
+      for (unsigned int i = 0; i < desired_locations_.size(); i++)
+      {
+        cv::Point p = desired_locations_.at(i).image;
+        p.y -= 25; // arbitrary pixel numbers & scale
+        few_pixels_up.push_back(p);
+      }
 
+      desired_wp_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
+
+      */
       // for jacobian avg, we need IM at desired location as well
       if (JACOBIAN_TYPE_AVG == jacobian_type_)
         return vs_->setDesiredInteractionMatrix(desired_vsxyz);
@@ -841,7 +884,7 @@ class VisualServoNode
       std::vector<pcl::PointXYZ> pts; pts.clear();
 
       // the One has to be offset due to tape orientation
-      origin.x += tape1_offset_y_;
+      origin.x += tape1_offset_x_;
       origin.y += tape1_offset_y_;
       origin.z += tape1_offset_z_;
 
@@ -1107,62 +1150,6 @@ class VisualServoNode
       return ret;
     }
 
-    /*
-       cv::Mat pointXYZToMat(pcl::PointXYZ in)
-       {
-       cv::Mat ret = cv::Mat::ones(4,1,CV_32F);
-       ret.at<float>(0,0) = in.x;
-       ret.at<float>(1,0) = in.y;
-       ret.at<float>(2,0) = in.z;
-       return ret;
-       }
-
-       pcl::PointXYZ matToPointXYZ(cv::Mat in)
-       {
-       return pcl::PointXYZ(in.at<float>(0,0), in.at<float>(1,0),
-       in.at<float>(2,0));
-       }
-     */
-
-#ifdef SIMULATION
-    // separate function for simulation since we can't utilize 
-    // TF for rotation
-    VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
-    {
-      // [X,Y,Z] -> [u,v] -> [x,y,z]
-      VSXYZ ret;
-
-      // 3D point in world frame
-      pcl::PointXYZ in_c = in;
-
-      // temporary to apply the transformation
-      cv::Mat t = cv::Mat::ones(4,1, CV_32F);
-      t.at<float>(0,0) = in_c.x;
-      t.at<float>(1,0) = in_c.y;
-      t.at<float>(2,0) = in_c.z;
-      cv::Mat R = simulateGetRotationMatrix(sim_camera_x_, sim_camera_y_,
-          sim_camera_z_, sim_camera_wx_, sim_camera_wy_, sim_camera_wz_);
-
-      // apply the rotation
-      t = R.inv() * t;
-      in_c.x = t.at<float>(0,0);
-      in_c.y = t.at<float>(1,0);
-      in_c.z = t.at<float>(2,0);
-
-      // really doesn't matter which frame they are in. ignored for now.
-      cv::Point img = projectPointIntoImage(in_c, default_optical_frame, default_optical_frame);
-      cv::Mat temp = projectImagePointToPoint(img);
-
-      float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
-      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
-
-      ret.image = img;
-      // for simpler simulator, this will be the same
-      ret.camera = _2d;
-      ret.workspace= in;
-      return ret;
-    }
-#else
     VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
     {
       // [X,Y,Z] -> [u,v] -> [x,y,z]
@@ -1182,7 +1169,6 @@ class VisualServoNode
       ret.workspace= in;
       return ret;
     }
-#endif
 
     std::vector<VSXYZ> PointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
     {
