@@ -506,6 +506,7 @@ class PositionFeedbackPushNode:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
+        # TODO: Save gripper pose
         self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                       update_twist.twist, update_twist.header.stamp.to_sec())
         self.update_vel(update_twist, which_arm)
