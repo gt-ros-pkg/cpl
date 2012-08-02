@@ -132,6 +132,64 @@ using geometry_msgs::PoseStamped;
 using visual_servo::VisualServoTwist;
 using visual_servo::VisualServoPose;
 
+class GripperTape
+{
+  /**
+   * Our gripper has three blue tapes used for gripper pose perception.
+   * These tapes are stored as follows: position away from gripper tip center (between l and r)
+   * Relative position of tape 1 and 2 from tape 0
+   * This will be replaced with better feature perception.
+   **/
+  public:
+    GripperTape()
+    {
+    }
+
+    void setTapeRelLoc(pcl::PointXYZ tape0, pcl::PointXYZ tape1, pcl::PointXYZ tape2)
+    {
+      tape1_loc_.x = tape1.x - tape0.x;
+      tape1_loc_.y = tape1.y - tape0.y;
+      tape1_loc_.z = tape1.z - tape0.z;
+      tape2_loc_.x = tape2.x - tape0.x;
+      tape2_loc_.y = tape2.y - tape0.y;
+      tape2_loc_.z = tape2.z - tape0.z;
+    }
+
+    // this is the offset from tip center to tape0
+    void setOffset(pcl::PointXYZ offset)
+    {
+      tape0_loc_ = offset;
+    }
+
+    std::vector<pcl::PointXYZ> getTapePoseFromXYZ(pcl::PointXYZ orig)
+    {
+      std::vector<pcl::PointXYZ> pts; pts.clear();
+      pcl::PointXYZ zero = addPointXYZ(orig, tape0_loc_);
+      pcl::PointXYZ one = addPointXYZ(zero, tape1_loc_);
+      pcl::PointXYZ two = addPointXYZ(zero, tape2_loc_);
+
+      pts.push_back(zero);
+      pts.push_back(one);
+      pts.push_back(two);
+
+      return pts;
+    }
+
+  private:
+    pcl::PointXYZ tape0_loc_;
+    pcl::PointXYZ tape1_loc_;
+    pcl::PointXYZ tape2_loc_;
+
+    pcl::PointXYZ addPointXYZ(pcl::PointXYZ a, pcl::PointXYZ b)
+    {
+      pcl::PointXYZ r;
+      r.x = a.x + b.x;
+      r.y = a.y + b.y;
+      r.z = a.z + b.z;
+      return r;
+    }
+};
+
 class VisualServoNode
 {
   public:
@@ -183,6 +241,8 @@ class VisualServoNode
     alarm_ = ros::Time(0);
 #endif
 
+    gripper_tape_ = GripperTape();
+    gripper_tape_.setOffset(pcl::PointXYZ(tape1_offset_x_, tape1_offset_y_, tape1_offset_z_));
     ROS_INFO("Initialization 0: Node init & Register Callback Done");
   }
 
@@ -259,6 +319,7 @@ class VisualServoNode
         {
           case INIT:
             {
+              reset();
               ROS_INFO("Initializing Services and Robot Configuration");
               initializeService();
 
@@ -303,23 +364,26 @@ class VisualServoNode
             {
               ROS_INFO("Phase Init Hand: Remembering Blue Tape Positions");
 
-              if (features_.size() == 3)
+              if (tape_features_.size() == 3)
               {
-                pcl::PointXYZ tape0 = features_.at(0).workspace;
-                pcl::PointXYZ tape1 = features_.at(1).workspace;
-                pcl::PointXYZ tape2 = features_.at(2).workspace;
+                pcl::PointXYZ tape0 = tape_features_.at(0).workspace;
+                pcl::PointXYZ tape1 = tape_features_.at(1).workspace;
+                pcl::PointXYZ tape2 = tape_features_.at(2).workspace;
 
+                gripper_tape_.setTapeRelLoc(tape0, tape1, tape2);
+                // EDIT
                 // remember the difference between each points
+                /*
                 tape1_loc_.x = tape1.x - tape0.x;
                 tape1_loc_.y = tape1.y - tape0.y;
                 tape1_loc_.z = tape1.z - tape0.z;
                 tape2_loc_.x = tape2.x - tape0.x;
                 tape2_loc_.y = tape2.y - tape0.y;
                 tape2_loc_.z = tape2.z - tape0.z;
-
-                temp_draw_.push_back(features_.at(0).image);
-                temp_draw_.push_back(features_.at(1).image);
-                temp_draw_.push_back(features_.at(2).image);
+                */
+                temp_draw_.push_back(tape_features_.at(0).image);
+                temp_draw_.push_back(tape_features_.at(1).image);
+                temp_draw_.push_back(tape_features_.at(2).image);
 
                 PHASE = INIT_DESIRED;
                 setSleepNonblock(0.25);
@@ -380,19 +444,19 @@ class VisualServoNode
               // Servo to WayPoint before
               // Gripper landed ON object while VSing
               // This waypoint will correct X & Y first and then correct Z (going down)
-              if (features_.size() == desired_locations_.size())
+              if (tape_features_.size() == goal_locations_.size())
               {
                 std::vector<cv::Point> few_pixels_up; few_pixels_up.clear();
-                float offset = (features_.at(0).image.y - desired_locations_.at(0).image.y)/2;
-                for (unsigned int i = 0; i < desired_locations_.size(); i++)
+                float offset = (tape_features_.at(0).image.y - goal_locations_.at(0).image.y)/2;
+                for (unsigned int i = 0; i < goal_locations_.size(); i++)
                 {
-                  cv::Point p = desired_locations_.at(i).image;
+                  cv::Point p = goal_locations_.at(i).image;
                   p.y += offset; // arbitrary pixel numbers & scale
                   few_pixels_up.push_back(p);
                 }
-                desired_wp_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
+                cur_goal_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
 
-                visual_servo::VisualServoTwist v_srv = getTwist(desired_wp_);
+                visual_servo::VisualServoTwist v_srv = getTwist(cur_goal_);
 
                 // term condition
                 if (v_srv.request.error < vs_err_term_threshold_)
@@ -409,13 +473,13 @@ class VisualServoNode
           case VS_CONTR_2:
             {
               // compute the twist if everything is good to go
-              visual_servo::VisualServoTwist v_srv = getTwist(desired_locations_);
+              visual_servo::VisualServoTwist v_srv = getTwist(goal_locations_);
 
               // terminal condition
               if (v_srv.request.error < vs_err_term_threshold_)
               {
                 // record the height at which the object wasd picked
-                object_z_ = features_.front().workspace.z;
+                object_z_ = tape_features_.front().workspace.z;
 
                 PHASE = GRAB;
               }
@@ -522,14 +586,21 @@ class VisualServoNode
               std_srvs::Empty e;
               i_client_.call(e);
 
-              is_detected_ = false;
-
+              reset();
               setSleepNonblock(3.0);
               PHASE = INIT_DESIRED;
             }
             break;
         }
       }
+    }
+
+    void reset()
+    {
+      goal_locations_.clear();
+      cur_goal_.clear();
+      tape_features_.clear();
+      is_detected_ = false;
     }
 
 #ifdef DISPLAY
@@ -542,30 +613,30 @@ class VisualServoNode
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(531, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(530, 18), 2, 0.60, cv::Scalar(40, 40, 40), 1);
 
-      if (desired_locations_.size() > 0)
+      if (goal_locations_.size() > 0)
       {
         VSXYZ d = desired_;
         cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
       }
 
       // Draw on Desired Locations
-      for (unsigned int i = 0; i < desired_locations_.size(); i++)
+      for (unsigned int i = 0; i < goal_locations_.size(); i++)
       {
-        cv::Point p = desired_locations_.at(i).image;
+        cv::Point p = goal_locations_.at(i).image;
         cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
       }
 
       // Draw on Desired Locations
-      for (unsigned int i = 0; i < desired_wp_.size(); i++)
+      for (unsigned int i = 0; i < cur_goal_.size(); i++)
       {
-        cv::Point p = desired_wp_.at(i).image;
+        cv::Point p = cur_goal_.at(i).image;
         cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(100*i, 0, 110*(2-i)), 1);
       }
 
       // Draw Features
-      for (unsigned int i = 0; i < features_.size(); i++)
+      for (unsigned int i = 0; i < tape_features_.size(); i++)
       {
-        cv::Point p = features_.at(i).image;
+        cv::Point p = tape_features_.at(i).image;
         cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
       }
 
@@ -576,9 +647,9 @@ class VisualServoNode
 
       if (PHASE == VS_CONTR_1 || PHASE == VS_CONTR_2)
       {
-        float e = getError(desired_locations_, features_);
+        float e = getError(goal_locations_, tape_features_);
         if (PHASE == VS_CONTR_1)
-          e = getError(desired_wp_, features_);
+          e = getError(cur_goal_, tape_features_);
         std::stringstream stm;
         stm << "Error :" << e;
         cv::Scalar color;
@@ -821,10 +892,12 @@ class VisualServoNode
         return false;
       }
 
-      std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
+      std::vector<pcl::PointXYZ> temp_features = gripper_tape_.getTapePoseFromXYZ(desired_.workspace);
       std::vector<VSXYZ> desired_vsxyz = Point3DToVSXYZ(temp_features);
-      desired_locations_ = desired_vsxyz;
+      goal_locations_ = desired_vsxyz;
 
+      // EDIT
+      //std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
       // Before we servo to right pose, we want to get X, Y correct
       // so gripper doesn't land ON object while VSing
       /*
@@ -840,7 +913,7 @@ class VisualServoNode
         few_pixels_up.push_back(p);
       }
 
-      desired_wp_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
+      cur_goal_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
 
       */
       // for jacobian avg, we need IM at desired location as well
@@ -876,7 +949,8 @@ class VisualServoNode
       }
 
     }
-
+    // EDIT
+    /*
     std::vector<pcl::PointXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
     {
       pcl::PointXYZ origin = origin_xyz.workspace;
@@ -903,13 +977,13 @@ class VisualServoNode
       pts.push_back(three);
       return pts;
     }
-
+    */
     // Service method
     visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> desire)
     {
       visual_servo::VisualServoTwist srv;
-      srv = vs_->computeTwist(desire, features_);
-      srv.request.error = getError(desire, features_);
+      srv = vs_->computeTwist(desire, tape_features_);
+      srv.request.error = getError(desire, tape_features_);
       return srv;
     }
 
@@ -919,7 +993,7 @@ class VisualServoNode
       //////////////////////
       // Hand 
       // get all the blues 
-/bin/bash: :q: command not found
+      cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), gripper_tape_hue_value_, gripper_tape_hue_threshold_);
 
       // make it clearer with morphology
       cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
@@ -932,7 +1006,7 @@ class VisualServoNode
       std::vector<cv::Point> pts = getMomentCoordinates(ms);
 
       // convert the features into proper form 
-      features_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
+      tape_features_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
 
 
     }
@@ -977,23 +1051,23 @@ class VisualServoNode
           double x0, y0;
           x0 = m0.m10/m0.m00;
           y0 = m0.m01/m0.m00;
-          centroids[i][0] = x0; 
-          centroids[i][1] = y0; 
+          centroids[i][0] = x0;
+          centroids[i][1] = y0;
         }
 
         // find the top left corner using distance scheme
-        cv::Mat vect = cv::Mat::zeros(3,2, CV_32F); 
+        cv::Mat vect = cv::Mat::zeros(3,2, CV_32F);
         vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
         vect.at<float>(0,1) = centroids[0][1] - centroids[1][1];
         vect.at<float>(1,0) = centroids[0][0] - centroids[2][0];
         vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
         vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
-        vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];       
+        vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];
 
         double angle[3];
-        angle[0] = abs(vect.row(0).dot(vect.row(1))); 
-        angle[1] = abs(vect.row(0).dot(vect.row(2))); 
-        angle[2] = abs(vect.row(1).dot(vect.row(2))); 
+        angle[0] = abs(vect.row(0).dot(vect.row(1)));
+        angle[1] = abs(vect.row(0).dot(vect.row(2)));
+        angle[2] = abs(vect.row(1).dot(vect.row(2)));
 
         // printMatrix(vect); 
         double min = angle[0]; 
@@ -1420,9 +1494,9 @@ class VisualServoNode
 
     // desired location/current gripper location
     cv::Mat desired_jacobian_;
-    std::vector<VSXYZ> desired_wp_;
-    std::vector<VSXYZ> desired_locations_;
-    std::vector<VSXYZ> features_;
+    std::vector<VSXYZ> cur_goal_;
+    std::vector<VSXYZ> goal_locations_;
+    std::vector<VSXYZ> tape_features_;
     VSXYZ desired_;
     cv::Mat K;
 
@@ -1430,8 +1504,11 @@ class VisualServoNode
     ros::Publisher chatter_pub_;
     ros::Time alarm_;
 
+    // EDIT
+    /**
     pcl::PointXYZ tape1_loc_;
     pcl::PointXYZ tape2_loc_;
+    **/
 
     // clients to services provided by vs_controller.py
     ros::ServiceClient v_client_;
@@ -1451,6 +1528,8 @@ class VisualServoNode
     // collision detection
     bool is_detected_;
     float object_z_;
+
+    GripperTape gripper_tape_;
 };
 
 int main(int argc, char ** argv)
