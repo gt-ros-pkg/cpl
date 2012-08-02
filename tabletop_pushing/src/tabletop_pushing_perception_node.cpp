@@ -829,9 +829,9 @@ class TabletopPushingPerceptionNode
           obj_tracker_->pause();
         }
         // TODO: Check hand between object and goal
-        else if (!spin_to_heading_ && isGripperBetweenGoalAndCentroid(tracker_state.x))
+        else if (!spin_to_heading_ && objectNotBetweenGoalAndGripper(tracker_state.x))
         {
-          ROS_WARN_STREAM("Gripper is between obejct and goal. Aborting");
+          ROS_WARN_STREAM("Object is not between gripper and goal. Aborting");
           PushTrackerResult res;
           res.aborted = true;
           as_.setAborted(res);
@@ -915,10 +915,8 @@ class TabletopPushingPerceptionNode
    */
   bool learnPushCallback(LearnPush::Request& req, LearnPush::Response& res)
   {
-    ROS_INFO_STREAM("learnPushCallback()");
     if ( have_depth_data_ )
     {
-      ROS_INFO_STREAM("learnPushCallback(): have_depth_data_");
       if (req.initialize)
       {
         ROS_INFO_STREAM("Initializing");
@@ -1334,7 +1332,7 @@ class TabletopPushingPerceptionNode
     as_.setPreempted();
   }
 
-  bool isGripperBetweenGoalAndCentroid(Pose2D& obj_state)
+  bool objectNotBetweenGoalAndGripper(Pose2D& obj_state)
   {
     if (pushing_arm_ == "l")
     {
