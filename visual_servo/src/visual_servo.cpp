@@ -37,6 +37,7 @@
 
 #include <std_msgs/Header.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Pose2D.h>
 #include <sensor_msgs/Image.h>
@@ -95,6 +96,7 @@ typedef struct {
 // using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PointStamped;
+using geometry_msgs::PoseStamped;
 using visual_servo::VisualServoTwist;
 
 /**
@@ -132,11 +134,15 @@ class VisualServo
   }
 
 
-    visual_servo::VisualServoTwist computeTwist(std::vector<VSXYZ> desired_locations, std::vector<VSXYZ> hand_features)
+    visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper)
     {
-      visual_servo::VisualServoTwist srv;
+      return computeTwistCamera(goal, gripper);
+    }
 
-      cv::Mat twist = computeTwistCamera(desired_locations, hand_features);
+    visual_servo::VisualServoTwist computeTwist(std::vector<VSXYZ> goal, std::vector<VSXYZ> gripper)
+    {
+      return computeTwistCamera(goal, gripper);
+      /*
       cv::Mat temp = twist.clone(); 
 
       ros::Time now = ros::Time(0);
@@ -159,6 +165,7 @@ class VisualServo
       srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
 
       return srv;
+      */
     }
 
     void printMatrix(cv::Mat_<double> in)
@@ -205,16 +212,16 @@ class VisualServo
     bool desired_jacobian_set_;
     cv::Mat desired_jacobian_;
 
+
     // compute twist in camera frame 
-    cv::Mat computeTwistCamera(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
+    visual_servo::VisualServoTwist computeTwistCamera(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
     {
       cv::Mat error_mat;
       cv::Mat im;
-      float rmse_e = 0;
 
       // return 0 twist if number of features does not equal to that of desired features
       if (pts.size() != desired.size())
-        return cv::Mat::zeros(6, 1, CV_32F);
+        return visual_servo::VisualServoTwist();
 
       // for all three features,
       for (unsigned int i = 0; i < desired.size(); i++) 
@@ -223,17 +230,43 @@ class VisualServo
         error.at<float>(0,0) = (pts.at(i)).camera.x - (desired.at(i)).camera.x;
         error.at<float>(1,0) = (pts.at(i)).camera.y - (desired.at(i)).camera.y;
         error_mat.push_back(error);
-
-        // RMS of error for termination condition
-        rmse_e += pow(error.at<float>(0,0),2) + pow(error.at<float>(1,0),2);
       }
 
-      // printf("Error in camera:\t"); printMatrix(error_mat.t());
+      im = getMeterInteractionMatrix(pts);
+      return computeTwist(error_mat, im, optical_frame_);
+    }
+
+    // override function to support PoseStamped
+   visual_servo::VisualServoTwist  computeTwistCamera(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
+    {
+      cv::Mat error_mat;
+      cv::Mat im;
+
+      // return 0 twist if number of features does not equal to that of desired features
+      if (pts.size() != desired.size())
+        return visual_servo::VisualServoTwist();
+        //return cv::Mat::zeros(6, 1, CV_32F);
+
+      // for all three features,
+      for (unsigned int i = 0; i < desired.size(); i++)
+      {
+        cv::Mat error = cv::Mat::zeros(2, 1, CV_32F);
+        error.at<float>(0,0) = (pts.at(i)).pose.position.x -
+          (desired.at(i)).pose.position.x;
+        error.at<float>(1,0) = (pts.at(i)).pose.position.y -
+          (desired.at(i)).pose.position.y;
+        error_mat.push_back(error);
+      }
 
       im = getMeterInteractionMatrix(pts);
+      std::string of = pts.at(0).header.frame_id;
+      return computeTwist(error_mat, im, of);
+    }
 
+    visual_servo::VisualServoTwist computeTwist(cv::Mat error_mat, cv::Mat im, std::string optical_frame)
+    {
       // if we can't compute interaction matrix, just make all twists 0
-      if (countNonZero(im) == 0) return cv::Mat::zeros(6, 1, CV_32F);
+      if (countNonZero(im) == 0) return visual_servo::VisualServoTwist();
 
       // inverting the matrix, 3 approaches
       cv::Mat iim;
@@ -248,7 +281,8 @@ class VisualServo
         default: // JACOBIAN_TYPE_AVG
           // We use specific way shown on visual servo by Chaumette 2006
 
-          if (!desired_jacobian_set_) return cv::Mat::zeros(6, 1, CV_32F);
+          if (!desired_jacobian_set_)
+            return visual_servo::VisualServoTwist();
 
           cv::Mat temp = desired_jacobian_ + im;
           iim = 0.5 * pseudoInverse(temp);
@@ -258,21 +292,71 @@ class VisualServo
       cv::Mat gain = cv::Mat::eye(6,6, CV_32F);
 
       // K x IIM x ERROR = TWIST
-      return gain*iim*error_mat;
+      cv::Mat temp = gain*iim*error_mat;
+
+      ros::Time now = ros::Time(0);
+      listener_.lookupTransform(workspace_frame_, optical_frame,  now, transform);
+
+      // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
+      tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
+      tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));  
+
+      // twist transformation from optical frame to workspace frame
+      tf::Vector3 out_rot = transform.getBasis() * twist_rot;
+      tf::Vector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
+
+      // multiple the velocity and rotation by gain defined in the parameter
+      visual_servo::VisualServoTwist srv;
+      srv.request.twist.twist.linear.x  = out_vel.x()*gain_vel_;
+      srv.request.twist.twist.linear.y  = out_vel.y()*gain_vel_;
+      srv.request.twist.twist.linear.z  = out_vel.z()*gain_vel_;
+      srv.request.twist.twist.angular.x = out_rot.x()*gain_rot_;
+      srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
+      srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
+      return srv;
     }
 
-    cv::Mat pseudoInverse(cv::Mat im) 
+    cv::Mat pseudoInverse(cv::Mat im)
     {
       return (im.t() * im).inv()*im.t();
     }
-
 
     /**
      * get the interaction matrix
      * @param depth_frame  Need the depth information from Kinect for Z
      * @param pts          Vector of feature points
      * @return             Return the computed interaction Matrix (6 by 6)
-     */
+    */
+    cv::Mat getMeterInteractionMatrix(std::vector<PoseStamped> &pts)
+    {
+      int size = (int)pts.size();
+      // interaction matrix, image jacobian
+      cv::Mat L = cv::Mat::zeros(size*2, 6,CV_32F);
+      //if (pts.size() != 3) 
+      //  return L;
+      for (int i = 0; i < size; i++) {
+        PoseStamped ps = pts.at(i);
+        float x = ps.pose.position.x;
+        float y = ps.pose.position.y;
+        float Z = ps.pose.position.z;
+        if (Z < 0.01 || Z > 0.95)
+        {
+          ROS_ERROR("Incorrect Z (%f). Cannot Compute Jacobian", Z);
+          return cv::Mat::zeros(size*2, 6, CV_32F);
+        }
+        // float z = cur_point_cloud_.at(y,x).z;
+        int l = i * 2;
+        if (isnan(Z)) return cv::Mat::zeros(6,6, CV_32F);
+        L.at<float>(l,0) = -1/Z;   L.at<float>(l+1,0) = 0;
+        L.at<float>(l,1) = 0;      L.at<float>(l+1,1) = -1/Z;
+        L.at<float>(l,2) = x/Z;    L.at<float>(l+1,2) = y/Z;
+        L.at<float>(l,3) = x*y;    L.at<float>(l+1,3) = (1 + pow(y,2));
+        L.at<float>(l,4) = -(1+pow(x,2));  L.at<float>(l+1,4) = -x*y;
+        L.at<float>(l,5) = y;      L.at<float>(l+1,5) = -x;
+      }
+      return L;
+    }
+
     cv::Mat getMeterInteractionMatrix(std::vector<VSXYZ> &pts) 
     {
       int size = (int)pts.size();
