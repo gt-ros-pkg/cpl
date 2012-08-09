@@ -187,16 +187,6 @@ class VisualServo
       }
       return false;
     }
-    /**
-     * Executive control function for launching the node.
-     */
-    void spin()
-    {
-      while(n_.ok())
-      {
-        ros::spinOnce();
-      }
-    }
 
   protected:
     ros::NodeHandle n_;
