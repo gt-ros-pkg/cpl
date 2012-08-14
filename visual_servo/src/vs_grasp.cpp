@@ -269,6 +269,7 @@ class VisualServoNode
       {
         cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic_, n_, ros::Duration(3.0));
         camera_initialized_ = true;
+        vs_->setCamInfo(cam_info_);
         ROS_INFO("Initialization: Camera Info Done");
       }
 
@@ -454,7 +455,7 @@ class VisualServoNode
                   p.y += offset; // arbitrary pixel numbers & scale
                   few_pixels_up.push_back(p);
                 }
-                cur_goal_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
+                cur_goal_ = vs_->CVPointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
 
                 visual_servo::VisualServoTwist v_srv = getTwist(cur_goal_);
 
@@ -877,7 +878,7 @@ class VisualServoNode
       }
 
       pcl::PointXYZ desired(mean_x/quant, mean_y/quant, mean_z/quant);
-      desired_ = convertFrom3DPointToVSXYZ(desired);
+      desired_ = vs_->point3DToVSXYZ(desired, tf_);
 
       ROS_DEBUG(">> Desired Point in Image: [%d, %d]", desired_.image.x, desired_.image.y);
       ROS_DEBUG(">> Desired Point in Camera: [%f, %f, %f]", desired_.camera.x,
@@ -893,7 +894,7 @@ class VisualServoNode
       }
 
       std::vector<pcl::PointXYZ> temp_features = gripper_tape_.getTapePoseFromXYZ(desired_.workspace);
-      std::vector<VSXYZ> desired_vsxyz = Point3DToVSXYZ(temp_features);
+      std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(temp_features, tf_);
       goal_locations_ = desired_vsxyz;
 
       // EDIT
@@ -1006,7 +1007,7 @@ class VisualServoNode
       std::vector<cv::Point> pts = getMomentCoordinates(ms);
 
       // convert the features into proper form 
-      tape_features_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
+      tape_features_ = vs_->CVPointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
 
 
     }
@@ -1209,151 +1210,6 @@ class VisualServoNode
       return wm;
     }
 
-
-    /**************************** 
-     * Projection & Conversions
-     ****************************/
-    std::vector<VSXYZ> Point3DToVSXYZ(std::vector<pcl::PointXYZ> in)  
-    {
-      std::vector<VSXYZ> ret;
-      for (unsigned int i = 0; i < in.size(); i++)
-      {
-        ret.push_back(convertFrom3DPointToVSXYZ(in.at(i)));
-      }
-      return ret;
-    }
-
-    VSXYZ convertFrom3DPointToVSXYZ(pcl::PointXYZ in) 
-    {
-      // [X,Y,Z] -> [u,v] -> [x,y,z]
-      VSXYZ ret;
-
-      // 3D point in world frame
-      pcl::PointXYZ in_c = in;
-      cv::Point img = projectPointIntoImage(in_c, workspace_frame_, optical_frame_);
-      cv::Mat temp = projectImagePointToPoint(img);
-
-      float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
-      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
-
-      ret.image = img;
-      // for simpler simulator, this will be the same
-      ret.camera = _2d;
-      ret.workspace= in;
-      return ret;
-    }
-
-    std::vector<VSXYZ> PointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
-    {
-      std::vector<VSXYZ> ret;
-      for (unsigned int i = 0; i < in.size(); i++)
-      {
-        ret.push_back(convertFromPointToVSXYZ(cloud, depth_frame, in.at(i)));
-      }
-      return ret;
-    }
-
-    VSXYZ convertFromPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in) 
-    {
-      // [u,v] -> [x,y,z] (from camera intrinsics) & [X, Y, Z] (from PointCloud)
-      VSXYZ ret;
-      // pixel to meter value (using inverse of camera intrinsic) 
-      cv::Mat temp = projectImagePointToPoint(in);
-
-      // getZValue averages out z-value in a window to reduce noises
-      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), getZValue(depth_frame, in.x, in.y));
-      pcl::PointXYZ _3d = cloud.at(in.x, in.y);
-
-      ret.image = in;
-      ret.camera = _2d;
-      ret.workspace= _3d;
-      return ret;
-    }
-
-
-    /**
-     * transforms a point in pixels to meter using the inverse of 
-     * image intrinsic K
-     * @param in a point to be transformed
-     * @return returns meter value of the point in cv::Mat
-     */ 
-    cv::Mat projectImagePointToPoint(cv::Point in) 
-    {
-      if (K.rows == 0 || K.cols == 0) {
-
-        // Camera intrinsic matrix
-        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
-        K.convertTo(K, CV_32F);
-      }
-
-      cv::Mat k_inv = K.inv();
-
-      cv::Mat mIn  = cv::Mat(3,1,CV_32F);
-      mIn.at<float>(0,0) = in.x; 
-      mIn.at<float>(1,0) = in.y; 
-      mIn.at<float>(2,0) = 1; 
-      return k_inv * mIn;
-    }
-
-    /**
-     * transforms a cv::Mat in pixels to meter using the inverse 
-     * Image Intrinsic K
-     * @param in  cv::Mat input to be transformed
-     * @return    returns meter in cv::Mat
-     */ 
-    cv::Mat projectImageMatToPoint(cv::Mat in)   
-    { 
-      cv::Point p(in.at<float>(0,0), in.at<float>(1,0));
-      return projectImagePointToPoint(p);
-    }
-
-    /** 
-     * Transforms a point in Point Cloud to Image Frame (pixels)
-     * @param cur_point_pcl  The point to be transformed in pcl::PointXYZ
-     * @param point_frame    The frame that the PointCloud is in
-     * @param target_frame   Image frame
-     * @return               returns the pixel value of the PointCloud in image frame
-     */
-    cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
-        std::string point_frame, std::string target_frame)
-    {
-      PointStamped cur_point;
-      cur_point.header.frame_id = point_frame;
-      cur_point.point.x = cur_point_pcl.x;
-      cur_point.point.y = cur_point_pcl.y;
-      cur_point.point.z = cur_point_pcl.z;
-      return projectPointIntoImage(cur_point, target_frame);
-    }
-
-    cv::Point projectPointIntoImage(PointStamped cur_point,
-        std::string target_frame)
-    {
-      if (K.rows == 0 || K.cols == 0) {
-        // Camera intrinsic matrix
-        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
-        K.convertTo(K, CV_32F);
-      }
-      cv::Point img_loc;
-      try
-      {
-        // Transform point into the camera frame
-        PointStamped image_frame_loc_m;
-        tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
-        // Project point onto the image
-        img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
-              K.at<float>(0,2)*image_frame_loc_m.point.z) /
-            image_frame_loc_m.point.z);
-        img_loc.y = static_cast<int>((K.at<float>(1,1)*image_frame_loc_m.point.y +
-              K.at<float>(1,2)*image_frame_loc_m.point.z) /
-            image_frame_loc_m.point.z);
-      }
-      catch (tf::TransformException e)
-      {
-        ROS_ERROR_STREAM(e.what());
-      }
-      return img_loc;
-    }
-
     /**********************
      * HELPER METHODS
      **********************/
@@ -1388,43 +1244,6 @@ class VisualServoNode
         }
         printf("\n");
       }
-    }
-
-    void printVSXYZ(VSXYZ i)
-    {
-      printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
-          i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
-    }
-
-    float getZValue(cv::Mat depth_frame, int x, int y)
-    {
-      int window_size = 3;
-      float value = 0;
-      int size = 0; 
-      for (int i = 0; i < window_size; i++) 
-      {
-        for (int j = 0; j < window_size; j++) 
-        {
-          // depth camera has x and y flipped. depth_frame.at(y,x)
-          float temp = depth_frame.at<float>(y-(int)(window_size/2)+j, x-(int)(window_size/2)+i);
-          // printf("[%d %d] %f\n", x-(int)(window_size/2)+i, y-(int)(window_size/2)+j, temp);
-          if (!isnan(temp) && temp > 0 && temp < 2.0) 
-          {
-            size++;
-            value += temp;
-          }
-          else
-          {
-          }
-        }
-      }
-      if (size == 0)
-      {
-        // mark source of 
-        cv::circle(cur_orig_color_frame_, cv::Point(x, y), 2, cv::Scalar(255, 255, 0), 1);
-        return -1;
-      }
-      return value/size;
     }
 
 

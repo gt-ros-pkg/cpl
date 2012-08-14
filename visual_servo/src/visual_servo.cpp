@@ -59,6 +59,9 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+// Boost
+#include <boost/shared_ptr.hpp>
+
 // STL
 #include <vector>
 #include <deque>
@@ -98,7 +101,7 @@ using geometry_msgs::TwistStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::PoseStamped;
 using visual_servo::VisualServoTwist;
-
+using boost::shared_ptr;
 /**
  * We are taping robot hand with three blue painter's tape 
  * and use those three features to do the image-based visual servoing
@@ -122,7 +125,7 @@ class VisualServo
     n_private_.param("gain_rot", gain_rot_, 1.0);
     // n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
 
-    try 
+    try
     {
       ros::Time now = ros::Time(0);
       listener_.waitForTransform(workspace_frame_, optical_frame_,  now, ros::Duration(2.0));
@@ -133,50 +136,28 @@ class VisualServo
     }
   }
 
-
-    visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper)
+    void setCamInfo(sensor_msgs::CameraInfo cam_info)
     {
-      return computeTwistCamera(goal, gripper);
+      cam_info_ = cam_info;
+    }
+
+    visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper, int mode)
+    {
+      switch (mode)
+      {
+      case 1:
+        return PBVSTwist(goal, gripper);
+
+      default:
+        return IBVSTwist(goal, gripper);
+      }
     }
 
     visual_servo::VisualServoTwist computeTwist(std::vector<VSXYZ> goal, std::vector<VSXYZ> gripper)
     {
-      return computeTwistCamera(goal, gripper);
-      /*
-      cv::Mat temp = twist.clone(); 
-
-      ros::Time now = ros::Time(0);
-      listener_.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
-
-      // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
-      tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
-      tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));  
-
-      // twist transformation from optical frame to workspace frame
-      tf::Vector3 out_rot = transform.getBasis() * twist_rot;
-      tf::Vector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
-
-      // multiple the velocity and rotation by gain defined in the parameter
-      srv.request.twist.twist.linear.x  = out_vel.x()*gain_vel_;
-      srv.request.twist.twist.linear.y  = out_vel.y()*gain_vel_;
-      srv.request.twist.twist.linear.z  = out_vel.z()*gain_vel_;
-      srv.request.twist.twist.angular.x = out_rot.x()*gain_rot_;
-      srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
-      srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
-
-      return srv;
-      */
+      return IBVSTwist(goal, gripper);
     }
 
-    void printMatrix(cv::Mat_<double> in)
-    {
-      for (int i = 0; i < in.rows; i++) {
-        for (int j = 0; j < in.cols; j++) {
-          printf("%+.5f\t", in(i,j)); 
-        }
-        printf("\n");
-      }
-    }
     bool setDesiredInteractionMatrix(std::vector<VSXYZ> &pts) 
     {
       try 
@@ -195,6 +176,71 @@ class VisualServo
       return false;
     }
 
+    /**************************** 
+     * Projection & Conversions
+     ****************************/
+    std::vector<VSXYZ> Point3DToVSXYZ(std::vector<pcl::PointXYZ> in, shared_ptr<tf::TransformListener> tf_)
+    {
+      std::vector<VSXYZ> ret;
+      for (unsigned int i = 0; i < in.size(); i++)
+      {
+        ret.push_back(point3DToVSXYZ(in.at(i), tf_));
+      }
+      return ret;
+    }
+
+    VSXYZ point3DToVSXYZ(pcl::PointXYZ in, shared_ptr<tf::TransformListener> tf_)
+    {
+      // [X,Y,Z] -> [u,v] -> [x,y,z]
+      VSXYZ ret;
+
+      // 3D point in world frame
+      pcl::PointXYZ in_c = in;
+      cv::Point img = projectPointIntoImage(in_c, workspace_frame_, optical_frame_, tf_);
+      cv::Mat temp = projectImagePointToPoint(img);
+
+      float depth = sqrt(pow(in_c.z,2) + pow(temp.at<float>(0,0),2) + pow(temp.at<float>(1,0),2));
+      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), depth);
+      ret.image = img;
+      // for simpler simulator, this will be the same
+      ret.camera = _2d;
+      ret.workspace= in;
+      return ret;
+    }
+
+    std::vector<VSXYZ> CVPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
+    {
+      std::vector<VSXYZ> ret;
+      for (unsigned int i = 0; i < in.size(); i++)
+      {
+        ret.push_back(CVPointToVSXYZ(cloud, depth_frame, in.at(i)));
+      }
+      return ret;
+    }
+
+    VSXYZ CVPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in) 
+    {
+      // [u,v] -> [x,y,z] (from camera intrinsics) & [X, Y, Z] (from PointCloud)
+      VSXYZ ret;
+      // pixel to meter value (using inverse of camera intrinsic) 
+      cv::Mat temp = projectImagePointToPoint(in);
+
+      // getZValue averages out z-value in a window to reduce noises
+      pcl::PointXYZ _2d(temp.at<float>(0,0), temp.at<float>(1,0), getZValue(depth_frame, in.x, in.y));
+      pcl::PointXYZ _3d = cloud.at(in.x, in.y);
+
+      ret.image = in;
+      ret.camera = _2d;
+      ret.workspace= _3d;
+      return ret;
+    }
+
+    void printVSXYZ(VSXYZ i)
+    {
+      printf("Im: %+.3d %+.3d\tCam: %+.3f %+.3f %+.3f\twork: %+.3f %+.3f %+.3f\n",\
+          i.image.x, i.image.y, i.camera.x, i.camera.y, i.camera.z, i.workspace.x, i.workspace.y, i.workspace.z);
+    }
+
   protected:
     ros::NodeHandle n_;
     ros::NodeHandle n_private_;
@@ -211,10 +257,39 @@ class VisualServo
     double term_threshold_;
     bool desired_jacobian_set_;
     cv::Mat desired_jacobian_;
+    cv::Mat K;
+    sensor_msgs::CameraInfo cam_info_;
+
+    visual_servo::VisualServoTwist PBVSTwist(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
+    {
+      cv::Mat error_mat;
+      cv::Mat im;
+
+      // return 0 twist if number of features does not equal to that of desired features
+      if (pts.size() != desired.size())
+        return visual_servo::VisualServoTwist();
+      //return cv::Mat::zeros(6, 1, CV_32F);
+
+      // for all three features,
+      for (unsigned int i = 0; i < desired.size(); i++)
+      {
+        cv::Mat error = cv::Mat::zeros(2, 1, CV_32F);
+        error.at<float>(0,0) = (pts.at(i)).pose.position.x -
+          (desired.at(i)).pose.position.x;
+        error.at<float>(1,0) = (pts.at(i)).pose.position.y -
+          (desired.at(i)).pose.position.y;
+        error_mat.push_back(error);
+      }
+
+      im = getMeterInteractionMatrix(pts);
+      std::string of = pts.at(0).header.frame_id;
+      return computeTwist(error_mat, im, of);
+    }
+
 
 
     // compute twist in camera frame 
-    visual_servo::VisualServoTwist computeTwistCamera(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
+    visual_servo::VisualServoTwist IBVSTwist(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
     {
       cv::Mat error_mat;
       cv::Mat im;
@@ -237,7 +312,7 @@ class VisualServo
     }
 
     // override function to support PoseStamped
-   visual_servo::VisualServoTwist  computeTwistCamera(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
+    visual_servo::VisualServoTwist IBVSTwist(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
     {
       cv::Mat error_mat;
       cv::Mat im;
@@ -245,7 +320,7 @@ class VisualServo
       // return 0 twist if number of features does not equal to that of desired features
       if (pts.size() != desired.size())
         return visual_servo::VisualServoTwist();
-        //return cv::Mat::zeros(6, 1, CV_32F);
+      //return cv::Mat::zeros(6, 1, CV_32F);
 
       // for all three features,
       for (unsigned int i = 0; i < desired.size(); i++)
@@ -326,7 +401,7 @@ class VisualServo
      * @param depth_frame  Need the depth information from Kinect for Z
      * @param pts          Vector of feature points
      * @return             Return the computed interaction Matrix (6 by 6)
-    */
+     */
     cv::Mat getMeterInteractionMatrix(std::vector<PoseStamped> &pts)
     {
       int size = (int)pts.size();
@@ -385,5 +460,121 @@ class VisualServo
         L.at<float>(l,5) = y;      L.at<float>(l+1,5) = -x;
       }
       return L;
+    }
+
+    /**************************** 
+     * Projection & Conversions
+     ****************************/
+    /**
+     * transforms a point in pixels to meter using the inverse of 
+     * image intrinsic K
+     * @param in a point to be transformed
+     * @return returns meter value of the point in cv::Mat
+     */ 
+    cv::Mat projectImagePointToPoint(cv::Point in) 
+    {
+      if (K.rows == 0 || K.cols == 0) {
+
+        // Camera intrinsic matrix
+        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+        K.convertTo(K, CV_32F);
+      }
+
+      cv::Mat k_inv = K.inv();
+
+      cv::Mat mIn  = cv::Mat(3,1,CV_32F);
+      mIn.at<float>(0,0) = in.x; 
+      mIn.at<float>(1,0) = in.y; 
+      mIn.at<float>(2,0) = 1; 
+      return k_inv * mIn;
+    }
+
+    /**
+     * transforms a cv::Mat in pixels to meter using the inverse 
+     * Image Intrinsic K
+     * @param in  cv::Mat input to be transformed
+     * @return    returns meter in cv::Mat
+     */ 
+    cv::Mat projectImageMatToPoint(cv::Mat in)
+    {
+      cv::Point p(in.at<float>(0,0), in.at<float>(1,0));
+      return projectImagePointToPoint(p);
+    }
+    cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
+        std::string point_frame, std::string target_frame, shared_ptr<tf::TransformListener> tf_)
+    {
+      PointStamped cur_point;
+      cur_point.header.frame_id = point_frame;
+      cur_point.point.x = cur_point_pcl.x;
+      cur_point.point.y = cur_point_pcl.y;
+      cur_point.point.z = cur_point_pcl.z;
+      return projectPointIntoImage(cur_point, target_frame, tf_);
+    }
+
+    cv::Point projectPointIntoImage(PointStamped cur_point,
+        std::string target_frame, shared_ptr<tf::TransformListener> tf_)
+    {
+      if (K.rows == 0 || K.cols == 0) {
+        // Camera intrinsic matrix
+        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+        K.convertTo(K, CV_32F);
+      }
+      cv::Point img_loc;
+      try
+      {
+        // Transform point into the camera frame
+        PointStamped image_frame_loc_m;
+        tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
+        // Project point onto the image
+        img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
+              K.at<float>(0,2)*image_frame_loc_m.point.z) /
+            image_frame_loc_m.point.z);
+        img_loc.y = static_cast<int>((K.at<float>(1,1)*image_frame_loc_m.point.y +
+              K.at<float>(1,2)*image_frame_loc_m.point.z) /
+            image_frame_loc_m.point.z);
+      }
+      catch (tf::TransformException e)
+      {
+        ROS_ERROR_STREAM(e.what());
+      }
+      return img_loc;
+    }
+
+    float getZValue(cv::Mat depth_frame, int x, int y)
+    {
+      int window_size = 3;
+      float value = 0;
+      int size = 0; 
+      for (int i = 0; i < window_size; i++) 
+      {
+        for (int j = 0; j < window_size; j++) 
+        {
+          // depth camera has x and y flipped. depth_frame.at(y,x)
+          float temp = depth_frame.at<float>(y-(int)(window_size/2)+j, x-(int)(window_size/2)+i);
+          // printf("[%d %d] %f\n", x-(int)(window_size/2)+i, y-(int)(window_size/2)+j, temp);
+          if (!isnan(temp) && temp > 0 && temp < 2.0) 
+          {
+            size++;
+            value += temp;
+          }
+          else
+          {
+          }
+        }
+      }
+      if (size == 0)
+        return -1;
+      return value/size;
+    }
+
+    // DEBUG PURPOSE
+    void printMatrix(cv::Mat_<double> in)
+    {
+      for (int i = 0; i < in.rows; i++) {
+        for (int j = 0; j < in.cols; j++) {
+          printf("%+.5f\t", in(i,j)); 
+        }
+        printf("\n");
+      }
     }
 };
