@@ -235,7 +235,8 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   mps.setDistanceThreshold(0.02); // 2cm
   mps.setInputNormals(normal_cloud);
   mps.setInputCloud(input_cloud.makeShared());
-  std::vector<pcl16::PlanarRegion<pcl16::PointXYZ> > regions;
+  std::vector<pcl16::PlanarRegion<pcl16::PointXYZ>,
+              Eigen::aligned_allocator<pcl16::PlanarRegion<pcl16::PointXYZ> > > regions;
   std::vector<pcl16::ModelCoefficients> coefficients;
   std::vector<pcl16::PointIndices> point_indices;
   pcl16::OrganizedMultiPlaneSegmentation<pcl16::PointXYZ, pcl16::Normal, pcl16::Label>::PointCloudLPtr labels;
