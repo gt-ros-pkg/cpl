@@ -84,6 +84,8 @@
 #define JACOBIAN_TYPE_INV 1
 #define JACOBIAN_TYPE_PSEUDO 2
 #define JACOBIAN_TYPE_AVG 3
+#define PBVS 0
+#define IBVS 1
 
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef struct {
@@ -102,6 +104,7 @@ using geometry_msgs::PointStamped;
 using geometry_msgs::PoseStamped;
 using visual_servo::VisualServoTwist;
 using boost::shared_ptr;
+
 /**
  * We are taping robot hand with three blue painter's tape 
  * and use those three features to do the image-based visual servoing
@@ -141,15 +144,20 @@ class VisualServo
       cam_info_ = cam_info;
     }
 
+    visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper)
+    {
+      // default to PBVS
+      return computeTwist(goal, gripper, PBVS);
+    }
+
     visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper, int mode)
     {
       switch (mode)
       {
-      case 1:
-        return PBVSTwist(goal, gripper);
-
-      default:
-        return IBVSTwist(goal, gripper);
+        case PBVS:
+          return PBVSTwist(goal, gripper);
+        default:
+          return IBVSTwist(goal, gripper);
       }
     }
 
@@ -262,31 +270,65 @@ class VisualServo
 
     visual_servo::VisualServoTwist PBVSTwist(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
     {
-      cv::Mat error_mat;
-      cv::Mat im;
-
-      // return 0 twist if number of features does not equal to that of desired features
-      if (pts.size() != desired.size())
-        return visual_servo::VisualServoTwist();
-      //return cv::Mat::zeros(6, 1, CV_32F);
-
-      // for all three features,
-      for (unsigned int i = 0; i < desired.size(); i++)
+      // although PBVS takes in vector, we only need one pose from goal and gripper
+      if (pts.size() != 1 || desired.size() != 1)
       {
-        cv::Mat error = cv::Mat::zeros(2, 1, CV_32F);
-        error.at<float>(0,0) = (pts.at(i)).pose.position.x -
-          (desired.at(i)).pose.position.x;
-        error.at<float>(1,0) = (pts.at(i)).pose.position.y -
-          (desired.at(i)).pose.position.y;
-        error_mat.push_back(error);
+        ROS_WARN("Visual Servo: Incorrect input to PBVS. Returning Zero Twist");
+        return visual_servo::VisualServoTwist();
       }
 
-      im = getMeterInteractionMatrix(pts);
-      std::string of = pts.at(0).header.frame_id;
-      return computeTwist(error_mat, im, of);
+      // TODO
+      // need to transform from PoseStamped pose into torso 
+      // for now, assume that the posestamped is already in torso
+
+      // for all three features,
+      geometry_msgs::Point cpos = pts.front().pose.position;
+      geometry_msgs::Quaternion cquat = pts.front().pose.orientation;
+      geometry_msgs::Point gpos = desired.front().pose.position;
+      geometry_msgs::Quaternion gquat = desired.front().pose.orientation;
+      // make cv::mat out of above values
+      float tcpos[3] = {cpos.x, cpos.y, cpos.z};
+      cv::Mat mcpos = cv::Mat(1, 3, CV_32F, tcpos).inv();
+
+      float tgpos[3] = {gpos.x, gpos.y, gpos.z};
+      cv::Mat mgpos = cv::Mat(1, 3, CV_32F, tgpos).inv();
+
+      // need to convert quaternion into RPY and make cv::mat
+      double tr, tp, ty;
+      btQuaternion q1(gquat.x, gquat.y, gquat.z, gquat.w);
+      btMatrix3x3(q1).getEulerZYX(ty, tp, tr);
+      float tgquat[3] = {tr, tp, ty};
+      cv::Mat mgrot = cv::Mat(1, 3, CV_32F, tgquat).inv();
+
+      btQuaternion q2(cquat.x, cquat.y, cquat.z, cquat.w);
+      btMatrix3x3(q2).getEulerZYX(ty, tp, tr);
+      float tcquat[3] = {tr, tp, ty};
+      cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).inv();
+
+      // According to Chaumette 2006
+      // v = -lambda( (c*t0 - ct0) + [ct0]x theta u)
+      // form [ct0]x first
+      cv::Mat ctox = cv::Mat::zeros(3,3,CV_32F);
+      // cur position
+      ctox.at<float>(0,1) = -cpos.z;
+      ctox.at<float>(0,2) = cpos.y;
+      ctox.at<float>(1,0) = cpos.z;
+      ctox.at<float>(2,0) = -cpos.y;
+      ctox.at<float>(1,2) = -cpos.x;
+      ctox.at<float>(2,1) = cpos.x;
+
+
+      cv::Mat velpos = -gain_vel_*((mgpos - mcpos) + ctox*(mgrot-mcrot));
+      cv::Mat velrot = -gain_rot_*(mgrot - mcrot);
+      visual_servo::VisualServoTwist srv;
+      srv.request.twist.twist.linear.x  = velpos.at<float>(0,0);
+      srv.request.twist.twist.linear.y  = velpos.at<float>(1,0);
+      srv.request.twist.twist.linear.z  = velpos.at<float>(2,0);
+      srv.request.twist.twist.angular.x = velrot.at<float>(0,0);
+      srv.request.twist.twist.angular.y = velrot.at<float>(1,0);
+      srv.request.twist.twist.angular.z = velrot.at<float>(2,0);
+      return srv;
     }
-
-
 
     // compute twist in camera frame 
     visual_servo::VisualServoTwist IBVSTwist(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
@@ -345,7 +387,7 @@ class VisualServo
 
       // inverting the matrix, 3 approaches
       cv::Mat iim;
-      switch (jacobian_type_) 
+      switch (jacobian_type_)
       {
         case JACOBIAN_TYPE_INV:
           iim = (im).inv();
@@ -368,27 +410,7 @@ class VisualServo
 
       // K x IIM x ERROR = TWIST
       cv::Mat temp = gain*iim*error_mat;
-
-      ros::Time now = ros::Time(0);
-      listener_.lookupTransform(workspace_frame_, optical_frame,  now, transform);
-
-      // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
-      tf::Vector3 twist_rot(temp.at<float>(3), temp.at<float>(4), temp.at<float>(5));
-      tf::Vector3 twist_vel(temp.at<float>(0), temp.at<float>(1), temp.at<float>(2));  
-
-      // twist transformation from optical frame to workspace frame
-      tf::Vector3 out_rot = transform.getBasis() * twist_rot;
-      tf::Vector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
-
-      // multiple the velocity and rotation by gain defined in the parameter
-      visual_servo::VisualServoTwist srv;
-      srv.request.twist.twist.linear.x  = out_vel.x()*gain_vel_;
-      srv.request.twist.twist.linear.y  = out_vel.y()*gain_vel_;
-      srv.request.twist.twist.linear.z  = out_vel.z()*gain_vel_;
-      srv.request.twist.twist.angular.x = out_rot.x()*gain_rot_;
-      srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
-      srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
-      return srv;
+      return transformVelocity(temp);
     }
 
     cv::Mat pseudoInverse(cv::Mat im)
@@ -565,6 +587,29 @@ class VisualServo
       if (size == 0)
         return -1;
       return value/size;
+    }
+
+    visual_servo::VisualServoTwist transformVelocity(cv::Mat in)
+    {
+      ros::Time now = ros::Time(0);
+      listener_.lookupTransform(workspace_frame_, optical_frame_,  now, transform);
+
+      // have to transform twist in camera frame (openni_rgb_optical_frame) to torso frame (torso_lift_link)
+      tf::Vector3 twist_rot(in.at<float>(3), in.at<float>(4), in.at<float>(5));
+      tf::Vector3 twist_vel(in.at<float>(0), in.at<float>(1), in.at<float>(2));
+
+      // twist transformation from optical frame to workspace frame
+      tf::Vector3 out_rot = transform.getBasis() * twist_rot;
+      tf::Vector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
+
+      visual_servo::VisualServoTwist srv;
+      srv.request.twist.twist.linear.x  = out_vel.x()*gain_vel_;
+      srv.request.twist.twist.linear.y  = out_vel.y()*gain_vel_;
+      srv.request.twist.twist.linear.z  = out_vel.z()*gain_vel_;
+      srv.request.twist.twist.angular.x = out_rot.x()*gain_rot_;
+      srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
+      srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
+      return srv;
     }
 
     // DEBUG PURPOSE
