@@ -205,4 +205,4 @@ def plot_results(file_name, spin=False):
     show()
 
 if __name__ == '__main__':
-    plot_results(sys.argv[1], True)
+    plot_results(sys.argv[1])
