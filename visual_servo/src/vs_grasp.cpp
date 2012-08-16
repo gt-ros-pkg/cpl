@@ -99,7 +99,9 @@
 #include "visual_servo.cpp"
 
 #define DEBUG_MODE 0
+#define PROFILE 1
 
+// statemachine constants
 #define INIT          0
 #define SETTLE        1
 #define INIT_HAND     2
@@ -116,6 +118,7 @@
 #define FINISH        13
 #define TERM          14
 
+// floating point mod
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::PointCloud2> MySyncPolicy;
@@ -321,6 +324,7 @@ class VisualServoNode
           case INIT:
             {
               reset();
+#ifndef PROFILE
               ROS_INFO("Initializing Services and Robot Configuration");
               initializeService();
 
@@ -330,6 +334,7 @@ class VisualServoNode
 
               // gripper needs to be controlled from here
               open();
+#endif
               PHASE = SETTLE;
               setSleepNonblock(3.0);
             }
@@ -349,6 +354,7 @@ class VisualServoNode
               p_srv.request.p.pose.orientation.z = 0.8889;
               p_srv.request.p.pose.orientation.w = 0;
 
+#ifndef PROFILE
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(3.0);
@@ -358,6 +364,9 @@ class VisualServoNode
               {
                 ROS_WARN("Failed to put the hand in initial configuration");
               }
+#else
+              PHASE = INIT_HAND;
+#endif
             }
             break;
 
@@ -419,11 +428,9 @@ class VisualServoNode
             {
               ROS_INFO("Phase Pose Control");
               VSXYZ d = desired_;
-              visual_servo::VisualServoPose p_srv = formPoseService();
-              p_srv.request.p.pose.position.x = d.workspace.x;
-              p_srv.request.p.pose.position.y = d.workspace.y;
-              p_srv.request.p.pose.position.z = d.workspace.z + pose_servo_z_offset_;
+              visual_servo::VisualServoPose p_srv = formPoseService(d.workspace.x, d.workspace.y, d.workspace.z + pose_servo_z_offset_);
               ROS_INFO(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.15);
+#ifndef PROFILE
               if (p_client_.call(p_srv))
               {
                 // on success
@@ -437,6 +444,9 @@ class VisualServoNode
                   ROS_INFO("Start Visual Servoing");
                 }
               }
+#else
+                  PHASE = VS_CONTR_1;
+#endif
             }
             break;
 
@@ -465,8 +475,10 @@ class VisualServoNode
                   PHASE = VS_CONTR_2;
                 }
                 // calling the service provider to move
+#ifndef PROFILE
                 if (v_client_.call(v_srv)){}
                 else{}
+#endif
               }
             }
             break;
@@ -513,10 +525,7 @@ class VisualServoNode
           case RELOCATE:
             {
               ROS_INFO("Phase Relocate. Move arm to new pose");
-              visual_servo::VisualServoPose p_srv = formPoseService();
-              p_srv.request.p.pose.position.x = 0.5;
-              p_srv.request.p.pose.position.y = 0.3;
-              p_srv.request.p.pose.position.z = 0.10 + object_z_;
+              visual_servo::VisualServoPose p_srv = formPoseService(0.5, 0.3, 0.10+object_z_);
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(2.0);
@@ -534,21 +543,19 @@ class VisualServoNode
             }
           case DESCEND:
             {
-              visual_servo::VisualServoTwist v_srv;
-              v_srv.request.error = 1; // for scaling
-              // if collision is detected || if hand is around where we picked up
               if (is_detected_)
               {
+                sendZeroVelocity();
                 setSleepNonblock(1.5);
                 PHASE = FINISH;
               }
               else
               {
-                v_srv.request.twist.twist.linear.z = place_z_velocity_;
+                visual_servo::VisualServoTwist v_srv = VisualServoMsg::createTwistMsg(1.0,0,0,place_z_velocity_, 0,0,0);
+                v_client_.call(v_srv);
               }
 
               // if collision is detected, 0 velocity should be commanded
-              v_client_.call(v_srv);
             }
             break;
           case RELEASE:
@@ -560,10 +567,7 @@ class VisualServoNode
             break;
           case FINISH:
             {
-              visual_servo::VisualServoPose p_srv = formPoseService();
-              p_srv.request.p.pose.position.x = 0.5;
-              p_srv.request.p.pose.position.y = 0.3;
-              p_srv.request.p.pose.position.z = 0.10 + object_z_;
+              visual_servo::VisualServoPose p_srv = formPoseService(0.5, 0.3, 0.1+object_z_);
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(2.0);
@@ -782,6 +786,9 @@ class VisualServoNode
 
     bool sleepNonblock()
     {
+#ifdef PROFILE
+      return true;
+#else
       ros::Duration d = ros::Time::now() - alarm_;
       if (d.toSec() > 0)
       {
@@ -790,6 +797,7 @@ class VisualServoNode
         return true;
       }
       return false; 
+#endif
     }
 
     bool initializeDesired()
@@ -1224,16 +1232,9 @@ class VisualServoNode
       return v_client_.call(v_srv);
     }
 
-    visual_servo::VisualServoPose formPoseService()
+    visual_servo::VisualServoPose formPoseService(float px, float py, float pz)
     {
-      visual_servo::VisualServoPose p_srv;
-      p_srv.request.p.header.stamp = ros::Time::now();
-      p_srv.request.p.header.frame_id = "torso_lift_link";
-      p_srv.request.p.pose.orientation.x = -0.4582;
-      p_srv.request.p.pose.orientation.y = 0;
-      p_srv.request.p.pose.orientation.z = 0.8889;
-      p_srv.request.p.pose.orientation.w = 0;
-      return p_srv;
+      return VisualServoMsg::createPoseMsg(px, py, pz, -0.4582, 0, 0.8889, 0);
     }
 
     void printMatrix(cv::Mat_<double> in)

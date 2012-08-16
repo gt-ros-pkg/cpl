@@ -98,6 +98,79 @@ typedef struct {
   pcl::PointXYZ workspace_angular;
 } VSXYZ;
 
+namespace VisualServoMsg
+{
+  visual_servo::VisualServoPose createPoseMsg(float px, float py, float pz, float ox, float oy, float oz, float ow)
+  {
+    visual_servo::VisualServoPose p_srv;
+    p_srv.request.p.header.stamp = ros::Time::now();
+    p_srv.request.p.header.frame_id = "torso_lift_link";
+    p_srv.request.p.pose.position.x = px;
+    p_srv.request.p.pose.position.y = py;
+    p_srv.request.p.pose.position.z = pz;
+    p_srv.request.p.pose.orientation.x = ox;
+    p_srv.request.p.pose.orientation.y = oy;
+    p_srv.request.p.pose.orientation.z = oz;
+    p_srv.request.p.pose.orientation.w = ow;
+    return p_srv;
+  }
+  visual_servo::VisualServoTwist createTwistMsg(float err, double lx, double ly, double lz, double ax, double ay, double az)
+  {
+    visual_servo::VisualServoTwist msg;
+    msg.request.error = err;
+    msg.request.twist.header.stamp = ros::Time::now();
+    msg.request.twist.header.frame_id = "torso_lift_link";
+    msg.request.twist.twist.linear.x = lx;
+    msg.request.twist.twist.linear.y = ly;
+    msg.request.twist.twist.linear.z = lz;
+    msg.request.twist.twist.angular.x = ax;
+    msg.request.twist.twist.angular.y = ay;
+    msg.request.twist.twist.angular.z = az;
+    return msg;
+  }
+
+  visual_servo::VisualServoTwist createTwistMsg(cv::Mat velpos, cv::Mat velrot)
+  {
+    visual_servo::VisualServoTwist msg;
+    msg.request.twist.twist.linear.x = velpos.at<float>(0,0);
+    msg.request.twist.twist.linear.y = velpos.at<float>(1,0);
+    msg.request.twist.twist.linear.z = velpos.at<float>(2,0);
+    msg.request.twist.twist.angular.x = velrot.at<float>(0,0);
+    msg.request.twist.twist.angular.y = velrot.at<float>(1,0);
+    msg.request.twist.twist.angular.z = velrot.at<float>(2,0);
+    return msg;
+  }
+  visual_servo::VisualServoTwist createTwistMsg(double lx, double ly, double lz, double ax, double ay, double az)
+  {
+    return createTwistMsg(0.0, lx, ly, lz, ax, ay, az);
+  }
+
+  visual_servo::VisualServoTwist createTwistMsg(float err, std::vector<double> in)
+  {
+    if (in.size() >= 6)
+      return createTwistMsg(err, in.at(0), in.at(1), in.at(2),
+        in.at(3), in.at(4), in.at(5)); 
+   else
+   {
+    ROS_WARN("VisuaServoMsg >> Valid input needs 6 values. Returning 0");
+    visual_servo::VisualServoTwist msg;
+    return msg;
+   }
+  }
+
+  visual_servo::VisualServoTwist createTwistMsg(float err, cv::Mat twist)
+  {
+  std::vector<double> vals; 
+   for (int i = 0; i < twist.rows; i++)
+   {
+    for (int j = 0; j < twist.cols; j++)
+    {
+      vals.push_back((double) twist.at<float>(i,j));
+    }
+   }
+   return createTwistMsg(err, vals);
+  }
+}
 // using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PointStamped;
@@ -320,6 +393,9 @@ class VisualServo
 
       cv::Mat velpos = -gain_vel_*((mgpos - mcpos) + ctox*(mgrot-mcrot));
       cv::Mat velrot = -gain_rot_*(mgrot - mcrot);
+
+      return VisualServoMsg::createTwistMsg(velpos, velrot);
+      /*
       visual_servo::VisualServoTwist srv;
       srv.request.twist.twist.linear.x  = velpos.at<float>(0,0);
       srv.request.twist.twist.linear.y  = velpos.at<float>(1,0);
@@ -328,6 +404,7 @@ class VisualServo
       srv.request.twist.twist.angular.y = velrot.at<float>(1,0);
       srv.request.twist.twist.angular.z = velrot.at<float>(2,0);
       return srv;
+      */
     }
 
     // compute twist in camera frame 
@@ -602,14 +679,14 @@ class VisualServo
       tf::Vector3 out_rot = transform.getBasis() * twist_rot;
       tf::Vector3 out_vel = transform.getBasis() * twist_vel + transform.getOrigin().cross(out_rot);
 
-      visual_servo::VisualServoTwist srv;
-      srv.request.twist.twist.linear.x  = out_vel.x()*gain_vel_;
-      srv.request.twist.twist.linear.y  = out_vel.y()*gain_vel_;
-      srv.request.twist.twist.linear.z  = out_vel.z()*gain_vel_;
-      srv.request.twist.twist.angular.x = out_rot.x()*gain_rot_;
-      srv.request.twist.twist.angular.y = out_rot.y()*gain_rot_;
-      srv.request.twist.twist.angular.z = out_rot.z()*gain_rot_;
-      return srv;
+      std::vector<double> vels; 
+      vels.push_back(out_vel.x()*gain_vel_);
+      vels.push_back(out_vel.y()*gain_vel_);
+      vels.push_back(out_vel.z()*gain_vel_);
+      vels.push_back(out_rot.x()*gain_rot_);
+      vels.push_back(out_rot.y()*gain_rot_);
+      vels.push_back(out_rot.z()*gain_rot_);
+      return VisualServoMsg::createTwistMsg(0.0, vels);
     }
 
     // DEBUG PURPOSE
