@@ -173,6 +173,11 @@ class TabletopExecutive:
             r.sleep()
         rospy.loginfo('Done initializing learning')
 
+    def finish_learning(self):
+        rospy.loginfo('Done with learning pushes and such.')
+        if _USE_LEARN_IO:
+            self.learn_io.close_out_file()
+
     def run_singulation(self, num_pushes=1, use_guided=True):
         # Get table height and raise to that before anything else
         self.raise_and_look()
@@ -315,7 +320,6 @@ class TabletopExecutive:
                 return push_vec_res
 
     def choose_arm(self, push_vec, spin=False):
-
         if spin:
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
@@ -341,11 +345,6 @@ class TabletopExecutive:
             rospy.loginfo('Setting arm to left because of angle')
 
         return which_arm
-
-    def finish_learning(self):
-        rospy.loginfo('Done with learning pushes and such.')
-        if _USE_LEARN_IO:
-            self.learn_io.close_out_file()
 
     def learning_trial(self, which_arm, push_opt, high_init, push_vector_res,
                        push_dist, goal_pose, spin=False):
@@ -465,7 +464,6 @@ class TabletopExecutive:
         push_vector_req.analyze_previous = False
         push_vector_req.push_angle = 0.0
         push_vector_req.push_dist = 0.0
-        push_vector_req.rand_angle = False
         push_vector_req.goal_pose = goal_pose
         push_vector_req.use_goal_pose = True
         push_vector_req.spin_push = spin
@@ -473,30 +471,6 @@ class TabletopExecutive:
             rospy.loginfo("Getting feedback push spin start service")
         else:
             rospy.loginfo("Getting feedback push start service")
-        try:
-            push_vector_res = self.learning_push_vector_proxy(push_vector_req)
-            return push_vector_res
-        except rospy.ServiceException, e:
-            rospy.logwarn("Service did not process request: %s"%str(e))
-            return None
-
-
-    def request_learning_push(self, push_angle, push_dist, rand_angle=False,
-                              goal_pose=None):
-        push_vector_req = LearnPushRequest()
-        push_vector_req.initialize = False
-        push_vector_req.analyze_previous = False
-        push_vector_req.push_angle = push_angle
-        push_vector_req.push_dist = push_dist
-        push_vector_req.rand_angle = rand_angle
-        # TODO: remove none_goal pose stuff
-        # TODO: Break out spin request stuff
-        push_vector_req.spin_push = False
-        if goal_pose is not None:
-            push_vector_req.goal_pose = goal_pose
-            push_vector_req.use_goal_pose = True
-            push_vector_req.rand_angle = False
-        rospy.loginfo("Calling learning push vector service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
             return push_vector_res
@@ -851,22 +825,6 @@ class TabletopExecutive:
         rospy.loginfo("Calling feedback post sweep service")
         post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
         return push_res
-
-    def test_new_controller(self):
-        # self.raise_and_look(request_table=False, init_arms=True)
-        push_dist = 0.25
-        which_arm = 'r'
-        high_init = True
-        push = PushVector()
-        push.header.frame_id = 'torso_lift_link'
-        push.header.stamp = rospy.Time(0)
-        push.push_angle = pi*0.25
-        push.push_dist = push_dist
-        push.start_point.x = 0.9
-        push.start_point.y = 0.0
-        push.start_point.z = -0.2
-        self.gripper_push_object(push_dist, which_arm,
-                                 push, high_init)
 
     def generateRandomTablePose(self):
         # TODO: make these parameters
