@@ -667,8 +667,7 @@ class PositionFeedbackPushNode:
                                self.post_move_count_thresh)
         rospy.loginfo('Done moving up to end point')
 
-        if request.arm_reset:
-            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     def gripper_feedback_post_push(self, request):
@@ -728,8 +727,7 @@ class PositionFeedbackPushNode:
             res = robot_gripper.close(block=True)
             rospy.loginfo('Done closing gripper')
 
-        if request.arm_reset:
-            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     def gripper_feedback_post_sweep(self, request):
@@ -789,8 +787,7 @@ class PositionFeedbackPushNode:
             res = robot_gripper.close(block=True)
             rospy.loginfo('Done closing gripper')
 
-        if request.arm_reset:
-            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     #
@@ -814,9 +811,8 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             robot_gripper = self.robot.right_gripper
 
-        if request.arm_init:
-            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
-            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -876,14 +872,15 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
 
-        if request.arm_init:
-            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
-            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
-            # Rotate wrist before moving to position
-            rospy.logdebug('Rotating wrist for sweep')
-            arm_pose = self.get_arm_joint_pose(which_arm)
-            arm_pose[-1] =  wrist_roll
-            self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+
+        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+        # Rotate wrist before moving to position
+        rospy.logdebug('Rotating wrist for sweep')
+        arm_pose = self.get_arm_joint_pose(which_arm)
+        arm_pose[-1] =  wrist_roll
+        self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+
         if request.high_arm_init:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
@@ -930,16 +927,16 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
 
-        if request.arm_init:
-            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
-            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
 
-            if not request.high_arm_init:
-                # Rotate wrist before moving to position
-                rospy.logdebug('Rotating elbow for overhead push')
-                arm_pose = self.get_arm_joint_pose(which_arm)
-                arm_pose[-3] =  wrist_pitch
-                self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+
+        if not request.high_arm_init:
+            # Rotate wrist before moving to position
+            rospy.logdebug('Rotating elbow for overhead push')
+            arm_pose = self.get_arm_joint_pose(which_arm)
+            arm_pose[-3] =  wrist_pitch
+            self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
 
         if request.high_arm_init:
             # Move to offset pose above the table
@@ -1031,8 +1028,7 @@ class PositionFeedbackPushNode:
                                    self.post_move_count_thresh)
             rospy.loginfo('Done moving up to initial point')
 
-        if request.arm_reset:
-            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     def gripper_sweep(self, request):
@@ -1111,8 +1107,7 @@ class PositionFeedbackPushNode:
                                    self.post_move_count_thresh)
             rospy.loginfo('Done moving up to end point')
 
-        if request.arm_reset:
-            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     def overhead_push(self, request):
@@ -1190,8 +1185,7 @@ class PositionFeedbackPushNode:
                                    self.post_move_count_thresh)
             rospy.loginfo('Done moving up to end point')
 
-        if request.arm_reset:
-            self.reset_arm_pose(True, which_arm, request.high_arm_init)
+        self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
     #

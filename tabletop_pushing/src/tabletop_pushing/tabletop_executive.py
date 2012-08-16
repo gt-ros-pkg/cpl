@@ -700,8 +700,6 @@ class TabletopExecutive:
         push_req = GripperPushRequest()
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
-        push_req.arm_init = True
-        push_req.arm_reset = True
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
 
@@ -717,7 +715,6 @@ class TabletopExecutive:
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
-
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -742,8 +739,6 @@ class TabletopExecutive:
         push_req = GripperPushRequest()
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
-        push_req.arm_init = True
-        push_req.arm_reset = True
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
 
@@ -759,7 +754,6 @@ class TabletopExecutive:
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
-
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -784,8 +778,6 @@ class TabletopExecutive:
         push_req = GripperPushRequest()
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
-        push_req.arm_init = True
-        push_req.arm_reset = True
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
 
@@ -807,7 +799,6 @@ class TabletopExecutive:
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
-
 
         rospy.loginfo('Gripper sweep augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
