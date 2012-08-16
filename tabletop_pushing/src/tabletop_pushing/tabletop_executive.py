@@ -706,7 +706,6 @@ class TabletopExecutive:
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
         push_req.wrist_yaw = wrist_yaw
-        push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
         push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
@@ -745,7 +744,6 @@ class TabletopExecutive:
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
         push_req.wrist_yaw = wrist_yaw
-        push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
         push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
@@ -790,7 +788,6 @@ class TabletopExecutive:
             wrist_yaw = push_vector.push_angle + pi/2
 
         push_req.wrist_yaw = wrist_yaw
-        push_req.desired_push_dist = -y_offset_dir*push_dist
 
         # Offset pose to not hit the object immediately
         push_req.start_point.point.x += -self.sweep_offset_dist*sin(wrist_yaw)

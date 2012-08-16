@@ -428,7 +428,6 @@ class PositionFeedbackPushNode:
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        push_dist = request.desired_push_dist
 
         if request.left_arm:
             which_arm = 'l'
@@ -797,7 +796,7 @@ class PositionFeedbackPushNode:
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        push_dist = request.desired_push_dist
+
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
             if request.high_arm_init:
@@ -846,7 +845,6 @@ class PositionFeedbackPushNode:
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        push_dist = request.desired_push_dist
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -900,7 +898,6 @@ class PositionFeedbackPushNode:
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        push_dist = request.desired_push_dist
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
