@@ -1,5 +1,5 @@
 <launch>
-  <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/>
+  <include file="/etc/ros/fuerte/openni_head.launch"/>
   <include file="$(find tabletop_pushing)/launch/push_learn_perception.launch" />
   <include file="$(find tabletop_pushing)/launch/pr2_camera_self_filter_kinect_head.launch" />
 </launch>

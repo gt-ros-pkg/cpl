@@ -1,9 +1,9 @@
 <launch>
   <node name="push_learning_perception" pkg="tabletop_pushing" type="tabletop_pushing_perception_node" respawn="false" output="screen">
-    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
-    <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
-    <remap from="mask_image_topic" to="/kinect_head/rgb/image_color/self_mask"/>
-    <remap from="point_cloud_topic" to="/kinect_head/depth/points"/>
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_rect_color"/>
+    <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
+    <remap from="mask_image_topic" to="/kinect_head/rgb/image_rect_color/self_mask"/>
+    <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>
 
     <param name="use_displays" value="true" type="bool"/>
     <param name="display_wait_ms" value="3" type="int"/>
@@ -12,6 +12,8 @@
     <param name="write_input_to_disk" value="false" type="bool"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
+    <!-- <param name="camera_frame" value="openni_rgb_optical_frame" type="string"/> -->
+    <param name="camera_frame" value="head_mount_kinect_rgb_optical_frame" type="string"/>
     <param name="min_workspace_x" value="-1.0" type="double"/>
     <param name="max_workspace_x" value="1.75" type="double"/>
     <param name="min_workspace_z" value="-0.8" type="double"/>

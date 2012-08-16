@@ -49,14 +49,17 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/segmentation/segment_differences.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/kdtree/impl/kdtree_flann.hpp>
+// #include <pcl/segmentation/organized_multi_plane_segmentation.h>
+// #include <pcl/kdtree/kdtree_flann.h>
+// #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/search/search.h>
+#include <pcl/search/kdtree.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/surface/concave_hull.h>
 #include <pcl/registration/icp.h>
+#include <pcl/features/integral_image_normal.h>
 
 // STL
 #include <sstream>
@@ -67,7 +70,7 @@
 #define randf() static_cast<float>(rand())/RAND_MAX
 
 typedef pcl::search::KdTree<pcl::PointXYZ>::Ptr KdTreePtr;
-// typedef pcl::search::Search::Ptr KdTreePtr;
+typedef pcl::search::KdTree<pcl::PointXYZ>::KdTreeFLANNPtr KdTreeFLANNPtr;
 
 namespace tabletop_pushing
 {
@@ -135,13 +138,14 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
   // Create the segmentation object
   pcl::SACSegmentation<pcl::PointXYZ> plane_seg;
   plane_seg.setOptimizeCoefficients(true);
-  plane_seg.setModelType(pcl::SACMODEL_PARALLEL_PLANE);
+  plane_seg.setModelType(pcl::SACMODEL_PLANE);
+  // plane_seg.setModelType(pcl::SACMODEL_PARALLEL_PLANE);
   plane_seg.setMethodType(pcl::SAC_RANSAC);
   plane_seg.setDistanceThreshold(table_ransac_thresh_);
   plane_seg.setInputCloud(cloud_filtered.makeShared());
   Eigen::Vector3f v(1.0,1.0,0.0);
   plane_seg.setAxis(v);
-  plane_seg.setEpsAngle(table_ransac_angle_thresh_);
+  // plane_seg.setEpsAngle(table_ransac_angle_thresh_);
   plane_seg.segment(plane_inliers, coefficients);
   pcl::copyPointCloud(cloud_filtered, plane_inliers, plane_cloud);
 
@@ -171,6 +175,11 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
   // Extract the plane members into their own point cloud
   Eigen::Vector4f table_centroid;
   pcl::compute3DCentroid(plane_cloud, table_centroid);
+  // cv::Size img_size(320, 240);
+  // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
+  // projectPointCloudIntoImage(plane_cloud, plane_img, cur_camera_header_.frame_id, 255);
+  // cv::imshow("table plane", plane_img);
+
   return table_centroid;
 }
 
@@ -203,8 +212,9 @@ ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cl
 {
   XYZPointCloud table_cloud;
   return findTabletopObjects(input_cloud, objs_cloud, table_cloud);
-
+  // return findTabletopObjectsMPS(input_cloud, objs_cloud, table_cloud);
 }
+
 
 /**
  * Function to segment independent spatial regions from a supporting plane
@@ -244,6 +254,7 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
   std::vector<pcl::PointIndices> clusters;
   pcl::EuclideanClusterExtraction<pcl::PointXYZ> pcl_cluster;
   const KdTreePtr clusters_tree(new pcl::search::KdTree<pcl::PointXYZ>);
+  // const KdTreePtr clusters_tree(new pcl::search::KdTreeFLANN<pcl::PointXYZ, flann::L2_Simple<float> >);
   clusters_tree->setInputCloud(objects_cloud.makeShared());
 
   pcl_cluster.setClusterTolerance(cluster_tolerance_);
@@ -717,6 +728,8 @@ cv::Point PointCloudSegmentation::projectPointIntoImage(
   {
     ROS_ERROR_STREAM("Error projecting 3D point into image plane.");
     ROS_ERROR_STREAM(e.what());
+    ROS_ERROR_STREAM("cur point header is: " << cur_point.header.frame_id);
+    ROS_ERROR_STREAM("target frame is: " << target_frame);
   }
   return img_loc;
 }

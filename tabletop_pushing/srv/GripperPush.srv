@@ -12,3 +12,4 @@ bool spin_to_heading
 ---
 float64 dist_pushed
 geometry_msgs/Pose2D goal_error
+bool action_aborted
