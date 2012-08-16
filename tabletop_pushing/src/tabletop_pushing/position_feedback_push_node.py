@@ -262,55 +262,32 @@ class PositionFeedbackPushNode:
 
         # Open callback services
         self.overhead_feedback_push_srv = rospy.Service(
-            'overhead_feedback_push', GripperPush, self.overhead_feedback_push)
+            'overhead_feedback_push', FeedbackPush, self.overhead_feedback_push)
         self.overhead_feedback_post_push_srv = rospy.Service(
-            'overhead_feedback_post_push', GripperPush,
+            'overhead_feedback_post_push', FeedbackPush,
             self.overhead_feedback_post_push)
 
         self.gripper_feedback_push_srv = rospy.Service(
-            'gripper_feedback_push', GripperPush, self.gripper_feedback_push)
+            'gripper_feedback_push', FeedbackPush, self.gripper_feedback_push)
         self.gripper_feedback_post_push_srv = rospy.Service(
-            'gripper_feedback_post_push', GripperPush,
+            'gripper_feedback_post_push', FeedbackPush,
             self.gripper_feedback_post_push)
 
         self.gripper_feedback_sweep_srv = rospy.Service(
-            'gripper_feedback_sweep', GripperPush, self.gripper_feedback_sweep)
+            'gripper_feedback_sweep', FeedbackPush, self.gripper_feedback_sweep)
         self.gripper_feedback_post_sweep_srv = rospy.Service(
-            'gripper_feedback_post_sweep', GripperPush,
+            'gripper_feedback_post_sweep', FeedbackPush,
             self.gripper_feedback_post_sweep)
 
-        self.gripper_pre_push_srv = rospy.Service('gripper_pre_push',
-                                                  GripperPush,
-                                                  self.gripper_pre_push)
-        self.gripper_push_srv = rospy.Service('gripper_push', GripperPush,
-                                              self.gripper_push)
-        self.gripper_post_push_srv = rospy.Service('gripper_post_push',
-                                                   GripperPush,
-                                                   self.gripper_post_push)
+        self.gripper_pre_push_srv = rospy.Service(
+            'gripper_pre_push', FeedbackPush, self.gripper_pre_push)
+        self.gripper_pre_sweep_srv = rospy.Service(
+            'gripper_pre_sweep', FeedbackPush, self.gripper_pre_sweep)
+        self.overhead_pre_push_srv = rospy.Service(
+            'overhead_pre_push', FeedbackPush, self.overhead_pre_push)
 
-        self.gripper_pre_sweep_srv = rospy.Service('gripper_pre_sweep',
-                                                   GripperPush,
-                                                   self.gripper_pre_sweep)
-        self.gripper_sweep_srv = rospy.Service('gripper_sweep',
-                                               GripperPush,
-                                               self.gripper_sweep)
-        self.gripper_post_sweep_srv = rospy.Service('gripper_post_sweep',
-                                                    GripperPush,
-                                                    self.gripper_post_sweep)
-
-        self.overhead_pre_push_srv = rospy.Service('overhead_pre_push',
-                                                   GripperPush,
-                                                   self.overhead_pre_push)
-        self.overhead_push_srv = rospy.Service('overhead_push',
-                                               GripperPush,
-                                               self.overhead_push)
-        self.overhead_post_push_srv = rospy.Service('overhead_post_push',
-                                                   GripperPush,
-                                                   self.overhead_post_push)
-
-        self.raise_and_look_serice = rospy.Service('raise_and_look',
-                                                   RaiseAndLook,
-                                                   self.raise_and_look)
+        self.raise_and_look_serice = rospy.Service(
+            'raise_and_look', RaiseAndLook, self.raise_and_look)
     #
     # Initialization functions
     #
@@ -425,7 +402,7 @@ class PositionFeedbackPushNode:
         return self.tracker_feedback_push(feedback, action_primitive='sweep')
 
     def feedback_push_behavior(self, request, feedback_cb):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -614,7 +591,7 @@ class PositionFeedbackPushNode:
     # Post behavior functions
     #
     def overhead_feedback_post_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -670,7 +647,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_feedback_post_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -730,7 +707,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_feedback_post_sweep(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -793,7 +770,7 @@ class PositionFeedbackPushNode:
     # Pre behavior functions
     #
     def gripper_pre_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -842,7 +819,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_pre_sweep(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -895,7 +872,7 @@ class PositionFeedbackPushNode:
         return response
 
     def overhead_pre_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -954,7 +931,7 @@ class PositionFeedbackPushNode:
     # Fixed length pushing behaviors
     #
     def gripper_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -980,7 +957,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_post_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -1029,7 +1006,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_sweep(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -1065,7 +1042,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_post_sweep(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -1108,7 +1085,7 @@ class PositionFeedbackPushNode:
         return response
 
     def overhead_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
@@ -1136,7 +1113,7 @@ class PositionFeedbackPushNode:
         return response
 
     def overhead_post_push(self, request):
-        response = GripperPushResponse()
+        response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
         push_dist = request.desired_push_dist
