@@ -2,7 +2,6 @@ bool initialize
 bool analyze_previous
 float64 push_angle
 float64 push_dist
-bool rand_angle
 bool use_goal_pose
 bool spin_push
 geometry_msgs/Pose2D goal_pose

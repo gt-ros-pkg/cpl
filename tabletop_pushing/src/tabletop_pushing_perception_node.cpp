@@ -98,8 +98,6 @@
 #include <utility>
 #include <float.h>
 #include <math.h>
-#include <time.h> // for srand(time(NULL))
-#include <cstdlib> // for MAX_RAND
 #include <cmath>
 
 // Debugging IFDEFS
@@ -111,9 +109,6 @@
 #define DISPLAY_PUSH_VECTOR 1
 #define DISPLAY_WAIT 1
 #define DEBUG_PUSH_HISTORY 1
-#define randf() static_cast<float>(rand())/RAND_MAX
-// #define DEG2RAD M_PI/180.0*
-// #define RAD2DEG 180.0/M_PI*
 
 using boost::shared_ptr;
 using tabletop_pushing::LearnPush;
@@ -960,7 +955,6 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getPushStartPose(LearnPush::Request& req)
   {
-    bool rand_angle = req.rand_angle;
     double desired_push_angle = req.push_angle;
     PushTrackerState cur_state;
     if (just_spun_)
@@ -997,12 +991,6 @@ class TabletopPushingPerceptionNode
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
-
-    if (rand_angle)
-    {
-      // desired_push_angle = randf()*2.0*M_PI-M_PI;
-      desired_push_angle = randf()*M_PI-0.5*M_PI;
-    }
 
     // Get straight line from current location to goal pose as start
     if (req.use_goal_pose)
@@ -1599,8 +1587,6 @@ class TabletopPushingPerceptionNode
 int main(int argc, char ** argv)
 {
   int seed = time(NULL);
-  srand(seed);
-  std::cout << "Rand seed is: " << seed << std::endl;
   ros::init(argc, argv, "tabletop_pushing_perception_node");
   ros::NodeHandle n;
   TabletopPushingPerceptionNode perception_node(n);
