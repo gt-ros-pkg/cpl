@@ -277,8 +277,8 @@ class TabletopExecutive:
             if push_vec_res is None:
                 return
             which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            res = self.learning_trial(which_arm, int(action_primitive), high_init,
-                                      push_vec_res, goal_pose, controller_name)
+            res = self.learning_trial(which_arm, int(action_primitive), push_vec_res, goal_pose,
+                                      controller_name, '', high_init)
             if res == 'aborted':
                 rospy.loginfo('Continuing after abortion')
                 continuing = True
@@ -287,6 +287,47 @@ class TabletopExecutive:
             # NOTE: Alternate between spinning and pushing
             if not _TEST_START_POSE and _SPIN_FIRST:
                 use_spin_push = (not use_spin_push)
+            if not res or res == 'quit':
+                return
+
+    def run_push_exploration(self):
+        # TODO: Setup lists for these three things
+        action_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
+        controller_name = 'centroid_controller' # 'spin_compensation'
+        proxy_name = 'ellipse'
+
+        continuing = False
+        while True:
+            # TODO: Decided how to choose the goal pose to push to
+            goal_pose = Pose2D()
+            goal_pose.x = 0.7
+            goal_pose.y = 0.0
+            goal_pose.theta = 0.0
+            # goal_pose = self.generate_random_table_pose()
+            if continuing:
+                code_in = ''
+                continuing = False
+            else:
+                code_in = raw_input('Set object in start pose and press <Enter>: ')
+                if code_in.startswith('q'):
+                    return
+
+            push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name)
+            code_in = raw_input('Got start pose to continue press <Enter>: ')
+            if code_in.startswith('q'):
+                return
+
+            if push_vec_res is None:
+                return
+            which_arm = self.choose_arm(push_vec_res.push, controller_name)
+            res = self.learning_trial(which_arm, int(action_primitive), push_vec_res,
+                                      goal_pose, controller_name, proxy_name)
+            if res == 'aborted':
+                rospy.loginfo('Continuing after push was aborted')
+                continuing = True
+                continue
+
+            # NOTE: Alternate between spinning and pushing
             if not res or res == 'quit':
                 return
 
@@ -331,8 +372,8 @@ class TabletopExecutive:
 
         return which_arm
 
-    def learning_trial(self, which_arm, action_primitive, high_init, push_vector_res, goal_pose,
-                       controller_name, prox_name=''):
+    def learning_trial(self, which_arm, action_primitive, push_vector_res, goal_pose,
+                       controller_name, proxy_name, high_init = True):
         push_angle = push_vector_res.push.push_angle
         # NOTE: Use commanded push distance not visually decided minimal distance
         if push_vector_res is None:
@@ -353,14 +394,14 @@ class TabletopExecutive:
             if action_primitive == OVERHEAD_PUSH:
                 result = self.overhead_feedback_push_object(which_arm,
                                                             push_vector_res.push, goal_pose,
-                                                            controller_name, high_init)
+                                                            controller_name, proxy_name)
             if action_primitive == GRIPPER_SWEEP:
                 result = self.feedback_sweep_object(which_arm, push_vector_res.push,
-                                                    goal_pose, controller_name, high_init)
+                                                    goal_pose, controller_name, proxy_name)
             if action_primitive == GRIPPER_PUSH:
                 result = self.gripper_feedback_push_object(which_arm,
                                                            push_vector_res.push, goal_pose,
-                                                           controller_name, high_init)
+                                                           controller_name, proxy_name)
         # TODO: Make this more robust to other use cases
         # If the call aborted, recall with the same settings
         if result.action_aborted:
@@ -433,13 +474,13 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_feedback_push_start_pose(self, goal_pose, controller_name):
+    def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name=''):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
         push_vector_req.goal_pose = goal_pose
         push_vector_req.controller_name = controller_name
-        push_vector_req.proxy_name = ''
+        push_vector_req.proxy_name = proxy_name
         rospy.loginfo("Getting feedback push start service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -515,7 +556,7 @@ class TabletopExecutive:
         raise_res = self.raise_and_look_proxy(raise_req)
 
     def overhead_feedback_push_object(self, which_arm, push_vector, goal_pose, controller_name,
-                                      high_init=True, open_gripper=False):
+                                      proxy_name='', high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
@@ -535,6 +576,7 @@ class TabletopExecutive:
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
         push_req.controller_name = controller_name
+        push_req.proxy_name = proxy_name
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -554,7 +596,7 @@ class TabletopExecutive:
         return push_res
 
     def gripper_feedback_push_object(self, which_arm, push_vector, goal_pose, controller_name,
-                                     high_init=True, open_gripper=False):
+                                     proxy_name='', high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
@@ -574,6 +616,7 @@ class TabletopExecutive:
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
         push_req.controller_name = controller_name
+        push_req.proxy_name = proxy_name
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -593,7 +636,7 @@ class TabletopExecutive:
         return push_res
 
     def feedback_sweep_object(self, which_arm, push_vector, goal_pose, controller_name,
-                              high_init=True, open_gripper=False):
+                              proxy_name='', high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
@@ -619,6 +662,7 @@ class TabletopExecutive:
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
         push_req.controller_name = controller_name
+        push_req.proxy_name = proxy_name
 
         rospy.loginfo('Gripper sweep augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -664,5 +708,6 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     else:
-        node.run_feedback_testing(action_primitive)
+        # node.run_feedback_testing(action_primitive)
+        node.run_push_exploration()
         node.finish_learning()
