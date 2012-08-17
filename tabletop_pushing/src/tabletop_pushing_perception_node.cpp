@@ -924,11 +924,11 @@ class TabletopPushingPerceptionNode
       else if (req.analyze_previous)
       {
         ROS_INFO_STREAM("Analyzing previous");
-        res = getAnalysisVector(req.push_angle);
+        res = getAnalysisVector(req.goal_pose);
         res.no_push = true;
         recording_input_ = false;
       }
-      else if (req.spin_push)
+      else if (req.controller_name == "spin_to_heading")
       {
         ROS_INFO_STREAM("Getting spin push start pose");
         res = getSpinPushStartPose(req);
@@ -955,7 +955,6 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getPushStartPose(LearnPush::Request& req)
   {
-    double desired_push_angle = req.push_angle;
     PushTrackerState cur_state;
     if (just_spun_)
     {
@@ -992,37 +991,23 @@ class TabletopPushingPerceptionNode
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
 
-    // Get straight line from current location to goal pose as start
-    if (req.use_goal_pose)
-    {
-      desired_push_angle = atan2(req.goal_pose.y - res.centroid.y,
-                                 req.goal_pose.x - res.centroid.x);
-    }
 
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
-    p.push_angle = desired_push_angle;
+    // Get straight line from current location to goal pose as start
+    p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
 
     // Get vector through centroid and determine start point and distance
-    Eigen::Vector3f push_unit_vec(std::cos(desired_push_angle),
-                                  std::sin(desired_push_angle), 0.0f);
-    std::vector<pcl::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud, push_unit_vec,
-                                                                                           cur_obj.centroid);
+    Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
+    std::vector<pcl::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
+        cur_obj.cloud, push_unit_vec, cur_obj.centroid);
     p.start_point.x = end_points[0].x;
     p.start_point.y = end_points[0].y;
     p.start_point.z = end_points[0].z;
 
     // Get push distance
-    if (req.use_goal_pose)
-    {
-      p.push_dist = hypot(res.centroid.x - req.goal_pose.x,
-                          res.centroid.y - req.goal_pose.y);
-    }
-    else
-    {
-      p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(end_points[0], end_points[1]));
-    }
+    p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
     PointStamped centroid;
@@ -1217,7 +1202,7 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  LearnPush::Response getAnalysisVector(double desired_push_angle)
+  LearnPush::Response getAnalysisVector(Pose2D goal_pose)
   {
     // Segment objects
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
