@@ -164,9 +164,6 @@ class PositionFeedbackPushNode:
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
 
-        self.use_contact_pt_compensation = rospy.get_param('~use_contact_pt_compensation_control',
-                                                           False)
-
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
         self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
         self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
@@ -432,8 +429,10 @@ class PositionFeedbackPushNode:
         goal.header.frame_id = request.start_point.header.frame_id
         goal.desired_pose = request.goal_pose
         self.desired_pose = request.goal_pose
-        goal.spin_to_heading = request.spin_to_heading
-        self.spin_to_heading = request.spin_to_heading
+        goal.controller_name = request.controller_name
+        self.spin_to_heading = request.controller_name == 'spin_to_heading'
+        self.use_contact_pt_compensation = request.controller_name == 'centroid_controller'
+
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
         # Block until done

@@ -1,9 +1,8 @@
 geometry_msgs/PointStamped start_point
 float64 wrist_yaw
 geometry_msgs/Pose2D goal_pose
-bool spin_to_heading
-string push_controller
-string perceptual_proxy
+string controller_name
+string proxy_name
 string action_primitive
 bool left_arm
 bool right_arm

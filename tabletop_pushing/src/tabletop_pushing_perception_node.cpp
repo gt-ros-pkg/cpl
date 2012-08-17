@@ -1307,7 +1307,7 @@ class TabletopPushingPerceptionNode
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
-    spin_to_heading_ = tracker_goal->spin_to_heading;
+    spin_to_heading_ = tracker_goal->controller_name == "spin_to_heading";
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     ROS_INFO_STREAM("Push with arm " << pushing_arm_);
   }

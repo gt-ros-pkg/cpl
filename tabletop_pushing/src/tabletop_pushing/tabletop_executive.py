@@ -121,6 +121,9 @@ class TabletopExecutive:
                                                            RaiseAndLook)
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
 
+        # TODO: Make this a string passed in somewhere
+        self.USE_CENTROID_CONTROLLER = True
+
         if use_singulation:
             self.init_singulation()
         if use_learning:
@@ -551,7 +554,14 @@ class TabletopExecutive:
         rospy.loginfo("Calling overhead feedback pre push service")
         pre_push_res = self.overhead_feedback_pre_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback push service")
-        push_req.spin_to_heading = spin
+
+        if spin:
+            push_req.controller_name = 'spin_to_heading'
+        elif self.USE_CENTROID_CONTROLLER:
+            push_req.controller_name = 'centroid_controller'
+        else:
+            push_req.controller_name = 'spin_compensation'
+
         if spin and _TEST_SPIN_POSE:
             raw_input('waiting for input to recall arm: ')
         else:
@@ -589,7 +599,14 @@ class TabletopExecutive:
         rospy.loginfo("Calling gripper feedback pre push service")
         pre_push_res = self.gripper_feedback_pre_push_proxy(push_req)
         rospy.loginfo("Calling gripper feedback push service")
-        push_req.spin_to_heading = spin
+
+        if spin:
+            push_req.controller_name = 'spin_to_heading'
+        elif self.USE_CENTROID_CONTROLLER:
+            push_req.controller_name = 'centroid_controller'
+        else:
+            push_req.controller_name = 'spin_compensation'
+
         if spin and _TEST_SPIN_POSE:
             raw_input('waiting for input to recall arm: ')
         else:
@@ -633,7 +650,14 @@ class TabletopExecutive:
         rospy.loginfo("Calling feedback pre sweep service")
         pre_push_res = self.gripper_feedback_pre_sweep_proxy(push_req)
         rospy.loginfo("Calling feedback sweep service")
-        push_req.spin_to_heading = spin
+
+        if spin:
+            push_req.controller_name = 'spin_to_heading'
+        elif self.USE_CENTROID_CONTROLLER:
+            push_req.controller_name = 'centroid_controller'
+        else:
+            push_req.controller_name = 'spin_compensation'
+
         if spin and _TEST_SPIN_POSE:
             raw_input('waiting for input to recall arm: ')
         else:
