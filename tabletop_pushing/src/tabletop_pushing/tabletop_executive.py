@@ -57,6 +57,7 @@ _USE_LEARN_IO = False
 _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
+_USE_CENTROID_CONTROLLER = True
 
 class TabletopExecutive:
 
@@ -122,7 +123,6 @@ class TabletopExecutive:
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
 
         # TODO: Make this a string passed in somewhere
-        self.USE_CENTROID_CONTROLLER = True
 
         if use_singulation:
             self.init_singulation()
@@ -242,7 +242,7 @@ class TabletopExecutive:
             # Select controller to use
             if use_spin_push:
                 controller_name = 'spin_to_heading'
-            elif self.USE_CENTROID_CONTROLLER:
+            elif _USE_CENTROID_CONTROLLER:
                 controller_name = 'centroid_controller'
             else:
                 controller_name = 'spin_compensation'
