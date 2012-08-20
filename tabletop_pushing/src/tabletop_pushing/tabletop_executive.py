@@ -51,7 +51,17 @@ import random
 GRIPPER_PUSH = 0
 GRIPPER_SWEEP = 1
 OVERHEAD_PUSH = 2
-OVERHEAD_PULL = 3
+ACTION_PRIMITIVES = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
+
+CENTROID_CONTROLLER ='centroid_controller'
+SPIN_COMPENSATION = 'spin_compensation'
+SPIN_TO_HEADING = 'spin_to_heading'
+CONTROLLERS = [CENTROID_CONTROLLER, SPIN_COMPENSATION, SPIN_TO_HEADING]
+
+ELLIPSE_PROXY = 'ellipse'
+CENTROID_PROXY = 'centroid'
+PERCEPTUAL_PROXIES = [ELLIPSE_PROXY, CENTROID_PROXY]
+
 _OFFLINE = False
 _USE_LEARN_IO = False
 _TEST_START_POSE = False
@@ -92,8 +102,6 @@ class TabletopExecutive:
                                                     0.05)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
                                                  -0.275)
-        self.pull_dist_offset = rospy.get_param('~overhead_pull_dist_offset',
-                                                0.05)
         self.pull_start_z = rospy.get_param('~overhead_push_start_z',
                                             -0.27)
         # Setup service proxies
@@ -187,7 +195,6 @@ class TabletopExecutive:
             # TODO: Make this a function
             # Choose push behavior
             if fabs(pose_res.push_angle) > self.use_pull_angle_thresh:
-                #action_primitive = OVERHEAD_PULL
                 action_primitive = OVERHEAD_PUSH
             elif pose_res.start_point.x < self.use_overhead_x_thresh:
                 action_primitive = OVERHEAD_PUSH
@@ -225,8 +232,6 @@ class TabletopExecutive:
                 self.sweep_object(push_dist, which_arm, pose_res, True)
             if action_primitive == OVERHEAD_PUSH:
                 self.overhead_push_object(push_dist, which_arm, pose_res, True)
-            if action_primitive == OVERHEAD_PULL:
-                self.overhead_pull_object(push_dist, which_arm, pose_res)
             rospy.loginfo('Done performing push behavior.\n')
 
         if not (pose_res is None):
