@@ -1,13 +1,13 @@
 <package>
-  <description brief="tabletop_pushing">
+  <description brief="visual_servo">
 
-     tabletop_pushing
+     visual_servo
 
   </description>
-  <author>Tucker Hermans</author>
+  <author>Stephan Lee</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
-  <url>http://ros.org/wiki/tabletop_pushing</url>
+  <url>http://ros.org/wiki/visual_servo</url>
   <depend package="roscpp"/>
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
@@ -16,17 +16,17 @@
   <depend package="pcl_ros"/>
   <depend package="tf"/>
   <depend package="tf_conversions"/>
-  <!-- <depend package="cpl_visual_features"/> -->
-  <!-- <depend package="cpl_superpixels"/>  -->
   <!-- <depend package="opencv2"/> -->
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
-  <depend package="hrl_pr2_lib"/>
+  <!-- <depend package="hrl_pr2_lib"/> -->
   <depend package="actionlib"/>
-  <depend package="actionlib_msgs"/>
-  <depend package="pr2_controllers_msgs"/>
-  <depend package="hrl_pr2_arms"/>
-  <!-- <depend package="robot_mechanism_controllers"/> -->
+  <depend package="actionlib_msgs"/> 
+  <!-- <depend package="hrl_pr2_arms"/> -->
+  <depend package="robot_mechanism_controllers"/>
+  <depend package="tabletop_pushing"/>
+  <depend package="pr2_gripper_sensor_action"/>
+  <rosdep name="opencv2.3"/>
 </package>
 
 
