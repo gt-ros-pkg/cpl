@@ -258,6 +258,10 @@ class VisualServoNode
     delete detector_client_;
   }
 
+  void simulate()
+  {
+    
+  }
     /**
      * Called when Kinect information is avaiable. Refresh rate of about 30Hz 
      */
@@ -439,8 +443,12 @@ class VisualServoNode
                 if (0 == code)
                 {
                   ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
-                  setSleepNonblock(10.0);
+                  setSleepNonblock(5.0);
+#ifdef VISUAL_SERVO_TYPE
+                  PHASE = VS_CONTR_2;
+#else
                   PHASE = VS_CONTR_1;
+#endif
                   ROS_INFO("Start Visual Servoing");
                 }
               }
@@ -455,13 +463,13 @@ class VisualServoNode
               // Servo to WayPoint before
               // Gripper landed ON object while VSing
               // This waypoint will correct X & Y first and then correct Z (going down)
-              if (tape_features_.size() == goal_locations_.size())
+              if (tape_features_.size() == goal_.size())
               {
                 std::vector<cv::Point> few_pixels_up; few_pixels_up.clear();
-                float offset = (tape_features_.at(0).image.y - goal_locations_.at(0).image.y)/2;
-                for (unsigned int i = 0; i < goal_locations_.size(); i++)
+                float offset = (tape_features_.at(0).image.y - goal_.at(0).image.y)/2;
+                for (unsigned int i = 0; i < goal_.size(); i++)
                 {
-                  cv::Point p = goal_locations_.at(i).image;
+                  cv::Point p = goal_.at(i).image;
                   p.y += offset; // arbitrary pixel numbers & scale
                   few_pixels_up.push_back(p);
                 }
@@ -486,8 +494,11 @@ class VisualServoNode
           case VS_CONTR_2:
             {
               // compute the twist if everything is good to go
-              visual_servo::VisualServoTwist v_srv = getTwist(goal_locations_);
-
+#ifdef VISUAL_SERVO_TYPE
+              // visual_servo::VisualServoTwist v_srv = vs_->computeTwist(goal_pose, cur_pose, visual_servo::PBVS);
+#else
+              visual_servo::VisualServoTwist v_srv = getTwist(goal_);
+#endif
               // terminal condition
               if (v_srv.request.error < vs_err_term_threshold_)
               {
@@ -602,7 +613,7 @@ class VisualServoNode
 
     void reset()
     {
-      goal_locations_.clear();
+      goal_.clear();
       cur_goal_.clear();
       tape_features_.clear();
       is_detected_ = false;
@@ -618,16 +629,16 @@ class VisualServoNode
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(531, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(530, 18), 2, 0.60, cv::Scalar(40, 40, 40), 1);
 
-      if (goal_locations_.size() > 0)
+      if (goal_.size() > 0)
       {
         VSXYZ d = desired_;
         cv::putText(cur_orig_color_frame_, "+", d.image, 2, 0.5, cv::Scalar(255, 0, 255), 1);
       }
 
       // Draw on Desired Locations
-      for (unsigned int i = 0; i < goal_locations_.size(); i++)
+      for (unsigned int i = 0; i < goal_.size(); i++)
       {
-        cv::Point p = goal_locations_.at(i).image;
+        cv::Point p = goal_.at(i).image;
         cv::putText(cur_orig_color_frame_, "x", p, 2, 0.5, cv::Scalar(100*i, 0, 110*(2-i), 1));
       }
 
@@ -652,7 +663,7 @@ class VisualServoNode
 
       if (PHASE == VS_CONTR_1 || PHASE == VS_CONTR_2)
       {
-        float e = getError(goal_locations_, tape_features_);
+        float e = getError(goal_, tape_features_);
         if (PHASE == VS_CONTR_1)
           e = getError(cur_goal_, tape_features_);
         std::stringstream stm;
@@ -903,8 +914,8 @@ class VisualServoNode
 
       std::vector<pcl::PointXYZ> temp_features = gripper_tape_.getTapePoseFromXYZ(desired_.workspace);
       std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(temp_features, tf_);
-      goal_locations_ = desired_vsxyz;
-
+      goal_ = desired_vsxyz;
+      goal_p_ = vs_->VSXYZToPoseStamped(goal_.front());
       // EDIT
       //std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
       // Before we servo to right pose, we want to get X, Y correct
@@ -1016,8 +1027,7 @@ class VisualServoNode
 
       // convert the features into proper form 
       tape_features_ = vs_->CVPointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-
-
+      tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
     }
 
     float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
@@ -1315,8 +1325,10 @@ class VisualServoNode
     // desired location/current gripper location
     cv::Mat desired_jacobian_;
     std::vector<VSXYZ> cur_goal_;
-    std::vector<VSXYZ> goal_locations_;
+    std::vector<VSXYZ> goal_;
+    PoseStamped goal_p_;
     std::vector<VSXYZ> tape_features_;
+    PoseStamped tape_features_p_;
     VSXYZ desired_;
     cv::Mat K;
 

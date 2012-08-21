@@ -288,7 +288,16 @@ class VisualServo
       ret.workspace= in;
       return ret;
     }
-
+    PoseStamped VSXYZToPoseStamped(VSXYZ v)
+    {
+      PoseStamped p;
+      p.pose.position.x = v.workspace.x;
+      p.pose.position.y = v.workspace.y;
+      p.pose.position.z = v.workspace.z;
+      pcl::PointXYZ a = v.workspace_angular;
+      p.pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(a.x, a.y, a.z);
+      return p;
+    }
     std::vector<VSXYZ> CVPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, std::vector<cv::Point> in) 
     {
       std::vector<VSXYZ> ret;
@@ -299,7 +308,7 @@ class VisualServo
       return ret;
     }
 
-    VSXYZ CVPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in) 
+    VSXYZ CVPointToVSXYZ(XYZPointCloud cloud, cv::Mat depth_frame, cv::Point in)
     {
       // [u,v] -> [x,y,z] (from camera intrinsics) & [X, Y, Z] (from PointCloud)
       VSXYZ ret;
@@ -371,13 +380,16 @@ class VisualServo
       btQuaternion q1(gquat.x, gquat.y, gquat.z, gquat.w);
       btMatrix3x3(q1).getEulerZYX(ty, tp, tr);
       float tgquat[3] = {tr, tp, ty};
+      // matrix-goal rotation
       cv::Mat mgrot = cv::Mat(1, 3, CV_32F, tgquat).inv();
 
       btQuaternion q2(cquat.x, cquat.y, cquat.z, cquat.w);
       btMatrix3x3(q2).getEulerZYX(ty, tp, tr);
       float tcquat[3] = {tr, tp, ty};
+      // matrix-current rotation
       cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).inv();
 
+      /** this is for another approach of PBVS
       // According to Chaumette 2006
       // v = -lambda( (c*t0 - ct0) + [ct0]x theta u)
       // form [ct0]x first
@@ -390,21 +402,12 @@ class VisualServo
       ctox.at<float>(1,2) = -cpos.x;
       ctox.at<float>(2,1) = cpos.x;
 
-
       cv::Mat velpos = -gain_vel_*((mgpos - mcpos) + ctox*(mgrot-mcrot));
       cv::Mat velrot = -gain_rot_*(mgrot - mcrot);
-
-      return VisualServoMsg::createTwistMsg(velpos, velrot);
-      /*
-      visual_servo::VisualServoTwist srv;
-      srv.request.twist.twist.linear.x  = velpos.at<float>(0,0);
-      srv.request.twist.twist.linear.y  = velpos.at<float>(1,0);
-      srv.request.twist.twist.linear.z  = velpos.at<float>(2,0);
-      srv.request.twist.twist.angular.x = velrot.at<float>(0,0);
-      srv.request.twist.twist.angular.y = velrot.at<float>(1,0);
-      srv.request.twist.twist.angular.z = velrot.at<float>(2,0);
-      return srv;
       */
+      cv::Mat velpos = gain_vel_*(mcpos - mgpos);
+      cv::Mat velrot = gain_rot_*(mcrot - mgrot);
+      return VisualServoMsg::createTwistMsg(velpos, velrot);
     }
 
     // compute twist in camera frame 
