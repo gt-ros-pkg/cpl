@@ -2,6 +2,7 @@
   <!-- <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> -->
   <!-- <include file="$(find visual_servo)/launch/kinect_head.launch"/>  -->
   <node name="vs_node" pkg="visual_servo" type="visual_servo_node" respawn="false" output="screen">
+
     <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
     <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
     <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
