@@ -25,9 +25,12 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_genmsg()
 rosbuild_gensrv()
 
+find_package(OpenCV REQUIRED)
 rosbuild_add_boost_directories()
 # rosbuild_add_executable(visual_servo_node src/visual_servo.cpp)
 #rosbuild_add_executable(visual_servo_node src/vs_line.cpp)
+#target_link_libraries(visual_servo_node tabletop_pushing)
+
 rosbuild_add_executable(visual_servo_node src/vs_grasp.cpp)
 rosbuild_link_boost(visual_servo_node signals)
 #rosbuild_add_executable(vsp src/vs_pt.cpp)

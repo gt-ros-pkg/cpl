@@ -98,6 +98,8 @@
 #include <std_srvs/Empty.h>
 #include "visual_servo.cpp"
 
+#include <tabletop_pushing/point_cloud_segmentation.h>
+
 #define DEBUG_MODE 0
 #define PROFILE 1
 
