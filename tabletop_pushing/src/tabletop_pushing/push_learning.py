@@ -80,7 +80,23 @@ class PushLearningIO:
             return None
         l  = line.split()
         push = PushTrial()
-        # TODO: make these in order
+        push.init_centroid.x = l[0]
+        push.init_centroid.y = l[1]
+        push.init_centroid.z = l[2]
+        push.init_orientation = l[3]
+        push.final_centroid.x = l[4]
+        push.final_centroid.y = l[5]
+        push.final_centroid.z = l[6]
+        push.final_orientation = l[7]
+        push.goal_pose.x = l[8]
+        push.goal_pose.y = l[9]
+        push.goal_pose.theta = l[10]
+        push.action_primitive = l[11]
+        push.controller = l[12]
+        push.proxy = l[13]
+        push.which_arm = l[14]
+        push.push_time = l[15]
+
         return push
 
     def read_in_data_file(self, file_name):
