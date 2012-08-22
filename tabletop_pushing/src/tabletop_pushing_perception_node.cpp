@@ -983,6 +983,7 @@ class TabletopPushingPerceptionNode
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
+      res.theta = 0.0;
       res.no_objects = true;
       return res;
     }
@@ -990,7 +991,7 @@ class TabletopPushingPerceptionNode
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
-
+    res.theta = cur_state.x.theta;
 
     // Set basic push information
     PushVector p;

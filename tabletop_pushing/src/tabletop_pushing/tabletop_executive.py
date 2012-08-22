@@ -457,7 +457,7 @@ class TabletopExecutive:
         rospy.loginfo('Push time: ' + str(push_time) + 's')
         rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
                       ', ' + str(push_vector_res.centroid.y) + ', ' +
-                      str(push_angle) +')')
+                      str(push_vector_res.theta) +')')
         rospy.loginfo('Final (X,Y,Theta): (' + str(analysis_res.centroid.x) + ', ' +
                        str(analysis_res.centroid.y) + ', ' + str(analysis_res.theta)+ ')')
         rospy.loginfo('Desired (X,Y,Theta): (' + str(goal_pose.x) + ', ' +
