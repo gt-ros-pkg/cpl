@@ -56,7 +56,7 @@ ACTION_PRIMITIVES = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
 CENTROID_CONTROLLER ='centroid_controller'
 SPIN_COMPENSATION = 'spin_compensation'
 SPIN_TO_HEADING = 'spin_to_heading'
-CONTROLLERS = [CENTROID_CONTROLLER, SPIN_COMPENSATION, SPIN_TO_HEADING]
+CONTROLLERS = [CENTROID_CONTROLLER, SPIN_COMPENSATION]
 
 ELLIPSE_PROXY = 'ellipse'
 CENTROID_PROXY = 'centroid'
@@ -245,6 +245,7 @@ class TabletopExecutive:
         use_spin_push = _SPIN_FIRST
         continuing = False
         while True:
+            start_time = time.time()
             # Select controller to use
             if use_spin_push:
                 controller_name = 'spin_to_heading'
@@ -283,7 +284,7 @@ class TabletopExecutive:
             if push_vec_res is None:
                 return
             which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            res = self.learning_trial(which_arm, action_primitive, push_vec_res, goal_pose,
+            res, push_res = self.perform_push(which_arm, action_primitive, push_vec_res, goal_pose,
                                       controller_name, '', high_init)
             if res == 'aborted':
                 rospy.loginfo('Continuing after abortion')
@@ -293,6 +294,10 @@ class TabletopExecutive:
             # NOTE: Alternate between spinning and pushing
             if not _TEST_START_POSE and _SPIN_FIRST:
                 use_spin_push = (not use_spin_push)
+            push_time = time.time() - start_time
+            self.analyze_push(action_primitive, which_arm, push_time,
+                              push_vector_res, goal_pose, high_init=True)
+
             if not res or res == 'quit':
                 return
 
@@ -308,8 +313,10 @@ class TabletopExecutive:
         for action_primitive in ACTION_PRIMITIVES:
             for controller in CONTROLLERS:
                 for proxy in PERCEPTUAL_PROXIES:
-                    self.explore_push(action_primitive, controller, proxy)
-                    # TODO: perform analysis on push
+                    res = self.explore_push(action_primitive, controller, proxy)
+                    if res == 'quit':
+                        rospy.loginfo('Quiting on user request')
+                        return
 
     def explore_push(self, action_primitive, controller_name, proxy_name):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
@@ -325,6 +332,7 @@ class TabletopExecutive:
             goal_pose = self.generate_random_table_pose()
 
         restart_count = 0
+        start_time = time.time()
         while not done_with_push:
             if continuing:
                 continuing = False
@@ -333,16 +341,28 @@ class TabletopExecutive:
             if push_vec_res is None:
                 return
             which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            res = self.learning_trial(which_arm, action_primitive,
-                                      push_vec_res, goal_pose,
-                                      controller_name, proxy_name)
-            if res == 'aborted':
+            res, push_res = self.perform_push(which_arm, action_primitive,
+                                              push_vec_res, goal_pose,
+                                              controller_name, proxy_name)
+            if res == 'quit':
+                return res
+            elif res == 'aborted':
                 rospy.loginfo('Continuing after push was aborted')
                 continuing = True
                 restart_count += 1
                 continue
             else:
                 done_with_push = True
+        push_time = time.time() - start_time
+        # TODO: Figure out what needs to be sent in here,
+        # make sure we have it all
+        if _OFFLINE:
+            code_in = raw_input('Press <Enter> to get analysis vector: ')
+            if code_in.startswith('q'):
+                return 'quit'
+        self.analyze_push(action_primitive, which_arm, push_time,
+                          push_vec_res, goal_pose, high_init=True)
+        return res
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name):
         get_push = True
@@ -385,16 +405,16 @@ class TabletopExecutive:
 
         return which_arm
 
-    def learning_trial(self, which_arm, action_primitive, push_vector_res, goal_pose,
+    def perform_push(self, which_arm, action_primitive, push_vector_res, goal_pose,
                        controller_name, proxy_name, high_init = True):
         push_angle = push_vector_res.push.push_angle
         # NOTE: Use commanded push distance not visually decided minimal distance
         if push_vector_res is None:
             rospy.logwarn("push_vector_res is None. Exiting pushing");
-            return False
+            return (False, None)
         if push_vector_res.no_push:
             rospy.loginfo("No push. Exiting pushing.");
-            return False
+            return (False, None)
         # Decide push based on the orientation returned
         rospy.loginfo('Push start_point: (' +
                       str(push_vector_res.push.start_point.x) + ', ' +
@@ -415,20 +435,21 @@ class TabletopExecutive:
                 result = self.gripper_feedback_push_object(which_arm,
                                                            push_vector_res.push, goal_pose,
                                                            controller_name, proxy_name)
+        else:
+            result = FeedbackPushResponse()
+
         # TODO: Make this more robust to other use cases
         # If the call aborted, recall with the same settings
         if result.action_aborted:
             rospy.logwarn('Push was aborted. Calling push behavior again.')
-            return 'aborted'
+            return ('aborted', result)
 
-        push_time = time.time() - start_time
         rospy.loginfo('Done performing push behavior.')
+        return ('done', result)
 
-        if _OFFLINE:
-            code_in = raw_input('Press <Enter> to get analysis vector: ')
-            if code_in.startswith('q'):
-                return 'quit'
-
+    def analyze_push(self, action_primitive, which_arm, push_time,
+                     push_vector_res, goal_pose, high_init):
+        push_angle = push_vector_res.push.push_angle
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
         rospy.loginfo('Push: ' + str(action_primitive))
@@ -447,7 +468,7 @@ class TabletopExecutive:
                        str(goal_pose.y) + ', ' + str(goal_pose.theta) + ')')
         rospy.loginfo('Error (X,Y,Theta): (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) +
                       ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +
-                      str(fabs(goal_pose.theta-analysis_res.theta)) + ')')
+                      str(fabs(goal_pose.theta-analysis_res.theta)) + ')\n')
         if _USE_LEARN_IO:
             out_str = 'Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +\
                 ', ' + str(push_vector_res.centroid.y) + ', ' + str(push_angle) +')\n'
@@ -471,8 +492,6 @@ class TabletopExecutive:
                 str(fabs(goal_pose.theta-analysis_res.theta)) + ')\n'
             self.learn_io.data_out.write(out_str)
             self.learn_io.data_out.flush()
-
-        return 'done'
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequest()
