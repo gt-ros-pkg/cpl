@@ -43,7 +43,7 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt
 import sys
-from push_learning import PushLearningIO, PushTrial
+from push_learning import PushLearningIO
 from geometry_msgs.msg import Pose2D
 import time
 import random
@@ -295,8 +295,8 @@ class TabletopExecutive:
             if not _TEST_START_POSE and _SPIN_FIRST:
                 use_spin_push = (not use_spin_push)
             push_time = time.time() - start_time
-            self.analyze_push(action_primitive, which_arm, push_time,
-                              push_vector_res, goal_pose, high_init=True)
+            self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
+                              push_vector_res, goal_pose)
 
             if not res or res == 'quit':
                 return
@@ -360,8 +360,8 @@ class TabletopExecutive:
             code_in = raw_input('Press <Enter> to get analysis vector: ')
             if code_in.startswith('q'):
                 return 'quit'
-        self.analyze_push(action_primitive, which_arm, push_time,
-                          push_vec_res, goal_pose, high_init=True)
+        self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
+                          push_vec_res, goal_pose)
         return res
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name):
@@ -447,51 +447,30 @@ class TabletopExecutive:
         rospy.loginfo('Done performing push behavior.')
         return ('done', result)
 
-    def analyze_push(self, action_primitive, which_arm, push_time,
-                     push_vector_res, goal_pose, high_init):
+    def analyze_push(self, action_primitive, controller_name, proxy_name,
+                     which_arm, push_time, push_vector_res, goal_pose):
         push_angle = push_vector_res.push.push_angle
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
         rospy.loginfo('Push: ' + str(action_primitive))
         rospy.loginfo('Arm: ' + str(which_arm))
-        rospy.loginfo('High init: ' + str(high_init))
         rospy.loginfo('Push time: ' + str(push_time) + 's')
         rospy.loginfo('Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +
                       ', ' + str(push_vector_res.centroid.y) + ', ' +
                       str(push_angle) +')')
-        rospy.loginfo('New (X,Y,Theta): (' + str(analysis_res.centroid.x) + ', ' +
+        rospy.loginfo('Final (X,Y,Theta): (' + str(analysis_res.centroid.x) + ', ' +
                        str(analysis_res.centroid.y) + ', ' + str(analysis_res.theta)+ ')')
-        rospy.loginfo('Delta (X,Y,Theta): (' + str(analysis_res.moved.x) + ', ' +
-                      str(analysis_res.moved.y) + '): ' +
-                      str(sqrt(analysis_res.moved.x**2 + analysis_res.moved.y**2)))
         rospy.loginfo('Desired (X,Y,Theta): (' + str(goal_pose.x) + ', ' +
                        str(goal_pose.y) + ', ' + str(goal_pose.theta) + ')')
         rospy.loginfo('Error (X,Y,Theta): (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) +
                       ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +
                       str(fabs(goal_pose.theta-analysis_res.theta)) + ')\n')
         if _USE_LEARN_IO:
-            out_str = 'Init (X,Y,Theta): (' + str(push_vector_res.centroid.x) +\
-                ', ' + str(push_vector_res.centroid.y) + ', ' + str(push_angle) +')\n'
-            self.learn_io.data_out.write(out_str)
-            self.learn_io.data_out.flush()
-            out_str = 'New (X,Y,Theta): (' + str(analysis_res.centroid.x) + ', ' +\
-                str(analysis_res.centroid.y) + ', ' + str(analysis_res.theta)+ ')\n'
-            self.learn_io.data_out.write(out_str)
-            self.learn_io.data_out.flush()
-            out_str = 'Delta (X,Y,Theta): (' + str(analysis_res.moved.x) + ', ' +\
-                str(analysis_res.moved.y) + '): ' + \
-                str(sqrt(analysis_res.moved.x**2 + analysis_res.moved.y**2))+'\n'
-            self.learn_io.data_out.write(out_str)
-            self.learn_io.data_out.flush()
-            out_str = 'Desired (X,Y,Theta): (' + str(goal_pose.x) + ', ' + \
-                str(goal_pose.y) + ', ' + str(goal_pose.theta) + ')\n'
-            self.learn_io.data_out.write(out_str)
-            self.learn_io.data_out.flush()
-            out_str = 'Error (X,Y,Theta): (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) + \
-                ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +\
-                str(fabs(goal_pose.theta-analysis_res.theta)) + ')\n'
-            self.learn_io.data_out.write(out_str)
-            self.learn_io.data_out.flush()
+            self.learn_io.write_line(
+                push_vector_res.centroid, push_vector_res.theta,
+                analysis_res.centroid, analysis_res.theta,
+                goal_pose, action_primitive, controller_name, proxy_name,
+                which_arm, push_time)
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequest()
