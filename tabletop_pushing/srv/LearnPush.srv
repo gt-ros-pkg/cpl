@@ -5,7 +5,6 @@ string controller_name
 string proxy_name
 ---
 tabletop_pushing/PushVector push
-geometry_msgs/Vector3 moved
 geometry_msgs/Point centroid
 float64 theta
 bool no_push

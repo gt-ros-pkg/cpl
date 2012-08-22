@@ -1205,32 +1205,13 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getAnalysisVector(Pose2D goal_pose)
   {
-    // Segment objects
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
-    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, cur_color_frame_.size(), workspace_frame_);
-    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
-    obj_tracker_->stopTracking();
+    ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
 
-    // Assume we care about the biggest currently
-    int chosen_idx = 0;
-    unsigned int max_size = 0;
-    for (unsigned int i = 0; i < objs.size(); ++i)
-    {
-      if (objs[i].cloud.size() > max_size)
-      {
-        max_size = objs[i].cloud.size();
-        chosen_idx = i;
-      }
-    }
     LearnPush::Response res;
-    if (objs.size() == 0)
+    if (tracker_state.no_detection)
     {
       ROS_WARN_STREAM("No objects found");
-      res.moved.x = 0.0;
-      res.moved.y = 0.0;
-      res.moved.z = 0.0;
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
@@ -1238,14 +1219,9 @@ class TabletopPushingPerceptionNode
       return res;
     }
     res.no_objects = false;
-    // TODO: Make these better named and match the tracker
-    Eigen::Vector4f move_vec = objs[chosen_idx].centroid - start_centroid_;
-    res.moved.x = move_vec[0];
-    res.moved.y = move_vec[1];
-    res.moved.z = move_vec[2];
-    res.centroid.x = objs[chosen_idx].centroid[0];
-    res.centroid.y = objs[chosen_idx].centroid[1];
-    res.centroid.z = objs[chosen_idx].centroid[2];
+    res.centroid.x = cur_obj.centroid[0];
+    res.centroid.y = cur_obj.centroid[1];
+    res.centroid.z = cur_obj.centroid[2];
     res.theta = tracker_state.x.theta;
 
     return res;
