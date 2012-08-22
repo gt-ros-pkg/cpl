@@ -48,9 +48,9 @@ from geometry_msgs.msg import Pose2D
 import time
 import random
 
-GRIPPER_PUSH = 0
-GRIPPER_SWEEP = 1
-OVERHEAD_PUSH = 2
+GRIPPER_PUSH = 'gripper_push'
+GRIPPER_SWEEP = 'gripper_sweep'
+OVERHEAD_PUSH = 'overhead_push'
 ACTION_PRIMITIVES = [GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH]
 
 CENTROID_CONTROLLER ='centroid_controller'
@@ -68,6 +68,7 @@ _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
 _USE_CENTROID_CONTROLLER = True
+_USE_FIXED_GOAL = False
 
 class TabletopExecutive:
 
@@ -282,7 +283,7 @@ class TabletopExecutive:
             if push_vec_res is None:
                 return
             which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            res = self.learning_trial(which_arm, int(action_primitive), push_vec_res, goal_pose,
+            res = self.learning_trial(which_arm, action_primitive, push_vec_res, goal_pose,
                                       controller_name, '', high_init)
             if res == 'aborted':
                 rospy.loginfo('Continuing after abortion')
@@ -296,45 +297,52 @@ class TabletopExecutive:
                 return
 
     def run_push_exploration(self):
-        # TODO: Setup lists for these three things
         action_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
         controller_name = 'centroid_controller' # 'spin_compensation'
         proxy_name = 'ellipse'
 
+        code_in = raw_input('Set object in start pose and press <Enter>: ')
+        if code_in.startswith('q'):
+            return
+
+        for action_primitive in ACTION_PRIMITIVES:
+            for controller in CONTROLLERS:
+                for proxy in PERCEPTUAL_PROXIES:
+                    self.explore_push(action_primitive, controller, proxy)
+                    # TODO: perform analysis on push
+
+    def explore_push(self, action_primitive, controller_name, proxy_name):
+        rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
+                      + controller_name + ', ' + proxy_name + ')')
         continuing = False
-        while True:
-            # TODO: Decided how to choose the goal pose to push to
-            goal_pose = Pose2D()
+        done_with_push = False
+        goal_pose = Pose2D()
+        if _USE_FIXED_GOAL:
             goal_pose.x = 0.7
             goal_pose.y = 0.0
             goal_pose.theta = 0.0
-            # goal_pose = self.generate_random_table_pose()
-            if continuing:
-                code_in = ''
-                continuing = False
-            else:
-                code_in = raw_input('Set object in start pose and press <Enter>: ')
-                if code_in.startswith('q'):
-                    return
+        else:
+            goal_pose = self.generate_random_table_pose()
 
+        restart_count = 0
+        while not done_with_push:
+            if continuing:
+                continuing = False
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name)
-            code_in = raw_input('Got start pose to continue press <Enter>: ')
-            if code_in.startswith('q'):
-                return
 
             if push_vec_res is None:
                 return
             which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            res = self.learning_trial(which_arm, int(action_primitive), push_vec_res,
-                                      goal_pose, controller_name, proxy_name)
+            res = self.learning_trial(which_arm, action_primitive,
+                                      push_vec_res, goal_pose,
+                                      controller_name, proxy_name)
             if res == 'aborted':
                 rospy.loginfo('Continuing after push was aborted')
                 continuing = True
+                restart_count += 1
                 continue
-
-            # NOTE: Alternate between spinning and pushing
-            if not res or res == 'quit':
-                return
+            else:
+                done_with_push = True
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name):
         get_push = True
