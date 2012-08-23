@@ -277,7 +277,6 @@ class ObjectTracker25D
       obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
     }
     ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
-    // TODO: Fit ellipse to object
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
     // ROS_DEBUG_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
     //                  obj_ellipse.center.y << ", " <<
@@ -799,6 +798,7 @@ class TabletopPushingPerceptionNode
         float theta_dist = fabs(theta_error);
 
         // TODO: Better abstract the goal and validity (abort) checks here
+        // TODO: Based on controller_name / proxy_name call different goal functions
         if (spin_to_heading_ && theta_dist < tracker_angle_thresh_)
         {
           ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
@@ -826,7 +826,7 @@ class TabletopPushingPerceptionNode
           as_.setSucceeded(res);
           obj_tracker_->pause();
         }
-        // TODO: Check hand between object and goal
+        // Check hand between object and goal
         else if (!spin_to_heading_ && objectNotBetweenGoalAndGripper(tracker_state.x))
         {
           ROS_WARN_STREAM("Object is not between gripper and goal. Aborting");
