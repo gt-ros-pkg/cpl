@@ -44,7 +44,7 @@ import rospy
 from pylab import *
 from math import cos, sin
 
-_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time'
+_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
 
 class ControlTimeStep:
     def __init__(self, x, x_dot, x_desired, theta0, u, t):
@@ -60,7 +60,7 @@ class ControlAnalysisIO:
         self.data_out = None
         self.data_in = None
 
-    def write_line(self, x, x_dot, x_desired, theta0, u, time):
+    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -68,7 +68,9 @@ class ControlAnalysisIO:
             str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
             str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
             str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
-            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+'\n'
+            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
+            str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+\
+            '\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 

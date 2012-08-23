@@ -445,7 +445,6 @@ class PositionFeedbackPushNode:
             self.y0 = feedback.x.y
         which_arm = self.active_arm
         if self.feedback_count % 5 == 0:
-            # TODO: Remove this after testing
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
                           str(self.desired_pose.y) + ', ' +
                           str(self.desired_pose.theta) + ')')
@@ -476,9 +475,14 @@ class PositionFeedbackPushNode:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
-        # TODO: Save gripper pose
+        if which_arm == 'l':
+            cur_pose = self.l_arm_pose
+        else:
+            cur_pose = self.r_arm_pose
+
         self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                      update_twist.twist, update_twist.header.stamp.to_sec())
+                                      update_twist.twist, update_twist.header.stamp.to_sec(),
+                                      cur_pose.pose)
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
@@ -489,7 +493,7 @@ class PositionFeedbackPushNode:
     def spinCompensationController(self, cur_state, desired_state):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time(0)
+        u.header.stamp = rospy.Time.now()
         # TODO: Make this a function of the measured pressure?
         u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
@@ -523,7 +527,7 @@ class PositionFeedbackPushNode:
     def spinHeadingController(self, cur_state, desired_state, which_arm):
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
-        u.header.stamp = rospy.Time(0)
+        u.header.stamp = rospy.Time.now()
         # TODO: Make this a function of the measured pressure?
         u.twist.linear.x = 0.0 # -self.overhead_fb_down_vel
         # TODO: Track object rotation with gripper angle
@@ -545,7 +549,7 @@ class PositionFeedbackPushNode:
     def contactCompensationController(self, cur_state, desired_state, ee_pose):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time(0)
+        u.header.stamp = rospy.Time.now()
         # TODO: Make this a function of the measured pressure?
         u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
         u.twist.angular.x = 0.0
