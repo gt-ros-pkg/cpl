@@ -446,8 +446,6 @@ class PositionFeedbackPushNode:
         which_arm = self.active_arm
         if self.feedback_count % 5 == 0:
             # TODO: Remove this after testing
-            rospy.loginfo('Feedback triple is: (' + feedback.action_primitive + ', ' +
-                          feedback.proxy_name + ', ' + controller_name + ')')
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
                           str(self.desired_pose.y) + ', ' +
                           str(self.desired_pose.theta) + ')')

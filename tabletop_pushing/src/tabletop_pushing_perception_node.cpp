@@ -1277,8 +1277,6 @@ class TabletopPushingPerceptionNode
     action_primitive_ = tracker_goal->action_primitive;
     spin_to_heading_ = tracker_goal->controller_name == "spin_to_heading";
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
-    ROS_INFO_STREAM("Push with options (" << proxy_name_ << ", " << controller_name_ << ", " <<
-                    action_primitive_ << ", " << pushing_arm_ << ")");
   }
 
   void pushTrackerPreemptCB()

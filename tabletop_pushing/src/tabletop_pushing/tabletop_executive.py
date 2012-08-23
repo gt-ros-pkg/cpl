@@ -486,7 +486,7 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name='', action_primitive):
+    def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name, action_primitive):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -569,7 +569,7 @@ class TabletopExecutive:
         raise_res = self.raise_and_look_proxy(raise_req)
 
     def overhead_feedback_push_object(self, which_arm, push_vector, goal_pose, controller_name,
-                                      proxy_name='', high_init=True, open_gripper=False):
+                                      proxy_name, action_primitive, high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
@@ -610,7 +610,7 @@ class TabletopExecutive:
         return push_res
 
     def gripper_feedback_push_object(self, which_arm, push_vector, goal_pose, controller_name,
-                                     proxy_name='', high_init=True, open_gripper=False):
+                                     proxy_name, action_primitive, high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
@@ -651,7 +651,7 @@ class TabletopExecutive:
         return push_res
 
     def feedback_sweep_object(self, which_arm, push_vector, goal_pose, controller_name,
-                              proxy_name='', high_init=True, open_gripper=False):
+                              proxy_name, action_primitive, high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
