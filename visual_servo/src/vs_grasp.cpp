@@ -104,22 +104,28 @@
 #define DEBUG_MODE 0
 #define VISUAL_SERVO_TYPE 0
 
+#define PERCEPTION_COLOR_SEGMENTATION 0
+#define PERCEPTION_POINT_CLOUD 1
+#define PERCEPTION PERCEPTION_POINT_CLOUD
+//#define PERCEPTION PERCEPTION_COLOR_SEGMENTATION
+
 // statemachine constants
 #define INIT          0
 #define SETTLE        1
-#define INIT_HAND     2
-#define INIT_DESIRED  3
-#define POSE_CONTR    4
-#define POSE_CONTR_2  5
-#define VS_CONTR_1    6
-#define VS_CONTR_2    7
-#define GRAB          8
-#define RELOCATE      9
-#define DESCEND_INIT  10
-#define DESCEND       11
-#define RELEASE       12
-#define FINISH        13
-#define TERM          14
+#define INIT_OBJS     2
+#define INIT_HAND     3
+#define INIT_DESIRED  4
+#define POSE_CONTR    5
+#define POSE_CONTR_2  6
+#define VS_CONTR_1    7
+#define VS_CONTR_2    8
+#define GRAB          9
+#define RELOCATE      10
+#define DESCEND_INIT  11
+#define DESCEND       12
+#define RELEASE       13
+#define FINISH        14
+#define TERM          15
 
 // floating point mod
 #define fmod(a,b) a - (float)((int)(a/b)*b)
@@ -299,7 +305,7 @@ class VisualServoNode
       cur_point_cloud_ = cloud;
 
       // need to profile this
-      updateFeatures();
+      updateGripperFeatures();
       executeStatemachine();
 
 #define DISPLAY 1
@@ -368,11 +374,30 @@ class VisualServoNode
                 ROS_WARN("Failed to put the hand in initial configuration");
               }
 #else
-              PHASE = INIT_HAND;
+              PHASE = INIT_OBJS;
 #endif
             }
             break;
+          case INIT_OBJS:
+            {
+              bool t = false;
+#if PERCEPTION==PERCEPTION_COLOR_SEGMENTATION
+              t = initializeDesired(desired_);
+#elif PERCEPTION==PERCEPTION_POINT_CLOUD
+              t = initializeDesired(po_);
+#endif
+              if (t)
+              {
+                PHASE = INIT_HAND;
+              }
+              else
+              {
+                ROS_WARN("Failed. Retrying initialization in 2 seconds");
+                setSleepNonblock(2.0);
+              }
 
+            }
+            break;
           case INIT_HAND:
             {
               ROS_INFO("Phase Init Hand: Remembering Blue Tape Positions");
@@ -413,7 +438,19 @@ class VisualServoNode
           case INIT_DESIRED:
             {
               ROS_INFO("Phase Initialize Desired Points");
-              if (initializeDesired())
+              bool t = false;
+#if PERCEPTION==PERCEPTION_COLOR_SEGMENTATION
+              t = setGoalForAnObject(goal_, goal_p_, desired_);
+#elif PERCEPTION==PERCEPTION_POINT_CLOUD
+              if (po_.size() > 0)
+                t = setGoalForAnObject(goal_, goal_p_, po_.front());
+              else
+              {
+                ROS_INFO("No more objects to be processed. Terminating");
+                PHASE = TERM;
+              }
+#endif
+              if (t)
               {
                 PHASE = POSE_CONTR;
                 ROS_INFO("Phase %d, Moving to next phase in 3.0 seconds", PHASE);
@@ -599,9 +636,20 @@ class VisualServoNode
           default:
             {
               open();
+              // make the list shorter
+
+#if PERCEPTION==PERCEPTION_POINT_CLOUD
+              if (po_.size() > 0)
+                po_.pop_front();
+              else
+              {
+                ros::shutdown();
+              }
+#endif
+
               ROS_INFO("Routine Ended.");
               std::cout << "Press [Enter] if you want to do it again: ";
-              while(true )
+              while(!ros::isShuttingDown())
               {
                 int c = std::cin.get();
                 if (c  == '\n')
@@ -859,9 +907,8 @@ class VisualServoNode
 #endif
     }
 
-    bool initializeDesired()
+    bool initializeDesired(VSXYZ &vDesire)
     {
-
       cv::Mat mask_t = colorSegment(cur_orig_color_frame_.clone(), target_hue_value_ - target_hue_threshold_ , target_hue_value_ + target_hue_threshold_, 50, 100, 25, 100);
       cv::Mat element_t = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
       //cv::morphologyEx(mask_t, mask_t, cv::MORPH_CLOSE, element_t);
@@ -943,58 +990,56 @@ class VisualServoNode
           }
         }
       }
-
       pcl::PointXYZ desired(mean_x/quant, mean_y/quant, mean_z/quant);
-      desired_ = vs_->point3DToVSXYZ(desired, tf_);
+      vDesire = vs_->point3DToVSXYZ(desired, tf_);
+      return true;
+    }
 
-      ROS_DEBUG(">> Desired Point in Image: [%d, %d]", desired_.image.x, desired_.image.y);
-      ROS_DEBUG(">> Desired Point in Camera: [%f, %f, %f]", desired_.camera.x,
-          desired_.camera.y, desired_.camera.z);
-      ROS_DEBUG(">> Desired Point in World : [%f, %f, %f]", desired_.workspace.x,
-          desired_.workspace.y, desired_.workspace.z);
+    bool initializeDesired(tabletop_pushing::ProtoObjects &pos)
+    {
+      tabletop_pushing::PointCloudSegmentation pcs = tabletop_pushing::PointCloudSegmentation(tf_);
+      tabletop_pushing::ProtoObjects po = pcs.findTabletopObjects(cur_point_cloud_);
+      // segmeneted no object
+      if(po.size() == 0)
+        return false;
+      pos = po;
+      return true;
+    }
 
-      if (isnan(desired_.workspace.x) || isnan(desired_.workspace.y) ||
-          isnan(desired_.workspace.z))
+    bool setGoalForAnObject(std::vector<VSXYZ> &goal, PoseStamped &goal_p, tabletop_pushing::ProtoObject po)
+    {
+      // need to get the top of an object
+      pcl::PointCloud<pcl::PointXYZ> cloud = po.cloud;
+      float max_z = 0; unsigned int max_z_ind = 0;
+      for (unsigned int i = 0; i < cloud.size(); i++)
       {
-        ROS_ERROR("Desired Values have NaN. Unable to Proceed Further");
+        if (cloud.at(i).z > max_z)
+        {
+          max_z = cloud.at(i).z;
+          max_z_ind = i;
+        }
+      }
+      VSXYZ v = vs_->point3DToVSXYZ(cloud.at(max_z_ind), tf_);
+      return setGoalForAnObject(goal, goal_p, v);
+    }
+
+    bool setGoalForAnObject(std::vector<VSXYZ> &goal, PoseStamped &goal_p, VSXYZ desire)
+    {
+      if (isnan(desire.workspace.x) || isnan(desire.workspace.y) ||
+          isnan(desire.workspace.z))
+      {
+        ROS_ERROR("Desire Values have NaN. Unable to Proceed Further");
         return false;
       }
 
-      std::vector<pcl::PointXYZ> temp_features = gripper_tape_.getTapePoseFromXYZ(desired_.workspace);
+      std::vector<pcl::PointXYZ> temp_features = gripper_tape_.getTapePoseFromXYZ(desire.workspace);
       std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(temp_features, tf_);
-      goal_ = desired_vsxyz;
-      goal_p_ = vs_->VSXYZToPoseStamped(goal_.front());
-      /* it breaks..
-      goal_p_.pose.orientation.x = -0.4582;
-      goal_p_.pose.orientation.y = 0;
-      goal_p_.pose.orientation.z = 0.8889;
-      goal_p_.pose.orientation.w = 0;
-       */
+      goal = desired_vsxyz;
+      goal_p = vs_->VSXYZToPoseStamped(goal_.front());
 
-      // EDIT
-      //std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
-      // Before we servo to right pose, we want to get X, Y correct
-      // so gripper doesn't land ON object while VSing
-      /*
-      for (unsigned int i = 0; i < temp_features.size(); i++)
-      {
-        temp_features.at(i).z += pose_servo_z_offset_;
-      }
-      std::vector<cv::Point> few_pixels_up;
-      for (unsigned int i = 0; i < desired_locations_.size(); i++)
-      {
-        cv::Point p = desired_locations_.at(i).image;
-        p.y -= 25; // arbitrary pixel numbers & scale
-        few_pixels_up.push_back(p);
-      }
-
-      cur_goal_ = PointToVSXYZ(cur_point_cloud_, cur_depth_frame_,few_pixels_up);
-
-      */
       // for jacobian avg, we need IM at desired location as well
       if (JACOBIAN_TYPE_AVG == jacobian_type_)
         return vs_->setDesiredInteractionMatrix(desired_vsxyz);
-
       return true;
     }
 
@@ -1063,7 +1108,7 @@ class VisualServoNode
     }
 
     // Detect Tapes on Gripepr and update its position
-    void updateFeatures()
+    void updateGripperFeatures()
     {
       //////////////////////
       // Hand 
@@ -1431,6 +1476,9 @@ class VisualServoNode
 
     float close_gripper_dist_;
     GripperTape gripper_tape_;
+
+    // number of objects
+    tabletop_pushing::ProtoObjects po_;
 };
 
 int main(int argc, char ** argv)
