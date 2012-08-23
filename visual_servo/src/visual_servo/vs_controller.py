@@ -128,8 +128,8 @@ class VNode:
         twist.header.frame_id = 'torso_lift_link'
 
         # task specific gain control. we know that we are aligned in y... 
-        twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x) / 1.5
-        twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y) / 10
+        twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x)
+        twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y) 
         twist.twist.linear.z  = self.adjust_velocity(t.twist.linear.z) 
         twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
         twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
@@ -141,7 +141,10 @@ class VNode:
            twist.twist.linear.x, t.twist.linear.x, \
            twist.twist.linear.y, t.twist.linear.y, \
            twist.twist.linear.z, t.twist.linear.z)
-
+        rospy.loginfo('[angular] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', \
+           twist.twist.angular.x, t.twist.angular.x, \
+           twist.twist.angular.y, t.twist.angular.y, \
+           twist.twist.angular.z, t.twist.angular.z)
       except rospy.ServiceException, e:
         self.pn.stop_moving_vel('l')
 

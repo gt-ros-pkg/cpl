@@ -38,6 +38,7 @@
 #include <std_msgs/Header.h>
 #include <std_msgs/String.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Pose2D.h>
 #include <sensor_msgs/Image.h>
@@ -101,7 +102,7 @@
 #include <tabletop_pushing/point_cloud_segmentation.h>
 
 #define DEBUG_MODE 0
-#define PROFILE 1
+#define VISUAL_SERVO_TYPE 0
 
 // statemachine constants
 #define INIT          0
@@ -134,6 +135,7 @@ typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAct
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PoseStamped;
+using geometry_msgs::QuaternionStamped;
 using visual_servo::VisualServoTwist;
 using visual_servo::VisualServoPose;
 
@@ -260,10 +262,6 @@ class VisualServoNode
     delete detector_client_;
   }
 
-  void simulate()
-  {
-    
-  }
     /**
      * Called when Kinect information is avaiable. Refresh rate of about 30Hz 
      */
@@ -292,7 +290,7 @@ class VisualServoNode
       XYZPointCloud cloud; 
       pcl::fromROSMsg(*cloud_msg, cloud);
       tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-          cloud.header.stamp, ros::Duration(0.5));
+          cloud.header.stamp, ros::Duration(0.9));
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
       cur_color_frame_ = color_frame;
@@ -338,28 +336,27 @@ class VisualServoNode
               std_srvs::Empty e;
               i_client_.call(e);
 
+              // this is a blocking close
+              close();
+              float temp = getTipDistance();
+              close_gripper_dist_ = temp;
+              ROS_INFO("Close Gripper Tip distane: %.4f", temp);
+              sleep(2);
               // gripper needs to be controlled from here
               open();
 #endif
-              PHASE = SETTLE;
-              setSleepNonblock(3.0);
+              if (temp != -1)
+              {
+                PHASE = SETTLE;
+                setSleepNonblock(5.0);
+              }
             }
             break;
           case SETTLE:
             {
               ROS_INFO("Phase Settle: Move Gripper to Init Position");
               // Move Hand to Some Preset Pose
-              visual_servo::VisualServoPose p_srv;
-              p_srv.request.p.header.stamp = ros::Time::now();
-              p_srv.request.p.header.frame_id = "torso_lift_link";
-              p_srv.request.p.pose.position.x = 0.62;
-              p_srv.request.p.pose.position.y = 0.05;
-              p_srv.request.p.pose.position.z = -0.1;
-              p_srv.request.p.pose.orientation.x = -0.4582;
-              p_srv.request.p.pose.orientation.y = 0;
-              p_srv.request.p.pose.orientation.z = 0.8889;
-              p_srv.request.p.pose.orientation.w = 0;
-
+              visual_servo::VisualServoPose p_srv = formPoseService(0.62, 0.05, -0.1);
 #ifndef PROFILE
               if (p_client_.call(p_srv))
               {
@@ -497,7 +494,11 @@ class VisualServoNode
             {
               // compute the twist if everything is good to go
 #ifdef VISUAL_SERVO_TYPE
-              // visual_servo::VisualServoTwist v_srv = vs_->computeTwist(goal_pose, cur_pose, visual_servo::PBVS);
+              std::vector<PoseStamped> goals, feats;
+              goals.push_back(goal_p_);
+              feats.push_back(tape_features_p_);
+              visual_servo::VisualServoTwist v_srv = vs_->computeTwist(goals,feats,0);
+              v_srv.request.error = getError(goal_, tape_features_);
 #else
               visual_servo::VisualServoTwist v_srv = getTwist(goal_);
 #endif
@@ -526,12 +527,19 @@ class VisualServoNode
               if(grab())
               {
                 setSleepNonblock(2.0);
-                PHASE = RELOCATE;
+                float temp = getTipDistance();
+                if (temp < close_gripper_dist_ + 0.01)
+                {
+                  ROS_WARN(">> FAILED AT GRABBING (%f < %f). TERMINATING", temp, close_gripper_dist_ + 0.01);
+                  PHASE = TERM;
+                }
+                else
+                  PHASE = RELOCATE;
               }
               else
               {
-                ROS_WARN(">> Failed at grabbing. Going back to Init Desired");
-                PHASE = INIT_DESIRED;
+                ROS_WARN(">> FAILED AT GRABBING. TERMINATING");
+                PHASE = TERM;
               }
             }
             break;
@@ -590,6 +598,7 @@ class VisualServoNode
             break;
           default:
             {
+              open();
               ROS_INFO("Routine Ended.");
               std::cout << "Press [Enter] if you want to do it again: ";
               while(true )
@@ -611,6 +620,33 @@ class VisualServoNode
             break;
         }
       }
+    }
+
+    float getTipDistance()
+    {
+      try
+      {
+        std::string l_frame = "/l_gripper_l_finger_tip_link";
+        std::string r_frame = "/l_gripper_r_finger_tip_link";
+
+        tf::StampedTransform transform;
+        ros::Time now = ros::Time(0);
+        tf::TransformListener listener;
+
+        listener.waitForTransform(r_frame, l_frame, now, ros::Duration(2.0));
+        listener.lookupTransform(l_frame, r_frame, now, transform);
+        tf::Vector3 out = transform.getOrigin();
+
+        // PointStamped p;
+        //p.header.frame_id = l_frame;
+        // tf_->transformPoint(r_frame, p, p);
+        return out.y() < 0 ? -out.y() : out.y();
+      }
+      catch (tf::TransformException e)
+      {
+        ROS_WARN_STREAM(e.what());
+      }
+      return -1.0;
     }
 
     void reset()
@@ -718,20 +754,30 @@ class VisualServoNode
       is_detected_ = true;
     }
 
+    void close()
+    {
+      pr2_controllers_msgs::Pr2GripperCommandGoal open;
+      open.command.position = 0.0;
+      open.command.max_effort = -1.0;
+
+      ROS_INFO("Sending close goal");
+      gripper_client_->sendGoal(open);
+      gripper_client_->waitForResult(ros::Duration(10.0));
+      if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){}
+      else ROS_INFO("Grab Failed");
+    }
+
     void open()
     {
-
       pr2_controllers_msgs::Pr2GripperCommandGoal open;
-      open.command.position = 0.1;
+      open.command.position = 0.10;
       open.command.max_effort = -1.0;
 
       ROS_INFO("Sending open goal");
       gripper_client_->sendGoal(open);
-      gripper_client_->waitForResult(ros::Duration(20.0));
-      if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Successfully completed Grab");
-      else
-        ROS_INFO("Grab Failed");
+      gripper_client_->waitForResult(ros::Duration(10.0));
+      if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){}
+      else ROS_INFO("Grab Failed");
     }
 
     //Open the gripper, find contact on both fingers, and go into slip-servo control mode
@@ -918,6 +964,13 @@ class VisualServoNode
       std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(temp_features, tf_);
       goal_ = desired_vsxyz;
       goal_p_ = vs_->VSXYZToPoseStamped(goal_.front());
+      /* it breaks..
+      goal_p_.pose.orientation.x = -0.4582;
+      goal_p_.pose.orientation.y = 0;
+      goal_p_.pose.orientation.z = 0.8889;
+      goal_p_.pose.orientation.w = 0;
+       */
+
       // EDIT
       //std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
       // Before we servo to right pose, we want to get X, Y correct
@@ -953,7 +1006,7 @@ class VisualServoNode
       p_client_ = n.serviceClient<visual_servo::VisualServoPose>("vs_pose");
       i_client_ = n.serviceClient<std_srvs::Empty>("vs_init");
 
-      gripper_client_  = new GripperClient("l_gripper_controller/gripper_action",true);
+      gripper_client_  = new GripperClient("l_gripper_sensor_controller/gripper_action",true);
       while(!gripper_client_->waitForServer(ros::Duration(5.0))){
         ROS_INFO("Waiting for the r_gripper_sensor_controller/event_detector action server to come up");
       }
@@ -1029,7 +1082,20 @@ class VisualServoNode
 
       // convert the features into proper form 
       tape_features_ = vs_->CVPointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-      tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
+      if (tape_features_.size() == 0)
+        tape_features_p_ = PoseStamped();
+      else
+      {
+        tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
+        // it breaks
+        /*
+        QuaternionStamped p;
+        p.quaternion.w = 1;
+        p.header.frame_id = "/l_gripper_tool_frame";
+        tf_->transformQuaternion(workspace_frame_, p, p);
+        tape_features_p_.pose.orientation = p.quaternion;
+        */
+      }
     }
 
     float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
@@ -1363,6 +1429,7 @@ class VisualServoNode
     bool is_detected_;
     float object_z_;
 
+    float close_gripper_dist_;
     GripperTape gripper_tape_;
 };
 
