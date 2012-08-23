@@ -10,8 +10,8 @@ int main(int argc, char** argv)
 
   if (argc < 3)
   {
-    imageA = cv::imread("/home/thermans/Desktop/video000.bmp");
-    imageB = cv::imread("/home/thermans/Desktop/video001.bmp");
+    imageA = cv::imread("/home/rahul/Desktop/video000.bmp");
+    imageB = cv::imread("/home/rahul/Desktop/video001.bmp");
   }
   else
   {
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
   // convert from color to grayscale, needed by Canny
   cv::cvtColor(imageA, imageA1, CV_RGB2GRAY);
   cv::cvtColor(imageB, imageB1, CV_RGB2GRAY);
-  float score = compareShapes(imageA1, imageB1);
+  float score = compareShapes(imageA1, imageB1, 9e5, true, "/home/rahul");
   ROS_INFO_STREAM("Object match with score: " << score);
 
   return 0;

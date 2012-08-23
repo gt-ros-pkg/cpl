@@ -1,0 +1,13 @@
+<launch>
+  <!-- <include file="$(find hrl_pr2_lib)/launch/openni_kinect_polled.launch"/> -->
+  <node name="data_collection_code" pkg="tabletop_pushing" type="save_kinect_data" respawn="false" output="screen">
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
+    <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
+    <remap from="point_cloud_topic" to="/kinect_head/depth/points"/>
+
+    <param name="display_wait_ms" value="3" type="int"/>
+    <param name="workspace_frame" value="/torso_lift_link" type="string"/>
+    <param name="img_output_path" value="/u/thermans/data/kinect_new/" type="string"/>
+    <param name="save_all" value="false" type="bool"/>
+  </node>
+</launch>

@@ -27,6 +27,10 @@
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
   <depend package="pr2_camera_self_filter"/>
+  <export>
+    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lpoint_cloud_segmentation" />
+  </export>
+
   <rosdep name="opencv2"/>
 </package>
 
