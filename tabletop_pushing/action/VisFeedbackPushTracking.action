@@ -4,6 +4,7 @@ geometry_msgs/Pose2D desired_pose
 string which_arm
 string controller_name
 string proxy_name
+string action_primitive
 ---
 # Result Definition
 std_msgs/Header header
@@ -19,3 +20,4 @@ float64 z
 bool no_detection
 string controller_name
 string proxy_name
+string action_primitive

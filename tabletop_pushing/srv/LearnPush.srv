@@ -3,6 +3,7 @@ bool analyze_previous
 geometry_msgs/Pose2D goal_pose
 string controller_name
 string proxy_name
+string action_primitive
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid

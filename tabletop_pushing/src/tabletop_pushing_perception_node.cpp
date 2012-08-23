@@ -655,7 +655,7 @@ class TabletopPushingPerceptionNode
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
 
-    // TODO: Setup arm controller state callbacks
+    // Setup arm controller state callbacks
     jtteleop_l_arm_subscriber_ = n_.subscribe("/l_cart_transpose_push/state", 1,
                                               &TabletopPushingPerceptionNode::lArmStateCartCB,
                                               this);
@@ -766,6 +766,9 @@ class TabletopPushingPerceptionNode
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
           cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+      tracker_state.proxy_name = proxy_name_;
+      tracker_state.controller_name = controller_name_;
+      tracker_state.action_primitive = action_primitive_;
 
       PointStamped start_point;
       PointStamped end_point;
@@ -1269,9 +1272,13 @@ class TabletopPushingPerceptionNode
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
+    controller_name_ = tracker_goal->controller_name;
+    proxy_name_ = tracker_goal->proxy_name;
+    action_primitive_ = tracker_goal->action_primitive;
     spin_to_heading_ = tracker_goal->controller_name == "spin_to_heading";
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
-    ROS_INFO_STREAM("Push with arm " << pushing_arm_);
+    ROS_INFO_STREAM("Push with options (" << proxy_name_ << ", " << controller_name_ << ", " <<
+                    action_primitive_ << ", " << pushing_arm_ << ")");
   }
 
   void pushTrackerPreemptCB()
@@ -1536,6 +1543,9 @@ class TabletopPushingPerceptionNode
   shared_ptr<ObjectTracker25D> obj_tracker_;
   Pose2D tracker_goal_pose_;
   std::string pushing_arm_;
+  std::string proxy_name_;
+  std::string controller_name_;
+  std::string action_primitive_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
   bool just_spun_;

@@ -378,25 +378,16 @@ class PositionFeedbackPushNode:
     # Feedback Behavior functions
     #
     def gripper_feedback_push(self, request):
-        feedback_cb = self.tracker_feedback_gripper_push
+        feedback_cb = self.tracker_feedback_push
         return self.feedback_push_behavior(request, feedback_cb)
 
     def gripper_feedback_sweep(self, request):
-        feedback_cb = self.tracker_feedback_gripper_sweep
+        feedback_cb = self.tracker_feedback_push
         return self.feedback_push_behavior(request, feedback_cb)
 
     def overhead_feedback_push(self, request):
-        feedback_cb = self.tracker_feedback_overhead_push
+        feedback_cb = self.tracker_feedback_push
         return self.feedback_push_behavior(request, feedback_cb)
-
-    def tracker_feedback_overhead_push(self, feedback):
-        return self.tracker_feedback_push(feedback, action_primitive='overhead')
-
-    def tracker_feedback_gripper_push(self, feedback):
-        return self.tracker_feedback_push(feedback, action_primitive='gripper')
-
-    def tracker_feedback_gripper_sweep(self, feedback):
-        return self.tracker_feedback_push(feedback, action_primitive='sweep')
 
     def feedback_push_behavior(self, request, feedback_cb):
         response = FeedbackPushResponse()
@@ -430,6 +421,8 @@ class PositionFeedbackPushNode:
         goal.desired_pose = request.goal_pose
         self.desired_pose = request.goal_pose
         goal.controller_name = request.controller_name
+        goal.proxy_name = request.proxy_name
+        goal.action_primitive = request.action_primitive
         self.spin_to_heading = request.controller_name == 'spin_to_heading'
         self.use_contact_pt_compensation = request.controller_name == 'centroid_controller'
 
@@ -445,7 +438,7 @@ class PositionFeedbackPushNode:
         # TODO: send back more information?
         return response
 
-    def tracker_feedback_push(self, feedback, action_primitive='overhead'):
+    def tracker_feedback_push(self, feedback):
         if self.feedback_count == 0:
             self.theta0 = feedback.x.theta
             self.x0 = feedback.x.x
@@ -463,6 +456,7 @@ class PositionFeedbackPushNode:
             rospy.loginfo('X_error: (' + str(self.desired_pose.x - feedback.x.x) + ', ' +
                           str(self.desired_pose.y - feedback.x.y) + ', ' +
                           str(self.desired_pose.theta - feedback.x.theta) + ')')
+
         # TODO: Add new pushing visual feedback controllers here
         # TODO: Setup selection of action primitives here too, currently they all use the same controllers
         # TODO: Select controller through service call better
