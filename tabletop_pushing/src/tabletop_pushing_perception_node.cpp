@@ -781,8 +781,8 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+      // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+      //                    tracker_goal_pose_.theta);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -860,8 +860,8 @@ class TabletopPushingPerceptionNode
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+      // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+      //                    tracker_goal_pose_.theta);
     }
 
     // Display junk
@@ -1017,7 +1017,7 @@ class TabletopPushingPerceptionNode
     PointStamped centroid;
     centroid.header.frame_id = cur_obj.cloud.header.frame_id;
     centroid.point = res.centroid;
-    displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
+    // displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
 
     learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
