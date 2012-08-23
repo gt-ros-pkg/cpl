@@ -86,7 +86,7 @@
 #define JACOBIAN_TYPE_AVG 3
 #define PBVS 0
 #define IBVS 1
-
+#define PI 3.14159265359
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef struct {
   // pixels
@@ -378,13 +378,13 @@ class VisualServo
       // need to convert quaternion into RPY and make cv::mat
       double tr, tp, ty;
       btQuaternion q1(gquat.x, gquat.y, gquat.z, gquat.w);
-      btMatrix3x3(q1).getEulerZYX(ty, tp, tr);
+      btMatrix3x3(q1).getEulerYPR(ty, tp, tr);
       float tgquat[3] = {tr, tp, ty};
       // matrix-goal rotation
       cv::Mat mgrot = cv::Mat(1, 3, CV_32F, tgquat).t();
 
       btQuaternion q2(cquat.x, cquat.y, cquat.z, cquat.w);
-      btMatrix3x3(q2).getEulerZYX(ty, tp, tr);
+      btMatrix3x3(q2).getEulerYPR(ty, tp, tr);
       float tcquat[3] = {tr, tp, ty};
       // matrix-current rotation
       cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).t();
@@ -406,9 +406,34 @@ class VisualServo
       cv::Mat velrot = -gain_rot_*(mgrot - mcrot);
       */
       cv::Mat velpos = -gain_vel_*(mcpos - mgpos);
-      cv::Mat velrot = -gain_rot_*(mcrot - mgrot);
-      printf("%f %f %f \t %f %f %f\n", tcquat[0], tcquat[1], tcquat[2], tgquat[0], tgquat[1], tgquat[2]);
+      cv::Mat velrot = -gain_rot_*MatDiffAngle(mcrot, mgrot);
       return VisualServoMsg::createTwistMsg(velpos, velrot);
+    }
+
+    cv::Mat MatDiffAngle(cv::Mat m0, cv::Mat m1)
+    {
+      cv::Mat ret = cv::Mat::zeros(m0.size(), CV_32F);
+      if (m0.size() != m1.size())
+        return ret;
+      for (int i = 0; i < m0.rows; i++)
+      {
+        for (int j = 0; j < m0.cols; j++)
+        {
+          ret.at<float>(i,j) = diffAngle(m0.at<float>(i,j), m1.at<float>(i,j));
+        }
+      }
+      return ret;
+    }
+
+    float diffAngle(float a0, float a1)
+    {
+      // assume they are from -pi to pi
+      float t = a0 - a1;
+      if (t > PI)
+        t = t - 2*PI;
+      else if (t < -PI)
+        t = t + 2*PI;
+      return t;
     }
 
     // compute twist in camera frame 

@@ -962,11 +962,12 @@ class VisualServoNode
       std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(temp_features, tf_);
       goal_ = desired_vsxyz;
       goal_p_ = vs_->VSXYZToPoseStamped(goal_.front());
+      /* it breaks..
       goal_p_.pose.orientation.x = -0.4582;
       goal_p_.pose.orientation.y = 0;
       goal_p_.pose.orientation.z = 0.8889;
       goal_p_.pose.orientation.w = 0;
-
+       */
 
       // EDIT
       //std::vector<pcl::PointXYZ> temp_features = getFeaturesFromXYZ(desired_);
@@ -1084,12 +1085,14 @@ class VisualServoNode
       else
       {
         tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
+        // it breaks
+        /*
         QuaternionStamped p;
         p.quaternion.w = 1;
         p.header.frame_id = "/l_gripper_tool_frame";
         tf_->transformQuaternion(workspace_frame_, p, p);
         tape_features_p_.pose.orientation = p.quaternion;
-        printf("%f %f %f %f\n", p.quaternion.x, p.quaternion.y, p.quaternion.z, p.quaternion.w);
+        */
       }
     }
 
