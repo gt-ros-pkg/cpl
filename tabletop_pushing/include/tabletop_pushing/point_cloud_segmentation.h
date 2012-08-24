@@ -43,6 +43,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/common/eigen.h>
+#include <pcl/common/io.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
