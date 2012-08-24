@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" 
+       name="ur5">
+
+  <include filename="$(find kh_sandbox)/urdf/gazebo.urdf.xacro" />
+
+  <include filename="$(find kh_sandbox)/urdf/model.urdf.xacro" />
+
+
+</robot>
