@@ -310,10 +310,12 @@ class ObjectTracker25D
     cv::RotatedRect obj_ellipse;
     obj_ellipse.center.x = centroid[0];
     obj_ellipse.center.y = centroid[1];
+    obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
     // TODO: Set obj_ellipse.size
-    // TODO: Eigenvector for major axis is: <eigen_vectors(0,0), eigen_vectors(1,0), eigen_vectors(2,0)>
-    // TODO: Set obj_ellipse.angle
-    // TODO: Convert covariance vectors into ellipse axes
+    // NOTE: major axis is defined by height
+    obj_ellipse.size.height = eigen_values(0)*0.05;
+    obj_ellipse.size.width = eigen_values(1)*0.05;
+    // TODO: Get relative size of eigen1 to eigen2 and use that as ratio between two axes?
     ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
     ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
     ROS_INFO_STREAM("Eigen values from PCA are: " << eigen_values);
@@ -353,6 +355,8 @@ class ObjectTracker25D
     {
       ROS_INFO_STREAM("TrackerIO()");
       trackerIO(in_frame, cur_obj, obj_ellipse);
+      // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
+      // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
     }
 
     ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
@@ -449,6 +453,8 @@ class ObjectTracker25D
       if (use_displays_ || write_to_disk_)
       {
         trackerIO(in_frame, cur_obj, obj_ellipse);
+        // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
+        // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
       }
       previous_obj_ = cur_obj;
       previous_obj_ellipse_ = obj_ellipse;
@@ -579,6 +585,51 @@ class ObjectTracker25D
       cv::imwrite(out_name.str(), centroid_frame);
     }
 
+  }
+
+  void tempTrackerIO(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
+  {
+    cv::Mat centroid_frame;
+    in_frame.copyTo(centroid_frame);
+    pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
+                                 cur_obj.centroid[2]);
+    const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+        centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
+    double theta = getThetaFromEllipse(obj_ellipse);
+    if(swap_orientation_)
+    {
+      if(theta > 0.0)
+        theta += - M_PI;
+      else
+        theta += M_PI;
+    }
+    const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
+    const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
+    pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
+                                  centroid_point.z);
+    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
+    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
+    pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
+                                  centroid_point.z);
+    const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
+        table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
+    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
+        table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
+    cv::Size img_size;
+    img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                               std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
+    float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+                                         img_maj_idx.x-img_c_idx.x));
+    cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(255,0,255), 1);
+    if (use_displays_)
+    {
+      cv::imshow("New Ellipse Axes", centroid_frame);
+    }
   }
 
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
