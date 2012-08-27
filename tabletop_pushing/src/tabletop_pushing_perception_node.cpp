@@ -70,6 +70,7 @@
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/common/pca.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -278,11 +279,44 @@ class ObjectTracker25D
     }
     ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
+    // cv::RotatedRect obj_ellipse2 = fit2DMassEllipse(obj);
     // ROS_DEBUG_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
     //                  obj_ellipse.center.y << ", " <<
     //                  subPIAngle(DEG2RAD(obj_ellipse.angle)) << ")" << "\t(" <<
     //                  obj_ellipse.size.width << ", " << obj_ellipse.size.height
     //                  << ")");
+    return obj_ellipse;
+  }
+
+  cv::RotatedRect fit2DMassEllipse(ProtoObject& obj)
+  {
+    pcl::PCA<pcl::PointXYZ> pca;
+    XYZPointCloud cloud_no_z;
+    ROS_INFO_STREAM("Copying point cloud");
+    cloud_no_z.header = obj.cloud.header;
+    cloud_no_z.width = obj.cloud.size();
+    cloud_no_z.height = 1;
+    cloud_no_z.resize(obj.cloud.size());
+    for (int i = 0; i < obj.cloud.size(); ++i)
+    {
+      cloud_no_z[i] = obj.cloud[i];
+      cloud_no_z[i].z = 0.0f;
+    }
+
+    pca.setInputCloud(cloud_no_z.makeShared());
+    Eigen::Vector3f eigen_values = pca.getEigenValues();
+    Eigen::Matrix3f eigen_vectors = pca.getEigenVectors();
+    Eigen::Vector4f centroid = pca.getMean();
+    cv::RotatedRect obj_ellipse;
+    obj_ellipse.center.x = centroid[0];
+    obj_ellipse.center.y = centroid[1];
+    // TODO: Set obj_ellipse.size
+    // TODO: Eigenvector for major axis is: <eigen_vectors(0,0), eigen_vectors(1,0), eigen_vectors(2,0)>
+    // TODO: Set obj_ellipse.angle
+    // TODO: Convert covariance vectors into ellipse axes
+    ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
+    ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
+    ROS_INFO_STREAM("Eigen values from PCA are: " << eigen_values);
     return obj_ellipse;
   }
 
