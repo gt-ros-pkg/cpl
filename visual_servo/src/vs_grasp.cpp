@@ -353,9 +353,33 @@ class VisualServoNode
 #endif
               if (temp != -1)
               {
-                PHASE = SETTLE;
+                PHASE = INIT_OBJS;
                 setSleepNonblock(5.0);
               }
+            }
+            break;
+          case INIT_OBJS:
+            {
+              bool t = false;
+              ROS_INFO("Phase Init Obj: Getting Objects without the arm");
+#if PERCEPTION==PERCEPTION_COLOR_SEGMENTATION
+              t = initializeDesired(desired_);
+#elif PERCEPTION==PERCEPTION_POINT_CLOUD
+              t = initializeDesired(po_);
+#endif
+              if (t)
+              {
+#if PERCEPTION==PERCEPTION_POINT_CLOUD
+                ROS_INFO(">> Found %d objects", (int)(po_.size()));
+#endif
+                PHASE = SETTLE;
+              }
+              else
+              {
+                ROS_WARN("Failed. Retrying initialization in 2 seconds");
+                setSleepNonblock(2.0);
+              }
+
             }
             break;
           case SETTLE:
@@ -363,7 +387,6 @@ class VisualServoNode
               ROS_INFO("Phase Settle: Move Gripper to Init Position");
               // Move Hand to Some Preset Pose
               visual_servo::VisualServoPose p_srv = formPoseService(0.62, 0.05, -0.1);
-#ifndef PROFILE
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(3.0);
@@ -373,29 +396,6 @@ class VisualServoNode
               {
                 ROS_WARN("Failed to put the hand in initial configuration");
               }
-#else
-              PHASE = INIT_OBJS;
-#endif
-            }
-            break;
-          case INIT_OBJS:
-            {
-              bool t = false;
-#if PERCEPTION==PERCEPTION_COLOR_SEGMENTATION
-              t = initializeDesired(desired_);
-#elif PERCEPTION==PERCEPTION_POINT_CLOUD
-              t = initializeDesired(po_);
-#endif
-              if (t)
-              {
-                PHASE = INIT_HAND;
-              }
-              else
-              {
-                ROS_WARN("Failed. Retrying initialization in 2 seconds");
-                setSleepNonblock(2.0);
-              }
-
             }
             break;
           case INIT_HAND:
@@ -998,7 +998,27 @@ class VisualServoNode
     bool initializeDesired(tabletop_pushing::ProtoObjects &pos)
     {
       tabletop_pushing::PointCloudSegmentation pcs = tabletop_pushing::PointCloudSegmentation(tf_);
-      tabletop_pushing::ProtoObjects po = pcs.findTabletopObjects(cur_point_cloud_);
+      pcs.min_table_z_ = -1.0;
+      pcs.max_table_z_ = 1.0;
+      pcs.min_workspace_x_ = -1.0;
+      pcs.max_workspace_x_ = 1.75;
+      pcs.table_ransac_thresh_ = 0.015;
+      // tabletop_pushing::ProtoObjects po = pcs.findTabletopObjects(cur_point_cloud_);
+
+      XYZPointCloud objs_cloud, plane_cloud;
+      // Get table plane
+      pcs.getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud, false);
+      for (unsigned int i = 0; i < plane_cloud.size(); i++)
+      {
+        cv::Point p = vs_->projectPointIntoImage(plane_cloud.at(i),workspace_frame_, optical_frame_ , tf_);
+        cv::circle(cur_orig_color_frame_, p, 1, cv::Scalar(100, 0, 110), 1);
+      }
+      return false;
+      XYZPointCloud objects_cloud_down = pcs.downsampleCloud(objs_cloud);
+      // Find independent regions
+      tabletop_pushing::ProtoObjects objs = pcs.clusterProtoObjects(objects_cloud_down);
+      tabletop_pushing::ProtoObjects po = objs;
+
       // segmeneted no object
       if(po.size() == 0)
         return false;
