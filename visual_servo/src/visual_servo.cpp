@@ -326,6 +326,16 @@ class VisualServo
       ret.workspace= _3d;
       return ret;
     }
+    cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
+        std::string point_frame, std::string target_frame, shared_ptr<tf::TransformListener> tf_)
+    {
+      PointStamped cur_point;
+      cur_point.header.frame_id = point_frame;
+      cur_point.point.x = cur_point_pcl.x;
+      cur_point.point.y = cur_point_pcl.y;
+      cur_point.point.z = cur_point_pcl.z;
+      return projectPointIntoImage(cur_point, target_frame, tf_);
+    }
 
     void printVSXYZ(VSXYZ i)
     {
@@ -630,6 +640,7 @@ class VisualServo
       cv::Point p(in.at<float>(0,0), in.at<float>(1,0));
       return projectImagePointToPoint(p);
     }
+    /*
     cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
         std::string point_frame, std::string target_frame, shared_ptr<tf::TransformListener> tf_)
     {
@@ -640,7 +651,7 @@ class VisualServo
       cur_point.point.z = cur_point_pcl.z;
       return projectPointIntoImage(cur_point, target_frame, tf_);
     }
-
+*/
     cv::Point projectPointIntoImage(PointStamped cur_point,
         std::string target_frame, shared_ptr<tf::TransformListener> tf_)
     {
