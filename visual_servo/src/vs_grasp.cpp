@@ -534,7 +534,7 @@ class VisualServoNode
               std::vector<PoseStamped> goals, feats;
               goals.push_back(goal_p_);
               feats.push_back(tape_features_p_);
-              visual_servo::VisualServoTwist v_srv = vs_->computeTwist(goals,feats,0);
+              visual_servo::VisualServoTwist v_srv = vs_->getTwist(goals,feats,0);
               v_srv.request.error = getError(goal_, tape_features_);
 #else
               visual_servo::VisualServoTwist v_srv = getTwist(goal_);
@@ -1102,7 +1102,7 @@ class VisualServoNode
     visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> desire)
     {
       visual_servo::VisualServoTwist srv;
-      srv = vs_->computeTwist(desire, tape_features_);
+      srv = vs_->getTwist(desire, tape_features_);
       srv.request.error = getError(desire, tape_features_);
       return srv;
     }

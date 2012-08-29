@@ -87,6 +87,7 @@
 #define PBVS 0
 #define IBVS 1
 #define PI 3.14159265359
+
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 typedef struct {
   // pixels
@@ -114,6 +115,7 @@ namespace VisualServoMsg
     p_srv.request.p.pose.orientation.w = ow;
     return p_srv;
   }
+
   visual_servo::VisualServoTwist createTwistMsg(float err, double lx, double ly, double lz, double ax, double ay, double az)
   {
     visual_servo::VisualServoTwist msg;
@@ -217,13 +219,13 @@ class VisualServo
       cam_info_ = cam_info;
     }
 
-    visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper)
+    visual_servo::VisualServoTwist getTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper)
     {
       // default to PBVS
-      return computeTwist(goal, gripper, PBVS);
+      return getTwist(goal, gripper, PBVS);
     }
 
-    visual_servo::VisualServoTwist computeTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper, int mode)
+    visual_servo::VisualServoTwist getTwist(std::vector<PoseStamped> goal, std::vector<PoseStamped> gripper, int mode)
     {
       switch (mode)
       {
@@ -234,7 +236,7 @@ class VisualServo
       }
     }
 
-    visual_servo::VisualServoTwist computeTwist(std::vector<VSXYZ> goal, std::vector<VSXYZ> gripper)
+    visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> goal, std::vector<VSXYZ> gripper)
     {
       return IBVSTwist(goal, gripper);
     }
