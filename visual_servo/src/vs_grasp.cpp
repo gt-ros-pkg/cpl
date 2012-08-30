@@ -306,8 +306,32 @@ class VisualServoNode
 
       // need to profile this
       updateGripperFeatures();
-      executeStatemachine();
 
+      bool t = initializeDesired(po_);
+      if (t)
+      {
+        int s = (int)(po_.size());
+        for (int i = 0; i < s; i++)
+        {
+          tabletop_pushing::ProtoObject p  = po_.at(i);
+          for (unsigned int j = 0; j < p.cloud.size(); j++)
+          {
+          cv::Point pt = vs_->projectPointIntoImage(p.cloud.at(j), workspace_frame_, optical_frame_ , tf_);
+          cv::circle(cur_orig_color_frame_, pt, 1, cv::Scalar(100, 0, 110), 1);
+          }
+          /*
+          if (setGoalForAnObject(goal_, goal_p_, p))
+          {
+          cv::Point p = vs_->projectPointIntoImage(pcl::PointXYZ(goal_p_.pose.position.x, goal_p_.pose.position.y, goal_p_.pose.position.z), workspace_frame_, optical_frame_ , tf_);
+          cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(100, 0, 110), 2);
+          }
+          */
+        }
+      }
+      else
+        ROS_WARN("GOT NOTHING!");
+
+      // executeStatemachine();
 #define DISPLAY 1
 #ifdef DISPLAY
       // show a pretty imshow
@@ -997,17 +1021,45 @@ class VisualServoNode
 
     bool initializeDesired(tabletop_pushing::ProtoObjects &pos)
     {
+      shared_ptr<tabletop_pushing::PointCloudSegmentation> pcs_ = shared_ptr<tabletop_pushing::PointCloudSegmentation>(
+        new tabletop_pushing::PointCloudSegmentation(tf_));
+
       tabletop_pushing::PointCloudSegmentation pcs = tabletop_pushing::PointCloudSegmentation(tf_);
       pcs.min_table_z_ = -1.0;
       pcs.max_table_z_ = 1.0;
       pcs.min_workspace_x_ = -1.0;
       pcs.max_workspace_x_ = 1.75;
+      pcs.min_workspace_z_ = -1.0;
+      pcs.max_workspace_z_ = 1.0;
       pcs.table_ransac_thresh_ = 0.015;
-      // tabletop_pushing::ProtoObjects po = pcs.findTabletopObjects(cur_point_cloud_);
+      pcs.num_downsamples_ = 2;
+
+      pcs_->min_table_z_ = -1.0;
+      pcs_->max_table_z_ = 1.0;
+      pcs_->min_workspace_x_ = -1.0;
+      pcs_->max_workspace_x_ = 1.75;
+      pcs_->min_workspace_z_ = -1.0;
+      pcs_->max_workspace_z_ = 1.0;
+      pcs_->num_downsamples_ = 2;
+      pcs_->table_ransac_thresh_ = 0.015;
+      pcs_->table_ransac_angle_thresh_ = 30.0;
+      pcs_->cluster_tolerance_ = 0.25;
+      pcs_->cloud_diff_thresh_ = 0.01;
+      pcs_->min_cluster_size_ = 100;
+      pcs_->max_cluster_size_ = 2500;
+      pcs_->voxel_down_res_ = 0.005;
+      pcs_->cloud_intersect_thresh_ = 0.005;
+      pcs_->hull_alpha_ = 0.1;
+      pcs_->use_voxel_down_ = true;
+
+
+      tabletop_pushing::ProtoObjects po = pcs_->findTabletopObjects(cur_point_cloud_);
+        /*
 
       XYZPointCloud objs_cloud, plane_cloud;
       // Get table plane
-      pcs.getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud, false);
+      pcs_->getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud, false);
+      //pcs.getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud, false);
       for (unsigned int i = 0; i < plane_cloud.size(); i++)
       {
         cv::Point p = vs_->projectPointIntoImage(plane_cloud.at(i),workspace_frame_, optical_frame_ , tf_);
@@ -1018,7 +1070,7 @@ class VisualServoNode
       // Find independent regions
       tabletop_pushing::ProtoObjects objs = pcs.clusterProtoObjects(objects_cloud_down);
       tabletop_pushing::ProtoObjects po = objs;
-
+      */
       // segmeneted no object
       if(po.size() == 0)
         return false;
