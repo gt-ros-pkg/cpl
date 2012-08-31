@@ -719,5 +719,8 @@ if __name__ == '__main__':
         node.run_singulation(max_pushes, use_guided)
     else:
         # node.run_feedback_testing(action_primitive)
-        node.run_push_exploration()
+        # TODO: Keep running this
+        # TODO: while with raw_input?
+        # TODO: Enter object id for learning saving
+        node.run_push_exploration(object_id='testy')
         node.finish_learning()
