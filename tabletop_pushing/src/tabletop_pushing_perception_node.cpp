@@ -1478,7 +1478,9 @@ class TabletopPushingPerceptionNode
         start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(
         end_point);
+    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
 
     if (use_displays_)
