@@ -1078,6 +1078,7 @@ class TabletopPushingPerceptionNode
     p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
+    displayPushVector(cur_color_frame_, p, "initial_vector", true);
     PointStamped centroid;
     centroid.header.frame_id = cur_obj.cloud.header.frame_id;
     centroid.point = res.centroid;
@@ -1456,7 +1457,8 @@ class TabletopPushingPerceptionNode
     return p;
   }
 
-  void displayPushVector(cv::Mat& img, PushVector& push)
+  void displayPushVector(cv::Mat& img, PushVector& push, std::string display_name="goal_vector",
+                         bool force_no_write=false)
   {
     PointStamped start_point;
     start_point.point = push.start_point;
@@ -1466,10 +1468,11 @@ class TabletopPushingPerceptionNode
     end_point.point.y = start_point.point.y+std::sin(push.push_angle)*push.push_dist;
     end_point.point.z = start_point.point.z;
     end_point.header.frame_id = workspace_frame_;
-    displayPushVector(img, start_point, end_point);
+    displayPushVector(img, start_point, end_point, display_name, force_no_write);
   }
 
-  void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point)
+  void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
+                         std::string display_name="goal_vector", bool force_no_write=false)
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
@@ -1485,13 +1488,13 @@ class TabletopPushingPerceptionNode
 
     if (use_displays_)
     {
-      cv::imshow("goal_vector", disp_img);
+      cv::imshow(display_name, disp_img);
     }
-    if (write_to_disk_)
+    if (write_to_disk_ && !force_no_write)
     {
       // Write to disk to create video output
       std::stringstream push_out_name;
-      push_out_name << base_output_path_ << "goal_vector_" << frame_set_count_ << "_"
+      push_out_name << base_output_path_ << display_name << "_" << frame_set_count_ << "_"
                     << goal_out_count_++ << ".png";
       cv::imwrite(push_out_name.str(), disp_img);
     }
