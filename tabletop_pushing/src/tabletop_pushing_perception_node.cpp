@@ -342,6 +342,7 @@ class ObjectTracker25D
     if (no_objects)
     {
       state.no_detection = true;
+      return state;
     }
     ROS_INFO_STREAM("Finding ellipse");
     cv::RotatedRect obj_ellipse;
