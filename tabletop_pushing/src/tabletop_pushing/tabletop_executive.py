@@ -48,19 +48,20 @@ from geometry_msgs.msg import Pose2D
 import time
 import random
 
-GRIPPER_PUSH = 'gripper_push'
-GRIPPER_SWEEP = 'gripper_sweep'
-OVERHEAD_PUSH = 'overhead_push'
-ACTION_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP]
-
 CENTROID_CONTROLLER ='centroid_controller'
 SPIN_COMPENSATION = 'spin_compensation'
 SPIN_TO_HEADING = 'spin_to_heading'
 CONTROLLERS = [CENTROID_CONTROLLER, SPIN_COMPENSATION]
 
+GRIPPER_PUSH = 'gripper_push'
+GRIPPER_SWEEP = 'gripper_sweep'
+OVERHEAD_PUSH = 'overhead_push'
+PUSH_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP]
+ACTION_PRIMITIVES = {CENTROID_CONTROLLER:PUSH_PRIMITIVES, SPIN_COMPENSATION:PUSH_PRIMITIVES}
+
 ELLIPSE_PROXY = 'ellipse'
 CENTROID_PROXY = 'centroid'
-PERCEPTUAL_PROXIES = [ELLIPSE_PROXY, CENTROID_PROXY]
+PERCEPTUAL_PROXIES = {CENTROID_CONTROLLER:[CENTROID_PROXY], SPIN_COMPENSATION:[ELLIPSE_PROXY]}
 
 _OFFLINE = False
 _USE_LEARN_IO = False
@@ -302,17 +303,13 @@ class TabletopExecutive:
                 return
 
     def run_push_exploration(self):
-        action_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
-        controller_name = 'centroid_controller' # 'spin_compensation'
-        proxy_name = 'ellipse'
-
         code_in = raw_input('Set object in start pose and press <Enter>: ')
         if code_in.startswith('q'):
             return
 
-        for action_primitive in ACTION_PRIMITIVES:
-            for controller in CONTROLLERS:
-                for proxy in PERCEPTUAL_PROXIES:
+        for controller in CONTROLLERS:
+            for action_primitive in ACTION_PRIMITIVES[controller]:
+                for proxy in PERCEPTUAL_PROXIES[controller]:
                     res = self.explore_push(action_primitive, controller, proxy)
                     if res == 'quit':
                         rospy.loginfo('Quiting on user request')
