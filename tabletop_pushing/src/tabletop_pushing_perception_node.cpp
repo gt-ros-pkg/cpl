@@ -203,11 +203,13 @@ class ObjectTracker25D
  public:
   ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
-                   std::string base_output_path="", std::string camera_frame="") :
+                   std::string base_output_path="", std::string camera_frame="",
+                   bool use_cv_ellipse = false) :
       pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
       frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
       base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
-      paused_(false), frame_set_count_(0), camera_frame_(camera_frame)
+      paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
+      use_cv_ellipse_fit_(use_cv_ellipse)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -316,9 +318,9 @@ class ObjectTracker25D
     obj_ellipse.size.height = eigen_values(0)*0.05;
     obj_ellipse.size.width = eigen_values(1)*0.05;
     // TODO: Get relative size of eigen1 to eigen2 and use that as ratio between two axes?
-    ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
-    ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
-    ROS_INFO_STREAM("Eigen values from PCA are: " << eigen_values);
+    // ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
+    // ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
+    // ROS_INFO_STREAM("Eigen values from PCA are: " << eigen_values);
     return obj_ellipse;
   }
 
@@ -342,7 +344,15 @@ class ObjectTracker25D
       state.no_detection = true;
     }
     ROS_INFO_STREAM("Finding ellipse");
-    cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
+    cv::RotatedRect obj_ellipse;
+    if (use_cv_ellipse_fit_)
+    {
+      obj_ellipse = findFootprintEllipse(cur_obj);
+    }
+    else
+    {
+      obj_ellipse = fit2DMassEllipse(cur_obj);
+    }
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
@@ -406,7 +416,14 @@ class ObjectTracker25D
     }
     else
     {
-      obj_ellipse = findFootprintEllipse(cur_obj);
+      if (use_cv_ellipse_fit_)
+      {
+        obj_ellipse = findFootprintEllipse(cur_obj);
+      }
+      else
+      {
+        obj_ellipse = fit2DMassEllipse(cur_obj);
+      }
       state.x.theta = getThetaFromEllipse(obj_ellipse);
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
@@ -587,51 +604,6 @@ class ObjectTracker25D
 
   }
 
-  void tempTrackerIO(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
-  {
-    cv::Mat centroid_frame;
-    in_frame.copyTo(centroid_frame);
-    pcl::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
-                                 cur_obj.centroid[2]);
-    const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-        centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
-    double theta = getThetaFromEllipse(obj_ellipse);
-    if(swap_orientation_)
-    {
-      if(theta > 0.0)
-        theta += - M_PI;
-      else
-        theta += M_PI;
-    }
-    const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
-    const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
-    pcl::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
-                                  centroid_point.z);
-    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
-    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
-    pcl::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
-                                  centroid_point.z);
-    const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
-        table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
-    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
-        table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
-    cv::Size img_size;
-    img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
-                               std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
-    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
-                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
-    float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
-                                         img_maj_idx.x-img_c_idx.x));
-    cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(255,0,255), 1);
-    if (use_displays_)
-    {
-      cv::imshow("New Ellipse Axes", centroid_frame);
-    }
-  }
-
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
   bool initialized_;
@@ -649,6 +621,7 @@ class ObjectTracker25D
   bool paused_;
   int frame_set_count_;
   std::string camera_frame_;
+  bool use_cv_ellipse_fit_;
 };
 
 class TabletopPushingPerceptionNode
@@ -724,10 +697,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
     n_private_.param("major_axis_spin_pos_scale", major_axis_spin_pos_scale_, 0.75);
+    bool use_cv_ellipse;
+    n_private_.param("use_cv_ellipse", use_cv_ellipse, false);
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
-                             base_output_path_, camera_frame_));
+                             base_output_path_, camera_frame_, use_cv_ellipse));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
