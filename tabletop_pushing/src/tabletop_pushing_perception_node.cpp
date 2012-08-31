@@ -204,12 +204,12 @@ class ObjectTracker25D
   ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
-                   bool use_cv_ellipse = false, int ellipse_draw_width=1) :
+                   bool use_cv_ellipse = false) :
       pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
       frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
       base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
       paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
-      use_cv_ellipse_fit_(use_cv_ellipse), ellipse_draw_width_(ellipse_draw_width)
+      use_cv_ellipse_fit_(use_cv_ellipse)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -580,8 +580,10 @@ class ObjectTracker25D
         table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
         table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
     cv::Size img_size;
     img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                                std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
@@ -590,12 +592,8 @@ class ObjectTracker25D
     float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                          img_maj_idx.x-img_c_idx.x));
     cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-    img_ellipse.size.width += ellipse_draw_width_;
-    img_ellipse.size.height += ellipse_draw_width_;
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,0), ellipse_draw_width_);
-    img_ellipse.size.width -= ellipse_draw_width_;
-    img_ellipse.size.height -= ellipse_draw_width_;
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), ellipse_draw_width_);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
     if (use_displays_)
     {
       cv::imshow("Ellipse Axes", centroid_frame);
@@ -628,7 +626,6 @@ class ObjectTracker25D
   int frame_set_count_;
   std::string camera_frame_;
   bool use_cv_ellipse_fit_;
-  int ellipse_draw_width_;
 };
 
 class TabletopPushingPerceptionNode
@@ -706,12 +703,10 @@ class TabletopPushingPerceptionNode
     n_private_.param("major_axis_spin_pos_scale", major_axis_spin_pos_scale_, 0.75);
     bool use_cv_ellipse;
     n_private_.param("use_cv_ellipse", use_cv_ellipse, false);
-    int ellipse_draw_width;
-    n_private_.param("ellipse_draw_width", ellipse_draw_width, 1);
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
-                             base_output_path_, camera_frame_, use_cv_ellipse, ellipse_draw_width));
+                             base_output_path_, camera_frame_, use_cv_ellipse));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
