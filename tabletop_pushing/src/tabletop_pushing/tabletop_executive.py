@@ -77,35 +77,24 @@ class TabletopExecutive:
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
         self.max_push_dist = rospy.get_param('~mix_push_dist', 0.3)
-        self.use_overhead_x_thresh = rospy.get_param('~use_overhead_x_thresh',
-                                                     0.55)
-        self.use_sweep_angle_thresh = rospy.get_param('~use_sweep_angle_thresh',
-                                                     pi*0.4)
-        self.use_pull_angle_thresh = rospy.get_param('~use_sweep_angle_thresh',
-                                                     pi*0.525)
-        self.use_same_side_y_thresh = rospy.get_param('~use_same_side_y_thresh',
-                                                     0.3)
-        self.use_same_side_x_thresh = rospy.get_param('~use_same_side_x_thresh',
-                                                      0.8)
+        self.use_overhead_x_thresh = rospy.get_param('~use_overhead_x_thresh', 0.55)
+        self.use_sweep_angle_thresh = rospy.get_param('~use_sweep_angle_thresh', pi*0.4)
+        self.use_pull_angle_thresh = rospy.get_param('~use_sweep_angle_thresh', pi*0.525)
+        self.use_same_side_y_thresh = rospy.get_param('~use_same_side_y_thresh', 0.3)
+        self.use_same_side_x_thresh = rospy.get_param('~use_same_side_x_thresh', 0.8)
 
-        # TODO: Replace these parameters with learned / perceived values
-        # The offsets should be removed and learned implicitly
-        self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist',
-                                                   0.05)
-        self.gripper_start_z = rospy.get_param('~gripper_push_start_z',
-                                               -0.25)
+        self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
+        self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
-        self.sweep_offset_dist = rospy.get_param('~gripper_sweep_offset_dist',
-                                                 0.04)
-        self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z',
-                                             -0.27)
+        self.sweep_offset_dist = rospy.get_param('~gripper_sweep_offset_dist', 0.04)
+        self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
 
-        self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist',
-                                                    0.05)
-        self.overhead_start_z = rospy.get_param('~overhead_push_start_z',
-                                                 -0.275)
-        self.pull_start_z = rospy.get_param('~overhead_push_start_z',
-                                            -0.27)
+        self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
+        self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.275)
+        self.pull_start_z = rospy.get_param('~overhead_push_start_z', -0.27)
+
+        self.max_restart_limit = rospy.get_param('~max_restart_limit', 3)
+
         # Setup service proxies
         if not _OFFLINE:
             # New visual feedback proxies
@@ -347,8 +336,12 @@ class TabletopExecutive:
                 rospy.loginfo('Continuing after push was aborted')
                 continuing = True
                 restart_count += 1
-                continue
+                if restart_count <= self.max_restart_limit:
+                    continue
+                else:
+                    done_with_push = True
             else:
+                rospy.loginfo('Stopping push attempt because of too many restarts')
                 done_with_push = True
         push_time = time.time() - start_time
         # TODO: Figure out what needs to be sent in here,
