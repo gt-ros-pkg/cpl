@@ -294,7 +294,6 @@ class ObjectTracker25D
   {
     pcl::PCA<pcl::PointXYZ> pca;
     XYZPointCloud cloud_no_z;
-    ROS_INFO_STREAM("Copying point cloud");
     cloud_no_z.header = obj.cloud.header;
     cloud_no_z.width = obj.cloud.size();
     cloud_no_z.height = 1;
