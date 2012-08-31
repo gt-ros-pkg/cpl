@@ -291,10 +291,11 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_push_exploration(self):
-        code_in = raw_input('Set object in start pose and press <Enter>: ')
-        if code_in.startswith('q'):
-            return
+    def run_push_exploration(self, object_id='test_object', ask_for_input=True):
+        if ask_for_input:
+            code_in = raw_input('Set object in start pose and press <Enter>: ')
+            if code_in.startswith('q'):
+                return
 
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
@@ -593,6 +594,7 @@ class TabletopExecutive:
 
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
+            push_res = FeedbackPushResponse()
         else:
             push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
@@ -634,6 +636,7 @@ class TabletopExecutive:
 
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
+            push_res = FeedbackPushResponse()
         else:
             push_res = self.gripper_feedback_push_proxy(push_req)
         rospy.loginfo("Calling gripper feedback post push service")
@@ -681,6 +684,7 @@ class TabletopExecutive:
 
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
+            push_res = FeedbackPushResponse()
         else:
             push_res = self.gripper_feedback_sweep_proxy(push_req)
         rospy.loginfo("Calling feedback post sweep service")
