@@ -255,8 +255,6 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = None
         self.r_arm_F = None
 
-        self.spin_to_heading = False
-
         # Open callback services
         self.overhead_feedback_push_srv = rospy.Service(
             'overhead_feedback_push', FeedbackPush, self.overhead_feedback_push)
@@ -423,8 +421,6 @@ class PositionFeedbackPushNode:
         goal.controller_name = request.controller_name
         goal.proxy_name = request.proxy_name
         goal.action_primitive = request.action_primitive
-        self.spin_to_heading = request.controller_name == 'spin_to_heading'
-        self.use_contact_pt_compensation = request.controller_name == 'centroid_controller'
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -444,6 +440,11 @@ class PositionFeedbackPushNode:
             self.x0 = feedback.x.x
             self.y0 = feedback.x.y
         which_arm = self.active_arm
+        if which_arm == 'l':
+            cur_pose = self.l_arm_pose
+        else:
+            cur_pose = self.r_arm_pose
+
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
                           str(self.desired_pose.y) + ', ' +
@@ -457,28 +458,22 @@ class PositionFeedbackPushNode:
                           str(self.desired_pose.y - feedback.x.y) + ', ' +
                           str(self.desired_pose.theta - feedback.x.theta) + ')')
 
-        # TODO: Add new pushing visual feedback controllers here
-        # TODO: Setup selection of action primitives here too, currently they all use the same controllers
-        # TODO: Select controller through service call better
-        if self.spin_to_heading:
+        # TODO: Create options for non-velocity control updates, separate things more
+        # NOTE: Add new pushing visual feedback controllers here
+        if feedback.controller_name == 'spin_to_heading':
             update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
-        elif self.use_contact_pt_compensation:
-            if which_arm == 'l':
-                ee_pose = self.l_arm_pose
-            else:
-                ee_pose = self.r_arm_pose
+        elif feedback.controller_name == 'centroid_controller':
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
-                                                              ee_pose)
-        else:
+                                                              cur_pose)
+        elif feedback.controller_name == 'direct_goal_controller':
+            update_twist = self.directGoalController(feedback, self.desired_pose)
+        elif feedback.controller_name == 'spin_compensation':
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
+
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
-        if which_arm == 'l':
-            cur_pose = self.l_arm_pose
-        else:
-            cur_pose = self.r_arm_pose
 
         self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                       update_twist.twist, update_twist.header.stamp.to_sec(),
@@ -583,6 +578,30 @@ class PositionFeedbackPushNode:
                           str(goal_y_dot) + ')')
             rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
                           str(contact_pt_y_dot) + ')')
+        return u
+
+    def directGoalController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0 
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # Push centroid towards the desired goal
+        centroid = cur_state.x
+        x_error = desired_state.x - centroid.x
+        y_error = desired_state.y - centroid.y
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
+
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot
+        u.twist.linear.y = goal_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
         return u
 
     #
