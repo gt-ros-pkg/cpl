@@ -31,7 +31,7 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose2D
 from math import sin, cos, pi, sqrt, fabs
 import cv2
 import tf.transformations as tr
@@ -39,24 +39,82 @@ import numpy as np
 import sys
 import rospy
 
-_HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist high_init push_time'
+_VERSION_LINE = '# v0.1'
+_HEADER_LINE = '# init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta action_primitive controller proxy which_arm push_time'
 
 class PushTrial:
     def __init__(self):
-        self.c_x = None
-        self.c_x_prime = None
-        self.push_angle = None
-        self.push_opt = None
-        self.arm = None
-        self.push_dist = None
-        self.high_init = 0
+        self.init_centroid = Point()
+        self.init_orientation = 0.0
+        self.final_centroid = Point()
+        self.final_orientation = 0.0
+        self.goal_pose = Pose2D()
+        self.action_primitive = ''
+        self.controller = ''
+        self.proxy = ''
+        self.which_arm = ''
         self.push_time = 0.0
-        self.score = None
 
-    def __str__(self):
-        return str((self.c_x, self.push_angle, self.push_opt, self.arm,
-                    self.c_x_prime, self.push_dist, self.high_init, self.push_time))
+class PushLearningIO:
+    def __init__(self):
+        self.data_out = None
+        self.data_in = None
 
+    def write_line(self, init_centroid, init_orientation, final_centroid,
+                   final_orientation, goal_pose, action_primitive,
+                   controller, proxy, which_arm, push_time):
+        if self.data_out is None:
+            rospy.logerr('Attempting to write to file that has not been opened.')
+            return
+        rospy.logdebug('Writing output line.\n')
+        data_line = str(init_centroid.x)+' '+str(init_centroid.y)+' '+str(init_centroid.z)+' '+\
+            str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
+            str(final_centroid.z)+' '+str(final_orientation)+' '+\
+            str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            action_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+'\n'
+        self.data_out.write(data_line)
+        self.data_out.flush()
+
+    def parse_line(self, line):
+        if line.startswith('#'):
+            return None
+        l  = line.split()
+        push = PushTrial()
+        push.init_centroid.x = l[0]
+        push.init_centroid.y = l[1]
+        push.init_centroid.z = l[2]
+        push.init_orientation = l[3]
+        push.final_centroid.x = l[4]
+        push.final_centroid.y = l[5]
+        push.final_centroid.z = l[6]
+        push.final_orientation = l[7]
+        push.goal_pose.x = l[8]
+        push.goal_pose.y = l[9]
+        push.goal_pose.theta = l[10]
+        push.action_primitive = l[11]
+        push.controller = l[12]
+        push.proxy = l[13]
+        push.which_arm = l[14]
+        push.push_time = l[15]
+
+        return push
+
+    def read_in_data_file(self, file_name):
+        data_in = file(file_name, 'r')
+        x = [self.parse_line(l) for l in data_in.readlines()]
+        data_in.close()
+        return filter(None, x)
+
+    def open_out_file(self, file_name):
+        self.data_out = file(file_name, 'a')
+        self.data_out.write(_VERSION_LINE+'\n')
+        self.data_out.write(_HEADER_LINE+'\n')
+        self.data_out.flush()
+
+    def close_out_file(self):
+        self.data_out.close()
+
+# TODO: Fix this stupid class
 class PushLearningAnalysis:
 
     def __init__(self):
@@ -262,57 +320,6 @@ class PushLearningAnalysis:
         d_y = push.c_x_prime.y - push.c_x.y
         actual_dist = sqrt(d_x*d_x + d_y*d_y)
         return fabs(actual_dist - push.push_dist)
-
-class PushLearningIO:
-    def __init__(self):
-        self.data_out = None
-        self.data_in = None
-
-    def write_line(self, c_x, push_angle, push_opt, arm, c_x_prime, push_dist,
-                   high_init=False, push_time=0.0):
-        if self.data_out is None:
-            rospy.logerr('Attempting to write to file that has not been opened.')
-            return
-        rospy.loginfo('Writing output line.\n')
-        # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
-        data_line = str(c_x.x)+' '+str(c_x.y)+' '+str(c_x.z)+' '+\
-            str(push_angle)+' '+str(push_opt)+' '+str(arm)+' '+\
-            str(c_x_prime.x)+' '+str(c_x_prime.y)+' '+str(c_x_prime.z)+' '+\
-            str(push_dist)+' '+str(int(high_init))+' '+str(push_time)+'\n'
-        self.data_out.write(data_line)
-        self.data_out.flush()
-
-    def parse_line(self, line):
-        if line.startswith('#'):
-            return None
-        l  = line.split()
-        # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
-        push = PushTrial()
-        push.c_x = Point(float(l[0]), float(l[1]), float(l[2]))
-        push.push_angle = float(l[3])
-        push.push_opt = int(l[4])
-        push.arm = l[5]
-        push.c_x_prime = Point(float(l[6]),float(l[7]),float(l[8]))
-        push.push_dist = float(l[9])
-        if len(l) > 10:
-            push.high_init = int(l[10])
-        if len(l) > 11:
-            push.push_time = float(l[11])
-        return push
-
-    def read_in_data_file(self, file_name):
-        data_in = file(file_name, 'r')
-        x = [self.parse_line(l) for l in data_in.readlines()]
-        data_in.close()
-        return filter(None, x)
-
-    def open_out_file(self, file_name):
-        self.data_out = file(file_name, 'a')
-        self.data_out.write(_HEADER_LINE+'\n')
-        self.data_out.flush()
-
-    def close_out_file(self):
-        self.data_out.close()
 
 if __name__ == '__main__':
     # TODO: Read command line arguments for data file and metric to use

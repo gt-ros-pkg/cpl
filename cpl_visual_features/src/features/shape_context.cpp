@@ -1,11 +1,12 @@
 #include <cpl_visual_features/features/shape_context.h>
 #include <cpl_visual_features/extern/lap_cpp/lap.h>
 #include <math.h>
+#include <string>
 
 namespace cpl_visual_features
 {
 // TODO: Replace write_images with path
-double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images)
+double compareShapes(cv::Mat& imageA, cv::Mat& imageB, float epsilonCost, bool write_images, std::string filePath)
 {
   cv::Mat edge_imageA(imageA.size(), imageA.type());
   cv::Mat edge_imageB(imageB.size(), imageB.type());
@@ -15,8 +16,8 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images)
   cv::Canny(imageB, edge_imageB, 0.05, 0.5);
   if (write_images)
   {
-    cv::imwrite("/home/thermans/Desktop/edge_imageA_raw.bmp", edge_imageA);
-    cv::imwrite("/home/thermans/Desktop/edge_imageB_raw.bmp", edge_imageB);
+    cv::imwrite((filePath+"/edge_imageA_raw.bmp").c_str(), edge_imageA);
+    cv::imwrite((filePath+"/edge_imageB_raw.bmp").c_str(), edge_imageB);
   }
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
@@ -27,13 +28,13 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images)
   ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
 
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB,
-                                          write_images);
+                                          epsilonCost, write_images);
 
   // save the result
   if (write_images)
   {
-    cv::imwrite("/home/thermans/Desktop/edge_imageA.bmp", edge_imageA);
-    cv::imwrite("/home/thermans/Desktop/edge_imageB.bmp", edge_imageB);
+    cv::imwrite((filePath+"/edge_imageA.bmp").c_str(), edge_imageA);
+    cv::imwrite((filePath+"/edge_imageB.bmp").c_str(), edge_imageB);
   }
 
   // do bipartite graph matching to find point correspondences
@@ -41,8 +42,12 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images)
   Path min_path;
   double score = getMinimumCostPath(cost_matrix, min_path);
   displayMatch(edge_imageA, samplesA, samplesB, min_path);
+
+  int sizeA = samplesA.size();
+  int sizeB = samplesB.size();
+  
   // TODO: Return correspondences as well
-  return score;
+  return (score-(fabs(sizeA-sizeB)*epsilonCost));
 }
 
 Samples samplePoints(cv::Mat& edge_image, float percentage)
@@ -153,11 +158,12 @@ ShapeDescriptors constructDescriptors(Samples& samples,
 
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
-                          bool write_images)
+                          float epsilonCost,
+                          bool write_images,
+                          std::string filePath)
 {
   int mat_size = std::max(descriptorsA.size(), descriptorsB.size());
   cv::Mat cost_matrix(mat_size, mat_size, CV_32FC1, 0.0f);
-  float epsilonCost = 9e5;
   float d_cost, hi, hj;
   ShapeDescriptor& descriptorA = descriptorsA.front();
   ShapeDescriptor& descriptorB = descriptorsB.front();
@@ -199,7 +205,7 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
   cost_matrix.convertTo(int_cost_matrix, CV_8UC1, 255);
   if (write_images)
   {
-    cv::imwrite("/home/thermans/Desktop/cost_matrix.bmp", int_cost_matrix);
+    cv::imwrite((filePath+"/cost_matrix.bmp").c_str(), int_cost_matrix);
   }
 
   return cost_matrix;
@@ -240,7 +246,7 @@ double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
 }
 
 void displayMatch(cv::Mat& edge_imageA, Samples& samplesA, Samples& samplesB,
-                  Path& path, int max_displacement)
+                  Path& path, int max_displacement, std::string filePath)
 {
   cv::Mat disp_img;
   edge_imageA.copyTo(disp_img);
@@ -257,6 +263,7 @@ void displayMatch(cv::Mat& edge_imageA, Samples& samplesA, Samples& samplesB,
   }
   cv::imshow("match", disp_img);
   cv::imshow("edges", edge_imageA);
+  cvMoveWindow("edges",disp_img.cols+5,0);  //This function does not have a C++ equivalent. Strange...
   cv::waitKey();
 }
 };

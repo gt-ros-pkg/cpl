@@ -8,7 +8,7 @@
     <param name="use_displays" value="true" type="bool"/>
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
-    <param name="write_to_disk" value="true" type="bool"/>
+    <param name="write_to_disk" value="false" type="bool"/>
     <param name="write_input_to_disk" value="false" type="bool"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
@@ -39,5 +39,6 @@
     <param name="push_tracker_dist_thresh" value="0.05" type="double"/>
     <param name="push_tracker_angle_thresh" value="0.1" type="double"/>
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
+    <param name="use_cv_ellipse" value="false" type="bool"/>
   </node>
 </launch>

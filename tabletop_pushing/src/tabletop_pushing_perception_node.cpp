@@ -49,6 +49,9 @@
 #include <sensor_msgs/image_encodings.h>
 #include <actionlib/server/simple_action_server.h>
 
+#include <pr2_manipulation_controllers/JTTaskControllerState.h>
+#include <pr2_manipulation_controllers/JinvTeleopControllerState.h>
+
 // TF
 #include <tf/transform_listener.h>
 
@@ -67,6 +70,7 @@
 #include <pcl16/sample_consensus/model_types.h>
 #include <pcl16/segmentation/sac_segmentation.h>
 #include <pcl16/filters/extract_indices.h>
+#include <pcl16/common/pca.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -95,8 +99,6 @@
 #include <utility>
 #include <float.h>
 #include <math.h>
-#include <time.h> // for srand(time(NULL))
-#include <cstdlib> // for MAX_RAND
 #include <cmath>
 
 // Debugging IFDEFS
@@ -108,9 +110,6 @@
 #define DISPLAY_PUSH_VECTOR 1
 #define DISPLAY_WAIT 1
 #define DEBUG_PUSH_HISTORY 1
-#define randf() static_cast<float>(rand())/RAND_MAX
-// #define DEG2RAD M_PI/180.0*
-// #define RAD2DEG 180.0/M_PI*
 
 using boost::shared_ptr;
 using tabletop_pushing::LearnPush;
@@ -204,11 +203,13 @@ class ObjectTracker25D
  public:
   ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
-                   std::string base_output_path="", std::string camera_frame="") :
+                   std::string base_output_path="", std::string camera_frame="",
+                   bool use_cv_ellipse = false) :
       pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
       frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
       base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
-      paused_(false), frame_set_count_(0), camera_frame_(camera_frame)
+      paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
+      use_cv_ellipse_fit_(use_cv_ellipse)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -279,13 +280,46 @@ class ObjectTracker25D
       obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
     }
     ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
-    // TODO: Fit ellipse to object
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
+    // cv::RotatedRect obj_ellipse2 = fit2DMassEllipse(obj);
     // ROS_DEBUG_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
     //                  obj_ellipse.center.y << ", " <<
     //                  subPIAngle(DEG2RAD(obj_ellipse.angle)) << ")" << "\t(" <<
     //                  obj_ellipse.size.width << ", " << obj_ellipse.size.height
     //                  << ")");
+    return obj_ellipse;
+  }
+
+  cv::RotatedRect fit2DMassEllipse(ProtoObject& obj)
+  {
+    pcl16::PCA<pcl16::PointXYZ> pca;
+    XYZPointCloud cloud_no_z;
+    cloud_no_z.header = obj.cloud.header;
+    cloud_no_z.width = obj.cloud.size();
+    cloud_no_z.height = 1;
+    cloud_no_z.resize(obj.cloud.size());
+    for (int i = 0; i < obj.cloud.size(); ++i)
+    {
+      cloud_no_z[i] = obj.cloud[i];
+      cloud_no_z[i].z = 0.0f;
+    }
+
+    pca.setInputCloud(cloud_no_z.makeShared());
+    Eigen::Vector3f eigen_values = pca.getEigenValues();
+    Eigen::Matrix3f eigen_vectors = pca.getEigenVectors();
+    Eigen::Vector4f centroid = pca.getMean();
+    cv::RotatedRect obj_ellipse;
+    obj_ellipse.center.x = centroid[0];
+    obj_ellipse.center.y = centroid[1];
+    obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
+    // TODO: Set obj_ellipse.size
+    // NOTE: major axis is defined by height
+    obj_ellipse.size.height = eigen_values(0)*0.05;
+    obj_ellipse.size.width = eigen_values(1)*0.05;
+    // TODO: Get relative size of eigen1 to eigen2 and use that as ratio between two axes?
+    // ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
+    // ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
+    // ROS_INFO_STREAM("Eigen values from PCA are: " << eigen_values);
     return obj_ellipse;
   }
 
@@ -307,9 +341,18 @@ class ObjectTracker25D
     if (no_objects)
     {
       state.no_detection = true;
+      return state;
     }
     ROS_INFO_STREAM("Finding ellipse");
-    cv::RotatedRect obj_ellipse = findFootprintEllipse(cur_obj);
+    cv::RotatedRect obj_ellipse;
+    if (use_cv_ellipse_fit_)
+    {
+      obj_ellipse = findFootprintEllipse(cur_obj);
+    }
+    else
+    {
+      obj_ellipse = fit2DMassEllipse(cur_obj);
+    }
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
@@ -322,6 +365,8 @@ class ObjectTracker25D
     {
       ROS_INFO_STREAM("TrackerIO()");
       trackerIO(in_frame, cur_obj, obj_ellipse);
+      // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
+      // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
     }
 
     ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
@@ -371,7 +416,14 @@ class ObjectTracker25D
     }
     else
     {
-      obj_ellipse = findFootprintEllipse(cur_obj);
+      if (use_cv_ellipse_fit_)
+      {
+        obj_ellipse = findFootprintEllipse(cur_obj);
+      }
+      else
+      {
+        obj_ellipse = fit2DMassEllipse(cur_obj);
+      }
       state.x.theta = getThetaFromEllipse(obj_ellipse);
       state.x.x = cur_obj.centroid[0];
       state.x.y = cur_obj.centroid[1];
@@ -418,6 +470,8 @@ class ObjectTracker25D
       if (use_displays_ || write_to_disk_)
       {
         trackerIO(in_frame, cur_obj, obj_ellipse);
+        // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
+        // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
       }
       previous_obj_ = cur_obj;
       previous_obj_ellipse_ = obj_ellipse;
@@ -525,8 +579,10 @@ class ObjectTracker25D
         table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
         table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),2);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),2);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
     cv::Size img_size;
     img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                                std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
@@ -535,7 +591,8 @@ class ObjectTracker25D
     float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                          img_maj_idx.x-img_c_idx.x));
     cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(255,0,255), 1);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
     if (use_displays_)
     {
       cv::imshow("Ellipse Axes", centroid_frame);
@@ -567,6 +624,7 @@ class ObjectTracker25D
   bool paused_;
   int frame_set_count_;
   std::string camera_frame_;
+  bool use_cv_ellipse_fit_;
 };
 
 class TabletopPushingPerceptionNode
@@ -642,10 +700,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
     n_private_.param("major_axis_spin_pos_scale", major_axis_spin_pos_scale_, 0.75);
+    bool use_cv_ellipse;
+    n_private_.param("use_cv_ellipse", use_cv_ellipse, false);
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
-                             base_output_path_, camera_frame_));
+                             base_output_path_, camera_frame_, use_cv_ellipse));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -657,6 +717,19 @@ class TabletopPushingPerceptionNode
         "get_table_location", &TabletopPushingPerceptionNode::getTableLocation,
         this);
 
+    // Setup arm controller state callbacks
+    jtteleop_l_arm_subscriber_ = n_.subscribe("/l_cart_transpose_push/state", 1,
+                                              &TabletopPushingPerceptionNode::lArmStateCartCB,
+                                              this);
+    jtteleop_r_arm_subscriber_ = n_.subscribe("/r_cart_transpose_push/state", 1,
+                                              &TabletopPushingPerceptionNode::rArmStateCartCB,
+                                              this);
+    jinv_l_arm_subscriber_  = n_.subscribe("/l_cart_jinv_push/state", 1,
+                                           &TabletopPushingPerceptionNode::lArmStateVelCB,
+                                           this);
+    jinv_r_arm_subscriber_ = n_.subscribe("/r_cart_jinv_push/state", 1,
+                                          &TabletopPushingPerceptionNode::rArmStateVelCB,
+                                          this);
     // Setup push tracking action server
     as_.registerGoalCallback(
         boost::bind(&TabletopPushingPerceptionNode::pushTrackerGoalCB, this));
@@ -755,6 +828,9 @@ class TabletopPushingPerceptionNode
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
           cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+      tracker_state.proxy_name = proxy_name_;
+      tracker_state.controller_name = controller_name_;
+      tracker_state.action_primitive = action_primitive_;
 
       PointStamped start_point;
       PointStamped end_point;
@@ -768,8 +844,8 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+      // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+      //                    tracker_goal_pose_.theta);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -784,6 +860,8 @@ class TabletopPushingPerceptionNode
         float y_dist = fabs(y_error);
         float theta_dist = fabs(theta_error);
 
+        // TODO: Better abstract the goal and validity (abort) checks here
+        // TODO: Based on controller_name / proxy_name call different goal functions
         if (spin_to_heading_ && theta_dist < tracker_angle_thresh_)
         {
           ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
@@ -793,6 +871,7 @@ class TabletopPushingPerceptionNode
           ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
                           << theta_dist << ")");
           PushTrackerResult res;
+          res.aborted = false;
           as_.setSucceeded(res);
           obj_tracker_->pause();
         }
@@ -806,7 +885,17 @@ class TabletopPushingPerceptionNode
           ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
                           << theta_dist << ")");
           PushTrackerResult res;
+          res.aborted = false;
           as_.setSucceeded(res);
+          obj_tracker_->pause();
+        }
+        // Check hand between object and goal
+        else if (!spin_to_heading_ && objectNotBetweenGoalAndGripper(tracker_state.x))
+        {
+          ROS_WARN_STREAM("Object is not between gripper and goal. Aborting");
+          PushTrackerResult res;
+          res.aborted = true;
+          as_.setAborted(res);
           obj_tracker_->pause();
         }
         else
@@ -834,8 +923,8 @@ class TabletopPushingPerceptionNode
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+      // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+      //                    tracker_goal_pose_.theta);
     }
 
     // Display junk
@@ -887,10 +976,8 @@ class TabletopPushingPerceptionNode
    */
   bool learnPushCallback(LearnPush::Request& req, LearnPush::Response& res)
   {
-    ROS_INFO_STREAM("learnPushCallback()");
     if ( have_depth_data_ )
     {
-      ROS_INFO_STREAM("learnPushCallback(): have_depth_data_");
       if (req.initialize)
       {
         ROS_INFO_STREAM("Initializing");
@@ -903,11 +990,11 @@ class TabletopPushingPerceptionNode
       else if (req.analyze_previous)
       {
         ROS_INFO_STREAM("Analyzing previous");
-        res = getAnalysisVector(req.push_angle);
+        res = getAnalysisVector(req.goal_pose);
         res.no_push = true;
         recording_input_ = false;
       }
-      else if (req.spin_push)
+      else if (req.controller_name == "spin_to_heading")
       {
         ROS_INFO_STREAM("Getting spin push start pose");
         res = getSpinPushStartPose(req);
@@ -934,8 +1021,6 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getPushStartPose(LearnPush::Request& req)
   {
-    bool rand_angle = req.rand_angle;
-    double desired_push_angle = req.push_angle;
     PushTrackerState cur_state;
     if (just_spun_)
     {
@@ -964,6 +1049,7 @@ class TabletopPushingPerceptionNode
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
+      res.theta = 0.0;
       res.no_objects = true;
       return res;
     }
@@ -971,50 +1057,31 @@ class TabletopPushingPerceptionNode
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
-
-    if (rand_angle)
-    {
-      // desired_push_angle = randf()*2.0*M_PI-M_PI;
-      desired_push_angle = randf()*M_PI-0.5*M_PI;
-    }
-
-    // Get straight line from current location to goal pose as start
-    if (req.use_goal_pose)
-    {
-      desired_push_angle = atan2(req.goal_pose.y - res.centroid.y,
-                                 req.goal_pose.x - res.centroid.x);
-    }
+    res.theta = cur_state.x.theta;
 
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
-    p.push_angle = desired_push_angle;
+    // Get straight line from current location to goal pose as start
+    p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
 
     // Get vector through centroid and determine start point and distance
-    Eigen::Vector3f push_unit_vec(std::cos(desired_push_angle),
-                                  std::sin(desired_push_angle), 0.0f);
-    std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud, push_unit_vec,
-                                                                                           cur_obj.centroid);
+    Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
+    std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
+        cur_obj.cloud, push_unit_vec, cur_obj.centroid);
     p.start_point.x = end_points[0].x;
     p.start_point.y = end_points[0].y;
     p.start_point.z = end_points[0].z;
 
     // Get push distance
-    if (req.use_goal_pose)
-    {
-      p.push_dist = hypot(res.centroid.x - req.goal_pose.x,
-                          res.centroid.y - req.goal_pose.y);
-    }
-    else
-    {
-      p.push_dist = std::sqrt(pcl_segmenter_->sqrDistXY(end_points[0], end_points[1]));
-    }
+    p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
     // Visualize push vector
     displayPushVector(cur_color_frame_, p);
+    displayPushVector(cur_color_frame_, p, "initial_vector", true);
     PointStamped centroid;
     centroid.header.frame_id = cur_obj.cloud.header.frame_id;
     centroid.point = res.centroid;
-    displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
+    // displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
 
     learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
@@ -1203,34 +1270,15 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  LearnPush::Response getAnalysisVector(double desired_push_angle)
+  LearnPush::Response getAnalysisVector(Pose2D goal_pose)
   {
-    // Segment objects
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cur_point_cloud_);
-    cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, cur_color_frame_.size(), workspace_frame_);
-    pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
-    obj_tracker_->stopTracking();
+    ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
 
-    // Assume we care about the biggest currently
-    int chosen_idx = 0;
-    unsigned int max_size = 0;
-    for (unsigned int i = 0; i < objs.size(); ++i)
-    {
-      if (objs[i].cloud.size() > max_size)
-      {
-        max_size = objs[i].cloud.size();
-        chosen_idx = i;
-      }
-    }
     LearnPush::Response res;
-    if (objs.size() == 0)
+    if (tracker_state.no_detection)
     {
       ROS_WARN_STREAM("No objects found");
-      res.moved.x = 0.0;
-      res.moved.y = 0.0;
-      res.moved.z = 0.0;
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
@@ -1238,14 +1286,9 @@ class TabletopPushingPerceptionNode
       return res;
     }
     res.no_objects = false;
-    // TODO: Make these better named and match the tracker
-    Eigen::Vector4f move_vec = objs[chosen_idx].centroid - start_centroid_;
-    res.moved.x = move_vec[0];
-    res.moved.y = move_vec[1];
-    res.moved.z = move_vec[2];
-    res.centroid.x = objs[chosen_idx].centroid[0];
-    res.centroid.y = objs[chosen_idx].centroid[1];
-    res.centroid.z = objs[chosen_idx].centroid[2];
+    res.centroid.x = cur_obj.centroid[0];
+    res.centroid.y = cur_obj.centroid[1];
+    res.centroid.z = cur_obj.centroid[2];
     res.theta = tracker_state.x.theta;
 
     return res;
@@ -1258,6 +1301,23 @@ class TabletopPushingPerceptionNode
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
     return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+  }
+
+  void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
+  {
+    l_arm_pose_ = l_arm_state.x;
+  }
+  void rArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState r_arm_state)
+  {
+    r_arm_pose_ = r_arm_state.x;
+  }
+  void lArmStateVelCB(const pr2_manipulation_controllers::JinvTeleopControllerState l_arm_state)
+  {
+    l_arm_pose_ = l_arm_state.x;
+  }
+  void rArmStateVelCB(const pr2_manipulation_controllers::JinvTeleopControllerState r_arm_state)
+  {
+    r_arm_pose_ = r_arm_state.x;
   }
 
   void pushTrackerGoalCB()
@@ -1276,9 +1336,11 @@ class TabletopPushingPerceptionNode
     // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
-    spin_to_heading_ = tracker_goal->spin_to_heading;
+    controller_name_ = tracker_goal->controller_name;
+    proxy_name_ = tracker_goal->proxy_name;
+    action_primitive_ = tracker_goal->action_primitive;
+    spin_to_heading_ = tracker_goal->controller_name == "spin_to_heading";
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
-    ROS_INFO_STREAM("Push with arm " << pushing_arm_);
   }
 
   void pushTrackerPreemptCB()
@@ -1287,6 +1349,49 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Preempted push tracker");
     // set the action state to preempted
     as_.setPreempted();
+  }
+
+  bool objectNotBetweenGoalAndGripper(Pose2D& obj_state)
+  {
+    if (pushing_arm_ == "l")
+    {
+      return pointIsBetweenOthers(l_arm_pose_.pose.position, obj_state, tracker_goal_pose_);
+    }
+    else
+    {
+      return pointIsBetweenOthers(r_arm_pose_.pose.position, obj_state, tracker_goal_pose_);
+    }
+  }
+
+  bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2)
+  {
+    // Project the vector pt->x2 onto the vector x1->x2
+    const float a_x = x2.x - pt.x;
+    const float a_y = x2.y - pt.y;
+    const float b_x = x2.x - x1.x;
+    const float b_y = x2.y - x1.y;
+    const float a_dot_b = a_x*b_x + a_y*b_y;
+    const float b_dot_b = b_x*b_x + b_y*b_y;
+
+    // If the (squared) distance of the projection is less than the vector from x1->x2 then it is between them
+    const float a_onto_b = a_dot_b/b_dot_b;
+    const float d_1_x = a_onto_b*b_x;
+    const float d_1_y = a_onto_b*b_y;
+    const float d_1 = d_1_x*d_1_x + d_1_y*d_1_y;
+    const float d_2 = b_x*b_x + b_y*b_y;
+
+    // if (frame_callback_count_ % 15)
+    // {
+    //   ROS_INFO_STREAM("ee_pose (" << pt.x << ", " << pt.y << ")");
+    //   ROS_INFO_STREAM("goal_pose (" << x2.x << ", " << x2.y << ")");
+    //   ROS_INFO_STREAM("obj_pose (" << x1.x << ", " << x1.y << ")");
+    //   ROS_INFO_STREAM("a: (" << a_x << ", " << a_y << ")");
+    //   ROS_INFO_STREAM("b: (" << b_x << ", " << b_y << ")");
+    //   ROS_INFO_STREAM("a_onto_b: (" << d_1_x << ", " << d_1_y << ")");
+    //   ROS_INFO_STREAM("Distance d_1 is: " << d_1);
+    //   ROS_INFO_STREAM("Distance d_2 is: " << d_2 << "\n");
+    // }
+    return d_1 < d_2;
   }
 
   /**
@@ -1351,7 +1456,8 @@ class TabletopPushingPerceptionNode
     return p;
   }
 
-  void displayPushVector(cv::Mat& img, PushVector& push)
+  void displayPushVector(cv::Mat& img, PushVector& push, std::string display_name="goal_vector",
+                         bool force_no_write=false)
   {
     PointStamped start_point;
     start_point.point = push.start_point;
@@ -1361,10 +1467,11 @@ class TabletopPushingPerceptionNode
     end_point.point.y = start_point.point.y+std::sin(push.push_angle)*push.push_dist;
     end_point.point.z = start_point.point.z;
     end_point.header.frame_id = workspace_frame_;
-    displayPushVector(img, start_point, end_point);
+    displayPushVector(img, start_point, end_point, display_name, force_no_write);
   }
 
-  void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point)
+  void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
+                         std::string display_name="goal_vector", bool force_no_write=false)
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
@@ -1373,18 +1480,20 @@ class TabletopPushingPerceptionNode
         start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(
         end_point);
+    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
 
     if (use_displays_)
     {
-      cv::imshow("goal_vector", disp_img);
+      cv::imshow(display_name, disp_img);
     }
-    if (write_to_disk_)
+    if (write_to_disk_ && !force_no_write)
     {
       // Write to disk to create video output
       std::stringstream push_out_name;
-      push_out_name << base_output_path_ << "goal_vector_" << frame_set_count_ << "_"
+      push_out_name << base_output_path_ << display_name << "_" << frame_set_count_ << "_"
                     << goal_out_count_++ << ".png";
       cv::imwrite(push_out_name.str(), disp_img);
     }
@@ -1461,6 +1570,10 @@ class TabletopPushingPerceptionNode
   shared_ptr<tf::TransformListener> tf_;
   ros::ServiceServer push_pose_server_;
   ros::ServiceServer table_location_server_;
+  ros::Subscriber jinv_l_arm_subscriber_;
+  ros::Subscriber jinv_r_arm_subscriber_;
+  ros::Subscriber jtteleop_l_arm_subscriber_;
+  ros::Subscriber jtteleop_r_arm_subscriber_;
   actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
@@ -1496,19 +1609,22 @@ class TabletopPushingPerceptionNode
   shared_ptr<ObjectTracker25D> obj_tracker_;
   Pose2D tracker_goal_pose_;
   std::string pushing_arm_;
+  std::string proxy_name_;
+  std::string controller_name_;
+  std::string action_primitive_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
   bool just_spun_;
   double major_axis_spin_pos_scale_;
   bool spin_to_heading_;
   int frame_set_count_;
+  PoseStamped l_arm_pose_;
+  PoseStamped r_arm_pose_;
 };
 
 int main(int argc, char ** argv)
 {
   int seed = time(NULL);
-  srand(seed);
-  std::cout << "Rand seed is: " << seed << std::endl;
   ros::init(argc, argv, "tabletop_pushing_perception_node");
   ros::NodeHandle n;
   TabletopPushingPerceptionNode perception_node(n);

@@ -20,7 +20,7 @@
   <depend package="cpl_superpixels"/>
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
-  <!-- <depend package="hrl_pr2_lib"/> -->
+  <depend package="hrl_pr2_lib"/>
   <depend package="pr2_manipulation_controllers"/>
   <depend package="actionlib"/>
   <depend package="actionlib_msgs"/>
@@ -28,6 +28,10 @@
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
   <depend package="pr2_camera_self_filter"/>
+  <export>
+    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lpoint_cloud_segmentation" />
+  </export>
+
   <rosdep name="opencv2"/>
 </package>
 

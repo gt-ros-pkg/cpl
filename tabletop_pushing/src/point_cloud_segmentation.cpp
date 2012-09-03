@@ -276,7 +276,6 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   return objs;
 }
 
-
 /**
  * Function to segment independent spatial regions from a supporting plane
  *
