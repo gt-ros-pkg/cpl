@@ -283,7 +283,8 @@ class TabletopExecutive:
                     res = self.explore_push(action_primitive, controller, proxy, object_id)
                     if res == 'quit':
                         rospy.loginfo('Quiting on user request')
-                        return
+                        return False
+        return True
 
     def explore_push(self, action_primitive, controller_name, proxy_name, object_id):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
@@ -710,5 +711,7 @@ if __name__ == '__main__':
             code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
             if code_in.lower().startswith('quit'):
                 break
-            node.run_push_exploration(object_id=code_in)
+            clean_exploration = node.run_push_exploration(object_id=code_in)
+            if not clean_exploration:
+                break
         node.finish_learning()
