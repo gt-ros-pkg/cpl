@@ -204,12 +204,12 @@ class ObjectTracker25D
   ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
-                   bool use_cv_ellipse = false) :
+                   bool use_cv_ellipse = false, bool use_mps_segmentation=false) :
       pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
       frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
       base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
       paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
-      use_cv_ellipse_fit_(use_cv_ellipse)
+      use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation)
   {
     upscale_ = std::pow(2,num_downsamples_);
   }
@@ -217,7 +217,8 @@ class ObjectTracker25D
   ProtoObject findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
                                bool& no_objects, bool init=false)
   {
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud);
+    // TODO: Pass in arm mask
+    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud, use_mps_segmentation_);
     if (objs.size() == 0)
     {
       ROS_WARN_STREAM("No objects found");
@@ -625,6 +626,7 @@ class ObjectTracker25D
   int frame_set_count_;
   std::string camera_frame_;
   bool use_cv_ellipse_fit_;
+  bool use_mps_segmentation_;
 };
 
 class TabletopPushingPerceptionNode
@@ -702,10 +704,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("major_axis_spin_pos_scale", major_axis_spin_pos_scale_, 0.75);
     bool use_cv_ellipse;
     n_private_.param("use_cv_ellipse", use_cv_ellipse, false);
+    n_private_.param("use_mps_segmentation", use_mps_segmentation_, false);
+
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
-                             base_output_path_, camera_frame_, use_cv_ellipse));
+                             base_output_path_, camera_frame_, use_cv_ellipse, use_mps_segmentation_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -826,8 +830,17 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
-      PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+      PushTrackerState tracker_state;
+      if (use_mps_segmentation_)
+      {
+        tracker_state = obj_tracker_->updateTracks(
+            cur_color_frame_, cur_self_mask_, cur_point_cloud_);
+      }
+      else
+      {
+        tracker_state = obj_tracker_->updateTracks(
+            cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+      }
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.action_primitive = action_primitive_;
@@ -1325,7 +1338,14 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+    if (use_mps_segmentation_)
+    {
+      return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_point_cloud_);
+    }
+    else
+    {
+      return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+    }
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -1630,6 +1650,7 @@ class TabletopPushingPerceptionNode
   int frame_set_count_;
   PoseStamped l_arm_pose_;
   PoseStamped r_arm_pose_;
+  bool use_mps_segmentation_;
 };
 
 int main(int argc, char ** argv)

@@ -211,7 +211,7 @@ ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cl
                                                          XYZPointCloud& objs_cloud, bool use_mps)
 {
   XYZPointCloud table_cloud;
-  return findTabletopObjects(input_cloud, objs_cloud, table_cloud);
+  return findTabletopObjects(input_cloud, objs_cloud, table_cloud, use_mps);
 }
 
 ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud,

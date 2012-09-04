@@ -33,6 +33,7 @@
     <param name="table_ransac_thresh" value="0.015" type="double"/>
     <param name="table_ransac_angle_thresh" value="5.0" type="double"/>
     <param name="pcl_difference_thresh" value="0.0001" type="double"/>
+    <param name="use_mps_segmentation" value="false" type="bool"/>
 
     <param name="img_output_path" value="/u/thermans/data/new/" type="string"/>
 
