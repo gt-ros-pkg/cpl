@@ -705,6 +705,7 @@ class TabletopPushingPerceptionNode
     bool use_cv_ellipse;
     n_private_.param("use_cv_ellipse", use_cv_ellipse, false);
     n_private_.param("use_mps_segmentation", use_mps_segmentation_, false);
+    n_private_.param("max_object_gripper_dist", max_object_gripper_dist_, 0.10);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -864,7 +865,7 @@ class TabletopPushingPerceptionNode
         float theta_dist = fabs(theta_error);
 
         // TODO: Better abstract the goal and validity (abort) checks here
-        // TODO: Based on controller_name / proxy_name call different goal functions
+        // TODO: Based on controller_name / proxy_name call different goal and abort functions
         if (spin_to_heading_ && theta_dist < tracker_angle_thresh_)
         {
           ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
@@ -893,6 +894,17 @@ class TabletopPushingPerceptionNode
           obj_tracker_->pause();
         }
         // Check hand between object and goal
+        else if (controller_name_ == "direct_goal_controller")
+        {
+          if (objectTooFarFromGripper(tracker_state.x))
+          {
+            ROS_WARN_STREAM("Object is too far from gripper. Aborting");
+            PushTrackerResult res;
+            res.aborted = true;
+            as_.setAborted(res);
+            obj_tracker_->pause();
+          }
+        }
         else if (!spin_to_heading_ && objectNotBetweenGoalAndGripper(tracker_state.x))
         {
           ROS_WARN_STREAM("Object is not between gripper and goal. Aborting");
@@ -1003,7 +1015,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Getting spin push start pose");
         res = getSpinPushStartPose(req);
         recording_input_ = !res.no_objects;
-        res.no_push = !res.no_objects;
+        res.no_push = res.no_objects;
       }
       // NOTE: Assume pushing as default
       else
@@ -1011,7 +1023,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Determining push start pose");
         res = getPushStartPose(req);
         recording_input_ = !res.no_objects;
-        res.no_push = !res.no_objects;
+        res.no_push = res.no_objects;
       }
     }
     else
@@ -1390,6 +1402,25 @@ class TabletopPushingPerceptionNode
     }
   }
 
+  bool objectTooFarFromGripper(Pose2D& obj_state)
+  {
+    geometry_msgs::Point gripper_pt;
+    if (pushing_arm_ == "l")
+    {
+      gripper_pt = l_arm_pose_.pose.position;
+    }
+    else
+    {
+      gripper_pt = r_arm_pose_.pose.position;
+    }
+    float gripper_dist = hypot(gripper_pt.x-obj_state.x,gripper_pt.y-obj_state.y);
+    if (frame_callback_count_ % 15)
+    {
+      ROS_INFO_STREAM("Gripper dist from centroid is: " << gripper_dist);
+    }
+    return (gripper_dist  > max_object_gripper_dist_);
+  }
+
   bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2)
   {
     // Project the vector pt->x2 onto the vector x1->x2
@@ -1634,6 +1665,7 @@ class TabletopPushingPerceptionNode
   PoseStamped l_arm_pose_;
   PoseStamped r_arm_pose_;
   bool use_mps_segmentation_;
+  double max_object_gripper_dist_;
 };
 
 int main(int argc, char ** argv)

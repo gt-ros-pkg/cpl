@@ -147,6 +147,10 @@ class PositionFeedbackPushNode:
                                                     0.30)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
+        self.gripper_pull_reverse_dist = rospy.get_param('~gripper_pull_reverse_dist',
+                                                         0.1)
+        self.gripper_push_reverse_dist = rospy.get_param('~gripper_push_reverse_dist',
+                                                         0.03)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
@@ -157,6 +161,8 @@ class PositionFeedbackPushNode:
             '~not_moving_epc_count_thresh', 60)
         self.post_move_count_thresh = rospy.get_param('~post_move_count_thresh',
                                                       10)
+        self.post_pull_count_thresh = rospy.get_param('~post_move_count_thresh',
+                                                      20)
         self.pre_push_count_thresh = rospy.get_param('~pre_push_count_thresh',
                                                       50)
         self.still_moving_velocity = rospy.get_param('~moving_vel_thresh', 0.01)
@@ -164,8 +170,10 @@ class PositionFeedbackPushNode:
                                                              0.005)
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
+        self.max_close_effort = rospy.get_param('~max_close_effort', 50)
 
         self.k_g = rospy.get_param('~push_control_goal_gain', 0.1)
+        self.k_g_direct = rospy.get_param('~push_control_direct_goal_gain', 0.1);
         self.k_s_d = rospy.get_param('~push_control_spin_gain', 0.05)
         self.k_s_p = rospy.get_param('~push_control_position_spin_gain', 0.05)
 
@@ -201,7 +209,7 @@ class PositionFeedbackPushNode:
         # Setup arms
         self.tf_listener = tf.TransformListener()
         rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, 
+        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False,
                              use_kinematics=False)#, use_projector=False)
 
         self.l_arm_cart_pub = rospy.Publisher(
@@ -310,7 +318,7 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Moved %s_arm to setup pose' % which_arm)
 
         rospy.loginfo('Closing %s_gripper' % which_arm)
-        res = robot_gripper.close(block=True)
+        res = robot_gripper.close(block=True, effort=self.max_close_effort)
         rospy.loginfo('Closed %s_gripper' % which_arm)
 
 
@@ -585,7 +593,7 @@ class PositionFeedbackPushNode:
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
-        u.twist.linear.z = 0.0 
+        u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
@@ -594,8 +602,8 @@ class PositionFeedbackPushNode:
         centroid = cur_state.x
         x_error = desired_state.x - centroid.x
         y_error = desired_state.y - centroid.y
-        goal_x_dot = self.k_g*x_error
-        goal_y_dot = self.k_g*y_error
+        goal_x_dot = self.k_g_direct*x_error
+        goal_y_dot = self.k_g_direct*y_error
 
         # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot
@@ -633,7 +641,7 @@ class PositionFeedbackPushNode:
         rospy.logdebug('Done moving up')
         rospy.logdebug('Pushing reverse')
         pose_err, err_dist = self.move_relative_gripper(
-            np.matrix([0.0, 0.0, -0.03]).T, which_arm,
+            np.matrix([0.0, 0.0, -self.gripper_push_reverse_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done pushing reverse')
 
@@ -685,19 +693,24 @@ class PositionFeedbackPushNode:
 
         if is_pull:
             rospy.loginfo('Opening gripper')
-            res = robot_gripper.open(block=True)
+            res = robot_gripper.open(position=0.9,block=True)
             rospy.loginfo('Done opening gripper')
-
-        rospy.logdebug('Moving gripper up')
-        pose_err, err_dist = self.move_relative_gripper(
-            np.matrix([0.0, 0.0, -self.gripper_raise_dist]).T, which_arm,
-            move_cart_count_thresh=self.post_move_count_thresh)
-        rospy.logdebug('Done moving up')
-        rospy.logdebug('Pushing reverse')
-        pose_err, err_dist = self.move_relative_gripper(
-            np.matrix([-0.03, 0.0, 0.0]).T, which_arm,
-            move_cart_count_thresh=self.post_move_count_thresh)
-        rospy.loginfo('Done pushing reverse')
+            rospy.logdebug('Pulling reverse')
+            pose_err, err_dist = self.move_relative_gripper(
+                np.matrix([-self.gripper_pull_reverse_dist, 0.0, 0.0]).T, which_arm,
+                move_cart_count_thresh=self.post_pull_count_thresh)
+            rospy.loginfo('Done pulling reverse')
+        else:
+            rospy.logdebug('Moving gripper up')
+            pose_err, err_dist = self.move_relative_gripper(
+                np.matrix([0.0, 0.0, -self.gripper_raise_dist]).T, which_arm,
+                move_cart_count_thresh=self.post_move_count_thresh)
+            rospy.logdebug('Done moving up')
+            rospy.logdebug('Pushing reverse')
+            pose_err, err_dist = self.move_relative_gripper(
+                np.matrix([-self.gripper_push_reverse_dist, 0.0, 0.0]).T, which_arm,
+                move_cart_count_thresh=self.post_move_count_thresh)
+            rospy.loginfo('Done pushing reverse')
 
         rospy.logdebug('Moving up to end point')
         wrist_yaw = request.wrist_yaw
@@ -724,7 +737,7 @@ class PositionFeedbackPushNode:
 
         if request.open_gripper or is_pull:
             rospy.loginfo('Closing gripper')
-            res = robot_gripper.close(block=True)
+            res = robot_gripper.close(block=True, effort=self.max_close_effort)
             rospy.loginfo('Done closing gripper')
 
         self.reset_arm_pose(True, which_arm, request.high_arm_init)
@@ -755,7 +768,7 @@ class PositionFeedbackPushNode:
         rospy.logdebug('Done moving up')
         rospy.logdebug('Sweeping reverse')
         pose_err, err_dist = self.move_relative_gripper(
-            np.matrix([0.0, 0.0, -0.03]).T, which_arm,
+            np.matrix([0.0, 0.0, -self.gripper_push_reverse_dist]).T, which_arm,
             move_cart_count_thresh=self.post_move_count_thresh)
         rospy.loginfo('Done sweeping reverse')
 
@@ -784,7 +797,7 @@ class PositionFeedbackPushNode:
 
         if request.open_gripper:
             rospy.loginfo('Closing gripper')
-            res = robot_gripper.close(block=True)
+            res = robot_gripper.close(block=True, effort=self.max_close_effort)
             rospy.loginfo('Done closing gripper')
 
         self.reset_arm_pose(True, which_arm, request.high_arm_init)
@@ -796,7 +809,7 @@ class PositionFeedbackPushNode:
     def gripper_pre_push(self, request):
         response = FeedbackPushResponse()
         start_point = request.start_point.point
-        wrist_yaw = request.wrist_ya
+        wrist_yaw = request.wrist_yaw
         is_pull = request.action_primitive == GRIPPER_PULL
 
         if request.left_arm:
@@ -827,7 +840,7 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper or is_pull:
-            res = robot_gripper.open(block=True, position=0.05)
+            res = robot_gripper.open(block=True, position=0.9)
 
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
@@ -843,7 +856,7 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Done moving to start point')
         if is_pull:
             rospy.loginfo('Closing grasp for pull')
-            res = robot_gripper.close(block=True)
+            res = robot_gripper.close(block=True, effort=self.max_close_effort)
             rospy.loginfo('Done closing gripper')
 
         return response
@@ -1023,7 +1036,7 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper:
-            res = robot_gripper.close(block=True)
+            res = robot_gripper.close(block=True, position=0.9, effort=self.max_close_effort)
 
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z

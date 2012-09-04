@@ -77,7 +77,7 @@ class TabletopExecutive:
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.275)
 
-        self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
+        self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', -0.02)
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 3)
@@ -236,11 +236,7 @@ class TabletopExecutive:
                     return
             elif _WAIT_BEFORE_STRAIGHT_PUSH or not _SPIN_FIRST:
                 if not _SPIN_FIRST:
-                    # goal_pose = self.generate_random_table_pose()
-                    goal_pose = Pose2D()
-                    goal_pose.x = 0.7
-                    goal_pose.y = 0.0
-                    goal_pose.theta = 0.0
+                    goal_pose = self.generate_random_table_pose()
                     if continuing:
                         code_in = ''
                         continuing = False
@@ -291,13 +287,7 @@ class TabletopExecutive:
                       + controller_name + ', ' + proxy_name + ')')
         continuing = False
         done_with_push = False
-        goal_pose = Pose2D()
-        if _USE_FIXED_GOAL:
-            goal_pose.x = 0.7
-            goal_pose.y = 0.0
-            goal_pose.theta = 0.0
-        else:
-            goal_pose = self.generate_random_table_pose()
+        goal_pose = self.generate_random_table_pose()
 
         restart_count = 0
         start_time = time.time()
@@ -352,29 +342,22 @@ class TabletopExecutive:
                 return push_vec_res
 
     def choose_arm(self, push_vec, controller_name):
-        if controller_name == 'spin_to_heading':
+        if controller_name == SPIN_TO_HEADING or controller_name == DIRECT_GOAL_CONTROLLER:
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
-                rospy.loginfo('Setting arm to right because of spinning')
             else:
                 which_arm = 'l'
-                rospy.loginfo('Setting arm to left because of spinning')
             return which_arm
-
         if (fabs(push_vec.start_point.y) > self.use_same_side_y_thresh or
             push_vec.start_point.x > self.use_same_side_x_thresh):
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
-                rospy.loginfo('Setting arm to right because of limits')
             else:
                 which_arm = 'l'
-                rospy.loginfo('Setting arm to left because of limits')
         elif push_vec.push_angle > 0:
             which_arm = 'r'
-            rospy.loginfo('Setting arm to right because of angle')
         else:
             which_arm = 'l'
-            rospy.loginfo('Setting arm to left because of angle')
 
         return which_arm
 
@@ -681,6 +664,12 @@ class TabletopExecutive:
 
     def generate_random_table_pose(self):
         # TODO: make these parameters
+        if _USE_FIXED_GOAL:
+            goal_pose = Pose2D()
+            goal_pose.x = 0.5
+            goal_pose.y = 0.2
+            goal_pose.theta = 0.0
+            return goal_pose
         min_x = 0.4
         max_x = 0.85
         max_y = 0.3

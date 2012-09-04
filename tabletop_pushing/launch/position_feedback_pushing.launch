@@ -19,7 +19,14 @@
       <param name="push_control_in_heading_gain" type="double" value="0.001"/>
       <param name="max_heading_push_u_x" type="double" value="0.03"/>
 
+      <param name="push_control_direct_goal_gain" type="double" value="0.2"/>
+
       <param name="overhead_feedback_down_vel" type="double" value="0.0"/>
+      <param name="max_close_effort" type="double" value="50"/>
+
+      <param name="gripper_pull_reverse_dist" type="double" value="0.1"/>
+      <param name="gripper_push_reverse_dist" type="double" value="0.03"/>
+      <param name="gripper_raise_dist" type="double" value="0.05"/>
 
     </node>
 </launch>
