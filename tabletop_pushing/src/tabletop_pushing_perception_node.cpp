@@ -994,24 +994,26 @@ class TabletopPushingPerceptionNode
         res.no_push = true;
         recording_input_ = false;
       }
+      // NOTE: Swith based on proxy or controller
       else if (req.controller_name == "spin_to_heading")
       {
         ROS_INFO_STREAM("Getting spin push start pose");
         res = getSpinPushStartPose(req);
         recording_input_ = !res.no_objects;
-        res.no_push = false;
+        res.no_push = !res.no_objects;
       }
+      // NOTE: Assume pushing as default
       else
       {
-        ROS_INFO_STREAM("Getting push start pose");
+        ROS_INFO_STREAM("Determining push start pose");
         res = getPushStartPose(req);
         recording_input_ = !res.no_objects;
-        res.no_push = false;
+        res.no_push = !res.no_objects;
       }
     }
     else
     {
-      ROS_ERROR_STREAM("Calling getPushStartPose prior to receiving sensor data.");
+      ROS_ERROR_STREAM("Calling getStartPose prior to receiving sensor data.");
       recording_input_ = false;
       res.no_push = true;
       return false;
@@ -1029,12 +1031,9 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      ROS_INFO_STREAM("Starting tracker");
       cur_state = startTracking();
     }
-    ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " <<
-                    cur_state.x.theta << ")");
-
+    bool pull_start = (req.action_primitive == "gripper_pull");
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
@@ -1063,26 +1062,51 @@ class TabletopPushingPerceptionNode
     PushVector p;
     p.header.frame_id = workspace_frame_;
     // Get straight line from current location to goal pose as start
-    p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
-
+    if (pull_start)
+    {
+      // NOTE: Want the opposite direction for pulling as pushing
+      p.push_angle = atan2(res.centroid.y - req.goal_pose.y, res.centroid.x - req.goal_pose.x);
+    }
+    else
+    {
+      p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
+    }
     // Get vector through centroid and determine start point and distance
     Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
     std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
         cur_obj.cloud, push_unit_vec, cur_obj.centroid);
-    p.start_point.x = end_points[0].x;
-    p.start_point.y = end_points[0].y;
-    p.start_point.z = end_points[0].z;
+    if (pull_start)
+    {
+      p.start_point.x = end_points[1].x;
+      p.start_point.y = end_points[1].y;
+      p.start_point.z = end_points[1].z;
+    }
+    else
+    {
+      p.start_point.x = end_points[0].x;
+      p.start_point.y = end_points[0].y;
+      p.start_point.z = end_points[0].z;
+    }
 
     // Get push distance
     p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
-    // Visualize push vector
-    displayPushVector(cur_color_frame_, p);
-    displayPushVector(cur_color_frame_, p, "initial_vector", true);
-    PointStamped centroid;
-    centroid.header.frame_id = cur_obj.cloud.header.frame_id;
-    centroid.point = res.centroid;
-    // displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
 
+    // Visualize push vector
+    PointStamped start_point;
+    start_point.header.frame_id = workspace_frame_;
+    start_point.point = p.start_point;
+    PointStamped end_point;
+    end_point.header.frame_id = workspace_frame_;
+    end_point.point.x = req.goal_pose.x;
+    end_point.point.y = req.goal_pose.y;
+    end_point.point.z = start_point.point.z;
+    displayPushVector(cur_color_frame_, start_point, end_point);
+    displayPushVector(cur_color_frame_, start_point, end_point, "initial_vector", true);
+
+    // PointStamped centroid;
+    // centroid.header.frame_id = cur_obj.cloud.header.frame_id;
+    // centroid.point = res.centroid;
+    // displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
     learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
                     << p.start_point.y << ", " << p.start_point.z << ")");
@@ -1296,6 +1320,7 @@ class TabletopPushingPerceptionNode
 
   PushTrackerState startTracking()
   {
+    ROS_INFO_STREAM("Starting tracker");
     frame_set_count_++;
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
@@ -1322,7 +1347,6 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
-    ROS_DEBUG_STREAM("pushTrackerGoalCB(): starting tracking");
     if (obj_tracker_->isInitialized())
     {
       obj_tracker_->unpause();
@@ -1454,20 +1478,6 @@ class TabletopPushingPerceptionNode
                     << p.pose.position.z << ")");
     table_centroid_ = p;
     return p;
-  }
-
-  void displayPushVector(cv::Mat& img, PushVector& push, std::string display_name="goal_vector",
-                         bool force_no_write=false)
-  {
-    PointStamped start_point;
-    start_point.point = push.start_point;
-    start_point.header.frame_id = workspace_frame_;
-    PointStamped end_point;
-    end_point.point.x = start_point.point.x+std::cos(push.push_angle)*push.push_dist;
-    end_point.point.y = start_point.point.y+std::sin(push.push_angle)*push.push_dist;
-    end_point.point.z = start_point.point.z;
-    end_point.header.frame_id = workspace_frame_;
-    displayPushVector(img, start_point, end_point, display_name, force_no_write);
   }
 
   void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
