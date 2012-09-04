@@ -709,7 +709,7 @@ if __name__ == '__main__':
         # node.run_feedback_testing(action_primitive)
         while True:
             code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
-            if code_in.lower().startswith('quit'):
+            if code_in.lower().startswith('q'):
                 break
             clean_exploration = node.run_push_exploration(object_id=code_in)
             if not clean_exploration:
