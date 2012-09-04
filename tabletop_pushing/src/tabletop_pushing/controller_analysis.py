@@ -118,6 +118,7 @@ class ControlAnalysisIO:
 
 
 def plot_results(file_name, spin=False):
+    # TODO: Plot with dashes and dots for no color distinction
     io = ControlAnalysisIO()
     controls = io.read_in_data_file(file_name)
     XS = [c.x.x for c in controls]
@@ -190,6 +191,7 @@ def plot_results(file_name, spin=False):
     xlabel('Time')
     ylabel('Error (meters)')
     title('Position Error')
+    legend(['x_err', 'y_err'])
     savefig('/home/thermans/sandbox/pos-err.png')
     figure()
     if spin:
