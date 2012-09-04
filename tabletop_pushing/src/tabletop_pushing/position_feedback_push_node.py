@@ -50,6 +50,8 @@ from math import sin, cos, pi, fabs, sqrt, atan2
 from controller_analysis import ControlAnalysisIO
 import sys
 
+from push_primitives import *
+
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
                                     -0.34601608409943324,
@@ -145,7 +147,6 @@ class PositionFeedbackPushNode:
                                                     0.30)
         self.gripper_raise_dist = rospy.get_param('~gripper_raise_dist',
                                                   0.05)
-        # TODO: Base this value on the tallest tabletop object
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
@@ -460,14 +461,14 @@ class PositionFeedbackPushNode:
 
         # TODO: Create options for non-velocity control updates, separate things more
         # NOTE: Add new pushing visual feedback controllers here
-        if feedback.controller_name == 'spin_to_heading':
+        if feedback.controller_name == SPIN_TO_HEADING:
             update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
-        elif feedback.controller_name == 'centroid_controller':
+        elif feedback.controller_name == CENTROID_CONTROLLER:
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
                                                               cur_pose)
-        elif feedback.controller_name == 'direct_goal_controller':
+        elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
-        elif feedback.controller_name == 'spin_compensation':
+        elif feedback.controller_name == SPIN_COMPENSATION:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
 
         if self.feedback_count % 5 == 0:
@@ -667,6 +668,7 @@ class PositionFeedbackPushNode:
         response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
+        is_pull = request.action_primitive == GRIPPER_PULL
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -680,6 +682,11 @@ class PositionFeedbackPushNode:
                 ready_joints = RIGHT_ARM_PULL_READY_JOINTS
             which_arm = 'r'
             robot_gripper = self.robot.right_gripper
+
+        if is_pull:
+            rospy.loginfo('Opening gripper')
+            res = robot_gripper.open(block=True)
+            rospy.loginfo('Done opening gripper')
 
         rospy.logdebug('Moving gripper up')
         pose_err, err_dist = self.move_relative_gripper(
@@ -715,7 +722,7 @@ class PositionFeedbackPushNode:
                                self.post_move_count_thresh)
         rospy.loginfo('Done moving up to end point')
 
-        if request.open_gripper:
+        if request.open_gripper or is_pull:
             rospy.loginfo('Closing gripper')
             res = robot_gripper.close(block=True)
             rospy.loginfo('Done closing gripper')
@@ -789,7 +796,8 @@ class PositionFeedbackPushNode:
     def gripper_pre_push(self, request):
         response = FeedbackPushResponse()
         start_point = request.start_point.point
-        wrist_yaw = request.wrist_yaw
+        wrist_yaw = request.wrist_ya
+        is_pull = request.action_primitive == GRIPPER_PULL
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -818,7 +826,7 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
 
-        if request.open_gripper:
+        if request.open_gripper or is_pull:
             res = robot_gripper.open(block=True, position=0.05)
 
         if request.high_arm_init:
@@ -833,6 +841,11 @@ class PositionFeedbackPushNode:
         self.move_to_cart_pose(start_pose, which_arm,
                                self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
+        if is_pull:
+            rospy.loginfo('Closing grasp for pull')
+            res = robot_gripper.close(block=True)
+            rospy.loginfo('Done closing gripper')
+
         return response
 
     def gripper_pre_sweep(self, request):

@@ -46,27 +46,7 @@ from push_learning import PushLearningIO
 from geometry_msgs.msg import Pose2D
 import time
 import random
-
-CENTROID_CONTROLLER ='centroid_controller'
-SPIN_COMPENSATION = 'spin_compensation'
-SPIN_TO_HEADING = 'spin_to_heading'
-DIRECT_GOAL_CONTROLLER = 'direct_goal_controller'
-CONTROLLERS = [CENTROID_CONTROLLER, SPIN_COMPENSATION, DIRECT_GOAL_CONTROLLER]
-# CONTROLLERS = [DIRECT_GOAL_CONTROLLER]
-
-GRIPPER_PUSH = 'gripper_push'
-GRIPPER_SWEEP = 'gripper_sweep'
-OVERHEAD_PUSH = 'overhead_push'
-GRIPPER_PULL = 'gripper_pull'
-PUSH_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP]
-# PUSH_PRIMITIVES = [GRIPPER_PUSH]
-ACTION_PRIMITIVES = {CENTROID_CONTROLLER:PUSH_PRIMITIVES, SPIN_COMPENSATION:PUSH_PRIMITIVES,
-                     DIRECT_GOAL_CONTROLLER:[GRIPPER_PULL, GRIPPER_PUSH]}
-
-ELLIPSE_PROXY = 'ellipse'
-CENTROID_PROXY = 'centroid'
-PERCEPTUAL_PROXIES = {CENTROID_CONTROLLER:[CENTROID_PROXY], SPIN_COMPENSATION:[ELLIPSE_PROXY],
-                      DIRECT_GOAL_CONTROLLER:[CENTROID_PROXY]}
+from push_primitives import *
 
 _OFFLINE = False
 _USE_LEARN_IO = True
@@ -96,7 +76,9 @@ class TabletopExecutive:
 
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.275)
-        self.pull_start_z = rospy.get_param('~overhead_push_start_z', -0.27)
+
+        self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
+        self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 3)
 
@@ -421,7 +403,7 @@ class TabletopExecutive:
             if action_primitive == GRIPPER_SWEEP:
                 result = self.feedback_sweep_object(which_arm, push_vector_res.push,
                                                     goal_pose, controller_name, proxy_name, action_primitive)
-            if action_primitive == GRIPPER_PUSH:
+            if action_primitive == GRIPPER_PUSH or action_primitive == GRIPPER_PULL:
                 result = self.gripper_feedback_push_object(which_arm,
                                                            push_vector_res.push, goal_pose,
                                                            controller_name, proxy_name, action_primitive)
@@ -613,9 +595,16 @@ class TabletopExecutive:
         push_req.wrist_yaw = wrist_yaw
 
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
-        push_req.start_point.point.y += -self.gripper_offset_dist*sin(wrist_yaw)
-        push_req.start_point.point.z = self.gripper_start_z
+        if action_primitive == GRIPPER_PULL:
+            offset_dist = self.gripper_pull_offset_dist
+            start_z = self.gripper_pull_start_z
+        else:
+            offset_dist = self.gripper_offset_dist
+            start_z = self.gripper_start_z
+
+        push_req.start_point.point.x += -offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -offset_dist*sin(wrist_yaw)
+        push_req.start_point.point.z = start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
         push_req.high_arm_init = high_init
