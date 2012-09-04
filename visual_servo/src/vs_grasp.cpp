@@ -213,7 +213,8 @@ class VisualServoNode
       cloud_sub_(n, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
       it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-      desire_points_initialized_(false), PHASE(INIT), is_detected_(false)
+      desire_points_initialized_(false), PHASE(INIT), is_detected_(false),
+      is_gripper_initialized_(false)
   {
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -306,32 +307,8 @@ class VisualServoNode
 
       // need to profile this
       updateGripperFeatures();
+      executeStatemachine();
 
-      bool t = initializeDesired(po_);
-      if (t)
-      {
-        int s = (int)(po_.size());
-        for (int i = 0; i < s; i++)
-        {
-          tabletop_pushing::ProtoObject p  = po_.at(i);
-          for (unsigned int j = 0; j < p.cloud.size(); j++)
-          {
-          cv::Point pt = vs_->projectPointIntoImage(p.cloud.at(j), workspace_frame_, optical_frame_ , tf_);
-          cv::circle(cur_orig_color_frame_, pt, 1, cv::Scalar(100, 0, 110), 1);
-          }
-          /*
-          if (setGoalForAnObject(goal_, goal_p_, p))
-          {
-          cv::Point p = vs_->projectPointIntoImage(pcl::PointXYZ(goal_p_.pose.position.x, goal_p_.pose.position.y, goal_p_.pose.position.z), workspace_frame_, optical_frame_ , tf_);
-          cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(100, 0, 110), 2);
-          }
-          */
-        }
-      }
-      else
-        ROS_WARN("GOT NOTHING!");
-
-      // executeStatemachine();
 #define DISPLAY 1
 #ifdef DISPLAY
       // show a pretty imshow
@@ -396,6 +373,9 @@ class VisualServoNode
 #if PERCEPTION==PERCEPTION_POINT_CLOUD
                 ROS_INFO(">> Found %d objects", (int)(po_.size()));
 #endif
+                if (is_gripper_initialized_)
+                  PHASE = INIT_DESIRED;
+                else
                 PHASE = SETTLE;
               }
               else
@@ -433,20 +413,11 @@ class VisualServoNode
                 pcl::PointXYZ tape2 = tape_features_.at(2).workspace;
 
                 gripper_tape_.setTapeRelLoc(tape0, tape1, tape2);
-                // EDIT
-                // remember the difference between each points
-                /*
-                tape1_loc_.x = tape1.x - tape0.x;
-                tape1_loc_.y = tape1.y - tape0.y;
-                tape1_loc_.z = tape1.z - tape0.z;
-                tape2_loc_.x = tape2.x - tape0.x;
-                tape2_loc_.y = tape2.y - tape0.y;
-                tape2_loc_.z = tape2.z - tape0.z;
-                */
                 temp_draw_.push_back(tape_features_.at(0).image);
                 temp_draw_.push_back(tape_features_.at(1).image);
                 temp_draw_.push_back(tape_features_.at(2).image);
 
+                is_gripper_initialized_ = true;
                 PHASE = INIT_DESIRED;
                 setSleepNonblock(0.25);
               }
@@ -491,10 +462,11 @@ class VisualServoNode
           case POSE_CONTR:
             {
               ROS_INFO("Phase Pose Control");
-              VSXYZ d = desired_;
-              visual_servo::VisualServoPose p_srv = formPoseService(d.workspace.x, d.workspace.y, d.workspace.z + pose_servo_z_offset_);
-              ROS_INFO(">> Move to Pose [%f, %f, %f]", d.workspace.x, d.workspace.y, d.workspace.z + 0.15);
-#ifndef PROFILE
+              float x = goal_p_.pose.position.x;
+              float y = goal_p_.pose.position.y;
+              float z = goal_p_.pose.position.z + pose_servo_z_offset_;
+              visual_servo::VisualServoPose p_srv = formPoseService(x, y, z);
+              ROS_INFO("Move Arm to Pose [%f %f %f]", x, y, z);
               if (p_client_.call(p_srv))
               {
                 // on success
@@ -512,9 +484,6 @@ class VisualServoNode
                   ROS_INFO("Start Visual Servoing");
                 }
               }
-#else
-                  PHASE = VS_CONTR_1;
-#endif
             }
             break;
 
@@ -649,7 +618,7 @@ class VisualServoNode
             break;
           case FINISH:
             {
-              visual_servo::VisualServoPose p_srv = formPoseService(0.5, 0.3, 0.1+object_z_);
+              visual_servo::VisualServoPose p_srv = formPoseService(0.5, 0.3, 0.1 + object_z_);
               if (p_client_.call(p_srv))
               {
                 setSleepNonblock(2.0);
@@ -687,7 +656,7 @@ class VisualServoNode
 
               reset();
               setSleepNonblock(3.0);
-              PHASE = INIT_DESIRED;
+              PHASE = INIT_OBJS;
             }
             break;
         }
@@ -1023,17 +992,6 @@ class VisualServoNode
     {
       shared_ptr<tabletop_pushing::PointCloudSegmentation> pcs_ = shared_ptr<tabletop_pushing::PointCloudSegmentation>(
         new tabletop_pushing::PointCloudSegmentation(tf_));
-
-      tabletop_pushing::PointCloudSegmentation pcs = tabletop_pushing::PointCloudSegmentation(tf_);
-      pcs.min_table_z_ = -1.0;
-      pcs.max_table_z_ = 1.0;
-      pcs.min_workspace_x_ = -1.0;
-      pcs.max_workspace_x_ = 1.75;
-      pcs.min_workspace_z_ = -1.0;
-      pcs.max_workspace_z_ = 1.0;
-      pcs.table_ransac_thresh_ = 0.015;
-      pcs.num_downsamples_ = 2;
-
       pcs_->min_table_z_ = -1.0;
       pcs_->max_table_z_ = 1.0;
       pcs_->min_workspace_x_ = -1.0;
@@ -1052,37 +1010,28 @@ class VisualServoNode
       pcs_->hull_alpha_ = 0.1;
       pcs_->use_voxel_down_ = true;
 
-
-      tabletop_pushing::ProtoObjects po = pcs_->findTabletopObjects(cur_point_cloud_);
-        /*
-
-      XYZPointCloud objs_cloud, plane_cloud;
-      // Get table plane
-      pcs_->getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud, false);
-      //pcs.getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud, false);
-      for (unsigned int i = 0; i < plane_cloud.size(); i++)
+      try
       {
-        cv::Point p = vs_->projectPointIntoImage(plane_cloud.at(i),workspace_frame_, optical_frame_ , tf_);
-        cv::circle(cur_orig_color_frame_, p, 1, cv::Scalar(100, 0, 110), 1);
+        tabletop_pushing::ProtoObjects po = pcs_->findTabletopObjects(cur_point_cloud_);
+        // segmeneted no object
+        if(po.size() == 0)
+          return false;
+        pos = po;
+        return true;
       }
-      return false;
-      XYZPointCloud objects_cloud_down = pcs.downsampleCloud(objs_cloud);
-      // Find independent regions
-      tabletop_pushing::ProtoObjects objs = pcs.clusterProtoObjects(objects_cloud_down);
-      tabletop_pushing::ProtoObjects po = objs;
-      */
-      // segmeneted no object
-      if(po.size() == 0)
+      catch (ros::Exception e)
+      {
+        ROS_WARN("FindTabletopObjects failed. Try to have only one object on the table");
         return false;
-      pos = po;
-      return true;
+      }
+
     }
 
     bool setGoalForAnObject(std::vector<VSXYZ> &goal, PoseStamped &goal_p, tabletop_pushing::ProtoObject po)
     {
       // need to get the top of an object
       pcl::PointCloud<pcl::PointXYZ> cloud = po.cloud;
-      float max_z = 0; unsigned int max_z_ind = 0;
+      float max_z = -5000; unsigned int max_z_ind = 0;
       for (unsigned int i = 0; i < cloud.size(); i++)
       {
         if (cloud.at(i).z > max_z)
@@ -1091,7 +1040,29 @@ class VisualServoNode
           max_z_ind = i;
         }
       }
-      VSXYZ v = vs_->point3DToVSXYZ(cloud.at(max_z_ind), tf_);
+      float avg_x, avg_y, avg_z;
+      int num_avg = 0;
+
+      float abs = max_z < 0 ? -max_z : max_z;
+      float threshold = max_z - abs * 0.8;
+
+      printf("[%f vs %f ] \n", threshold, max_z);
+      for (unsigned int i = 0; i < cloud.size(); i++)
+      {
+        pcl::PointXYZ p = cloud.at(i);
+        if (!isnan(p.z) && p.z > threshold)
+        {
+          if (!isnan(p.x) && !isnan(p.y))
+          {
+            avg_x += cloud.at(i).x;
+            avg_y += cloud.at(i).y;
+            avg_z += cloud.at(i).z;
+            num_avg++;
+          }
+        }
+      }
+      pcl::PointXYZ avg_p = pcl::PointXYZ(avg_x/num_avg, avg_y/num_avg, avg_z/num_avg);
+      VSXYZ v = vs_->point3DToVSXYZ(avg_p, tf_);
       return setGoalForAnObject(goal, goal_p, v);
     }
 
@@ -1107,6 +1078,9 @@ class VisualServoNode
       std::vector<pcl::PointXYZ> temp_features = gripper_tape_.getTapePoseFromXYZ(desire.workspace);
       std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(temp_features, tf_);
       goal = desired_vsxyz;
+
+      printf("%d\n", (int)goal.size());
+
       goal_p = vs_->VSXYZToPoseStamped(goal_.front());
 
       // for jacobian avg, we need IM at desired location as well
@@ -1521,12 +1495,6 @@ class VisualServoNode
     ros::Publisher chatter_pub_;
     ros::Time alarm_;
 
-    // EDIT
-    /**
-    pcl::PointXYZ tape1_loc_;
-    pcl::PointXYZ tape2_loc_;
-    **/
-
     // clients to services provided by vs_controller.py
     ros::ServiceClient v_client_;
     ros::ServiceClient p_client_;
@@ -1551,6 +1519,8 @@ class VisualServoNode
 
     // number of objects
     tabletop_pushing::ProtoObjects po_;
+
+    bool is_gripper_initialized_;
 };
 
 int main(int argc, char ** argv)
