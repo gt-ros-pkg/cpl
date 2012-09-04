@@ -100,7 +100,7 @@ class PointCloudSegmentation
    *
    * @return The object clusters.
    */
-  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud);
+  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -112,7 +112,7 @@ class PointCloudSegmentation
    * @return The object clusters.
    */
   ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud,
-                                   XYZPointCloud& objs_cloud);
+                                   XYZPointCloud& objs_cloud, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -126,10 +126,13 @@ class PointCloudSegmentation
    */
   ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud,
                                    XYZPointCloud& objs_cloud,
-                                   XYZPointCloud& plane_cloud);
+                                   XYZPointCloud& plane_cloud, bool use_mps=false);
 
   ProtoObjects findTabletopObjectsMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
                                       XYZPointCloud& plane_cloud);
+
+  ProtoObjects findTabletopObjectsCluster(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
+                                          XYZPointCloud& plane_cloud);
 
   /**
    * Function to segment point cloud regions using euclidean clustering

@@ -192,10 +192,10 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
  *
  * @return The object clusters.
  */
-ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud)
+ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, bool use_mps)
 {
   XYZPointCloud objs_cloud;
-  return findTabletopObjects(input_cloud, objs_cloud);
+  return findTabletopObjects(input_cloud, objs_cloud, use_mps);
 }
 
 /**
@@ -208,11 +208,25 @@ ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cl
  * @return The object clusters.
  */
 ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud,
-                                                         XYZPointCloud& objs_cloud)
+                                                         XYZPointCloud& objs_cloud, bool use_mps)
 {
   XYZPointCloud table_cloud;
   return findTabletopObjects(input_cloud, objs_cloud, table_cloud);
-  // return findTabletopObjectsMPS(input_cloud, objs_cloud, table_cloud);
+}
+
+ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud,
+                                                         XYZPointCloud& objs_cloud,
+                                                         XYZPointCloud& plane_cloud, bool use_mps)
+{
+  if (use_mps)
+  {
+    return findTabletopObjectsMPS(input_cloud, objs_cloud, plane_cloud);
+  }
+  else
+  {
+    return findTabletopObjectsCluster(input_cloud, objs_cloud, plane_cloud);
+  }
+
 }
 
 ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input_cloud,
@@ -244,6 +258,7 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
 
   // TODO: Get table plane
   // TODO: Create objects and their clouds
+  // TODO: Filter out arm
   ProtoObjects objs;
   for (size_t i = 0; i < regions.size (); i++)
   {
@@ -253,6 +268,7 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     po.id = i;
     // TODO: Get object point cloud
     pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
+    ROS_INFO_STREAM("Object has " << po.cloud.size() << " points");
     po.centroid[0] = regions[i].getCentroid()[0];
     po.centroid[1] = regions[i].getCentroid()[1];
     po.centroid[2] = regions[i].getCentroid()[2];
@@ -262,7 +278,6 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     po.singulated = false;
     objs.push_back(po);
     Eigen::Vector4f model = regions[i].getCoefficients ();
-    //pcl16::PointCloud boundary_cloud;
     // TODO: Save object counter
     XYZPointCloud boundary_cloud;
     boundary_cloud.points = regions[i].getContour ();
@@ -284,9 +299,9 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
  *
  * @return The object clusters.
  */
-ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud,
-                                                         XYZPointCloud& objs_cloud,
-                                                         XYZPointCloud& plane_cloud)
+ProtoObjects PointCloudSegmentation::findTabletopObjectsCluster(XYZPointCloud& input_cloud,
+                                                                XYZPointCloud& objs_cloud,
+                                                                XYZPointCloud& plane_cloud)
 {
   // Get table plane
   table_centroid_ = getTablePlane(input_cloud, objs_cloud, plane_cloud,
