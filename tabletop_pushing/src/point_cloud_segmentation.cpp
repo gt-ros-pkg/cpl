@@ -219,7 +219,6 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
                                                             XYZPointCloud& objs_cloud,
                                                             XYZPointCloud& plane_cloud)
 {
-  // TODO: Compute Normals with integral image
   pcl16::IntegralImageNormalEstimation<pcl16::PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
   ne.setMaxDepthChangeFactor (0.02f);
@@ -229,7 +228,6 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   ne.compute(*normal_cloud);
 
   pcl16::OrganizedMultiPlaneSegmentation<pcl16::PointXYZ, pcl16::Normal, pcl16::Label> mps;
-  // pcl16::OrganizedMultiPlaneSegmentation mps;
   mps.setMinInliers(10000);
   mps.setAngularThreshold(0.017453 * 2.0); // 2 degrees
   mps.setDistanceThreshold(0.02); // 2cm
