@@ -39,11 +39,12 @@ import numpy as np
 import sys
 import rospy
 
-_VERSION_LINE = '# v0.1'
-_HEADER_LINE = '# init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta action_primitive controller proxy which_arm push_time'
+_VERSION_LINE = '# v0.2'
+_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta action_primitive controller proxy which_arm push_time'
 
 class PushTrial:
     def __init__(self):
+        self.object_id = ''
         self.init_centroid = Point()
         self.init_orientation = 0.0
         self.final_centroid = Point()
@@ -62,12 +63,12 @@ class PushLearningIO:
 
     def write_line(self, init_centroid, init_orientation, final_centroid,
                    final_orientation, goal_pose, action_primitive,
-                   controller, proxy, which_arm, push_time):
+                   controller, proxy, which_arm, push_time, object_id):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
         rospy.logdebug('Writing output line.\n')
-        data_line = str(init_centroid.x)+' '+str(init_centroid.y)+' '+str(init_centroid.z)+' '+\
+        data_line = object_id+' '+str(init_centroid.x)+' '+str(init_centroid.y)+' '+str(init_centroid.z)+' '+\
             str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
@@ -79,23 +80,25 @@ class PushLearningIO:
         if line.startswith('#'):
             return None
         l  = line.split()
+        l.reverse()
         push = PushTrial()
-        push.init_centroid.x = l[0]
-        push.init_centroid.y = l[1]
-        push.init_centroid.z = l[2]
-        push.init_orientation = l[3]
-        push.final_centroid.x = l[4]
-        push.final_centroid.y = l[5]
-        push.final_centroid.z = l[6]
-        push.final_orientation = l[7]
-        push.goal_pose.x = l[8]
-        push.goal_pose.y = l[9]
-        push.goal_pose.theta = l[10]
-        push.action_primitive = l[11]
-        push.controller = l[12]
-        push.proxy = l[13]
-        push.which_arm = l[14]
-        push.push_time = l[15]
+        push.object_id = l.pop()
+        push.init_centroid.x = l.pop()
+        push.init_centroid.y = l.pop()
+        push.init_centroid.z = l.pop()
+        push.init_orientation = l.pop()
+        push.final_centroid.x = l.pop()
+        push.final_centroid.y = l.pop()
+        push.final_centroid.z = l.pop()
+        push.final_orientation = l.pop()
+        push.goal_pose.x = l.pop()
+        push.goal_pose.y = l.pop()
+        push.goal_pose.theta = l.pop()
+        push.action_primitive = l.pop()
+        push.controller = l.pop()
+        push.proxy = l.pop()
+        push.which_arm = l.pop()
+        push.push_time = l.pop()
 
         return push
 

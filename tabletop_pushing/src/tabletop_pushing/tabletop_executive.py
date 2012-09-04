@@ -69,7 +69,7 @@ PERCEPTUAL_PROXIES = {CENTROID_CONTROLLER:[CENTROID_PROXY], SPIN_COMPENSATION:[E
                       DIRECT_GOAL_CONTROLLER:[CENTROID_PROXY]}
 
 _OFFLINE = False
-_USE_LEARN_IO = False
+_USE_LEARN_IO = True
 _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
@@ -126,8 +126,6 @@ class TabletopExecutive:
                                                            RaiseAndLook)
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
 
-        # TODO: Make this a string passed in somewhere
-
         if use_singulation:
             self.init_singulation()
         if use_learning:
@@ -142,7 +140,7 @@ class TabletopExecutive:
         # Singulation Push proxy
         if _USE_LEARN_IO:
             self.learn_io = PushLearningIO()
-            learn_file_name = '/u/thermans/data/new/goal_out.txt'
+            learn_file_name = '/u/thermans/data/new/goal_out_'+str(rospy.get_time())+'.txt'
             rospy.loginfo('Opening learn file: '+learn_file_name)
             self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(
@@ -252,7 +250,7 @@ class TabletopExecutive:
             if use_spin_push:
                 goal_pose = self.generate_random_table_pose()
                 code_in = raw_input('Set object in start pose and press <Enter>: ')
-                if code_in.startswith('q'):
+                if code_in.lower().startswith('q'):
                     return
             elif _WAIT_BEFORE_STRAIGHT_PUSH or not _SPIN_FIRST:
                 if not _SPIN_FIRST:
@@ -268,12 +266,12 @@ class TabletopExecutive:
                         code_in = raw_input('Set object in start pose and press <Enter>: ')
                 else:
                     code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
-                if code_in.startswith('q'):
+                if code_in.lower().startswith('q'):
                     return
 
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name)
             code_in = raw_input('Got start pose to continue press <Enter>: ')
-            if code_in.startswith('q'):
+            if code_in.lower().startswith('q'):
                 return
 
             if push_vec_res is None:
@@ -296,21 +294,16 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_push_exploration(self, object_id='test_object', ask_for_input=True):
-        if ask_for_input:
-            code_in = raw_input('Set object in start pose and press <Enter>: ')
-            if code_in.startswith('q'):
-                return
-
+    def run_push_exploration(self, object_id='test_object'):
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
-                    res = self.explore_push(action_primitive, controller, proxy)
+                    res = self.explore_push(action_primitive, controller, proxy, object_id)
                     if res == 'quit':
                         rospy.loginfo('Quiting on user request')
                         return
 
-    def explore_push(self, action_primitive, controller_name, proxy_name):
+    def explore_push(self, action_primitive, controller_name, proxy_name, object_id):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
                       + controller_name + ', ' + proxy_name + ')')
         continuing = False
@@ -354,10 +347,10 @@ class TabletopExecutive:
         # make sure we have it all
         if _OFFLINE:
             code_in = raw_input('Press <Enter> to get analysis vector: ')
-            if code_in.startswith('q'):
+            if code_in.lower().startswith('q'):
                 return 'quit'
         self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
-                          push_vec_res, goal_pose)
+                          push_vec_res, goal_pose, object_id)
         return res
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name, action_primitive):
@@ -370,7 +363,7 @@ class TabletopExecutive:
                 return None
             if push_vec_res.no_objects:
                 code_in = raw_input('No objects found. Place object and press <Enter>: ')
-                if code_in.startswith('q'):
+                if code_in.lower().startswith('q'):
                     return None
             else:
                 return push_vec_res
@@ -445,7 +438,7 @@ class TabletopExecutive:
         return ('done', result)
 
     def analyze_push(self, action_primitive, controller_name, proxy_name,
-                     which_arm, push_time, push_vector_res, goal_pose):
+                     which_arm, push_time, push_vector_res, goal_pose, object_id):
         push_angle = push_vector_res.push.push_angle
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
@@ -467,7 +460,7 @@ class TabletopExecutive:
                 push_vector_res.centroid, push_vector_res.theta,
                 analysis_res.centroid, analysis_res.theta,
                 goal_pose, action_primitive, controller_name, proxy_name,
-                which_arm, push_time)
+                which_arm, push_time, object_id)
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequest()
@@ -724,8 +717,9 @@ if __name__ == '__main__':
         node.run_singulation(max_pushes, use_guided)
     else:
         # node.run_feedback_testing(action_primitive)
-        # TODO: Keep running this
-        # TODO: while with raw_input?
-        # TODO: Enter object id for learning saving
-        node.run_push_exploration(object_id='testy')
+        while True:
+            code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+            if code_in.lower().startswith('quit'):
+                break
+            node.run_push_exploration(object_id=code_in)
         node.finish_learning()
