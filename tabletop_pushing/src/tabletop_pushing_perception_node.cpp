@@ -364,7 +364,7 @@ class ObjectTracker25D
 
     if (use_displays_ || write_to_disk_)
     {
-      ROS_INFO_STREAM("TrackerIO()");
+      // ROS_INFO_STREAM("TrackerIO()");
       trackerIO(in_frame, cur_obj, obj_ellipse);
       // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
       // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
@@ -790,19 +790,18 @@ class TabletopPushingPerceptionNode
       }
     }
 
-    XYZPointCloud cloud_self_filtered;
-    cloud_self_filtered.header = cloud.header;
-    cloud_self_filtered.width = cloud.size();
-    cloud_self_filtered.height = 1;
-    cloud_self_filtered.is_dense = false;
-    cloud_self_filtered.resize(cloud_self_filtered.width);
-    for (unsigned int x = 0, i = 0; x < cloud.width; ++x)
+    XYZPointCloud cloud_self_filtered(cloud);
+    pcl16::PointXYZ nan_point;
+    nan_point.x = numeric_limits<float>::quiet_NaN();
+    nan_point.y = numeric_limits<float>::quiet_NaN();
+    nan_point.z = numeric_limits<float>::quiet_NaN();
+    for (unsigned int x = 0; x < cloud.width; ++x)
     {
-      for (unsigned int y = 0; y < cloud.height; ++y, ++i)
+      for (unsigned int y = 0; y < cloud.height; ++y)
       {
-        if (self_mask.at<uchar>(y,x) != 0)
+        if (self_mask.at<uchar>(y,x) == 0)
         {
-          cloud_self_filtered.at(i) = cloud.at(x,y);
+          cloud_self_filtered.at(x,y) = nan_point;
         }
       }
     }
@@ -830,17 +829,8 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
-      PushTrackerState tracker_state;
-      if (use_mps_segmentation_)
-      {
-        tracker_state = obj_tracker_->updateTracks(
-            cur_color_frame_, cur_self_mask_, cur_point_cloud_);
-      }
-      else
-      {
-        tracker_state = obj_tracker_->updateTracks(
-            cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
-      }
+      PushTrackerState tracker_state = obj_tracker_->updateTracks(
+          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.action_primitive = action_primitive_;
@@ -1338,14 +1328,7 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    if (use_mps_segmentation_)
-    {
-      return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_point_cloud_);
-    }
-    else
-    {
-      return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
-    }
+    return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)

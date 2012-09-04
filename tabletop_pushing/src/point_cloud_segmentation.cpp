@@ -233,13 +233,16 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
                                                             XYZPointCloud& objs_cloud,
                                                             XYZPointCloud& plane_cloud)
 {
+  ROS_WARN_STREAM("Finding tabletop objects MPS!");
   pcl16::IntegralImageNormalEstimation<pcl16::PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
   ne.setMaxDepthChangeFactor (0.02f);
   ne.setNormalSmoothingSize (20.0f);
   pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
   ne.setInputCloud(input_cloud.makeShared());
+  ROS_WARN_STREAM("Computing normals");
   ne.compute(*normal_cloud);
+  ROS_WARN_STREAM("Computed normals");
 
   pcl16::OrganizedMultiPlaneSegmentation<pcl16::PointXYZ, pcl16::Normal, pcl16::Label> mps;
   mps.setMinInliers(10000);
@@ -254,12 +257,14 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   pcl16::OrganizedMultiPlaneSegmentation<pcl16::PointXYZ, pcl16::Normal, pcl16::Label>::PointCloudLPtr labels;
   std::vector<pcl16::PointIndices> label_indices;
   std::vector<pcl16::PointIndices> boundary_indices;
+  ROS_WARN_STREAM("Segmenting and refining!");
   mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
-
+  ROS_WARN_STREAM("Segmented and refined!");
   // TODO: Get table plane
   // TODO: Create objects and their clouds
   // TODO: Filter out arm
   ProtoObjects objs;
+  ROS_WARN_STREAM("Iterating throught " << regions.size() << " regions!");
   for (size_t i = 0; i < regions.size (); i++)
   {
     ProtoObject po;
