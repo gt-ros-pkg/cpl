@@ -59,19 +59,63 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
   <property name="elbow_collision_length" value="0.200" />     <!-- manually measured -->
   <property name="elbow_collision_offset" value="0.035" />     <!-- manually measured -->
 
+<!-- Gantry model -->
+  <property name="gantry_height" value="2.43" />
 
   <link name="base_link" >
+    <inertial>
+      <mass value="15" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
   </link>
+  
+<xacro:macro name="gantry_leg" params="leg_name leg_x leg_y">
+  <link name="gantry_leg_${leg_name}">
+    <visual>
+      <geometry>
+          <box size="0.1 0.1 ${gantry_height}" />
+      </geometry>
+      <material name="orange">
+        <color rgba="1 .6 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+          <box size="0.1 0.1 ${gantry_height}" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1000" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    </inertial>
+  </link>
+
+  <joint name="gantry_leg_${leg_name}_joint" type="fixed">
+    <parent link = "gantry_frame_link" />
+    <child link="gantry_leg_${leg_name}" />
+    <origin xyz="${leg_x} ${leg_y} ${-gantry_height}" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+  </joint>
+</xacro:macro>
+<xacro:gantry_leg leg_name="1" leg_x="${1.5/2.0}" leg_y="${1.5/2.0}" />
+<xacro:gantry_leg leg_name="2" leg_x="${-1.5/2.0}" leg_y="${1.5/2.0}" />
+<xacro:gantry_leg leg_name="3" leg_x="${-1.5/2.0}" leg_y="${-1.5/2.0}" />
+<xacro:gantry_leg leg_name="4" leg_x="${1.5/2.0}" leg_y="${-1.5/2.0}" />
 
   <joint name="gantry_frame_joint" type="fixed">
     <parent link = "base_link" />
     <child link="gantry_frame_link" />
-    <origin xyz="0.0 0.0 2.43" rpy="0.0 0.0 0.0" />
+    <origin xyz="0.0 0.0 ${gantry_height}" rpy="0.0 0.0 0.0" />
     <axis xyz="0.0 0.0 1.0" />
   </joint>
 
 
   <link name="gantry_frame_link" >
+    <inertial>
+      <mass value="15" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
   </link>
 
   <joint name="gantry_xbar_joint" type="prismatic">
@@ -83,6 +127,10 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
   </joint>
 
   <link name="gantry_xbar_link" >
+    <inertial>
+      <mass value="15" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
   </link>
 
   <joint name="gantry_center_joint" type="prismatic">
@@ -94,6 +142,10 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
   </joint>
 
   <link name="gantry_center_link" >
+    <inertial>
+      <mass value="15" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
   </link>
 
   <joint name="gantry_mount_joint" type="fixed">
@@ -104,6 +156,10 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
   </joint>
 
   <link name="gantry_mount_link" >
+    <inertial>
+      <mass value="1" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
   </link>
 
 
