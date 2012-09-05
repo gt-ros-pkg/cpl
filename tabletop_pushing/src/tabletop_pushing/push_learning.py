@@ -39,8 +39,8 @@ import numpy as np
 import sys
 import rospy
 
-_VERSION_LINE = '# v0.2'
-_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta action_primitive controller proxy which_arm push_time'
+_VERSION_LINE = '# v0.3'
+_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta action_primitive controller proxy which_arm precondition_method push_time'
 
 class PushTrial:
     def __init__(self):
@@ -55,6 +55,15 @@ class PushTrial:
         self.proxy = ''
         self.which_arm = ''
         self.push_time = 0.0
+        self.precondition_method = ''
+
+    def __str__(self):
+        # TODO: Print more info here
+        return (self.object_id +
+                ' (' + self.proxy + ', ' + self.controller + ', ' + self.action_primitive + ', ' +
+                self.which_arm + '):\n' +
+                'init_centroid:\n' + str(self.init_centroid) + '\n'
+                'init_orientation: ' + str(self.init_orientation))
 
 class PushLearningIO:
     def __init__(self):
@@ -63,7 +72,8 @@ class PushLearningIO:
 
     def write_line(self, init_centroid, init_orientation, final_centroid,
                    final_orientation, goal_pose, action_primitive,
-                   controller, proxy, which_arm, push_time, object_id):
+                   controller, proxy, which_arm, push_time, object_id,
+                   precondition_method='centroid_push'):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -72,7 +82,7 @@ class PushLearningIO:
             str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
-            action_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+'\n'
+            action_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -81,25 +91,29 @@ class PushLearningIO:
             return None
         l  = line.split()
         l.reverse()
+        num_objs = len(l)
         push = PushTrial()
         push.object_id = l.pop()
-        push.init_centroid.x = l.pop()
-        push.init_centroid.y = l.pop()
-        push.init_centroid.z = l.pop()
-        push.init_orientation = l.pop()
-        push.final_centroid.x = l.pop()
-        push.final_centroid.y = l.pop()
-        push.final_centroid.z = l.pop()
-        push.final_orientation = l.pop()
-        push.goal_pose.x = l.pop()
-        push.goal_pose.y = l.pop()
-        push.goal_pose.theta = l.pop()
+        push.init_centroid.x = float(l.pop())
+        push.init_centroid.y = float(l.pop())
+        push.init_centroid.z = float(l.pop())
+        push.init_orientation = float(l.pop())
+        push.final_centroid.x = float(l.pop())
+        push.final_centroid.y = float(l.pop())
+        push.final_centroid.z = float(l.pop())
+        push.final_orientation = float(l.pop())
+        push.goal_pose.x = float(l.pop())
+        push.goal_pose.y = float(l.pop())
+        push.goal_pose.theta = float(l.pop())
         push.action_primitive = l.pop()
         push.controller = l.pop()
         push.proxy = l.pop()
         push.which_arm = l.pop()
-        push.push_time = l.pop()
-
+        push.push_time = float(l.pop())
+        if len(l) > 0:
+            push.precondition_method = l.pop()
+        else:
+            push.precondition_method = 'push_centroid'
         return push
 
     def read_in_data_file(self, file_name):

@@ -122,7 +122,7 @@ class TabletopExecutive:
         # Singulation Push proxy
         if _USE_LEARN_IO:
             self.learn_io = PushLearningIO()
-            learn_file_name = '/u/thermans/data/new/goal_out_'+str(rospy.get_time())+'.txt'
+            learn_file_name = '/u/thermans/data/new/aff_learn_out_'+str(rospy.get_time())+'.txt'
             rospy.loginfo('Opening learn file: '+learn_file_name)
             self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(
@@ -273,16 +273,19 @@ class TabletopExecutive:
                 return
 
     def run_push_exploration(self, object_id='test_object'):
+        # TODO: set the precondition method if we search over it
+        precondition_method = 'centroid_push'
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
-                    res = self.explore_push(action_primitive, controller, proxy, object_id)
+                    res = self.explore_push(action_primitive, controller, proxy, object_id,
+                                            precondition_method)
                     if res == 'quit':
                         rospy.loginfo('Quiting on user request')
                         return False
         return True
 
-    def explore_push(self, action_primitive, controller_name, proxy_name, object_id):
+    def explore_push(self, action_primitive, controller_name, proxy_name, object_id, precondition_method='centroid_push'):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
                       + controller_name + ', ' + proxy_name + ')')
         continuing = False
@@ -323,7 +326,7 @@ class TabletopExecutive:
             if code_in.lower().startswith('q'):
                 return 'quit'
         self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
-                          push_vec_res, goal_pose, object_id)
+                          push_vec_res, goal_pose, object_id, precondition_method)
         return res
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name, action_primitive):
@@ -404,7 +407,7 @@ class TabletopExecutive:
         return ('done', result)
 
     def analyze_push(self, action_primitive, controller_name, proxy_name,
-                     which_arm, push_time, push_vector_res, goal_pose, object_id):
+                     which_arm, push_time, push_vector_res, goal_pose, object_id, precondition_method='centroid_push'):
         push_angle = push_vector_res.push.push_angle
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
@@ -426,7 +429,7 @@ class TabletopExecutive:
                 push_vector_res.centroid, push_vector_res.theta,
                 analysis_res.centroid, analysis_res.theta,
                 goal_pose, action_primitive, controller_name, proxy_name,
-                which_arm, push_time, object_id)
+                which_arm, push_time, object_id, precondition_method)
 
     def request_singulation_push(self, use_guided=True):
         push_vector_req = SingulationPushRequest()
