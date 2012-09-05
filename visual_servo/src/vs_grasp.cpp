@@ -317,7 +317,7 @@ class VisualServoNode
           for (unsigned int j = 0; j < p.cloud.size(); j++)
           {
           cv::Point pt = vs_->projectPointIntoImage(p.cloud.at(j), workspace_frame_, optical_frame_ , tf_);
-          cv::circle(cur_orig_color_frame_, pt, 1, cv::Scalar(100, 0, 110), 1);
+          cv::circle(cur_orig_color_frame_, pt, 1, cv::Scalar(100, 0, i*(255/s)), 1);
           }
           /*
           if (setGoalForAnObject(goal_, goal_p_, p))
