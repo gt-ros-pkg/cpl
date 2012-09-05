@@ -77,7 +77,7 @@ class TabletopExecutive:
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.275)
 
-        self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', -0.02)
+        self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 3)
@@ -299,7 +299,9 @@ class TabletopExecutive:
                                                              proxy_name, action_primitive)
 
             if push_vec_res is None:
-                return
+                return None
+            elif push_vec_res == 'quit':
+                return push_vec_res
 
             # NOTE: If previous push was aborted, keep using the same arm
             if continuing:
@@ -344,7 +346,7 @@ class TabletopExecutive:
             if push_vec_res.no_objects:
                 code_in = raw_input('No objects found. Place object and press <Enter>: ')
                 if code_in.lower().startswith('q'):
-                    return None
+                    return 'quit'
             else:
                 return push_vec_res
 
@@ -554,7 +556,7 @@ class TabletopExecutive:
         push_req.proxy_name = proxy_name
         push_req.action_primitive = action_primitive
 
-        rospy.loginfo('Gripper push augmented start_point: (' +
+        rospy.loginfo('Overhead push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
                       str(push_req.start_point.point.y) + ', ' +
                       str(push_req.start_point.point.z) + ')')
@@ -673,8 +675,8 @@ class TabletopExecutive:
         # TODO: make these parameters
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
-            goal_pose.x = 0.5
-            goal_pose.y = 0.2
+            goal_pose.x = 1.2
+            goal_pose.y = -0.2
             goal_pose.theta = 0.0
             return goal_pose
         min_x = 0.4

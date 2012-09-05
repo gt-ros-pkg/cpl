@@ -149,6 +149,8 @@ class PositionFeedbackPushNode:
                                                   0.05)
         self.gripper_pull_reverse_dist = rospy.get_param('~gripper_pull_reverse_dist',
                                                          0.1)
+        self.gripper_pull_forward_dist = rospy.get_param('~gripper_pull_forward_dist',
+                                                         0.1)
         self.gripper_push_reverse_dist = rospy.get_param('~gripper_push_reverse_dist',
                                                          0.03)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
@@ -840,6 +842,7 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
         if request.open_gripper or is_pull:
+            # TODO: Open different distance for pull and open push
             res = robot_gripper.open(block=True, position=0.9)
 
         if request.high_arm_init:
@@ -855,6 +858,11 @@ class PositionFeedbackPushNode:
                                self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
         if is_pull:
+            rospy.loginfo('Moving forward to grasp pose')
+            pose_err, err_dist = self.move_relative_gripper(
+                np.matrix([self.gripper_pull_forward_dist, 0, 0]).T, which_arm,
+                move_cart_count_thresh=self.post_move_count_thresh)
+
             rospy.loginfo('Closing grasp for pull')
             res = robot_gripper.close(block=True, effort=self.max_close_effort)
             rospy.loginfo('Done closing gripper')

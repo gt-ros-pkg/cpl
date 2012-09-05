@@ -25,6 +25,8 @@
       <param name="max_close_effort" type="double" value="50"/>
 
       <param name="gripper_pull_reverse_dist" type="double" value="0.1"/>
+      <param name="gripper_pull_forward_dist" type="double" value="0.07"/>
+
       <param name="gripper_push_reverse_dist" type="double" value="0.03"/>
       <param name="gripper_raise_dist" type="double" value="0.05"/>
 

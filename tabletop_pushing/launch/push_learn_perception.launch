@@ -42,10 +42,14 @@
 
     <param name="img_output_path" value="/u/thermans/data/new/" type="string"/>
 
-    <param name="push_tracker_dist_thresh" value="0.05" type="double"/>
+    <param name="push_tracker_dist_thresh" value="0.03" type="double"/>
     <param name="push_tracker_angle_thresh" value="0.1" type="double"/>
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
     <param name="use_cv_ellipse" value="false" type="bool"/>
     <param name="max_object_gripper_dist" value="0.15" type="double"/>
+    <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
+    <param name="object_not_moving_thresh" value="0.005" type="double"/>
+    <param name="gripper_not_moving_count_limit" value="10" type="int"/>
+    <param name="object_not_moving_count_limit" value="10" type="int"/>
   </node>
 </launch>

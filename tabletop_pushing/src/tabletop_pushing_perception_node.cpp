@@ -118,6 +118,7 @@ using tabletop_pushing::PushVector;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
+using geometry_msgs::Twist;
 typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
@@ -313,14 +314,9 @@ class ObjectTracker25D
     obj_ellipse.center.x = centroid[0];
     obj_ellipse.center.y = centroid[1];
     obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
-    // TODO: Set obj_ellipse.size
     // NOTE: major axis is defined by height
     obj_ellipse.size.height = std::max(eigen_values(0)*0.05, 0.05);
     obj_ellipse.size.width = std::max(eigen_values(1)*0.05, 0.05*eigen_values(1)/eigen_values(0));
-    // TODO: Get relative size of eigen1 to eigen2 and use that as ratio between two axes?
-    // ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
-    // ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
-    // ROS_INFO_STREAM("Eigen values from PCA are: " << eigen_values);
     return obj_ellipse;
   }
 
@@ -642,8 +638,13 @@ class TabletopPushingPerceptionNode
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
-      learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0), frame_callback_count_(0),
-      just_spun_(false), major_axis_spin_pos_scale_(0.75)
+      learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0),
+      frame_callback_count_(0),
+      just_spun_(false), major_axis_spin_pos_scale_(0.75), object_not_moving_thresh_(0),
+      object_not_moving_count_(0), object_not_moving_count_limit_(10),
+      gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
+      gripper_not_moving_count_limit_(10)
+
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -710,7 +711,12 @@ class TabletopPushingPerceptionNode
     bool use_cv_ellipse;
     n_private_.param("use_cv_ellipse", use_cv_ellipse, false);
     n_private_.param("use_mps_segmentation", use_mps_segmentation_, false);
+
     n_private_.param("max_object_gripper_dist", max_object_gripper_dist_, 0.10);
+    n_private_.param("gripper_not_moving_thresh", gripper_not_moving_thresh_, 0.005);
+    n_private_.param("object_not_moving_thresh", object_not_moving_thresh_, 0.005);
+    n_private_.param("gripper_not_moving_count_limit", gripper_not_moving_count_limit_, 100);
+    n_private_.param("object_not_moving_count_limit", object_not_moving_count_limit_, 100);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -968,9 +974,9 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object is not moving");
     }
-    else if (armNotMoving(tracker_state))
+    else if (gripperNotMoving())
     {
-      abortPushingGoal("Object is not moving");
+      abortPushingGoal("Gripper is not moving");
     }
     else if (objectTooFarFromGripper(tracker_state.x))
     {
@@ -981,16 +987,6 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object is not between gripper and goal.");
     }
-  }
-
-  bool objectNotMoving(PushTrackerState& tracker_state)
-  {
-    return false;
-  }
-
-  bool armNotMoving(PushTrackerState& tracker_state)
-  {
-    return false;
   }
 
   void abortPushingGoal(std::string msg)
@@ -1368,18 +1364,22 @@ class TabletopPushingPerceptionNode
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
   {
     l_arm_pose_ = l_arm_state.x;
+    l_arm_vel_ = l_arm_state.xd;
   }
   void rArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState r_arm_state)
   {
     r_arm_pose_ = r_arm_state.x;
+    r_arm_vel_ = r_arm_state.xd;
   }
   void lArmStateVelCB(const pr2_manipulation_controllers::JinvTeleopControllerState l_arm_state)
   {
     l_arm_pose_ = l_arm_state.x;
+    l_arm_vel_ = l_arm_state.xd;
   }
   void rArmStateVelCB(const pr2_manipulation_controllers::JinvTeleopControllerState r_arm_state)
   {
     r_arm_pose_ = r_arm_state.x;
+    r_arm_vel_ = r_arm_state.xd;
   }
 
   void pushTrackerGoalCB()
@@ -1401,6 +1401,8 @@ class TabletopPushingPerceptionNode
     proxy_name_ = tracker_goal->proxy_name;
     action_primitive_ = tracker_goal->action_primitive;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
+    gripper_not_moving_count_ = 0;
+    object_not_moving_count_ = 0;
   }
 
   void pushTrackerPreemptCB()
@@ -1409,6 +1411,43 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Preempted push tracker");
     // set the action state to preempted
     as_.setPreempted();
+  }
+
+  bool objectNotMoving(PushTrackerState& tracker_state)
+  {
+    if (tracker_state.x_dot.x < object_not_moving_thresh_ &&
+        tracker_state.x_dot.y < object_not_moving_thresh_)
+    {
+      object_not_moving_count_++;
+    }
+    else
+    {
+      object_not_moving_count_ = 0;
+    }
+    return (object_not_moving_count_  > object_not_moving_count_limit_);
+  }
+
+  bool gripperNotMoving()
+  {
+    Twist gripper_vel;
+    if ( pushing_arm_ == "l")
+    {
+      gripper_vel = l_arm_vel_;
+    }
+    else
+    {
+      gripper_vel = r_arm_vel_;
+    }
+    if (gripper_vel.linear.x < gripper_not_moving_thresh_ &&
+        gripper_vel.linear.y < gripper_not_moving_thresh_)
+    {
+      gripper_not_moving_count_++;
+    }
+    else
+    {
+      gripper_not_moving_count_ = 0;
+    }
+    return (gripper_not_moving_count_  > gripper_not_moving_count_limit_);
   }
 
   // TODO: Make this tolerant within some epislon
@@ -1682,8 +1721,16 @@ class TabletopPushingPerceptionNode
   int frame_set_count_;
   PoseStamped l_arm_pose_;
   PoseStamped r_arm_pose_;
+  Twist l_arm_vel_;
+  Twist r_arm_vel_;
   bool use_mps_segmentation_;
   double max_object_gripper_dist_;
+  double object_not_moving_thresh_;
+  int object_not_moving_count_;
+  int object_not_moving_count_limit_;
+  double gripper_not_moving_thresh_;
+  int gripper_not_moving_count_;
+  int gripper_not_moving_count_limit_;
 };
 
 int main(int argc, char ** argv)
