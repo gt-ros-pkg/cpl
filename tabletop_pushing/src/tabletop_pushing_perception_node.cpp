@@ -661,6 +661,11 @@ class TabletopPushingPerceptionNode
     n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
     n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
 
+    n_private_.param("mps_min_inliers", pcl_segmenter_->mps_min_inliers_, 10000);
+    n_private_.param("mps_min_angle_thresh", pcl_segmenter_->mps_min_angle_thresh_, 2.0);
+    n_private_.param("mps_min_dist_thresh", pcl_segmenter_->mps_min_dist_thresh_, 0.02);
+
+
     std::string default_workspace_frame = "torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_,
                      default_workspace_frame);

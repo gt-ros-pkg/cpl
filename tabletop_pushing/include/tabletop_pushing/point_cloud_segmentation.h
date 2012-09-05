@@ -321,6 +321,9 @@ class PointCloudSegmentation
   double icp_transform_eps_;
   double icp_max_cor_dist_;
   double icp_ransac_thresh_;
+  int mps_min_inliers_;
+  double mps_min_angle_thresh_;
+  double mps_min_dist_thresh_;
 };
 
 XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
