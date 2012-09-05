@@ -272,12 +272,11 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_push_exploration(self, object_id='test_object'):
-        # TODO: set the precondition method if we search over it
-        precondition_method = 'centroid_push'
+    def run_push_exploration(self, object_id):
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
+                    precondition_method = PRECONDITION_METHODS[action_primitive]
                     res = self.explore_push(action_primitive, controller, proxy, object_id,
                                             precondition_method)
                     if res == 'quit':
@@ -285,7 +284,8 @@ class TabletopExecutive:
                         return False
         return True
 
-    def explore_push(self, action_primitive, controller_name, proxy_name, object_id, precondition_method='centroid_push'):
+    def explore_push(self, action_primitive, controller_name, proxy_name, object_id,
+                     precondition_method='centroid_push'):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
                       + controller_name + ', ' + proxy_name + ')')
         continuing = False
@@ -295,13 +295,18 @@ class TabletopExecutive:
         restart_count = 0
         start_time = time.time()
         while not done_with_push:
-            if continuing:
-                continuing = False
-            push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name, proxy_name, action_primitive)
+            push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
+                                                             proxy_name, action_primitive)
 
             if push_vec_res is None:
                 return
-            which_arm = self.choose_arm(push_vec_res.push, controller_name)
+
+            # NOTE: If previous push was aborted, keep using the same arm
+            if continuing:
+                continuing = False
+            else:
+                which_arm = self.choose_arm(push_vec_res.push, controller_name)
+
             res, push_res = self.perform_push(which_arm, action_primitive,
                                               push_vec_res, goal_pose,
                                               controller_name, proxy_name)
@@ -319,8 +324,6 @@ class TabletopExecutive:
                 rospy.loginfo('Stopping push attempt because of too many restarts')
                 done_with_push = True
         push_time = time.time() - start_time
-        # TODO: Figure out what needs to be sent in here,
-        # make sure we have it all
         if _OFFLINE:
             code_in = raw_input('Press <Enter> to get analysis vector: ')
             if code_in.lower().startswith('q'):
@@ -329,7 +332,8 @@ class TabletopExecutive:
                           push_vec_res, goal_pose, object_id, precondition_method)
         return res
 
-    def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name, action_primitive):
+    def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
+                                     action_primitive):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
@@ -381,7 +385,7 @@ class TabletopExecutive:
                       str(push_vector_res.push.start_point.z) + ')')
         rospy.loginfo('Push angle: ' + str(push_angle))
         start_time = time.time()
-        # TODO: Unify framework here, to call with action_primitive to a single feedback behavior
+        # TODO: Unify framework here, implement classes for each behavior and make this class simpler
         if not _OFFLINE:
             if action_primitive == OVERHEAD_PUSH:
                 result = self.overhead_feedback_push_object(which_arm,
@@ -700,7 +704,13 @@ if __name__ == '__main__':
     else:
         # node.run_feedback_testing(action_primitive)
         while True:
-            code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+            need_object_id = True
+            while need_object_id:
+                code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+                if len(code_in) > 0:
+                    need_object_id = False
+                else:
+                    rospy.logwarn("No object id given.")
             if code_in.lower().startswith('q'):
                 break
             clean_exploration = node.run_push_exploration(object_id=code_in)
