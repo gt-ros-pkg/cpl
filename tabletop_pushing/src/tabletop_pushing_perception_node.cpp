@@ -315,8 +315,8 @@ class ObjectTracker25D
     obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
     // TODO: Set obj_ellipse.size
     // NOTE: major axis is defined by height
-    obj_ellipse.size.height = eigen_values(0)*0.05;
-    obj_ellipse.size.width = eigen_values(1)*0.05;
+    obj_ellipse.size.height = std::max(eigen_values(0)*0.05, 0.05);
+    obj_ellipse.size.width = std::max(eigen_values(1)*0.05, 0.05*eigen_values(1)/eigen_values(0));
     // TODO: Get relative size of eigen1 to eigen2 and use that as ratio between two axes?
     // ROS_INFO_STREAM("Centroid from PCA is: " << centroid);
     // ROS_INFO_STREAM("Eigen vectors from PCA are: " << eigen_vectors);
@@ -643,7 +643,7 @@ class TabletopPushingPerceptionNode
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0), frame_callback_count_(0),
-      just_spun_(false), major_axis_spin_pos_scale_(0.75), spin_to_heading_(false)
+      just_spun_(false), major_axis_spin_pos_scale_(0.75)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -860,72 +860,7 @@ class TabletopPushingPerceptionNode
       if (as_.isActive())
       {
         as_.publishFeedback(tracker_state);
-        // Check for goal conditions
-        float x_error = tracker_goal_pose_.x - tracker_state.x.x;
-        float y_error = tracker_goal_pose_.y - tracker_state.x.y;
-        float theta_error = subPIAngle(tracker_goal_pose_.theta - tracker_state.x.theta);
-
-        float x_dist = fabs(x_error);
-        float y_dist = fabs(y_error);
-        float theta_dist = fabs(theta_error);
-
-        // TODO: Better abstract the goal and validity (abort) checks here
-        // TODO: Based on controller_name / proxy_name call different goal and abort functions
-        if (spin_to_heading_ && theta_dist < tracker_angle_thresh_)
-        {
-          ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
-                          tracker_state.x.y << ", " << tracker_state.x.theta << ")");
-          ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
-                          tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
-          ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
-                          << theta_dist << ")");
-          PushTrackerResult res;
-          res.aborted = false;
-          as_.setSucceeded(res);
-          obj_tracker_->pause();
-        }
-        else if (!spin_to_heading_ &&
-                 x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
-        {
-          ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
-                          tracker_state.x.y << ", " << tracker_state.x.theta << ")");
-          ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
-                          tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
-          ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
-                          << theta_dist << ")");
-          PushTrackerResult res;
-          res.aborted = false;
-          as_.setSucceeded(res);
-          obj_tracker_->pause();
-        }
-        // Check hand between object and goal
-        else if (controller_name_ == "direct_goal_controller")
-        {
-          if (objectTooFarFromGripper(tracker_state.x))
-          {
-            ROS_WARN_STREAM("Object is too far from gripper. Aborting");
-            PushTrackerResult res;
-            res.aborted = true;
-            as_.setAborted(res);
-            obj_tracker_->pause();
-          }
-        }
-        else if (!spin_to_heading_ && objectNotBetweenGoalAndGripper(tracker_state.x))
-        {
-          ROS_WARN_STREAM("Object is not between gripper and goal. Aborting");
-          PushTrackerResult res;
-          res.aborted = true;
-          as_.setAborted(res);
-          obj_tracker_->pause();
-        }
-        else
-        {
-          if (frame_callback_count_ % 15)
-          {
-            ROS_DEBUG_STREAM("Error in (x,y, theta): (" << x_error << ", " << y_error <<  ", " <<
-                             theta_error << ")\n");
-          }
-        }
+        evaluateGoalAndAbortConditions(tracker_state);
       }
     }
     else if (obj_tracker_->isPaused())
@@ -983,6 +918,88 @@ class TabletopPushingPerceptionNode
     }
 #endif // DISPLAY_WAIT
     ++frame_callback_count_;
+  }
+
+  void evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)
+  {
+    // Check for goal conditions
+    float x_error = tracker_goal_pose_.x - tracker_state.x.x;
+    float y_error = tracker_goal_pose_.y - tracker_state.x.y;
+    float theta_error = subPIAngle(tracker_goal_pose_.theta - tracker_state.x.theta);
+
+    float x_dist = fabs(x_error);
+    float y_dist = fabs(y_error);
+    float theta_dist = fabs(theta_error);
+
+    if (controller_name_ == "spin_to_heading")
+    {
+      if (theta_dist < tracker_angle_thresh_)
+      {
+        ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
+                        tracker_state.x.y << ", " << tracker_state.x.theta << ")");
+        ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
+                        tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
+        ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
+                        << theta_dist << ")");
+        PushTrackerResult res;
+        res.aborted = false;
+        as_.setSucceeded(res);
+        obj_tracker_->pause();
+      }
+      return;
+    }
+
+    if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
+    {
+      ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
+                      tracker_state.x.y << ", " << tracker_state.x.theta << ")");
+      ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
+                      tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
+      ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
+                      << theta_dist << ")");
+      PushTrackerResult res;
+      res.aborted = false;
+      as_.setSucceeded(res);
+      obj_tracker_->pause();
+      return;
+    }
+
+    if (objectNotMoving(tracker_state))
+    {
+      abortPushingGoal("Object is not moving");
+    }
+    else if (armNotMoving(tracker_state))
+    {
+      abortPushingGoal("Object is not moving");
+    }
+    else if (objectTooFarFromGripper(tracker_state.x))
+    {
+      abortPushingGoal("Object is too far from gripper.");
+    }
+    else if (controller_name_ != "direct_goal_controller" &&
+             objectNotBetweenGoalAndGripper(tracker_state.x))
+    {
+      abortPushingGoal("Object is not between gripper and goal.");
+    }
+  }
+
+  bool objectNotMoving(PushTrackerState& tracker_state)
+  {
+    return false;
+  }
+
+  bool armNotMoving(PushTrackerState& tracker_state)
+  {
+    return false;
+  }
+
+  void abortPushingGoal(std::string msg)
+  {
+    ROS_WARN_STREAM(msg << " Aborting.");
+    PushTrackerResult res;
+    res.aborted = true;
+    as_.setAborted(res);
+    obj_tracker_->pause();
   }
 
   /**
@@ -1383,7 +1400,6 @@ class TabletopPushingPerceptionNode
     controller_name_ = tracker_goal->controller_name;
     proxy_name_ = tracker_goal->proxy_name;
     action_primitive_ = tracker_goal->action_primitive;
-    spin_to_heading_ = tracker_goal->controller_name == "spin_to_heading";
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
   }
 
@@ -1395,6 +1411,7 @@ class TabletopPushingPerceptionNode
     as_.setPreempted();
   }
 
+  // TODO: Make this tolerant within some epislon
   bool objectNotBetweenGoalAndGripper(Pose2D& obj_state)
   {
     if (pushing_arm_ == "l")
@@ -1407,6 +1424,7 @@ class TabletopPushingPerceptionNode
     }
   }
 
+  // TODO: Make this threshold the initial distance when pushing +- some epsilon
   bool objectTooFarFromGripper(Pose2D& obj_state)
   {
     geometry_msgs::Point gripper_pt;
@@ -1419,10 +1437,6 @@ class TabletopPushingPerceptionNode
       gripper_pt = r_arm_pose_.pose.position;
     }
     float gripper_dist = hypot(gripper_pt.x-obj_state.x,gripper_pt.y-obj_state.y);
-    if (frame_callback_count_ % 15)
-    {
-      ROS_INFO_STREAM("Gripper dist from centroid is: " << gripper_dist);
-    }
     return (gripper_dist  > max_object_gripper_dist_);
   }
 
@@ -1665,7 +1679,6 @@ class TabletopPushingPerceptionNode
   double tracker_angle_thresh_;
   bool just_spun_;
   double major_axis_spin_pos_scale_;
-  bool spin_to_heading_;
   int frame_set_count_;
   PoseStamped l_arm_pose_;
   PoseStamped r_arm_pose_;
