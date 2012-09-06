@@ -1085,6 +1085,11 @@ class VisualServoNode
       printf("%d\n", (int)goal.size());
 
       goal_p = vs_->VSXYZToPoseStamped(goal_.front());
+      // ORIENT
+      /*
+      goal_p.pose.orientation.x = -0.4582;
+      goal_p.pose.orientation.z = 0.8889;
+      */
 
       // for jacobian avg, we need IM at desired location as well
       if (JACOBIAN_TYPE_AVG == jacobian_type_)
@@ -1118,35 +1123,6 @@ class VisualServoNode
       }
 
     }
-    // EDIT
-    /*
-    std::vector<pcl::PointXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
-    {
-      pcl::PointXYZ origin = origin_xyz.workspace;
-      std::vector<pcl::PointXYZ> pts; pts.clear();
-
-      // the One has to be offset due to tape orientation
-      origin.x += tape1_offset_x_;
-      origin.y += tape1_offset_y_;
-      origin.z += tape1_offset_z_;
-
-      pcl::PointXYZ two = origin;
-      pcl::PointXYZ three = origin;
-
-      two.x = origin.x + tape1_loc_.x;
-      two.y = origin.y + tape1_loc_.y;
-      two.z = origin.z + tape1_loc_.z;
-
-      three.x = origin.x + tape2_loc_.x;
-      three.y = origin.y + tape2_loc_.y;
-      three.z = origin.z + tape2_loc_.z;
-
-      pts.push_back(origin);
-      pts.push_back(two);
-      pts.push_back(three);
-      return pts;
-    }
-    */
     // Service method
     visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> desire)
     {
@@ -1217,7 +1193,8 @@ class VisualServoNode
         tape_features_ = vs_->Point3DToVSXYZ(estimated_pose, tf_);
       }
       tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
-      // it breaks
+
+      // ORIENT
       /*
          QuaternionStamped p;
          p.quaternion.w = 1;
