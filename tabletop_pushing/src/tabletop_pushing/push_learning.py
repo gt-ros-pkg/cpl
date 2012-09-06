@@ -32,15 +32,16 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
 from geometry_msgs.msg import Point, Pose2D
-from math import sin, cos, pi, sqrt, fabs
+from math import sin, cos, pi, sqrt, fabs, atan2, hypot
 import cv2
 import tf.transformations as tr
 import numpy as np
 import sys
 import rospy
+from push_primitives import *
 
 _VERSION_LINE = '# v0.3'
-_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta action_primitive controller proxy which_arm precondition_method push_time'
+_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm precondition_method push_time'
 
 class PushTrial:
     def __init__(self):
@@ -50,17 +51,20 @@ class PushTrial:
         self.final_centroid = Point()
         self.final_orientation = 0.0
         self.goal_pose = Pose2D()
-        self.action_primitive = ''
+        self.behavior_primitive = ''
         self.controller = ''
         self.proxy = ''
         self.which_arm = ''
         self.push_time = 0.0
         self.precondition_method = ''
+        # NOTE: Everything below not saved to disk, just computed for convenience
+        self.push_angle = 0.0
+        self.push_dist = 0.0
 
     def __str__(self):
         # TODO: Print more info here
         return (self.object_id +
-                ' (' + self.proxy + ', ' + self.controller + ', ' + self.action_primitive + ', ' +
+                ' (' + self.proxy + ', ' + self.controller + ', ' + self.behavior_primitive + ', ' +
                 self.which_arm + '):\n' +
                 'init_centroid:\n' + str(self.init_centroid) + '\n'
                 'init_orientation: ' + str(self.init_orientation))
@@ -71,7 +75,7 @@ class PushLearningIO:
         self.data_in = None
 
     def write_line(self, init_centroid, init_orientation, final_centroid,
-                   final_orientation, goal_pose, action_primitive,
+                   final_orientation, goal_pose, behavior_primitive,
                    controller, proxy, which_arm, push_time, object_id,
                    precondition_method='centroid_push'):
         if self.data_out is None:
@@ -82,7 +86,7 @@ class PushLearningIO:
             str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
-            action_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -105,7 +109,7 @@ class PushLearningIO:
         push.goal_pose.x = float(l.pop())
         push.goal_pose.y = float(l.pop())
         push.goal_pose.theta = float(l.pop())
-        push.action_primitive = l.pop()
+        push.behavior_primitive = l.pop()
         push.controller = l.pop()
         push.proxy = l.pop()
         push.which_arm = l.pop()
@@ -114,6 +118,10 @@ class PushLearningIO:
             push.precondition_method = l.pop()
         else:
             push.precondition_method = 'push_centroid'
+        push.push_angle = atan2(push.goal_pose.y-push.init_centroid.y,
+                                push.goal_pose.x-push.init_centroid.x)
+        push.push_dist = hypot(push.goal_pose.y-push.init_centroid.y,
+                               push.goal_pose.x-push.init_centroid.x)
         return push
 
     def read_in_data_file(self, file_name):
@@ -131,48 +139,46 @@ class PushLearningIO:
     def close_out_file(self):
         self.data_out.close()
 
-# TODO: Fix this stupid class
 class PushLearningAnalysis:
 
-    def __init__(self):
+    def __init__(self, file_name):
         self.raw_data = None
         self.io = PushLearningIO()
         self.compute_push_score = self.compute_push_error_xy
-        # self.compute_push_score = self.compute_push_error_push_dist_diff
         self.xy_hash_precision = 10.0 # bins/meter
         self.num_angle_bins = 8
+        self.all_trials = self.read_in_push_trials(file_name)
 
-    def determine_best_pushes(self, file_name):
-        all_trials = self.read_in_push_trials(file_name)
-        loc_groups = self.group_trials(all_trials)
+    def workspace_distribution(self):
+        loc_groups = self.group_trials(self.all_trials)
 
         # Group multiple trials of same push at a given location
         groups = []
         for i, group in enumerate(loc_groups):
-            push_opt_dict = {}
+            behavior_primitive_dict = {}
             for j,t in enumerate(group):
-                opt_key = self.hash_push_opt(t)
+                opt_key = t.behavior_primitive
                 try:
-                    push_opt_dict[opt_key].append(t)
+                    behavior_primitive_dict[opt_key].append(t)
                 except KeyError:
-                    push_opt_dict[opt_key] = [t]
+                    behavior_primitive_dict[opt_key] = [t]
             # Average errors for each push key
             mean_group = []
-            for opt_key in push_opt_dict:
+            for opt_key in behavior_primitive_dict:
                 mean_score = 0
-                for push in push_opt_dict[opt_key]:
+                for push in behavior_primitive_dict[opt_key]:
                     mean_score += push.score
-                mean_score = mean_score / float(len(push_opt_dict[opt_key]))
+                mean_score = mean_score / float(len(behavior_primitive_dict[opt_key]))
                 # Make a fake mean push
                 mean_push = PushTrial()
                 mean_push.score = mean_score
                 mean_push.c_x = Point(0,0,0)
-                mean_push.c_x.x, mean_push.c_x.y = self.hash_xy(
-                    push_opt_dict[opt_key][0].c_x.x,
-                    push_opt_dict[opt_key][0].c_x.y)
+                mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
+                    behavior_primitive_dict[opt_key][0].init_centroid.x,
+                    behavior_primitive_dict[opt_key][0].init_centroid.y)
                 mean_push.push_angle = self.hash_angle(
-                    push_opt_dict[opt_key][0].push_angle)
-                mean_push.arm, mean_push.push_opt = self.unhash_opt_key(opt_key)
+                    behavior_primitive_dict[opt_key][0].push_angle)
+                mean_push.behavior_primitive = opt_key
                 mean_group.append(mean_push)
             groups.append(mean_group)
 
@@ -205,7 +211,7 @@ class PushLearningAnalysis:
         for angle_key in angle_dict:
             x_dict = {}
             for t in angle_dict[angle_key]:
-                x_key, y_key = self.hash_xy(t.c_x.x, t.c_x.y)
+                x_key, y_key = self.hash_xy(t.init_centroid.x, t.init_centroid.y)
                 # Check if x_key exists
                 try:
                     cur_y_dict = x_dict[x_key]
@@ -227,6 +233,7 @@ class PushLearningAnalysis:
     def visualize_push_choices(self, choices):
         # load in image from dropbox folder
         disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/test_disp.png')
+        # TODO: Check these values
         world_min_x = 0.2
         world_max_x = 1.0
         world_min_y = -0.5
@@ -236,11 +243,9 @@ class PushLearningAnalysis:
         world_x_bins = world_x_dist*self.xy_hash_precision
         world_y_bins = world_y_dist*self.xy_hash_precision
         for c in choices:
-            start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
+            start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
             push_angle = self.hash_angle(c.push_angle)
-            rospy.loginfo('Choice for (' + str(start_x) + ', ' + str(start_y) +
-                          ', ' + str(push_angle) + '): (' + str(c.arm) + ', ' +
-                          str(c.push_opt) + ') : ' + str(c.score))
+            print 'Choice for (' + str(start_x), ',', str(start_y), ',', str(push_angle) + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
             disp_img = self.draw_push_choice_on_image(c, disp_img)
         cv2.imshow('Chosen pushes', disp_img)
         cv2.imwrite('/u/thermans/Desktop/push_learn_out.png', disp_img)
@@ -248,8 +253,8 @@ class PushLearningAnalysis:
 
     def draw_push_choice_on_image(self, c, img):
         # TODO: Double check where the bin centroid is
-        # c.c_x.x -= 0.5/self.xy_hash_precision
-        # c.c_x.y -= 0.5/self.xy_hash_precision
+        # c.init_centroid.x -= 0.5/self.xy_hash_precision
+        # c.init_centroid.y -= 0.5/self.xy_hash_precision
 
         # TODO: load in transform and camera parameters from saved info file
         K = np.matrix([[525, 0, 319.5, 0.0],
@@ -260,7 +265,7 @@ class PushLearningAnalysis:
         num_downsamples = 1
         # TODO: Save table height in trial data
         table_height = -0.3
-        P_w = np.matrix([[c.c_x.x], [c.c_x.y], [table_height], [1.0]])
+        P_w = np.matrix([[c.init_centroid.x], [c.init_centroid.y], [table_height], [1.0]])
         # Transform choice location into camera frame
         T = (np.matrix(tr.translation_matrix(tl)) *
              np.matrix(tr.quaternion_matrix(q)))
@@ -270,21 +275,18 @@ class PushLearningAnalysis:
         P_i = P_i / P_i[2]
         u = P_i[0]/pow(2,num_downsamples)
         v = P_i[1]/pow(2,num_downsamples)
+
         # Choose color by push type
-        if c.arm == 'l':
-            if c.push_opt == 0: # Gripper push
-                color = [255.0, 0.0, 0.0] # Blue
-            elif c.push_opt == 1: # Sweep
-                color = [0.0, 255.0, 0.0] # Green
-            else: # Overhead push
-                color = [0.0, 0.0, 255.0] # Red
-        else:
-            if c.push_opt == 0:# Gripper push
-                color = [255.0, 0.0, 255.0] # Magenta
-            elif c.push_opt == 1: # Sweep
-                color = [0.0, 255.0, 255.0] # Yellow
-            else: # Overhead push
-                color = [255.0, 255.0, 0.0] # Cyan
+        # TODO: Add more colors here depending on other options
+        # TODO: Make extensible based on length of possible choices? (i.e. generate random colors)
+        if c.behavior_primitive == GRIPPER_PUSH:
+            color = [255.0, 0.0, 0.0] # Blue
+        elif c.behavior_primitive == GRIPPER_SWEEP:
+            color = [0.0, 255.0, 0.0] # Green
+        elif c.behavior_primitive == OVERHEAD_PUSH:
+            color = [0.0, 0.0, 255.0] # Red
+        elif c.behavior_primitive == GRIPPER_PULL:
+            color = [255.0, 0.0, 255.0] # Magenta
 
         # Draw line depicting the angle
         radius = 7
@@ -314,36 +316,34 @@ class PushLearningAnalysis:
         y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
         return (x_prime, y_prime)
 
-    def hash_push_opt(self, push):
-        return push.arm+str(push.push_opt)
+    def hash_behavior_primitive(self, push):
+        return (push.which_arm,push.behavior_primitive)
 
-    def unhash_opt_key(self, opt_key):
-        return (opt_key[0], int(opt_key[1]))
+    def unhash_behavior_primitive_key(self, opt_key):
+        return (opt_key[0], opt_key[1])
 
     #
     # Scoring Functions
     #
     def compute_push_error_xy(self, push):
-        desired_x = push.c_x.x + cos(push.push_angle)*push.push_dist
-        desired_y = push.c_x.y + sin(push.push_angle)*push.push_dist
-        err_x = desired_x - push.c_x_prime.x
-        err_y = desired_y - push.c_x_prime.y
+        err_x = push.goal_pose.x - push.final_centroid.x
+        err_y = push.goal_pose.y - push.final_centroid.y
         return err_x*err_x+err_y*err_y
 
     def compute_push_error_push_dist_diff(self, push):
-        desired_x = push.c_x.x + cos(push.push_angle)*push.push_dist
-        desired_y = push.c_x.y + sin(push.push_angle)*push.push_dist
-        d_x = push.c_x_prime.x - push.c_x.x
-        d_y = push.c_x_prime.y - push.c_x.y
+        desired_x = push.init_centroid.x + cos(push.push_angle)*push.push_dist
+        desired_y = push.init_centroid.y + sin(push.push_angle)*push.push_dist
+        d_x = push.final_centroid.x - push.init_centroid.x
+        d_y = push.final_centroid.y - push.init_centroid.y
         actual_dist = sqrt(d_x*d_x + d_y*d_y)
         return fabs(actual_dist - push.push_dist)
 
 if __name__ == '__main__':
-    # TODO: Read command line arguments for data file and metric to use
-    pla = PushLearningAnalysis()
+    # TODO: Add more options to command line
     if len(sys.argv) > 1:
         data_path = str(sys.argv[1])
     else:
         data_path = '/u/thermans/Dropbox/Data/choose_push/batch_out0.txt'
-    best_pushes = pla.determine_best_pushes(data_path)
-    pla.visualize_push_choices(best_pushes)
+    pla = PushLearningAnalysis(data_path)
+    workspace_pushes = pla.workspace_distribution()
+    pla.visualize_push_choices(workspace_pushes)
