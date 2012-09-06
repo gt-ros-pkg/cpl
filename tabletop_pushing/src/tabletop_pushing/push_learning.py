@@ -141,16 +141,21 @@ class PushLearningIO:
 
 class PushLearningAnalysis:
 
-    def __init__(self, file_name):
+    def __init__(self):
         self.raw_data = None
         self.io = PushLearningIO()
         self.compute_push_score = self.compute_push_error_xy
         self.xy_hash_precision = 10.0 # bins/meter
         self.num_angle_bins = 8
-        self.all_trials = self.read_in_push_trials(file_name)
-
+    #
+    # Methods for computing marginals
+    #
     def workspace_distribution(self):
-        loc_groups = self.group_trials(self.all_trials)
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of (x,y,push_angle)
+        '''
+        self.score_push_trials(self.all_trials)
+        loc_groups = self.group_trials_by_loc(self.all_trials)
 
         # Group multiple trials of same push at a given location
         groups = []
@@ -194,12 +199,66 @@ class PushLearningAnalysis:
             best_pushes.append(min_score_push)
         return best_pushes
 
-    def group_trials(self, all_trials):
-        # Get error scores for each push
-        # Group scored pushes by push angle
+    def object_distribution(self):
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of object_id
+        '''
+        all_trials = self.score_push_trials(self.all_trials)
+        object_groups = self.group_trials_by_object_id(self.all_trials)
+        # TODO: Fix this function
+
+        # Group multiple trials of same push for a given object
+        groups = []
+        for i, group in enumerate(object_groups):
+            behavior_primitive_dict = {}
+            for j,t in enumerate(group):
+                opt_key = t.behavior_primitive
+                try:
+                    behavior_primitive_dict[opt_key].append(t)
+                except KeyError:
+                    behavior_primitive_dict[opt_key] = [t]
+            # Average errors for each push key
+            mean_group = []
+            for opt_key in behavior_primitive_dict:
+                mean_score = 0
+                for push in behavior_primitive_dict[opt_key]:
+                    mean_score += push.score
+                mean_score = mean_score / float(len(behavior_primitive_dict[opt_key]))
+                # Make a fake mean push
+                mean_push = PushTrial()
+                mean_push.score = mean_score
+                mean_push.c_x = Point(0,0,0)
+                mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
+                    behavior_primitive_dict[opt_key][0].init_centroid.x,
+                    behavior_primitive_dict[opt_key][0].init_centroid.y)
+                mean_push.push_angle = self.hash_angle(
+                    behavior_primitive_dict[opt_key][0].push_angle)
+                mean_push.behavior_primitive = opt_key
+                mean_group.append(mean_push)
+            groups.append(mean_group)
+
+        # Choose best push for each (angle, centroid) group
+        best_pushes = []
+        for i, group in enumerate(groups):
+            min_score = 200.0 # Meters
+            min_score_push = None
+            for j, t in enumerate(group):
+                if t.score < min_score:
+                    min_score = t.score
+                    min_score_push = t
+            best_pushes.append(min_score_push)
+        return best_pushes
+
+    #
+    # Grouping methods
+    #
+    def group_trials_by_loc(self, all_trials):
+        '''
+        Method to group all trials by initial table location and push angle
+        '''
         angle_dict = {}
+        # Group scored pushes by push angle
         for t in all_trials:
-            t.score = self.compute_push_score(t)
             angle_key = self.hash_angle(t.push_angle)
             try:
                 angle_dict[angle_key].append(t)
@@ -230,6 +289,23 @@ class PushLearningAnalysis:
                     i += 1
         return groups
 
+    def group_trials_by_object_id(self, all_trials):
+        '''
+        Method to group all trials by object being pushed
+        '''
+        object_dict = {}
+        # Group scored pushes by push angle
+        for t in all_trials:
+            object_key = t.object_id
+            try:
+                object_dict[object_key].append(t)
+            except KeyError:
+                object_dict[object_key] = [t]
+        return object_dict
+
+    #
+    # Visualization functions
+    #
     def visualize_push_choices(self, choices):
         # load in image from dropbox folder
         disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/test_disp.png')
@@ -299,8 +375,7 @@ class PushLearningAnalysis:
     # IO Functions
     #
     def read_in_push_trials(self, file_name):
-        return self.io.read_in_data_file(file_name)
-
+        self.all_trials = self.io.read_in_data_file(file_name)
     #
     # Hashing Functions
     #
@@ -325,6 +400,11 @@ class PushLearningAnalysis:
     #
     # Scoring Functions
     #
+    def score_push_trials(self, trials):
+        # Get error scores for each push
+        for t in trials:
+            t.score = self.compute_push_score(t)
+
     def compute_push_error_xy(self, push):
         err_x = push.goal_pose.x - push.final_centroid.x
         err_y = push.goal_pose.y - push.final_centroid.y
@@ -344,6 +424,8 @@ if __name__ == '__main__':
         data_path = str(sys.argv[1])
     else:
         data_path = '/u/thermans/Dropbox/Data/choose_push/batch_out0.txt'
-    pla = PushLearningAnalysis(data_path)
+    pla = PushLearningAnalysis()
+    pla.read_in_push_trials(data_path)
     workspace_pushes = pla.workspace_distribution()
+    # object_pushes = pla.object_distribution()
     pla.visualize_push_choices(workspace_pushes)
