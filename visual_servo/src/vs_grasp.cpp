@@ -216,7 +216,7 @@ class VisualServoNode
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
       it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
       desire_points_initialized_(false), PHASE(INIT), is_gripper_initialized_(false), gripper_pose_estimated_(false),
-      is_detected_(false)
+      is_detected_(false), place_detection_(false)
 
   {
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
@@ -525,6 +525,12 @@ class VisualServoNode
 
           case VS_CONTR_2:
             {
+              if (!place_detection_)
+              {
+                place();
+                place_detection_ = true;
+              }
+
               // compute the twist if everything is good to go
 #ifdef VISUAL_SERVO_TYPE
               std::vector<PoseStamped> goals, feats;
@@ -536,20 +542,22 @@ class VisualServoNode
               visual_servo::VisualServoTwist v_srv = getTwist(goal_);
 #endif
               // terminal condition
-              if (v_srv.request.error < vs_err_term_threshold_)
+              if (is_detected_ || v_srv.request.error < vs_err_term_threshold_)
               {
                 // record the height at which the object wasd picked
                 object_z_ = tape_features_.front().workspace.z;
-
                 PHASE = GRAB;
+                sendZeroVelocity();
               }
-              // calling the service provider to move
-              if (v_client_.call(v_srv)){}
-
               else
               {
-                // on failure
-                // ROS_WARN("Service FAILED...");
+                // calling the service provider to move
+                if (v_client_.call(v_srv)){}
+                else
+                {
+                  // on failure
+                  // ROS_WARN("Service FAILED...");
+                }
               }
             }
             break;
@@ -782,6 +790,7 @@ class VisualServoNode
       place_goal.command.acceleration_trigger_magnitude = 2.6;  // set the contact acceleration to n m/s^2
       place_goal.command.slip_trigger_magnitude = .005;
 
+      is_detected_ = false;
       ROS_INFO("Waiting for object placement contact...");
       detector_client_->sendGoal(place_goal,
           boost::bind(&VisualServoNode::placeDoneCB, this, _1, _2));
@@ -791,10 +800,9 @@ class VisualServoNode
       const pr2_gripper_sensor_msgs::PR2GripperEventDetectorResultConstPtr& result)
     {
       if(state == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Place Success");
+        ROS_INFO("[Place ActionLib] Place Success");
       else
-        ROS_INFO("Place Failure");
-
+        ROS_WARN("[Place ActionLib] Place Failure");
       is_detected_ = true;
     }
 
@@ -806,9 +814,9 @@ class VisualServoNode
 
       ROS_INFO("Sending close goal");
       gripper_client_->sendGoal(open);
-      gripper_client_->waitForResult(ros::Duration(10.0));
+      gripper_client_->waitForResult(ros::Duration(20.0));
       if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){}
-      else ROS_INFO("Grab Failed");
+      else ROS_WARN("[Gripper Action Lib] Gripper Close Failed");
     }
 
     void open()
@@ -819,9 +827,9 @@ class VisualServoNode
 
       ROS_INFO("Sending open goal");
       gripper_client_->sendGoal(open);
-      gripper_client_->waitForResult(ros::Duration(10.0));
+      gripper_client_->waitForResult(ros::Duration(20.0));
       if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){}
-      else ROS_INFO("Grab Failed");
+      else ROS_WARN("[Gripper Action Lib] Gripper Open Failed");
     }
 
     //Open the gripper, find contact on both fingers, and go into slip-servo control mode
@@ -856,22 +864,15 @@ class VisualServoNode
       ROS_INFO("Waiting for object placement contact...");
       release_client_->sendGoal(place,
       boost::bind(&VisualServoNode::releaseDoneCB, this, _1, _2));
-      /**
-      release_client_->waitForResult();
-      if(release_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Release Success");
-      else
-        ROS_INFO("Place Failure");
-       **/
     }
 
     void releaseDoneCB(const actionlib::SimpleClientGoalState& state,
         const pr2_gripper_sensor_msgs::PR2GripperReleaseResultConstPtr& result)
     {
       if(state == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Place Success");
+        ROS_INFO("[Contact ActionLib] Release Success");
       else
-        ROS_INFO("Place Failure");
+        ROS_WARN("[Contact ActionLib] Release Failure");
       is_detected_ = true;
       // stop the gripper right away
       sendZeroVelocity();
@@ -1566,6 +1567,7 @@ class VisualServoNode
 
     // collision detection
     bool is_detected_;
+    bool place_detection_;
     float object_z_;
 
     float close_gripper_dist_;
