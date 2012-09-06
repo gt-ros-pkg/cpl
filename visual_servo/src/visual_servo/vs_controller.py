@@ -73,6 +73,9 @@ class VNode:
 
         # self.init_arm_servo()
         self.pn.switch_to_cart_controllers()
+
+        self.which_arm = 'l'
+
         rospy.loginfo('Done moving to robot initial pose')
 
         # self.pn.gripper_pose()
@@ -134,7 +137,7 @@ class VNode:
         twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
         twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
         twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-        if which_arm == 'l':
+        if self.which_arm == 'l':
             vel_pub = self.pn.l_arm_cart_vel_pub
             posture_pub = self.pn.l_arm_vel_posture_pub
         else:
