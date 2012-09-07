@@ -528,6 +528,7 @@ class VisualServoNode
               goals.push_back(goal_p_);
               feats.push_back(tape_features_p_);
               visual_servo::VisualServoTwist v_srv = vs_->getTwist(goals,feats,0);
+              v_srv.request.twist.twist.linear.z /= 4;
               v_srv.request.error = getError(goal_, tape_features_);
 #else
               visual_servo::VisualServoTwist v_srv = getTwist(goal_);
@@ -708,6 +709,25 @@ class VisualServoNode
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(531, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(530, 18), 2, 0.60, cv::Scalar(40, 40, 40), 1);
 
+      if (po_.size() > 0)
+      {
+        XYZPointCloud c = po_.at(0).cloud;
+        for (unsigned int j = 0; j < c.size(); j++)
+        {
+          cv::Point p = vs_->projectPointIntoImage(c.at(j), workspace_frame_, optical_frame_, tf_);
+          cv::circle(cur_orig_color_frame_, p, 1, cv::Scalar(255, 0, 255), 1);
+        }
+        for (unsigned int i = 1; i < po_.size(); i++)
+        {
+          XYZPointCloud c = po_.at(i).cloud;
+          for (unsigned int j = 0; j < c.size(); j++)
+          {
+            cv::Point p = vs_->projectPointIntoImage(c.at(j), workspace_frame_, optical_frame_, tf_);
+            cv::circle(cur_orig_color_frame_, p, 1, cv::Scalar(120, 0, 255/po_.size()*i), 1);
+          }
+        }
+      }
+
       if (goal_.size() > 0)
       {
         VSXYZ d = desired_;
@@ -811,7 +831,7 @@ class VisualServoNode
     void open()
     {
       pr2_controllers_msgs::Pr2GripperCommandGoal open;
-      open.command.position = 0.10;
+      open.command.position = 0.12;
       open.command.max_effort = -1.0;
 
       ROS_INFO("Sending open goal");
@@ -994,10 +1014,10 @@ class VisualServoNode
         new tabletop_pushing::PointCloudSegmentation(tf_));
       pcs_->min_table_z_ = -1.0;
       pcs_->max_table_z_ = 1.0;
-      pcs_->min_workspace_x_ = -1.0;
-      pcs_->max_workspace_x_ = 1.75;
-      pcs_->min_workspace_z_ = -1.0;
-      pcs_->max_workspace_z_ = 1.0;
+      pcs_->min_workspace_x_ = -0.5;
+      pcs_->max_workspace_x_ = 1.00;
+      pcs_->min_workspace_z_ = -0.5;
+      pcs_->max_workspace_z_ = 0.5;
       pcs_->num_downsamples_ = 2;
       pcs_->table_ransac_thresh_ = 0.015;
       pcs_->table_ransac_angle_thresh_ = 30.0;
@@ -1012,7 +1032,17 @@ class VisualServoNode
 
       try
       {
-        tabletop_pushing::ProtoObjects po = pcs_->findTabletopObjects(cur_point_cloud_);
+        XYZPointCloud objs_cloud, plane_cloud;
+        // tabletop_pushing::ProtoObjects po = pcs_->findTabletopObjects(cur_point_cloud_);
+        Eigen::Vector4f table_centroid_ = pcs_->getTablePlane(cur_point_cloud_, objs_cloud, plane_cloud,
+            false);
+        double min_workspace_z_ = table_centroid_[2];
+
+        XYZPointCloud objects_cloud_down = pcs_->downsampleCloud(objs_cloud);
+
+        // Find independent regions
+        tabletop_pushing::ProtoObjects po = pcs_->clusterProtoObjects(objects_cloud_down);
+
         // segmeneted no object
         if(po.size() == 0)
           return false;
