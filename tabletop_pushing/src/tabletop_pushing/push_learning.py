@@ -145,7 +145,7 @@ class PushLearningAnalysis:
         self.raw_data = None
         self.io = PushLearningIO()
         self.compute_push_score = self.compute_push_error_xy
-        self.xy_hash_precision = 10.0 # bins/meter
+        self.xy_hash_precision = 20.0 # bins/meter
         self.num_angle_bins = 8
     #
     # Methods for computing marginals
@@ -155,7 +155,7 @@ class PushLearningAnalysis:
         Method to find the best performing (on average) behavior_primitive as a function of (x,y,push_angle)
         '''
         self.score_push_trials(self.all_trials)
-        loc_groups = self.group_trials_by_loc(self.all_trials)
+        loc_groups = self.group_trials_by_pose(self.all_trials)
 
         # Group multiple trials of same push at a given location
         groups = []
@@ -252,7 +252,7 @@ class PushLearningAnalysis:
     #
     # Grouping methods
     #
-    def group_trials_by_loc(self, all_trials):
+    def group_trials_by_pose(self, all_trials):
         '''
         Method to group all trials by initial table location and push angle
         '''
@@ -289,6 +289,20 @@ class PushLearningAnalysis:
                     i += 1
         return groups
 
+    def group_trials_by_xy(self, all_trials):
+        '''
+        Method to group all trials by initial table location and push angle
+        '''
+        xy_dict = {}
+        for t in all_trials:
+            xy_key = self.hash_xy(t.init_centroid.x, t.init_centroid.y)
+            # Check if x_key exists
+            try:
+                xy_dict[xy_key].append(t)
+            except KeyError:
+                xy_dict[xy_key] = [t]
+        return xy_dict
+
     def group_trials_by_object_id(self, all_trials):
         '''
         Method to group all trials by object being pushed
@@ -308,29 +322,22 @@ class PushLearningAnalysis:
     #
     def visualize_push_choices(self, choices):
         # load in image from dropbox folder
-        disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/test_disp.png')
-        # TODO: Check these values
-        world_min_x = 0.2
-        world_max_x = 1.0
-        world_min_y = -0.5
-        world_max_y = 0.5
-        world_x_dist = world_max_x - world_min_x
-        world_y_dist = world_max_y - world_min_y
-        world_x_bins = world_x_dist*self.xy_hash_precision
-        world_y_bins = world_y_dist*self.xy_hash_precision
-        for c in choices:
-            start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
-            push_angle = self.hash_angle(c.push_angle)
-            print 'Choice for (' + str(start_x), ',', str(start_y), ',', str(push_angle) + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
-            disp_img = self.draw_push_choice_on_image(c, disp_img)
+        # TODO: Get new image of the table we use now
+        disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/use_for_display.png')
+
+        xy_groups = self.group_trials_by_xy(choices)
+
+        # TODO: Draw all choices for a specific (x,y) together to get better matting of shadows
+        for group_key in xy_groups:
+            disp_img = self.draw_push_choices_on_image(xy_groups[group_key], disp_img)
         cv2.imshow('Chosen pushes', disp_img)
         cv2.imwrite('/u/thermans/Desktop/push_learn_out.png', disp_img)
         cv2.waitKey()
 
-    def draw_push_choice_on_image(self, c, img):
+    def draw_push_choices_on_image(self, choices, img):
         # TODO: Double check where the bin centroid is
-        # c.init_centroid.x -= 0.5/self.xy_hash_precision
-        # c.init_centroid.y -= 0.5/self.xy_hash_precision
+        # c.init_centroid.x += 0.5/self.xy_hash_precision
+        # c.init_centroid.y += 0.5/self.xy_hash_precision
 
         # TODO: load in transform and camera parameters from saved info file
         K = np.matrix([[525, 0, 319.5, 0.0],
@@ -338,10 +345,11 @@ class PushLearningAnalysis:
                        [0, 0, 1, 0.0]])
         tl = np.asarray([-0.0115423, 0.441939, 0.263569])
         q = np.asarray([0.693274, -0.685285, 0.157732, 0.157719])
-        num_downsamples = 1
+        num_downsamples = 0
         # TODO: Save table height in trial data
         table_height = -0.3
-        P_w = np.matrix([[c.init_centroid.x], [c.init_centroid.y], [table_height], [1.0]])
+        P_w = np.matrix([[choices[0].init_centroid.x], [choices[0].init_centroid.y],
+                         [table_height], [1.0]])
         # Transform choice location into camera frame
         T = (np.matrix(tr.translation_matrix(tl)) *
              np.matrix(tr.quaternion_matrix(q)))
@@ -351,24 +359,27 @@ class PushLearningAnalysis:
         P_i = P_i / P_i[2]
         u = P_i[0]/pow(2,num_downsamples)
         v = P_i[1]/pow(2,num_downsamples)
-
-        # Choose color by push type
-        # TODO: Add more colors here depending on other options
-        # TODO: Make extensible based on length of possible choices? (i.e. generate random colors)
-        if c.behavior_primitive == GRIPPER_PUSH:
-            color = [255.0, 0.0, 0.0] # Blue
-        elif c.behavior_primitive == GRIPPER_SWEEP:
-            color = [0.0, 255.0, 0.0] # Green
-        elif c.behavior_primitive == OVERHEAD_PUSH:
-            color = [0.0, 0.0, 255.0] # Red
-        elif c.behavior_primitive == GRIPPER_PULL:
-            color = [255.0, 0.0, 255.0] # Magenta
-
-        # Draw line depicting the angle
-        radius = 7
-        end_point = (u+cos(c.push_angle)*radius, v+sin(c.push_angle)*radius)
-        cv2.line(img, (u,v), end_point, color)
-        cv2.circle(img, (u,v), radius, [0.0,0.0,0.0])
+        # Draw circle for the location
+        radius = 15
+        # cv2.circle(img, (u,v), radius, [0.0,0.0,0.0],3)
+        cv2.circle(img, (u,v), radius, [255.0,255.0,255.0])
+        # Draw Shadows for all angles
+        for c in choices:
+            end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
+            cv2.line(img, (u,v), end_point, [0.0,0.0,0.0],3)
+        for c in choices:
+            # Choose color by push type
+            if c.behavior_primitive == GRIPPER_PUSH:
+                color = [255.0, 0.0, 0.0] # Blue
+            elif c.behavior_primitive == GRIPPER_SWEEP:
+                color = [0.0, 255.0, 0.0] # Green
+            elif c.behavior_primitive == OVERHEAD_PUSH:
+                color = [0.0, 0.0, 255.0] # Red
+            elif c.behavior_primitive == GRIPPER_PULL:
+                color = [0.0, 255.0, 255.0] # Yellow
+            # Draw line depicting the angle
+            end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
+            cv2.line(img, (u,v), end_point, color)
         return img
 
     #
@@ -376,6 +387,16 @@ class PushLearningAnalysis:
     #
     def read_in_push_trials(self, file_name):
         self.all_trials = self.io.read_in_data_file(file_name)
+
+    def output_push_choice(self, c):
+        start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
+        push_angle = self.hash_angle(c.push_angle)
+        print 'Choice for (' + str(start_x), ',', str(start_y), ',', str(push_angle) + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
+
+    def output_push_choices(self, choices):
+        for c in choices:
+            self.output_push_choice(c)
+
     #
     # Hashing Functions
     #
@@ -428,4 +449,5 @@ if __name__ == '__main__':
     pla.read_in_push_trials(data_path)
     workspace_pushes = pla.workspace_distribution()
     # object_pushes = pla.object_distribution()
+    pla.output_push_choices(workspace_pushes)
     pla.visualize_push_choices(workspace_pushes)

@@ -923,6 +923,10 @@ class TabletopPushingPerceptionNode
       cv::waitKey(display_wait_ms_);
     }
 #endif // DISPLAY_WAIT
+    // if (frame_callback_count_ == 0)
+    // {
+    //   cv::imwrite("/home/thermans/Desktop/use_for_display.png", cur_color_frame_);
+    // }
     ++frame_callback_count_;
   }
 
