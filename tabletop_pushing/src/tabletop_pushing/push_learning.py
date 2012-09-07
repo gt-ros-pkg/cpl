@@ -155,11 +155,12 @@ class PushLearningAnalysis:
         Method to find the best performing (on average) behavior_primitive as a function of (x,y,push_angle)
         '''
         self.score_push_trials(self.all_trials)
-        loc_groups = self.group_trials_by_pose(self.all_trials)
+        loc_groups = self.group_trials_by_xy_and_push_angle(self.all_trials)
 
         # Group multiple trials of same push at a given location
         groups = []
-        for i, group in enumerate(loc_groups):
+        for i, group_key in enumerate(loc_groups):
+            group = loc_groups[group_key]
             behavior_primitive_dict = {}
             for j,t in enumerate(group):
                 opt_key = t.behavior_primitive
@@ -199,19 +200,21 @@ class PushLearningAnalysis:
             best_pushes.append(min_score_push)
         return best_pushes
 
+    # TODO: Make a generic function where we just pass in the hash functions
     def object_distribution(self):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
-        all_trials = self.score_push_trials(self.all_trials)
+        self.score_push_trials(self.all_trials)
         object_groups = self.group_trials_by_object_id(self.all_trials)
-        # TODO: Fix this function
 
         # Group multiple trials of same push for a given object
         groups = []
-        for i, group in enumerate(object_groups):
+        for i, object_key in enumerate(object_groups):
+            object_group = object_groups[object_key]
             behavior_primitive_dict = {}
-            for j,t in enumerate(group):
+            for j,t in enumerate(object_group):
+                # TODO: Look at controllers and proxies as well
                 opt_key = t.behavior_primitive
                 try:
                     behavior_primitive_dict[opt_key].append(t)
@@ -228,6 +231,7 @@ class PushLearningAnalysis:
                 mean_push = PushTrial()
                 mean_push.score = mean_score
                 mean_push.c_x = Point(0,0,0)
+                mean_push.object_id = object_group[0].object_id
                 mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
                     behavior_primitive_dict[opt_key][0].init_centroid.x,
                     behavior_primitive_dict[opt_key][0].init_centroid.y)
@@ -252,41 +256,22 @@ class PushLearningAnalysis:
     #
     # Grouping methods
     #
-    def group_trials_by_pose(self, all_trials):
+
+    # TODO: Make a generic function where we just pass in the hash functions
+    def group_trials_by_xy_and_push_angle(self, all_trials):
         '''
         Method to group all trials by initial table location and push angle
         '''
-        angle_dict = {}
+        groups = {}
         # Group scored pushes by push angle
         for t in all_trials:
             angle_key = self.hash_angle(t.push_angle)
+            x_key, y_key = self.hash_xy(t.init_centroid.x, t.init_centroid.y)
+            group_key = (x_key, y_key, angle_key)
             try:
-                angle_dict[angle_key].append(t)
+                groups[group_key].append(t)
             except KeyError:
-                angle_dict[angle_key] = [t]
-        # Group different pushes by start centroid
-        groups = []
-        i = 0
-        for angle_key in angle_dict:
-            x_dict = {}
-            for t in angle_dict[angle_key]:
-                x_key, y_key = self.hash_xy(t.init_centroid.x, t.init_centroid.y)
-                # Check if x_key exists
-                try:
-                    cur_y_dict = x_dict[x_key]
-                    # Check if y_key exists
-                    try:
-                        x_dict[x_key][y_key].append(t)
-                    except KeyError:
-                        x_dict[x_key][y_key] = [t]
-                except KeyError:
-                    y_dict = {y_key:[t]}
-                    x_dict[x_key] = y_dict
-            # Flatten groups
-            for x_key in x_dict:
-                for y_key in x_dict[x_key]:
-                    groups.append(x_dict[x_key][y_key])
-                    i += 1
+                groups[group_key] = [t]
         return groups
 
     def group_trials_by_xy(self, all_trials):
@@ -362,7 +347,7 @@ class PushLearningAnalysis:
         # Draw circle for the location
         radius = 15
         # cv2.circle(img, (u,v), radius, [0.0,0.0,0.0],3)
-        cv2.circle(img, (u,v), radius, [255.0,255.0,255.0])
+        # cv2.circle(img, (u,v), radius, [255.0,255.0,255.0])
         # Draw Shadows for all angles
         for c in choices:
             end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
@@ -388,14 +373,25 @@ class PushLearningAnalysis:
     def read_in_push_trials(self, file_name):
         self.all_trials = self.io.read_in_data_file(file_name)
 
-    def output_push_choice(self, c):
+    def output_loc_push_choices(self, choices):
+        print "Loc push choices:"
+        for c in choices:
+            self.output_loc_push_choice(c)
+
+    def output_obj_push_choices(self, choices):
+        print "Object push choices:"
+        for c in choices:
+            self.output_obj_push_choice(c)
+
+    def output_loc_push_choice(self, c):
         start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
         push_angle = self.hash_angle(c.push_angle)
         print 'Choice for (' + str(start_x), ',', str(start_y), ',', str(push_angle) + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
 
-    def output_push_choices(self, choices):
-        for c in choices:
-            self.output_push_choice(c)
+    def output_obj_push_choice(self, c):
+        # start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
+        push_angle = self.hash_angle(c.push_angle)
+        print 'Choice for (' + c.object_id + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
 
     #
     # Hashing Functions
@@ -445,9 +441,13 @@ if __name__ == '__main__':
         data_path = str(sys.argv[1])
     else:
         data_path = '/u/thermans/Dropbox/Data/choose_push/batch_out0.txt'
+
     pla = PushLearningAnalysis()
     pla.read_in_push_trials(data_path)
+
+    # TODO: Use command line arguments to choose these
     workspace_pushes = pla.workspace_distribution()
-    # object_pushes = pla.object_distribution()
-    pla.output_push_choices(workspace_pushes)
+    object_pushes = pla.object_distribution()
+    pla.output_loc_push_choices(workspace_pushes)
+    pla.output_obj_push_choices(object_pushes)
     pla.visualize_push_choices(workspace_pushes)
