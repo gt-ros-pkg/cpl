@@ -155,80 +155,62 @@ class PushLearningAnalysis:
     def __init__(self):
         self.raw_data = None
         self.io = PushLearningIO()
-        self.compute_push_score = self.compute_push_error_xy
         self.xy_hash_precision = 20.0 # bins/meter
         self.num_angle_bins = 8
     #
     # Methods for computing marginals
     #
     def workspace_distribution(self):
-        '''
-        Method to find the best performing (on average) behavior_primitive as a function of (x,y,push_angle)
-        '''
-        self.score_push_trials(self.all_trials)
-        loc_groups = self.group_trials_by_xy_and_push_angle(self.all_trials)
-
-        # Group multiple trials of same push at a given location
-        groups = []
-        for i, group_key in enumerate(loc_groups):
-            group = loc_groups[group_key]
-            behavior_primitive_dict = self.group_trials(group,'behavior_primitive')
-            # Average errors for each push key
-            mean_group = []
-            for opt_key in behavior_primitive_dict:
-                mean_score = 0
-                for push in behavior_primitive_dict[opt_key]:
-                    mean_score += push.score
-                mean_score = mean_score / float(len(behavior_primitive_dict[opt_key]))
-                # Make a fake mean push
-                mean_push = PushTrial()
-                mean_push.score = mean_score
-                mean_push.c_x = Point(0,0,0)
-                mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
-                    behavior_primitive_dict[opt_key][0].init_centroid.x,
-                    behavior_primitive_dict[opt_key][0].init_centroid.y)
-                mean_push.push_angle = self.hash_angle(
-                    behavior_primitive_dict[opt_key][0].push_angle)
-                mean_push.behavior_primitive = opt_key
-                mean_group.append(mean_push)
-            groups.append(mean_group)
-
-        # Choose best push for each (angle, centroid) group
-        best_pushes = []
-        for i, group in enumerate(groups):
-            min_score = 200.0 # Meters
-            min_score_push = None
-            for j, t in enumerate(group):
-                if t.score < min_score:
-                    min_score = t.score
-                    min_score_push = t
-            best_pushes.append(min_score_push)
-        return best_pushes
+        likelihood_arg=['behavior_primitive','proxy','controller']
+        angle_choices = self.conditional_max_likelihood(
+            trial_hash_fnc=self.hash_push_xy_angle, likelihood_arg=likelihood_arg,
+            mean_push_fnc=self.get_mean_workspace_push)
+        print "(X,Y, angle) push choices:"
+        for c in angle_choices:
+            self.output_push_choice(c, 'push_angle', likelihood_arg)
+        return angle_choices
 
     def object_distribution(self):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
-        return self.conditional_max_likelihood(trial_grouping_arg='object_id',
-                                               likelihood_arg='behavior_primitive',
-                                               mean_push_fnc=self.get_mean_objcet_id_push)
+        cond_arg='object_id'
+        likelihood_arg=['behavior_primitive','proxy','controller']
+        # score_fnc=self.compute_normalized_push_time
+        score_fnc=self.compute_push_error_xy
+        object_choices = self.conditional_max_likelihood(trial_grouping_arg=cond_arg,
+                                                         likelihood_arg=likelihood_arg,
+                                                         score_fnc=score_fnc)
+        print "Object push choices:"
+        for c in object_choices:
+            self.output_push_choice(c, cond_arg, likelihood_arg)
+
 
     def angle_distribution(self):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of push_angle
         '''
-        return self.conditional_max_likelihood(trial_grouping_fnc=self.group_trials_by_push_angle,
-                                               likelihood_arg=['behavior_primitive','controller','proxy'],
-                                               mean_push_fnc=self.get_mean_angle_push)
+        likelihood_arg=['behavior_primitive','proxy','controller']
+        angle_choices = self.conditional_max_likelihood(
+            trial_hash_fnc=self.hash_push_angle, likelihood_arg=likelihood_arg,
+            mean_push_fnc=self.get_mean_angle_push)
+        print "Angle push choices:"
+        for c in angle_choices:
+            self.output_push_choice(c, 'push_angle', likelihood_arg)
+        return angle_choices
 
-    def conditional_max_likelihood(self, trial_grouping_fnc=None, trial_grouping_arg=None,
-                                   likelihood_arg=None, mean_push_fnc=None):
+    def conditional_max_likelihood(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                                   likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
         '''
         '''
-        # Allow arguments to be functions or strings, either use keywords or infer type
-        self.score_push_trials(self.all_trials)
-        if trial_grouping_fnc is not None:
-            trial_groups = trial_grouping_fnc(self.all_trials)
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
         else:
             trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
 
@@ -240,11 +222,11 @@ class PushLearningAnalysis:
             # Average errors for each push key
             mean_group = []
             for arg_key in likelihood_arg_dict:
-                mean_score = 0
-                for push in likelihood_arg_dict[arg_key]:
-                    mean_score += push.score
-                mean_score = mean_score / float(len(likelihood_arg_dict[arg_key]))
-                mean_push = mean_push_fnc(likelihood_arg_dict[arg_key], arg_key, mean_score)
+                if trial_grouping_arg is not None:
+                    mean_push = self.get_mean_push(likelihood_arg_dict[arg_key],
+                                                   trial_grouping_arg, likelihood_arg)
+                else:
+                    mean_push = mean_push_fnc(likelihood_arg_dict[arg_key])
                 mean_group.append(mean_push)
             mean_groups.append(mean_group)
 
@@ -260,34 +242,65 @@ class PushLearningAnalysis:
             best_pushes.append(min_score_push)
         return best_pushes
 
-    def get_mean_objcet_id_push(self, arg_list, arg_key, mean_score):
+    def get_mean_push(self, arg_list, trial_grouping_arg, likelihood_arg):
+        mean_score = 0
+        for push in arg_list:
+            mean_score += push.score
+        mean_score = mean_score / float(len(arg_list))
+
         mean_push = PushTrial()
         mean_push.score = mean_score
-        mean_push.c_x = Point(0,0,0)
-        mean_push.object_id = arg_list[0].object_id
+        if type(trial_grouping_arg) is not list:
+            trial_grouping_arg = [trial_grouping_arg]
+        if type(likelihood_arg) is not list:
+            likelihood_arg = [likelihood_arg]
+        for arg in trial_grouping_arg:
+            setattr(mean_push,arg, get_attr(arg_list[0],arg))
+        for arg in likelihood_arg:
+            setattr(mean_push,arg, get_attr(arg_list[0],arg))
+        return mean_push
+
+    def get_mean_angle_push(self, arg_list):
+        mean_score = 0
+        for push in arg_list:
+            mean_score += push.score
+        mean_score = mean_score / float(len(arg_list))
+
+        mean_push = PushTrial()
+        mean_push.score = mean_score
+        mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
+        mean_push.behavior_primitive = arg_list[0].behavior_primitive
+        mean_push.controller = arg_list[0].controller
+        mean_push.proxy = arg_list[0].proxy
+        return mean_push
+
+    def get_mean_workspace_push(self, arg_list):
+        mean_score = 0
+        for push in arg_list:
+            mean_score += push.score
+        mean_score = mean_score / float(len(arg_list))
+
+        mean_push = PushTrial()
+        mean_push.score = mean_score
         mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
             arg_list[0].init_centroid.x, arg_list[0].init_centroid.y)
         mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
-        mean_push.behavior_primitive = arg_key
-        return mean_push
-
-    def get_mean_angle_push(self, arg_list, arg_key, mean_score):
-        mean_push = PushTrial()
-        mean_push.score = mean_score
-        mean_push.c_x = Point(0,0,0)
-        mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
-        mean_push.behavior_primitive = arg_key
+        mean_push.behavior_primitive = arg_list[0].behavior_primitive
+        mean_push.controller = arg_list[0].controller
+        mean_push.proxy = arg_list[0].proxy
         return mean_push
 
     #
     # Grouping methods
     #
-    def group_trials(self, all_trials, hash_attribute):
+    def group_trials(self, all_trials, hash_attribute=None, hash_function=None):
         group_dict = {}
         # Group scored pushes by push angle
         for t in all_trials:
-            group_key = []
-            if type(hash_attribute) == list and len(hash_attribute) > 1:
+            if hash_function is not None:
+                group_key = hash_function(t)
+            elif type(hash_attribute) == list and len(hash_attribute) > 1:
+                group_key = []
                 for attr in hash_attribute:
                     group_key.append(get_attr(t,attr))
                 group_key = tuple(group_key)
@@ -321,15 +334,7 @@ class PushLearningAnalysis:
         '''
         Method to group all trials by initial table location and push angle
         '''
-        groups = {}
-        # Group scored pushes by push angle
-        for t in all_trials:
-            group_key = self.hash_angle(t.push_angle)
-            try:
-                groups[group_key].append(t)
-            except KeyError:
-                groups[group_key] = [t]
-        return groups
+        return self.group_trials(all_trials, hash_function=self.hash_push_angle)
 
     def group_trials_by_xy(self, all_trials):
         '''
@@ -419,8 +424,6 @@ class PushLearningAnalysis:
         '''
         Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
         '''
-        push_angle = self.hash_angle(c.push_angle)
-
         if type(conditional_value) == list:
             conditional_str = ''
             for val in conditional_value:
@@ -435,27 +438,25 @@ class PushLearningAnalysis:
             arg_str = arg_str[:-2]
         else:
             arg_str = str(get_attr(c,arg_value))
-        print 'Choice for (' +  conditional_str + '): '+ arg_str+ ' : ' + str(c.score)
+        print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score)
 
     def output_loc_push_choices(self, choices):
         print "Loc push choices:"
         for c in choices:
             self.output_push_choice(c, ['init_centroid.x','init_centroid.y','push_angle'],
-                                    'behavior_primitive')
-
-    def output_obj_push_choices(self, choices):
-        print "Object push choices:"
-        for c in choices:
-            self.output_push_choice(c, 'object_id', 'behavior_primitive')
-
-    def output_angle_push_choices(self, choices):
-        print "Angle push choices:"
-        for c in choices:
-            self.output_push_choice(c, 'push_angle', 'behavior_primitive')
+                                    ['behavior_primitive','controller','proxy'])
 
     #
     # Hashing Functions
     #
+
+    def hash_push_angle(self, push):
+        return self.hash_angle(push.push_angle)
+
+    def hash_push_xy_angle(self, push):
+        x_prime, y_prime = self.hash_xy(push.init_centroid.x, push.init_centroid.y)
+        return (x_prime, y_prime, self.hash_angle(push.push_angle))
+
     def hash_angle(self, theta):
         # Group different pushes by push_angle
         bin = int((theta + pi)/(2.0*pi)*self.num_angle_bins)
@@ -468,19 +469,9 @@ class PushLearningAnalysis:
         y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
         return (x_prime, y_prime)
 
-    def hash_behavior_primitive(self, push):
-        return (push.which_arm,push.behavior_primitive)
-
-    def unhash_behavior_primitive_key(self, opt_key):
-        return (opt_key[0], opt_key[1])
-
     #
     # Scoring Functions
     #
-    def score_push_trials(self, trials):
-        # Get error scores for each push
-        for t in trials:
-            t.score = self.compute_push_score(t)
 
     def compute_push_error_xy(self, push):
         err_x = push.goal_pose.x - push.final_centroid.x
@@ -495,6 +486,9 @@ class PushLearningAnalysis:
         actual_dist = sqrt(d_x*d_x + d_y*d_y)
         return fabs(actual_dist - push.push_dist)
 
+    def compute_normalized_push_time(self, push):
+        return push.push_time / push.push_dist
+
 if __name__ == '__main__':
     # TODO: Add more options to command line
     if len(sys.argv) > 1:
@@ -508,13 +502,6 @@ if __name__ == '__main__':
 
     # TODO: Use command line arguments to choose these
     angle_pushes = pla.angle_distribution()
-
-    workspace_pushes = pla.workspace_distribution()
-
     object_pushes = pla.object_distribution()
-
-    pla.output_loc_push_choices(workspace_pushes)
-    pla.output_obj_push_choices(object_pushes)
-    pla.output_angle_push_choices(angle_pushes)
-
+    workspace_pushes = pla.workspace_distribution()
     pla.visualize_push_choices(workspace_pushes)
