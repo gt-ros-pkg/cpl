@@ -253,6 +253,59 @@ class PushLearningAnalysis:
             best_pushes.append(min_score_push)
         return best_pushes
 
+    def conditional_max_likelihood(self, grouping_function):
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of object_id
+        '''
+        self.score_push_trials(self.all_trials)
+        trial_groups = grouping_function(self.all_trials)
+
+        # Group multiple trials of same type
+        mean_groups = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            # TODO: Set function here for selecting what to analyze in each group
+            behavior_primitive_dict = {}
+            for j,t in enumerate(trial_group):
+                opt_key = t.behavior_primitive
+                try:
+                    behavior_primitive_dict[opt_key].append(t)
+                except KeyError:
+                    behavior_primitive_dict[opt_key] = [t]
+            # Average errors for each push key
+            mean_group = []
+            for opt_key in behavior_primitive_dict:
+                mean_score = 0
+                for push in behavior_primitive_dict[opt_key]:
+                    mean_score += push.score
+                mean_score = mean_score / float(len(behavior_primitive_dict[opt_key]))
+                # Make a fake mean push
+                mean_push = PushTrial()
+                mean_push.score = mean_score
+                mean_push.c_x = Point(0,0,0)
+                # TODO: make a function to se the desred property in the resulting ML push
+                mean_push.object_id = trial_group[0].object_id
+                mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
+                    behavior_primitive_dict[opt_key][0].init_centroid.x,
+                    behavior_primitive_dict[opt_key][0].init_centroid.y)
+                mean_push.push_angle = self.hash_angle(
+                    behavior_primitive_dict[opt_key][0].push_angle)
+                mean_push.behavior_primitive = opt_key
+                mean_group.append(mean_push)
+            mean_groups.append(mean_group)
+
+        # Choose best push for each (angle, centroid) group
+        best_pushes = []
+        for i, group in enumerate(mean_groups):
+            min_score = 200.0 # Meters
+            min_score_push = None
+            for j, t in enumerate(group):
+                if t.score < min_score:
+                    min_score = t.score
+                    min_score_push = t
+            best_pushes.append(min_score_push)
+        return best_pushes
+
     #
     # Grouping methods
     #
@@ -440,7 +493,8 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         data_path = str(sys.argv[1])
     else:
-        print 'Usage:',sys.argv[0],' input_file'
+        print 'Usage:',sys.argv[0],'input_file'
+        quit()
 
     pla = PushLearningAnalysis()
     pla.read_in_push_trials(data_path)
@@ -448,6 +502,9 @@ if __name__ == '__main__':
     # TODO: Use command line arguments to choose these
     workspace_pushes = pla.workspace_distribution()
     object_pushes = pla.object_distribution()
+    # object_pushes2 = pla.conditional_max_likelihood(pla.group_trials_by_object_id)
     pla.output_loc_push_choices(workspace_pushes)
     pla.output_obj_push_choices(object_pushes)
+    # print '2'
+    # pla.output_obj_push_choices(object_pushes2)
     pla.visualize_push_choices(workspace_pushes)
