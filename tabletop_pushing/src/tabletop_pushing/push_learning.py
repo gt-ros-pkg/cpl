@@ -440,7 +440,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         data_path = str(sys.argv[1])
     else:
-        data_path = '/u/thermans/Dropbox/Data/choose_push/batch_out0.txt'
+        print 'Usage:',sys.argv[0],' input_file'
 
     pla = PushLearningAnalysis()
     pla.read_in_push_trials(data_path)
