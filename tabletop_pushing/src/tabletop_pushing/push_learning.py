@@ -172,7 +172,7 @@ class PushLearningAnalysis:
         groups = []
         for i, group_key in enumerate(loc_groups):
             group = loc_groups[group_key]
-            behavior_primitive_dict = self.group_trials_by_behavior_primitive(group)
+            behavior_primitive_dict = self.group_trials(group,'behavior_primitive')
             # Average errors for each push key
             mean_group = []
             for opt_key in behavior_primitive_dict:
@@ -209,24 +209,28 @@ class PushLearningAnalysis:
         '''
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
-        return self.conditional_max_likelihood(self.group_trials_by_object_id,
-                                               'behavior_primitive',
-                                               self.get_mean_objcet_id_push)
+        return self.conditional_max_likelihood(trial_grouping_arg='object_id',
+                                               likelihood_arg='behavior_primitive',
+                                               mean_push_fnc=self.get_mean_objcet_id_push)
 
     def angle_distribution(self):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of push_angle
         '''
-        return self.conditional_max_likelihood(self.group_trials_by_push_angle,
-                                               ['behavior_primitive','controller','proxy'], self.get_mean_angle_push)
+        return self.conditional_max_likelihood(trial_grouping_fnc=self.group_trials_by_push_angle,
+                                               likelihood_arg=['behavior_primitive','controller','proxy'],
+                                               mean_push_fnc=self.get_mean_angle_push)
 
-    def conditional_max_likelihood(self, trial_grouping_function, likelihood_arg,
-                                   mean_push_function):
+    def conditional_max_likelihood(self, trial_grouping_fnc=None, trial_grouping_arg=None,
+                                   likelihood_arg=None, mean_push_fnc=None):
         '''
         '''
-        # TODO: Allow arguments to be functions or strings
+        # Allow arguments to be functions or strings, either use keywords or infer type
         self.score_push_trials(self.all_trials)
-        trial_groups = trial_grouping_function(self.all_trials)
+        if trial_grouping_fnc is not None:
+            trial_groups = trial_grouping_fnc(self.all_trials)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
 
         # Group multiple trials of same type
         mean_groups = []
@@ -240,7 +244,7 @@ class PushLearningAnalysis:
                 for push in likelihood_arg_dict[arg_key]:
                     mean_score += push.score
                 mean_score = mean_score / float(len(likelihood_arg_dict[arg_key]))
-                mean_push = mean_push_function(likelihood_arg_dict[arg_key], arg_key, mean_score)
+                mean_push = mean_push_fnc(likelihood_arg_dict[arg_key], arg_key, mean_score)
                 mean_group.append(mean_push)
             mean_groups.append(mean_group)
 
@@ -340,23 +344,6 @@ class PushLearningAnalysis:
             except KeyError:
                 xy_dict[xy_key] = [t]
         return xy_dict
-
-    def group_trials_by_object_id(self, all_trials):
-        '''
-        Method to group all trials by object being pushed
-        '''
-        object_dict = {}
-        # Group scored pushes by push angle
-        for t in all_trials:
-            object_key = t.object_id
-            try:
-                object_dict[object_key].append(t)
-            except KeyError:
-                object_dict[object_key] = [t]
-        return object_dict
-
-    def group_trials_by_behavior_primitive(self, trials):
-        return self.group_trials(trials, 'behavior_primitive')
     #
     # Visualization functions
     #
