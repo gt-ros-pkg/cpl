@@ -57,28 +57,31 @@ def get_attr(instance, attribute):
 class PushTrial:
     def __init__(self):
         self.object_id = ''
+        self.controller = ''
+        self.behavior_primitive = ''
+        self.proxy = ''
+        self.which_arm = ''
+        self.precondition_method = ''
         self.init_centroid = Point()
         self.init_orientation = 0.0
         self.final_centroid = Point()
         self.final_orientation = 0.0
         self.goal_pose = Pose2D()
-        self.behavior_primitive = ''
-        self.controller = ''
-        self.proxy = ''
-        self.which_arm = ''
         self.push_time = 0.0
-        self.precondition_method = ''
         # NOTE: Everything below not saved to disk, just computed for convenience
         self.push_angle = 0.0
         self.push_dist = 0.0
 
     def __str__(self):
-        # TODO: Print more info here
         return (self.object_id +
                 ' (' + self.proxy + ', ' + self.controller + ', ' + self.behavior_primitive + ', ' +
-                self.which_arm + '):\n' +
-                'init_centroid:\n' + str(self.init_centroid) + '\n'
-                'init_orientation: ' + str(self.init_orientation))
+                self.which_arm + '_arm'+', ' +self.precondition_method+'):\n' +
+                'init_centroid:\n' + str(self.init_centroid) + '\n'+
+                'init_orientation: ' + str(self.init_orientation) +'\n'+
+                'final_centroid:\n' + str(self.final_centroid) + '\n'+
+                'final_orientation: ' + str(self.final_orientation) + '\n'+
+                'goal_pose:\n' + str(self.goal_pose) + '\n'+
+                'push_time: ' + str(self.push_time))
 
 class PushLearningIO:
     def __init__(self):
