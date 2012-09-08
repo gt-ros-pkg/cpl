@@ -43,6 +43,17 @@ from push_primitives import *
 _VERSION_LINE = '# v0.3'
 _HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm precondition_method push_time'
 
+def get_attr(instance, attribute):
+    '''
+    A wrapper for the builtin python getattr which handles recursive attributes of attributes
+    '''
+    attr_list = attribute.split('.')
+    def get_nested_attr(instance, attr_list):
+        if len(attr_list) == 1:
+            return getattr(instance, attr_list[0])
+        return get_nested_attr(getattr(instance, attr_list[0]), attr_list[1:])
+    return get_nested_attr(instance, attr_list)
+
 class PushTrial:
     def __init__(self):
         self.object_id = ''
@@ -417,34 +428,40 @@ class PushLearningAnalysis:
     def output_loc_push_choices(self, choices):
         print "Loc push choices:"
         for c in choices:
-            self.output_loc_push_choice(c)
+            self.output_push_choice(c, ['init_centroid.x','init_centroid.y','push_angle'],
+                                    'behavior_primitive')
 
     def output_obj_push_choices(self, choices):
         print "Object push choices:"
         for c in choices:
-            self.output_obj_push_choice(c)
+            self.output_push_choice(c, 'object_id', 'behavior_primitive')
 
     def output_angle_push_choices(self, choices):
         print "Angle push choices:"
         for c in choices:
-            self.output_angle_push_choice(c)
+            self.output_push_choice(c,'push_angle', 'behavior_primitive')
 
-    def output_loc_push_choice(self, c):
-        start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
+    def output_push_choice(self, c, conditional_value, arg_value):
+        '''
+        Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
+        '''
         push_angle = self.hash_angle(c.push_angle)
-        print 'Choice for (' + str(start_x), ',', str(start_y), ',', str(push_angle) + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
 
-    def output_obj_push_choice(self, c):
-        # start_x, start_y = self.hash_xy(c.init_centroid.x, c.init_centroid.y)
-        push_angle = self.hash_angle(c.push_angle)
-        print 'Choice for (' + c.object_id + '): '+ c.behavior_primitive+ ' : ' + str(c.score)
-
-    def output_angle_push_choice(self, c):
-        self.output_choice(c, 'push_angle', 'behavior_primitive')
-
-    def output_choice(self, c, conditional_value, arg_value):
-        push_angle = self.hash_angle(c.push_angle)
-        print 'Choice for (' + str(getattr(c,conditional_value)) + '): '+ str(getattr(c,arg_value))+ ' : ' + str(c.score)
+        if type(conditional_value) == list:
+            conditional_str = ''
+            for val in conditional_value:
+                conditional_str += str(get_attr(c,val))+', '
+            conditional_str = conditional_str[:-2]
+        else:
+            conditional_str = str(get_attr(c,conditional_value))
+        if type(arg_value) == list:
+            arg_str = ''
+            for val in arg_value:
+                arg_str += str(get_attr(c,val))+', '
+            arg_str = arg_str[:-2]
+        else:
+            arg_str = str(get_attr(c,arg_value))
+        print 'Choice for (' +  conditional_str + '): '+ arg_str+ ' : ' + str(c.score)
 
     #
     # Hashing Functions
