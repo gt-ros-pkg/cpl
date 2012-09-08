@@ -172,13 +172,7 @@ class PushLearningAnalysis:
         groups = []
         for i, group_key in enumerate(loc_groups):
             group = loc_groups[group_key]
-            behavior_primitive_dict = {}
-            for j,t in enumerate(group):
-                opt_key = t.behavior_primitive
-                try:
-                    behavior_primitive_dict[opt_key].append(t)
-                except KeyError:
-                    behavior_primitive_dict[opt_key] = [t]
+            behavior_primitive_dict = self.group_trials_by_behavior_primitive(group)
             # Average errors for each push key
             mean_group = []
             for opt_key in behavior_primitive_dict:
@@ -216,22 +210,21 @@ class PushLearningAnalysis:
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
         return self.conditional_max_likelihood(self.group_trials_by_object_id,
-                                               self.group_trials_by_behavior_primitive,
+                                               'behavior_primitive',
                                                self.get_mean_objcet_id_push)
 
     def angle_distribution(self):
         '''
-        Method to find the best performing (on average) behavior_primitive as a function of object_id
+        Method to find the best performing (on average) behavior_primitive as a function of push_angle
         '''
         return self.conditional_max_likelihood(self.group_trials_by_push_angle,
-                                               self.group_trials_by_behavior_primitive,
-                                               self.get_mean_angle_push)
+                                               ['behavior_primitive','controller','proxy'], self.get_mean_angle_push)
 
-    def conditional_max_likelihood(self, trial_grouping_function,
-                                   likelihood_arg_grouping_function,
+    def conditional_max_likelihood(self, trial_grouping_function, likelihood_arg,
                                    mean_push_function):
         '''
         '''
+        # TODO: Allow arguments to be functions or strings
         self.score_push_trials(self.all_trials)
         trial_groups = trial_grouping_function(self.all_trials)
 
@@ -239,7 +232,7 @@ class PushLearningAnalysis:
         mean_groups = []
         for i, group_key in enumerate(trial_groups):
             trial_group = trial_groups[group_key]
-            likelihood_arg_dict = likelihood_arg_grouping_function(trial_group)
+            likelihood_arg_dict = self.group_trials(trial_group, likelihood_arg)
             # Average errors for each push key
             mean_group = []
             for arg_key in likelihood_arg_dict:
@@ -285,8 +278,25 @@ class PushLearningAnalysis:
     #
     # Grouping methods
     #
+    def group_trials(self, all_trials, hash_attribute):
+        group_dict = {}
+        # Group scored pushes by push angle
+        for t in all_trials:
+            group_key = []
+            if type(hash_attribute) == list and len(hash_attribute) > 1:
+                for attr in hash_attribute:
+                    group_key.append(get_attr(t,attr))
+                group_key = tuple(group_key)
+            elif type(hash_attribute) == list:
+                group_key = get_attr(t, hash_attribute[0])
+            else:
+                group_key = get_attr(t, hash_attribute)
+            try:
+                group_dict[group_key].append(t)
+            except KeyError:
+                group_dict[group_key] = [t]
+        return group_dict
 
-    # TODO: Make a generic function where we just pass in the hash functions
     def group_trials_by_xy_and_push_angle(self, all_trials):
         '''
         Method to group all trials by initial table location and push angle
@@ -346,14 +356,7 @@ class PushLearningAnalysis:
         return object_dict
 
     def group_trials_by_behavior_primitive(self, trials):
-        likelihood_arg_dict = {}
-        for j,t in enumerate(trials):
-            opt_key = t.behavior_primitive
-            try:
-                likelihood_arg_dict[opt_key].append(t)
-            except KeyError:
-                likelihood_arg_dict[opt_key] = [t]
-        return likelihood_arg_dict
+        return self.group_trials(trials, 'behavior_primitive')
     #
     # Visualization functions
     #
@@ -425,22 +428,6 @@ class PushLearningAnalysis:
     def read_in_push_trials(self, file_name):
         self.all_trials = self.io.read_in_data_file(file_name)
 
-    def output_loc_push_choices(self, choices):
-        print "Loc push choices:"
-        for c in choices:
-            self.output_push_choice(c, ['init_centroid.x','init_centroid.y','push_angle'],
-                                    'behavior_primitive')
-
-    def output_obj_push_choices(self, choices):
-        print "Object push choices:"
-        for c in choices:
-            self.output_push_choice(c, 'object_id', 'behavior_primitive')
-
-    def output_angle_push_choices(self, choices):
-        print "Angle push choices:"
-        for c in choices:
-            self.output_push_choice(c,'push_angle', 'behavior_primitive')
-
     def output_push_choice(self, c, conditional_value, arg_value):
         '''
         Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
@@ -462,6 +449,22 @@ class PushLearningAnalysis:
         else:
             arg_str = str(get_attr(c,arg_value))
         print 'Choice for (' +  conditional_str + '): '+ arg_str+ ' : ' + str(c.score)
+
+    def output_loc_push_choices(self, choices):
+        print "Loc push choices:"
+        for c in choices:
+            self.output_push_choice(c, ['init_centroid.x','init_centroid.y','push_angle'],
+                                    'behavior_primitive')
+
+    def output_obj_push_choices(self, choices):
+        print "Object push choices:"
+        for c in choices:
+            self.output_push_choice(c, 'object_id', 'behavior_primitive')
+
+    def output_angle_push_choices(self, choices):
+        print "Angle push choices:"
+        for c in choices:
+            self.output_push_choice(c, 'push_angle', 'behavior_primitive')
 
     #
     # Hashing Functions
