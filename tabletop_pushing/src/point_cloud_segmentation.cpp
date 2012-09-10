@@ -50,8 +50,6 @@
 #include <pcl16/segmentation/extract_clusters.h>
 #include <pcl16/segmentation/segment_differences.h>
 #include <pcl16/segmentation/organized_multi_plane_segmentation.h>
-// #include <pcl16/kdtree/kdtree_flann.h>
-// #include <pcl16/kdtree/impl/kdtree_flann.hpp>
 #include <pcl16/search/search.h>
 #include <pcl16/search/kdtree.h>
 #include <pcl16/filters/voxel_grid.h>
@@ -60,6 +58,7 @@
 #include <pcl16/surface/concave_hull.h>
 #include <pcl16/registration/icp.h>
 #include <pcl16/features/integral_image_normal.h>
+#include <pcl16/features/normal_3d.h>
 
 // STL
 #include <sstream>
@@ -241,10 +240,7 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   ne.setNormalSmoothingSize (20.0f);
   pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
   ne.setInputCloud(input_cloud.makeShared());
-  ROS_WARN_STREAM("Computing normals");
   ne.compute(*normal_cloud);
-  ROS_WARN_STREAM("Computed normals");
-
 
   cv::Mat normal_img(cv::Size(input_cloud.width, input_cloud.height), CV_32FC3, cv::Scalar(0));
   for (unsigned int x = 0; x < normal_img.cols; ++x)
@@ -336,10 +332,19 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsCluster(XYZPointCloud& i
                                   false);
   min_workspace_z_ = table_centroid_[2];
 
-  XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
+  // ROS_INFO_STREAM("Estimating normals!");
+  // NormalCloud::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
+  // pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
+  // ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
+  // ne.setMaxDepthChangeFactor(0.03f);
+  // ne.setNormalSmoothingSize(20.0f);
+  // ne.setInputCloud(input_cloud.makeShared());
+  // ne.compute(*normal_cloud);
 
+  XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
   // Find independent regions
   ProtoObjects objs = clusterProtoObjects(objects_cloud_down);
+
   return objs;
 }
 
@@ -355,7 +360,6 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
   std::vector<pcl16::PointIndices> clusters;
   pcl16::EuclideanClusterExtraction<PointXYZ> pcl_cluster;
   const KdTreePtr clusters_tree(new pcl16::search::KdTree<PointXYZ>);
-  // const KdTreePtr clusters_tree(new pcl16::search::KdTreeFLANN<PointXYZ, flann::L2_Simple<float> >);
   clusters_tree->setInputCloud(objects_cloud.makeShared());
 
   pcl_cluster.setClusterTolerance(cluster_tolerance_);
@@ -468,6 +472,73 @@ void PointCloudSegmentation::matchMovedRegions(ProtoObjects& objs,
       }
     }
   }
+}
+
+pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud)
+{
+  pcl16::NormalEstimation<PointXYZ, pcl16::Normal> ne;
+  ne.setInputCloud(obj.cloud.makeShared());
+  pcl16::search::KdTree<PointXYZ>::Ptr tree (new pcl16::search::KdTree<PointXYZ> ());
+  ne.setSearchMethod (tree);
+  ne.setRadiusSearch (0.03);
+  ne.compute(obj.normals);
+
+  // Create the segmentation object
+  pcl16::ModelCoefficients coefficients;
+  Eigen::Vector3f v(1.0,1.0,0.0);
+  pcl16::PointIndices cylinder_inliers;
+  pcl16::SACSegmentationFromNormals<PointXYZ,pcl16::Normal> cylinder_seg;
+  cylinder_seg.setOptimizeCoefficients(true);
+  cylinder_seg.setModelType(pcl16::SACMODEL_CYLINDER);
+  cylinder_seg.setMethodType(pcl16::SAC_RANSAC);
+  cylinder_seg.setDistanceThreshold(cylinder_ransac_thresh_);
+  cylinder_seg.setAxis(v);
+  cylinder_seg.setEpsAngle(table_ransac_angle_thresh_);
+  ROS_INFO_STREAM("Setting input cloud");
+  cylinder_seg.setInputCloud(obj.cloud.makeShared());
+  ROS_INFO_STREAM("Setting input normals");
+  cylinder_seg.setInputNormals(obj.normals.makeShared());
+  ROS_INFO_STREAM("Segmetting");
+  cylinder_seg.segment(cylinder_inliers, coefficients);
+
+  pcl16::copyPointCloud(obj.cloud, cylinder_inliers, cylinder_cloud);
+  // TODO: Decide if we should return the coefficients as return type and optionally the cloud
+  cv::Mat lbl_img(cv::Size(640,480), CV_8UC1, cv::Scalar(0));
+  projectPointCloudIntoImage(cylinder_cloud, lbl_img);
+  lbl_img*=255;
+  cv::imshow("cylinder",lbl_img);
+  return coefficients;
+}
+
+/**
+ * Method to fit a sphere to a segmented object
+ *
+ * @param obj The segmented object we are modelling as a sphere
+ * @param sphere_cloud The cloud resulting from the sphere fit
+ *
+ * @return The model of the sphere
+ */
+pcl16::ModelCoefficients PointCloudSegmentation::fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud)
+{
+  // Create the segmentation object
+  pcl16::ModelCoefficients coefficients;
+  Eigen::Vector3f v(1.0,1.0,0.0);
+  pcl16::PointIndices sphere_inliers;
+  pcl16::SACSegmentation<PointXYZ> sphere_seg;
+  sphere_seg.setOptimizeCoefficients(true);
+  sphere_seg.setModelType(pcl16::SACMODEL_SPHERE);
+  sphere_seg.setMethodType(pcl16::SAC_RANSAC);
+  sphere_seg.setDistanceThreshold(sphere_ransac_thresh_);
+  sphere_seg.setInputCloud(obj.cloud.makeShared());
+  sphere_seg.segment(sphere_inliers, coefficients);
+
+  pcl16::copyPointCloud(obj.cloud, sphere_inliers, sphere_cloud);
+  // TODO: Decide if we should return the coefficients as return type and optionally the cloud
+  cv::Mat lbl_img(cv::Size(640,480), CV_8UC1, cv::Scalar(0));
+  projectPointCloudIntoImage(sphere_cloud, lbl_img);
+  lbl_img*=255;
+  cv::imshow("sphere",lbl_img);
+  return coefficients;
 }
 
 /**

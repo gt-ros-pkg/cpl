@@ -61,10 +61,12 @@ namespace tabletop_pushing
 {
 
 typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
+typedef pcl16::PointCloud<pcl16::Normal> NormalCloud;
 class ProtoObject
 {
  public:
   XYZPointCloud cloud;
+  NormalCloud normals;
   Eigen::Vector4f centroid;
   int id;
   bool moved;
@@ -173,6 +175,9 @@ class PointCloudSegmentation
    *
    */
   void matchMovedRegions(ProtoObjects& objs, ProtoObjects& moved_regions);
+
+  pcl16::ModelCoefficients fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud);
+  pcl16::ModelCoefficients fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud);
 
   static inline double dist(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
@@ -324,6 +329,8 @@ class PointCloudSegmentation
   int mps_min_inliers_;
   double mps_min_angle_thresh_;
   double mps_min_dist_thresh_;
+  double cylinder_ransac_thresh_;
+  double sphere_ransac_thresh_;
 };
 
 XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
