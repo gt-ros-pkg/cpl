@@ -215,6 +215,88 @@ class ObjectTracker25D
     return objs[chosen_idx];
   }
 
+  PushTrackerState computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
+                                std::string proxy_name, cv::Mat& in_frame)
+  {
+    PushTrackerState state;
+    // TODO: Have each proxy create an image, and send that image to the trackerDisplay
+    // function to deal with saving and display.
+    if (proxy_name == CENTROID_PROXY)
+    {
+      state.x.x = cur_obj.centroid[0];
+      state.x.y = cur_obj.centroid[1];
+      state.z = cur_obj.centroid[2];
+      state.x.theta = 0.0;
+    }
+    else if (proxy_name == ELLIPSE_PROXY)
+    {
+      cv::RotatedRect obj_ellipse = fitObjectEllipse(cur_obj);
+      previous_obj_ellipse_ = obj_ellipse;
+      state.x.theta = getThetaFromEllipse(obj_ellipse);
+      state.x.x = cur_obj.centroid[0];
+      state.x.y = cur_obj.centroid[1];
+      state.z = cur_obj.centroid[2];
+
+      if(swap_orientation_)
+      {
+        if(state.x.theta > 0.0)
+          state.x.theta += - M_PI;
+        else
+          state.x.theta += M_PI;
+      }
+      if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
+      {
+        if ((fabs(state.x.theta) > M_PI*0.25 &&
+             fabs(state.x.theta) < (M_PI*0.75 )) ||
+            (fabs(previous_state_.x.theta) > 1.0 &&
+             fabs(previous_state_.x.theta) < (M_PI - 0.5)))
+        {
+          swap_orientation_ = !swap_orientation_;
+          // We either need to swap or need to undo the swap
+          if(state.x.theta > 0.0)
+            state.x.theta += -M_PI;
+          else
+            state.x.theta += M_PI;
+        }
+      }
+    }
+    else if (proxy_name == SPHERE_PROXY)
+    {
+      XYZPointCloud sphere_cloud;
+      pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
+      cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+      pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
+      lbl_img*=255;
+      cv::imshow("sphere",lbl_img);
+      ROS_INFO_STREAM("sphere: " << sphere);
+      // TODO: Update this to the sphere centroid
+      state.x.x = cur_obj.centroid[0];
+      state.x.y = cur_obj.centroid[1];
+      state.z = cur_obj.centroid[2];
+      state.x.theta = 0.0;
+    }
+    else if (proxy_name == CYLINDER_PROXY)
+    {
+      XYZPointCloud cylinder_cloud;
+      pcl16::ModelCoefficients cylinder = pcl_segmenter_->fitCylinderRANSAC(cur_obj,cylinder_cloud);
+      cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+      pcl_segmenter_->projectPointCloudIntoImage(cylinder_cloud, lbl_img);
+      lbl_img*=255;
+      cv::imshow("cylinder",lbl_img);
+      ROS_INFO_STREAM("cylinder: " << cylinder);
+      // TODO: Update this to the cylinder centroid
+      state.x.x = cur_obj.centroid[0];
+      state.x.y = cur_obj.centroid[1];
+      state.z = cur_obj.centroid[2];
+      state.x.theta = 0.0;
+    }
+    else
+    {
+      ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
+    }
+    return state;
+  }
+
   cv::RotatedRect fitObjectEllipse(ProtoObject& obj)
   {
     if (use_cv_ellipse_fit_)
@@ -237,12 +319,6 @@ class ObjectTracker25D
     }
     ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
     cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
-    // cv::RotatedRect obj_ellipse2 = fit2DMassEllipse(obj);
-    // ROS_DEBUG_STREAM("obj_ellipse: (" << obj_ellipse.center.x << ", " <<
-    //                  obj_ellipse.center.y << ", " <<
-    //                  subPIAngle(DEG2RAD(obj_ellipse.angle)) << ")" << "\t(" <<
-    //                  obj_ellipse.size.width << ", " << obj_ellipse.size.height
-    //                  << ")");
     return obj_ellipse;
   }
 
@@ -274,7 +350,8 @@ class ObjectTracker25D
     return obj_ellipse;
   }
 
-  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud)
+  PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
+                              std::string proxy_name)
   {
     paused_ = false;
     initialized_ = false;
@@ -286,15 +363,24 @@ class ObjectTracker25D
     ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects, true);
     initialized_ = true;
     PushTrackerState state;
-    state.header.seq = 0;
-    state.header.stamp = cloud.header.stamp;
-    state.header.frame_id = cloud.header.frame_id;
     if (no_objects)
     {
+      state.header.seq = 0;
+      state.header.stamp = cloud.header.stamp;
+      state.header.frame_id = cloud.header.frame_id;
       state.no_detection = true;
       return state;
     }
-    ROS_INFO_STREAM("Finding ellipse");
+    else
+    {
+      // TODO: Make sure this didn't fuck some shit up
+      state = computeState(cur_obj, cloud, proxy_name, in_frame);
+      state.header.seq = 0;
+      state.header.stamp = cloud.header.stamp;
+      state.header.frame_id = cloud.header.frame_id;
+      state.no_detection = false;
+    }
+
     cv::RotatedRect obj_ellipse;
     if (use_cv_ellipse_fit_)
     {
@@ -304,7 +390,6 @@ class ObjectTracker25D
     {
       obj_ellipse = fit2DMassEllipse(cur_obj);
     }
-    // TODO: Choose how to compute state as function of proxy (centroid vs shpere vs cylinder vs ellipse vs...)
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
@@ -315,10 +400,7 @@ class ObjectTracker25D
 
     if (use_displays_ || write_to_disk_)
     {
-      // ROS_INFO_STREAM("TrackerIO()");
       trackerDisplay(in_frame, cur_obj, obj_ellipse);
-      // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
-      // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
     }
 
     ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
@@ -343,19 +425,18 @@ class ObjectTracker25D
   {
     if (!initialized_)
     {
-      return initTracks(in_frame, self_mask, cloud);
+      return initTracks(in_frame, self_mask, cloud, proxy_name);
     }
     bool no_objects = false;
     ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
 
     // Update model
     PushTrackerState state;
-    state.header.seq = frame_count_;
-    state.header.stamp = cloud.header.stamp;
-    state.header.frame_id = cloud.header.frame_id;
-
     if (no_objects)
     {
+      state.header.seq = frame_count_;
+      state.header.stamp = cloud.header.stamp;
+      state.header.frame_id = cloud.header.frame_id;
       state.no_detection = true;
       state.x = previous_state_.x;
       state.x_dot = previous_state_.x_dot;
@@ -363,89 +444,16 @@ class ObjectTracker25D
       ROS_WARN_STREAM("Using previous state, but updating time!");
       if (use_displays_ || write_to_disk_)
       {
-        // trackerDisplay(in_frame, previous_obj_, previous_obj_ellipse_);
         trackerDisplay(in_frame, previous_state_, previous_obj_);
       }
     }
     else
     {
-      // TODO: Have each proxy create an image, and send that image to the trackerDisplay
-      // function to deal with saving and display.
-      cv::RotatedRect obj_ellipse;
-      if (proxy_name == CENTROID_PROXY)
-      {
-        state.x.x = cur_obj.centroid[0];
-        state.x.y = cur_obj.centroid[1];
-        state.z = cur_obj.centroid[2];
-        state.x.theta = 0.0;
-      }
-      else if (proxy_name == ELLIPSE_PROXY)
-      {
-        obj_ellipse = fitObjectEllipse(cur_obj);
-        state.x.theta = getThetaFromEllipse(obj_ellipse);
-        state.x.x = cur_obj.centroid[0];
-        state.x.y = cur_obj.centroid[1];
-        state.z = cur_obj.centroid[2];
-
-        if(swap_orientation_)
-        {
-          if(state.x.theta > 0.0)
-            state.x.theta += - M_PI;
-          else
-            state.x.theta += M_PI;
-        }
-        if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
-        {
-          if ((fabs(state.x.theta) > M_PI*0.25 &&
-               fabs(state.x.theta) < (M_PI*0.75 )) ||
-              (fabs(previous_state_.x.theta) > 1.0 &&
-               fabs(previous_state_.x.theta) < (M_PI - 0.5)))
-          {
-            swap_orientation_ = !swap_orientation_;
-            // We either need to swap or need to undo the swap
-            if(state.x.theta > 0.0)
-              state.x.theta += -M_PI;
-            else
-              state.x.theta += M_PI;
-          }
-        }
-      }
-      else if (proxy_name == SPHERE_PROXY)
-      {
-        XYZPointCloud sphere_cloud;
-        pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
-        cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
-        pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
-        lbl_img*=255;
-        cv::imshow("sphere",lbl_img);
-        ROS_INFO_STREAM("sphere: " << sphere);
-        // TODO: Update this to the sphere centroid
-        state.x.x = cur_obj.centroid[0];
-        state.x.y = cur_obj.centroid[1];
-        state.z = cur_obj.centroid[2];
-        state.x.theta = 0.0;
-      }
-      else if (proxy_name == CYLINDER_PROXY)
-      {
-        XYZPointCloud cylinder_cloud;
-        pcl16::ModelCoefficients cylinder = pcl_segmenter_->fitCylinderRANSAC(cur_obj,cylinder_cloud);
-        cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
-        pcl_segmenter_->projectPointCloudIntoImage(cylinder_cloud, lbl_img);
-        lbl_img*=255;
-        cv::imshow("cylinder",lbl_img);
-        ROS_INFO_STREAM("cylinder: " << cylinder);
-        // TODO: Update this to the cylinder centroid
-        state.x.x = cur_obj.centroid[0];
-        state.x.y = cur_obj.centroid[1];
-        state.z = cur_obj.centroid[2];
-        state.x.theta = 0.0;
-      }
-      else
-      {
-        ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
-      }
-
-      // Convert delta_x to x_dot
+      state = computeState(cur_obj, cloud, proxy_name, in_frame);
+      state.header.seq = frame_count_;
+      state.header.stamp = cloud.header.stamp;
+      state.header.frame_id = cloud.header.frame_id;
+      // Estimate dynamics and do some bookkeeping
       double delta_x = state.x.x - previous_state_.x.x;
       double delta_y = state.x.y - previous_state_.x.y;
       double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
@@ -461,12 +469,11 @@ class ObjectTracker25D
 
       if (use_displays_ || write_to_disk_)
       {
-        // trackerDisplay(in_frame, cur_obj, obj_ellipse);
         trackerDisplay(in_frame, state, cur_obj);
       }
       previous_obj_ = cur_obj;
-      previous_obj_ellipse_ = obj_ellipse;
     }
+    // We updat the header and take care of other bookkeeping before returning
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     frame_count_++;
@@ -478,7 +485,6 @@ class ObjectTracker25D
   {
     if (use_displays_ || write_to_disk_)
     {
-      // trackerDisplay(in_frame, previous_obj_, previous_obj_ellipse_);
       trackerDisplay(in_frame, previous_state_, previous_obj_);
     }
     record_count_++;
@@ -1203,7 +1209,6 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " <<
                     cur_state.x.theta << ")");
 
-    cv::RotatedRect cur_ellipse = obj_tracker_->getMostRecentEllipse();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
     {
@@ -1404,7 +1409,8 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+    return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_,
+                                    proxy_name_);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -1430,17 +1436,8 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
-    if (obj_tracker_->isInitialized())
-    {
-      obj_tracker_->unpause();
-    }
-    else
-    {
-      startTracking();
-    }
     ROS_INFO_STREAM("Accepting goal");
     shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
-    // TODO: Transform into workspace frame...
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
     controller_name_ = tracker_goal->controller_name;
@@ -1449,6 +1446,15 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
+
+    if (obj_tracker_->isInitialized())
+    {
+      obj_tracker_->unpause();
+    }
+    else
+    {
+      startTracking();
+    }
   }
 
   void pushTrackerPreemptCB()
