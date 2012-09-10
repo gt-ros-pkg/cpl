@@ -243,8 +243,8 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   ne.compute(*normal_cloud);
 
   cv::Mat normal_img(cv::Size(input_cloud.width, input_cloud.height), CV_32FC3, cv::Scalar(0));
-  for (unsigned int x = 0; x < normal_img.cols; ++x)
-    for (unsigned int y = 0; y < normal_img.rows; ++y)
+  for (int x = 0; x < normal_img.cols; ++x)
+    for (int y = 0; y < normal_img.rows; ++y)
   {
     cv::Vec3f norm;
     norm[0] = abs(normal_cloud->at(x,y).normal_x);
@@ -494,19 +494,11 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& 
   cylinder_seg.setDistanceThreshold(cylinder_ransac_thresh_);
   cylinder_seg.setAxis(v);
   cylinder_seg.setEpsAngle(table_ransac_angle_thresh_);
-  ROS_INFO_STREAM("Setting input cloud");
   cylinder_seg.setInputCloud(obj.cloud.makeShared());
-  ROS_INFO_STREAM("Setting input normals");
   cylinder_seg.setInputNormals(obj.normals.makeShared());
-  ROS_INFO_STREAM("Segmetting");
   cylinder_seg.segment(cylinder_inliers, coefficients);
 
   pcl16::copyPointCloud(obj.cloud, cylinder_inliers, cylinder_cloud);
-  // TODO: Decide if we should return the coefficients as return type and optionally the cloud
-  cv::Mat lbl_img(cv::Size(640,480), CV_8UC1, cv::Scalar(0));
-  projectPointCloudIntoImage(cylinder_cloud, lbl_img);
-  lbl_img*=255;
-  cv::imshow("cylinder",lbl_img);
   return coefficients;
 }
 
@@ -533,11 +525,6 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitSphereRANSAC(ProtoObject& ob
   sphere_seg.segment(sphere_inliers, coefficients);
 
   pcl16::copyPointCloud(obj.cloud, sphere_inliers, sphere_cloud);
-  // TODO: Decide if we should return the coefficients as return type and optionally the cloud
-  cv::Mat lbl_img(cv::Size(640,480), CV_8UC1, cv::Scalar(0));
-  projectPointCloudIntoImage(sphere_cloud, lbl_img);
-  lbl_img*=255;
-  cv::imshow("sphere",lbl_img);
   return coefficients;
 }
 
@@ -718,9 +705,9 @@ std::vector<PointXYZ> PointCloudSegmentation::lineCloudIntersectionEndPoints(
   start_point.x = intersection.at(start_idx).x;
   start_point.y = intersection.at(start_idx).y;
   start_point.z = intersection.at(start_idx).z;
-  end_point.x = intersection.at(start_idx).x;
-  end_point.y = intersection.at(start_idx).y;
-  end_point.z = intersection.at(start_idx).z;
+  end_point.x = intersection.at(end_idx).x;
+  end_point.y = intersection.at(end_idx).y;
+  end_point.z = intersection.at(end_idx).z;
   points.push_back(start_point);
   points.push_back(end_point);
   return points;

@@ -300,7 +300,7 @@ class ObjectTracker25D
     cloud_no_z.width = obj.cloud.size();
     cloud_no_z.height = 1;
     cloud_no_z.resize(obj.cloud.size());
-    for (int i = 0; i < obj.cloud.size(); ++i)
+    for (unsigned int i = 0; i < obj.cloud.size(); ++i)
     {
       cloud_no_z[i] = obj.cloud[i];
       cloud_no_z[i].z = 0.0f;
@@ -350,6 +350,7 @@ class ObjectTracker25D
     {
       obj_ellipse = fit2DMassEllipse(cur_obj);
     }
+    // TODO: Choose how to compute state as function of proxy (centroid vs shpere vs cylinder vs ellipse vs...)
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
@@ -1116,18 +1117,9 @@ class TabletopPushingPerceptionNode
     Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
     std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
         cur_obj.cloud, push_unit_vec, cur_obj.centroid);
-    if (pull_start)
-    {
-      p.start_point.x = end_points[1].x;
-      p.start_point.y = end_points[1].y;
-      p.start_point.z = end_points[1].z;
-    }
-    else
-    {
-      p.start_point.x = end_points[0].x;
-      p.start_point.y = end_points[0].y;
-      p.start_point.z = end_points[0].z;
-    }
+    p.start_point.x = end_points[0].x;
+    p.start_point.y = end_points[0].y;
+    p.start_point.z = end_points[0].z;
 
     // Get push distance
     p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
@@ -1743,7 +1735,6 @@ class TabletopPushingPerceptionNode
 
 int main(int argc, char ** argv)
 {
-  int seed = time(NULL);
   ros::init(argc, argv, "tabletop_pushing_perception_node");
   ros::NodeHandle n;
   TabletopPushingPerceptionNode perception_node(n);
