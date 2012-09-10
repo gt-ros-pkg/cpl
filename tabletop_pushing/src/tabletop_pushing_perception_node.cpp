@@ -137,70 +137,13 @@ typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
 typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
 typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
 
-struct Tracker25DKeyPoint
-{
-  typedef std::vector<float> FeatureVector;
-  Tracker25DKeyPoint() : point2D_(NULL_X, NULL_Y), point3D_(0.0,0.0,0.0),
-                         delta2D_(0,0), delta3D_(0.0,0.0,0.0)
-  {
-  }
-
-  Tracker25DKeyPoint(cv::Point point2D, pcl16::PointXYZ point3D,
-                     FeatureVector descriptor) :
-      point2D_(point2D), point3D_(point3D), descriptor_(descriptor),
-      delta2D_(0,0), delta3D_(0,0,0)
-  {
-  }
-
-  void updateVelocities(Tracker25DKeyPoint prev)
-  {
-    if (prev.point2D_.x == NULL_X && prev.point2D_.x == NULL_Y)
-    {
-      delta2D_.x = 0;
-      delta2D_.y = 0;
-      delta3D_.x = 0.0;
-      delta3D_.y = 0.0;
-      delta3D_.z = 0.0;
-      return;
-    }
-    delta2D_ = point2D_ - prev.point2D_;
-    delta3D_.x = point3D_.x - prev.point3D_.x;
-    delta3D_.y = point3D_.y - prev.point3D_.y;
-    delta3D_.z = point3D_.z - prev.point3D_.z;
-  }
-
-  pcl16::PointXYZ getPrevious3DPoint()
-  {
-    pcl16::PointXYZ prev;
-    prev.x = point3D_.x - delta3D_.x;
-    prev.y = point3D_.y - delta3D_.y;
-    prev.z = point3D_.z - delta3D_.z;
-    return prev;
-  }
-  static const int NULL_X = -1;
-  static const int NULL_Y = -1;
-  cv::Point point2D_;
-  pcl16::PointXYZ point3D_;
-  FeatureVector descriptor_;
-  cv::Point delta2D_;
-  pcl16::PointXYZ delta3D_;
-};
-
-static inline double sqrDistXY(Eigen::Vector4f a, Pose2D b)
-{
-  const double dx = a[0]-b.x;
-  const double dy = a[1]-b.y;
-  return dx*dx+dy*dy;
-}
+const std::string ELLIPSE_PROXY = "ellipse";
+const std::string CENTROID_PROXY = "centroid";
+const std::string SPHERE_PROXY = "sphere";
+const std::string CYLINDER_PROXY = "cylinder";
 
 class ObjectTracker25D
 {
- protected:
-  typedef std::vector<Tracker25DKeyPoint> KeyPoints;
-  typedef Tracker25DKeyPoint KeyPoint;
-  typedef Tracker25DKeyPoint::FeatureVector FeatureVector;
-  typedef std::vector<FeatureVector> FeatureVectors;
-
  public:
   ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
@@ -268,9 +211,20 @@ class ObjectTracker25D
           objs, in_frame.size(), cloud.header.frame_id);
       pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     }
-
     no_objects = false;
     return objs[chosen_idx];
+  }
+
+  cv::RotatedRect fitObjectEllipse(ProtoObject& obj)
+  {
+    if (use_cv_ellipse_fit_)
+    {
+      return findFootprintEllipse(obj);
+    }
+    else
+    {
+      return fit2DMassEllipse(obj);
+    }
   }
 
   cv::RotatedRect findFootprintEllipse(ProtoObject& obj)
@@ -362,7 +316,7 @@ class ObjectTracker25D
     if (use_displays_ || write_to_disk_)
     {
       // ROS_INFO_STREAM("TrackerIO()");
-      trackerIO(in_frame, cur_obj, obj_ellipse);
+      trackerDisplay(in_frame, cur_obj, obj_ellipse);
       // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
       // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
     }
@@ -384,7 +338,8 @@ class ObjectTracker25D
     return subPIAngle(DEG2RAD(obj_ellipse.angle)+0.5*M_PI);
   }
 
-  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud)
+  PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
+                                std::string proxy_name)
   {
     if (!initialized_)
     {
@@ -399,7 +354,6 @@ class ObjectTracker25D
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
 
-    cv::RotatedRect obj_ellipse;
     if (no_objects)
     {
       state.no_detection = true;
@@ -409,48 +363,88 @@ class ObjectTracker25D
       ROS_WARN_STREAM("Using previous state, but updating time!");
       if (use_displays_ || write_to_disk_)
       {
-        trackerIO(in_frame, previous_obj_, previous_obj_ellipse_);
+        // trackerDisplay(in_frame, previous_obj_, previous_obj_ellipse_);
+        trackerDisplay(in_frame, previous_state_, previous_obj_);
       }
     }
     else
     {
-      if (use_cv_ellipse_fit_)
+      // TODO: Have each proxy create an image, and send that image to the trackerDisplay
+      // function to deal with saving and display.
+      cv::RotatedRect obj_ellipse;
+      if (proxy_name == CENTROID_PROXY)
       {
-        obj_ellipse = findFootprintEllipse(cur_obj);
+        state.x.x = cur_obj.centroid[0];
+        state.x.y = cur_obj.centroid[1];
+        state.z = cur_obj.centroid[2];
+        state.x.theta = 0.0;
       }
-      else
+      else if (proxy_name == ELLIPSE_PROXY)
       {
-        obj_ellipse = fit2DMassEllipse(cur_obj);
-      }
-      state.x.theta = getThetaFromEllipse(obj_ellipse);
-      state.x.x = cur_obj.centroid[0];
-      state.x.y = cur_obj.centroid[1];
-      state.z = cur_obj.centroid[2];
+        obj_ellipse = fitObjectEllipse(cur_obj);
+        state.x.theta = getThetaFromEllipse(obj_ellipse);
+        state.x.x = cur_obj.centroid[0];
+        state.x.y = cur_obj.centroid[1];
+        state.z = cur_obj.centroid[2];
 
-      if(swap_orientation_)
-      {
-        if(state.x.theta > 0.0)
-          state.x.theta += - M_PI;
-        else
-          state.x.theta += M_PI;
-      }
-
-      if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
-      {
-        if ((fabs(state.x.theta) > M_PI*0.25 &&
-             fabs(state.x.theta) < (M_PI*0.75 )) ||
-            (fabs(previous_state_.x.theta) > 1.0 &&
-             fabs(previous_state_.x.theta) < (M_PI - 0.5)))
+        if(swap_orientation_)
         {
-          swap_orientation_ = !swap_orientation_;
-          // We either need to swap or need to undo the swap
           if(state.x.theta > 0.0)
-            state.x.theta += -M_PI;
+            state.x.theta += - M_PI;
           else
             state.x.theta += M_PI;
         }
+        if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
+        {
+          if ((fabs(state.x.theta) > M_PI*0.25 &&
+               fabs(state.x.theta) < (M_PI*0.75 )) ||
+              (fabs(previous_state_.x.theta) > 1.0 &&
+               fabs(previous_state_.x.theta) < (M_PI - 0.5)))
+          {
+            swap_orientation_ = !swap_orientation_;
+            // We either need to swap or need to undo the swap
+            if(state.x.theta > 0.0)
+              state.x.theta += -M_PI;
+            else
+              state.x.theta += M_PI;
+          }
+        }
       }
-
+      else if (proxy_name == SPHERE_PROXY)
+      {
+        XYZPointCloud sphere_cloud;
+        pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
+        cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+        pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
+        lbl_img*=255;
+        cv::imshow("sphere",lbl_img);
+        ROS_INFO_STREAM("sphere: " << sphere);
+        // TODO: Update this to the sphere centroid
+        state.x.x = cur_obj.centroid[0];
+        state.x.y = cur_obj.centroid[1];
+        state.z = cur_obj.centroid[2];
+        state.x.theta = 0.0;
+      }
+      else if (proxy_name == CYLINDER_PROXY)
+      {
+        XYZPointCloud cylinder_cloud;
+        pcl16::ModelCoefficients cylinder = pcl_segmenter_->fitCylinderRANSAC(cur_obj,cylinder_cloud);
+        cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+        pcl_segmenter_->projectPointCloudIntoImage(cylinder_cloud, lbl_img);
+        lbl_img*=255;
+        cv::imshow("cylinder",lbl_img);
+        ROS_INFO_STREAM("cylinder: " << cylinder);
+        // TODO: Update this to the cylinder centroid
+        state.x.x = cur_obj.centroid[0];
+        state.x.y = cur_obj.centroid[1];
+        state.z = cur_obj.centroid[2];
+        state.x.theta = 0.0;
+      }
+      else
+      {
+        ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
+      }
+      ROS_WARN_STREAM("Perceptual proxy: " << proxy_name << " requested");
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
       double delta_y = state.x.y - previous_state_.x.y;
@@ -467,9 +461,8 @@ class ObjectTracker25D
 
       if (use_displays_ || write_to_disk_)
       {
-        trackerIO(in_frame, cur_obj, obj_ellipse);
-        // cv::RotatedRect new_obj_ellipse = fit2DMassEllipse(cur_obj);
-        // tempTrackerIO(in_frame, cur_obj, new_obj_ellipse);
+        // trackerDisplay(in_frame, cur_obj, obj_ellipse);
+        trackerDisplay(in_frame, state, cur_obj);
       }
       previous_obj_ = cur_obj;
       previous_obj_ellipse_ = obj_ellipse;
@@ -485,7 +478,8 @@ class ObjectTracker25D
   {
     if (use_displays_ || write_to_disk_)
     {
-      trackerIO(in_frame, previous_obj_, previous_obj_ellipse_);
+      // trackerDisplay(in_frame, previous_obj_, previous_obj_ellipse_);
+      trackerDisplay(in_frame, previous_state_, previous_obj_);
     }
     record_count_++;
   }
@@ -548,7 +542,7 @@ class ObjectTracker25D
   // I/O Functions
   //
 
-  void trackerIO(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
+  void trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
   {
     cv::Mat centroid_frame;
     in_frame.copyTo(centroid_frame);
@@ -602,7 +596,56 @@ class ObjectTracker25D
                << record_count_ << ".png";
       cv::imwrite(out_name.str(), centroid_frame);
     }
+  }
 
+  void trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj)
+  {
+    cv::Mat centroid_frame;
+    in_frame.copyTo(centroid_frame);
+    pcl16::PointXYZ centroid_point(state.x.x, state.x.y, state.z);
+    const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+        centroid_point, obj.cloud.header.frame_id, camera_frame_);
+    double theta = state.x.theta;
+
+    // TODO: Change this based on proxy?
+    const float x_min_rad = (std::cos(theta+0.5*M_PI)*0.05);
+    const float y_min_rad = (std::sin(theta+0.5*M_PI)*0.05);
+    pcl16::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
+                                  centroid_point.z);
+    const float x_maj_rad = (std::cos(theta)*0.15);
+    const float y_maj_rad = (std::sin(theta)*0.15);
+    pcl16::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
+                                    centroid_point.z);
+    const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
+        table_min_point, obj.cloud.header.frame_id, camera_frame_);
+    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
+        table_maj_point, obj.cloud.header.frame_id, camera_frame_);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+    cv::Size img_size;
+    img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                               std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
+    float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+                                         img_maj_idx.x-img_c_idx.x));
+    cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
+    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
+
+    if (use_displays_)
+    {
+      cv::imshow("Object State", centroid_frame);
+    }
+    if (write_to_disk_)
+    {
+      std::stringstream out_name;
+      out_name << base_output_path_ << "obj_state_" << frame_set_count_ << "_"
+               << record_count_ << ".png";
+      cv::imwrite(out_name.str(), centroid_frame);
+    }
   }
 
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
@@ -847,7 +890,7 @@ class TabletopPushingPerceptionNode
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_);
+          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_);
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.action_primitive = action_primitive_;
@@ -1020,6 +1063,9 @@ class TabletopPushingPerceptionNode
   {
     if ( have_depth_data_ )
     {
+      controller_name_ = req.controller_name;
+      proxy_name_ = req.proxy_name;
+      action_primitive_ = req.action_primitive;
       if (req.initialize)
       {
         ROS_INFO_STREAM("Initializing");
