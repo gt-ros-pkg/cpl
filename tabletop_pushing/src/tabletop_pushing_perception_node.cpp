@@ -444,7 +444,7 @@ class ObjectTracker25D
       {
         ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
       }
-      ROS_WARN_STREAM("Perceptual proxy: " << proxy_name << " requested");
+
       // Convert delta_x to x_dot
       double delta_x = state.x.x - previous_state_.x.x;
       double delta_y = state.x.y - previous_state_.x.y;
