@@ -458,7 +458,7 @@ class TabletopExecutive:
         push_vector_req.controller_name = controller_name
         push_vector_req.proxy_name = proxy_name
         push_vector_req.action_primitive = action_primitive
-        rospy.loginfo("Getting feedback push start service")
+        rospy.loginfo("Calling feedback push start service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
             return push_vector_res

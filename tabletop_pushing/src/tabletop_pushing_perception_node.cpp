@@ -290,10 +290,10 @@ class ObjectTracker25D
       // TODO: Update this to the cylinder centroid
       state.x.x = cylinder.values[0];
       state.x.y = cylinder.values[1];
-      state.z = cylinder.values[2];
+      state.z = cur_obj.centroid[2];//# cylinder.values[2];
       state.x.theta = 0.0;
-      ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " << state.z
-                      << ")");
+      ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
+                      cylinder.values[2] << ")");
       ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
                       << ", " << cur_obj.centroid[2] << ")");
     }
@@ -362,6 +362,7 @@ class ObjectTracker25D
   {
     paused_ = false;
     initialized_ = false;
+    obj_saved_ = false;
     swap_orientation_ = false;
     bool no_objects = false;
     frame_count_ = 0;
@@ -405,6 +406,7 @@ class ObjectTracker25D
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     previous_obj_ = cur_obj;
+    obj_saved_ = true;
     return state;
   }
 
@@ -437,11 +439,15 @@ class ObjectTracker25D
       ROS_WARN_STREAM("Using previous state, but updating time!");
       if (use_displays_ || write_to_disk_)
       {
-        trackerDisplay(in_frame, previous_state_, previous_obj_);
+        if (obj_saved_)
+        {
+          trackerDisplay(in_frame, previous_state_, previous_obj_);
+        }
       }
     }
     else
     {
+      obj_saved_ = true;
       state = computeState(cur_obj, cloud, proxy_name, in_frame);
       state.header.seq = frame_count_;
       state.header.stamp = cloud.header.stamp;
@@ -666,6 +672,7 @@ class ObjectTracker25D
   std::string camera_frame_;
   bool use_cv_ellipse_fit_;
   bool use_mps_segmentation_;
+  bool obj_saved_;
 };
 
 class TabletopPushingPerceptionNode
@@ -733,6 +740,8 @@ class TabletopPushingPerceptionNode
                      pcl_segmenter_->table_ransac_angle_thresh_, 30.0);
     n_private_.param("cylinder_ransac_thresh",
                      pcl_segmenter_->cylinder_ransac_thresh_, 0.01);
+    n_private_.param("cylinder_ransac_angle_thresh",
+                     pcl_segmenter_->cylinder_ransac_angle_thresh_, 1.5);
     n_private_.param("sphere_ransac_thresh",
                      pcl_segmenter_->sphere_ransac_thresh_, 0.01);
     n_private_.param("pcl_cluster_tolerance", pcl_segmenter_->cluster_tolerance_,

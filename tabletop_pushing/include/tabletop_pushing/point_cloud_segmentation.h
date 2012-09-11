@@ -330,6 +330,7 @@ class PointCloudSegmentation
   double mps_min_angle_thresh_;
   double mps_min_dist_thresh_;
   double cylinder_ransac_thresh_;
+  double cylinder_ransac_angle_thresh_;
   double sphere_ransac_thresh_;
 };
 
