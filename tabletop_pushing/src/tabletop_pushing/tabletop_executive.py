@@ -85,25 +85,51 @@ class TabletopExecutive:
 
         # Setup service proxies
         if not _OFFLINE:
-            # New visual feedback proxies
-            self.overhead_feedback_push_proxy = rospy.ServiceProxy(
-                'overhead_feedback_push', FeedbackPush)
-            self.overhead_feedback_post_push_proxy = rospy.ServiceProxy(
-                'overhead_feedback_post_push', FeedbackPush)
-            self.gripper_feedback_push_proxy = rospy.ServiceProxy(
-                'gripper_feedback_push', FeedbackPush)
-            self.gripper_feedback_post_push_proxy = rospy.ServiceProxy(
-                'gripper_feedback_post_push', FeedbackPush)
-            self.gripper_feedback_sweep_proxy = rospy.ServiceProxy(
-                'gripper_feedback_sweep', FeedbackPush)
-            self.gripper_feedback_post_sweep_proxy = rospy.ServiceProxy(
-                'gripper_feedback_post_sweep', FeedbackPush)
-            self.overhead_feedback_pre_push_proxy = rospy.ServiceProxy('overhead_pre_push',
-                                                                       FeedbackPush)
-            self.gripper_feedback_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
-                                                                      FeedbackPush)
-            self.gripper_feedback_pre_sweep_proxy = rospy.ServiceProxy('gripper_pre_sweep',
-                                                                       FeedbackPush)
+            if use_singulation:
+                self.gripper_push_proxy = rospy.ServiceProxy('gripper_push',
+                                                             GripperPush)
+                self.gripper_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
+                                                                 GripperPush)
+                self.gripper_post_push_proxy = rospy.ServiceProxy('gripper_post_push',
+                                                                  GripperPush)
+                self.gripper_pre_sweep_proxy = rospy.ServiceProxy('gripper_pre_sweep',
+                                                                  GripperPush)
+                self.gripper_sweep_proxy = rospy.ServiceProxy('gripper_sweep',
+                                                              GripperPush)
+                self.gripper_post_sweep_proxy = rospy.ServiceProxy('gripper_post_sweep',
+                                                                   GripperPush)
+                self.overhead_pre_push_proxy = rospy.ServiceProxy('overhead_pre_push',
+                                                                  GripperPush)
+                self.overhead_push_proxy = rospy.ServiceProxy('overhead_push',
+                                                              GripperPush)
+                self.overhead_post_push_proxy = rospy.ServiceProxy('overhead_post_push',
+                                                                   GripperPush)
+                self.overhead_pre_pull_proxy = rospy.ServiceProxy('overhead_pre_pull',
+                                                                  GripperPush)
+                self.overhead_pull_proxy = rospy.ServiceProxy('overhead_pull',
+                                                              GripperPush)
+                self.overhead_post_pull_proxy = rospy.ServiceProxy('overhead_post_pull',
+                                                                   GripperPush)
+            if use_learning:
+                # New visual feedback proxies
+                self.overhead_feedback_push_proxy = rospy.ServiceProxy(
+                    'overhead_feedback_push', FeedbackPush)
+                self.overhead_feedback_post_push_proxy = rospy.ServiceProxy(
+                    'overhead_feedback_post_push', FeedbackPush)
+                self.gripper_feedback_push_proxy = rospy.ServiceProxy(
+                    'gripper_feedback_push', FeedbackPush)
+                self.gripper_feedback_post_push_proxy = rospy.ServiceProxy(
+                    'gripper_feedback_post_push', FeedbackPush)
+                self.gripper_feedback_sweep_proxy = rospy.ServiceProxy(
+                    'gripper_feedback_sweep', FeedbackPush)
+                self.gripper_feedback_post_sweep_proxy = rospy.ServiceProxy(
+                    'gripper_feedback_post_sweep', FeedbackPush)
+                self.overhead_feedback_pre_push_proxy = rospy.ServiceProxy('overhead_pre_push',
+                                                                           FeedbackPush)
+                self.gripper_feedback_pre_push_proxy = rospy.ServiceProxy('gripper_pre_push',
+                                                                          FeedbackPush)
+                self.gripper_feedback_pre_sweep_proxy = rospy.ServiceProxy('gripper_pre_sweep',
+                                                                           FeedbackPush)
             # Proxy to setup spine and head
             self.raise_and_look_proxy = rospy.ServiceProxy('raise_and_look',
                                                            RaiseAndLook)
@@ -146,12 +172,17 @@ class TabletopExecutive:
 
     def run_singulation(self, num_pushes=1, use_guided=True):
         # Get table height and raise to that before anything else
-        self.raise_and_look()
+        if not _OFFLINE:
+            self.raise_and_look()
         # Initialize push pose
         self.initialize_singulation_push_vector();
 
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
+            if _OFFLINE:
+                code_in = raw_input("Press any key to determine next singulation push: ")
+                if code_in.startswith('q'):
+                    break
             pose_res = self.request_singulation_push(use_guided)
             # raw_input('Hit any key to continue')
             # continue
@@ -203,6 +234,9 @@ class TabletopExecutive:
             push_dist = pose_res.push_dist
             push_dist = max(min(push_dist, self.max_push_dist),
                             self.min_push_dist)
+
+            if _OFFLINE:
+                continue
             if action_primitive == GRIPPER_PUSH:
                 self.gripper_push_object(push_dist, which_arm, pose_res, True)
             if action_primitive == GRIPPER_SWEEP:
@@ -679,6 +713,140 @@ class TabletopExecutive:
         rospy.loginfo("Calling feedback post sweep service")
         post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
         return push_res
+
+    def gripper_push_object(self, push_dist, which_arm, pose_res, high_init):
+        # Convert pose response to correct push request format
+        push_req = GripperPushRequest()
+        push_req.start_point.header = pose_res.header
+        push_req.start_point.point = pose_res.start_point
+        push_req.arm_init = True
+        push_req.arm_reset = True
+        push_req.high_arm_init = True
+
+        # Use the sent wrist yaw
+        wrist_yaw = pose_res.push_angle
+        push_req.wrist_yaw = wrist_yaw
+        push_req.desired_push_dist = push_dist + abs(self.gripper_x_offset)
+
+        # Offset pose to not hit the object immediately
+        push_req.start_point.point.x += self.gripper_x_offset*cos(wrist_yaw)
+        push_req.start_point.point.y += self.gripper_x_offset*sin(wrist_yaw)
+        push_req.start_point.point.z = self.gripper_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+
+        rospy.loginfo("Calling gripper pre push service")
+        pre_push_res = self.gripper_pre_push_proxy(push_req)
+        rospy.loginfo("Calling gripper push service")
+        push_res = self.gripper_push_proxy(push_req)
+        rospy.loginfo("Calling gripper post push service")
+        post_push_res = self.gripper_post_push_proxy(push_req)
+
+    def sweep_object(self, push_dist, which_arm, pose_res, high_init):
+        # Convert pose response to correct push request format
+        sweep_req = GripperPushRequest()
+        sweep_req.left_arm = (which_arm == 'l')
+        sweep_req.right_arm = not sweep_req.left_arm
+        sweep_req.high_arm_init = True
+
+        # if sweep_req.left_arm:
+        if pose_res.push_angle > 0:
+            y_offset_dir = -1
+        else:
+            y_offset_dir = +1
+
+        # Correctly set the wrist yaw
+        if pose_res.push_angle > 0.0:
+            wrist_yaw = pose_res.push_angle - pi/2
+        else:
+            wrist_yaw = pose_res.push_angle + pi/2
+        sweep_req.wrist_yaw = wrist_yaw
+        sweep_req.desired_push_dist = -y_offset_dir*(self.sweep_y_offset +
+                                                     push_dist)
+
+        # Set offset in x y, based on distance
+        sweep_req.start_point.header = pose_res.header
+        sweep_req.start_point.point = pose_res.start_point
+        sweep_req.start_point.point.x += self.sweep_x_offset
+        sweep_req.start_point.point.y += y_offset_dir*self.sweep_y_offset
+        sweep_req.start_point.point.z = self.sweep_start_z
+        sweep_req.arm_init = True
+        sweep_req.arm_reset = True
+
+        rospy.loginfo("Calling gripper pre sweep service")
+        pre_sweep_res = self.gripper_pre_sweep_proxy(sweep_req)
+        rospy.loginfo("Calling gripper sweep service")
+        sweep_res = self.gripper_sweep_proxy(sweep_req)
+        rospy.loginfo("Calling gripper post sweep service")
+        post_sweep_res = self.gripper_post_sweep_proxy(sweep_req)
+
+    def overhead_push_object(self, push_dist, which_arm, pose_res, high_init):
+        # Convert pose response to correct push request format
+        push_req = GripperPushRequest()
+        push_req.start_point.header = pose_res.header
+        push_req.start_point.point = pose_res.start_point
+        push_req.arm_init = True
+        push_req.arm_reset = True
+        push_req.high_arm_init = high_init
+
+        # Correctly set the wrist yaw
+        wrist_yaw = pose_res.push_angle
+        push_req.wrist_yaw = wrist_yaw
+        push_req.desired_push_dist = push_dist
+
+        # Offset pose to not hit the object immediately
+        push_req.start_point.point.x += self.overhead_x_offset*cos(wrist_yaw)
+        push_req.start_point.point.y += self.overhead_x_offset*sin(wrist_yaw)
+        push_req.start_point.point.z = self.overhead_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+
+        rospy.loginfo("Calling pre overhead push service")
+        pre_push_res = self.overhead_pre_push_proxy(push_req)
+        rospy.loginfo("Calling overhead push service")
+        push_res = self.overhead_push_proxy(push_req)
+        rospy.loginfo("Calling post overhead push service")
+        post_push_res = self.overhead_post_push_proxy(push_req)
+
+    def overhead_pull_object(self, push_dist, which_arm, pose_res, high_init):
+        # Convert pose response to correct push request format
+        push_req = GripperPushRequest()
+        push_req.start_point.header = pose_res.header
+        push_req.start_point.point = pose_res.start_point
+        push_req.arm_init = True
+        push_req.arm_reset = True
+        push_req.high_arm_init = True
+
+        wrist_yaw = pose_res.push_angle
+        # Correctly set the wrist yaw
+        while wrist_yaw < -pi*0.5:
+            wrist_yaw += pi
+        while wrist_yaw > pi*0.5:
+            wrist_yaw -= pi
+        push_req.wrist_yaw = wrist_yaw
+        # Add offset distance to push to compensate
+        push_req.desired_push_dist = push_dist + self.pull_dist_offset
+
+        # Offset pose to not hit the object immediately
+        rospy.loginfo('Pre pull offset (x,y): (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ')')
+        push_req.start_point.point.x += self.pull_dist_offset*cos(wrist_yaw)
+        push_req.start_point.point.y += self.pull_dist_offset*sin(wrist_yaw)
+        push_req.start_point.point.z = self.pull_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+
+        rospy.loginfo('Post pull offset (x,y): (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ')')
+
+        rospy.loginfo("Calling pre overhead pull service")
+        pre_push_res = self.overhead_pre_pull_proxy(push_req)
+        rospy.loginfo("Calling overhead pull service")
+        push_res = self.overhead_pull_proxy(push_req)
+        rospy.loginfo("Calling post overhead pull service")
+        post_push_res = self.overhead_post_pull_proxy(push_req)
 
     def generate_random_table_pose(self):
         if _USE_FIXED_GOAL:

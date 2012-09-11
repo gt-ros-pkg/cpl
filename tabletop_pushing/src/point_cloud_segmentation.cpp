@@ -439,6 +439,13 @@ ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
   pcl_diff.setTargetCloud(cur_cloud.makeShared());
   XYZPointCloud cloud_out;
   pcl_diff.segment(cloud_out);
+  if (cloud_out.size() < 1)
+  {
+    ROS_INFO_STREAM("Returning nothing moved as there are no points.");
+    ProtoObjects moved;
+    return moved;
+  }
+
   ProtoObjects moved = clusterProtoObjects(cloud_out);
 
 #ifdef DISPLAY_CLOUD_DIFF
