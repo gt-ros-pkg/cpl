@@ -55,5 +55,6 @@
     <param name="object_not_moving_thresh" value="0.005" type="double"/>
     <param name="gripper_not_moving_count_limit" value="10" type="int"/>
     <param name="object_not_moving_count_limit" value="10" type="int"/>
+    <param name="object_not_detected_count_limit" value="5" type="int"/>
   </node>
 </launch>

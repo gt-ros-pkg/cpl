@@ -71,7 +71,8 @@ class TabletopExecutive:
         self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
-        self.sweep_offset_dist = rospy.get_param('~gripper_sweep_offset_dist', 0.04)
+        self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
+        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.07)
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
 
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
@@ -304,10 +305,11 @@ class TabletopExecutive:
                 return push_vec_res
 
             # NOTE: If previous push was aborted, keep using the same arm
-            if continuing:
-                continuing = False
-            else:
-                which_arm = self.choose_arm(push_vec_res.push, controller_name)
+            # if continuing:
+            #     continuing = False
+            # else:
+            #     which_arm = self.choose_arm(push_vec_res.push, controller_name)
+            which_arm = self.choose_arm(push_vec_res.push, controller_name)
 
             res, push_res = self.perform_push(which_arm, action_primitive,
                                               push_vec_res, goal_pose,
@@ -635,16 +637,23 @@ class TabletopExecutive:
         # if push_req.left_arm:
         if push_vector.push_angle > 0:
             y_offset_dir = -1
-            wrist_yaw = push_vector.push_angle - pi/2
+            wrist_yaw = push_vector.push_angle - pi/2.0
         else:
             y_offset_dir = +1
-            wrist_yaw = push_vector.push_angle + pi/2
+            wrist_yaw = push_vector.push_angle + pi/2.0
 
         push_req.wrist_yaw = wrist_yaw
-
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += -self.sweep_offset_dist*sin(wrist_yaw)
-        push_req.start_point.point.y += y_offset_dir*self.sweep_offset_dist*cos(wrist_yaw)
+        face_x_offset = -self.sweep_face_offset_dist*sin(wrist_yaw)
+        face_y_offset = y_offset_dir*self.sweep_face_offset_dist*cos(wrist_yaw)
+        wrist_x_offset = self.sweep_wrist_offset_dist*cos(wrist_yaw)
+        wrist_y_offset = self.sweep_wrist_offset_dist*sin(wrist_yaw)
+        # rospy.loginfo('wrist_yaw: ' + str(wrist_yaw))
+        # rospy.loginfo('Face offset: (' + str(face_x_offset) + ', ' + str(face_y_offset) +')')
+        # rospy.loginfo('Wrist offset: (' + str(wrist_x_offset) + ', ' + str(wrist_y_offset) +')')
+
+        push_req.start_point.point.x += face_x_offset + wrist_x_offset
+        push_req.start_point.point.y += face_y_offset + wrist_y_offset
         push_req.start_point.point.z = self.sweep_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
@@ -672,13 +681,13 @@ class TabletopExecutive:
         return push_res
 
     def generate_random_table_pose(self):
-        # TODO: make these parameters
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
-            goal_pose.x = 1.2
-            goal_pose.y = -0.2
+            goal_pose.x = 0.9
+            goal_pose.y = -0.4
             goal_pose.theta = 0.0
             return goal_pose
+        # TODO: make these parameters
         min_x = 0.4
         max_x = 0.85
         max_y = 0.3
