@@ -770,6 +770,8 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_not_moving_count_limit", object_not_moving_count_limit_, 100);
     n_private_.param("object_not_detected_count_limit", object_not_detected_count_limit_, 5);
     n_private_.param("object_too_far_count_limit", object_too_far_count_limit_, 5);
+    n_private_.param("object_not_between_count_limit", object_not_between_count_limit_, 5);
+    n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1454,6 +1456,7 @@ class TabletopPushingPerceptionNode
     object_not_moving_count_ = 0;
     object_not_detected_count_ = 0;
     object_too_far_count_ = 0;
+    object_not_between_count_ = 0;
 
     if (obj_tracker_->isInitialized())
     {
@@ -1528,12 +1531,29 @@ class TabletopPushingPerceptionNode
   {
     if (pushing_arm_ == "l")
     {
-      return pointIsBetweenOthers(l_arm_pose_.pose.position, obj_state, tracker_goal_pose_);
+      if( pointIsBetweenOthers(l_arm_pose_.pose.position, obj_state, tracker_goal_pose_,
+                               object_not_between_epsilon_))
+      {
+        ++object_not_between_count_;
+      }
+      else
+      {
+        object_not_between_count_ = 0;
+      }
     }
-    else
+    else if (pushing_arm_ == "r")
     {
-      return pointIsBetweenOthers(r_arm_pose_.pose.position, obj_state, tracker_goal_pose_);
+      if( pointIsBetweenOthers(r_arm_pose_.pose.position, obj_state, tracker_goal_pose_,
+                               object_not_between_epsilon_))
+      {
+        ++object_not_between_count_;
+      }
+      else
+      {
+        object_not_between_count_ = 0;
+      }
     }
+    return object_not_between_count_ >= object_not_between_count_limit_;
   }
 
   // TODO: Make this threshold the initial distance when pushing +- some epsilon
@@ -1560,7 +1580,7 @@ class TabletopPushingPerceptionNode
     return object_too_far_count_ >= object_too_far_count_limit_;
   }
 
-  bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2)
+  bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2, double epsilon=0.0)
   {
     // Project the vector pt->x2 onto the vector x1->x2
     const float a_x = x2.x - pt.x;
@@ -1577,7 +1597,8 @@ class TabletopPushingPerceptionNode
     const float d_1 = d_1_x*d_1_x + d_1_y*d_1_y;
     const float d_2 = b_x*b_x + b_y*b_y;
 
-    return d_1 < d_2;
+    // NOTE: Add epsilon squared distance to the projected distance to allow for small noise
+    return d_1+epsilon*epsilon < d_2;
   }
 
   /**
@@ -1805,6 +1826,9 @@ class TabletopPushingPerceptionNode
   int object_not_detected_count_limit_;
   int object_too_far_count_;
   int object_too_far_count_limit_;
+  int object_not_between_count_;
+  int object_not_between_count_limit_;
+  double object_not_between_epsilon_;
 };
 
 int main(int argc, char ** argv)
