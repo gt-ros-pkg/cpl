@@ -1362,6 +1362,7 @@ class TabletopPushingPerceptionNode
         {
           draw_color = cv::Scalar(0,255,0);
         }
+        cv::circle(disp_img, img_idx, 4, cv::Scalar(0,0,0),3);
         cv::circle(disp_img, img_idx, 4, draw_color);
       }
       if (use_displays_)

@@ -1158,7 +1158,7 @@ class ObjectSingulation
 
     // Link edges into object boundary hypotheses
     std::vector<std::vector<cv::Point> > edges = LinkEdges::edgeLink(
-        combined_edges, min_edge_length_, use_displays_);
+        combined_edges, min_edge_length_, false);
     std::vector<Boundary> boundaries;
     for (unsigned int i = 0; i < edges.size(); ++i)
     {
@@ -1526,7 +1526,9 @@ class ObjectSingulation
         start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(
         end_point);
+    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0.0,0.0),3);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,1.0,0.0));
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0.0,0.0),3);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,1.0,0.0));
 
     if (use_displays_)
@@ -1570,7 +1572,9 @@ class ObjectSingulation
         start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(
         end_point);
+    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0.0,0.0),3);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,1.0,0.0));
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0.0,0.0),3);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,1.0,0.0));
 
     if (use_displays_)
@@ -1887,7 +1891,9 @@ class ObjectSingulation
 
       cv::Point img_start_pt = pcl_segmenter_->projectPointIntoImage(start_pt);
       cv::Point img_end_pt = pcl_segmenter_->projectPointIntoImage(end_pt);
+      cv::line(obj_disp_img, img_start_pt, img_end_pt, cv::Scalar(0.0,0.0,0.0), 3);
       cv::line(obj_disp_img, img_start_pt, img_end_pt, cyan);
+      cv::circle(obj_disp_img, img_end_pt, 4, cv::Scalar(0.0,0.0,0.0), 3);
       cv::circle(obj_disp_img, img_end_pt, 4, blue);
     }
     PointStamped l_point;
@@ -1902,7 +1908,9 @@ class ObjectSingulation
     l_end.point.z = l_pt[2] + l_dir[2]*0.10;
     cv::Point img_l_pt = pcl_segmenter_->projectPointIntoImage(l_point);
     cv::Point img_l_end = pcl_segmenter_->projectPointIntoImage(l_end);
+    cv::circle(obj_disp_img, img_l_pt, 6, cv::Scalar(0.0,0.0,0.0), 3);
     cv::circle(obj_disp_img, img_l_pt, 6, green);
+    cv::line(obj_disp_img, img_l_pt, img_l_end, cv::Scalar(0.0,0.0,0.0), 3);
     cv::line(obj_disp_img, img_l_pt, img_l_end, green);
     const cv::Vec3f green_v(0.0f, 1.0f, 0.0f);
     for (unsigned int i = 0; i < boundary.size(); ++i)
@@ -2057,7 +2065,7 @@ class ObjectSingulation
     cv::Scalar green(0.0, 1.0, 0.0);
     cv::Scalar red(0.0, 0.0, 1.0);
     cv::Scalar cyan(1.0, 1.0, 0.0);
-
+    cv::Scalar black(0.0, 0.0, 0.0);
     const Eigen::Vector3f x_axis(0.1, 0.0, 0.0);
     const Eigen::Vector3f y_axis(0.0, 0.1, 0.0);
     const Eigen::Vector3f z_axis(0.0, 0.0, 0.1);
@@ -2110,6 +2118,10 @@ class ObjectSingulation
           end_point_z);
 
       // Draw axises on image
+      cv::line(obj_disp_img, img_start_point, img_end_point_x, black, 3);
+      cv::line(obj_disp_img, img_start_point, img_end_point_y, black, 3);
+      cv::line(obj_disp_img, img_start_point, img_end_point_z, black, 3);
+
       cv::line(obj_disp_img, img_start_point, img_end_point_x, red);
       cv::line(obj_disp_img, img_start_point, img_end_point_y, green);
       cv::line(obj_disp_img, img_start_point, img_end_point_z, cyan);

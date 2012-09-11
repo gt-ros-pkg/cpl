@@ -180,12 +180,10 @@ class TabletopExecutive:
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
             if _OFFLINE:
-                code_in = raw_input("Press any key to determine next singulation push: ")
+                code_in = raw_input("Press <ENTER> to determine next singulation push: ")
                 if code_in.startswith('q'):
                     break
             pose_res = self.request_singulation_push(use_guided)
-            # raw_input('Hit any key to continue')
-            # continue
             if pose_res is None:
                 rospy.logwarn("pose_res is None. Exiting pushing");
                 break
