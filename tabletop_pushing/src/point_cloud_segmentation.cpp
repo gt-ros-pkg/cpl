@@ -502,14 +502,14 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& 
 
   // Create the segmentation object
   pcl16::ModelCoefficients coefficients;
-  Eigen::Vector3f v(1.0,1.0,0.0);
+  Eigen::Vector3f z_axis(0.0,0.0,1.0);
   pcl16::PointIndices cylinder_inliers;
   pcl16::SACSegmentationFromNormals<PointXYZ,pcl16::Normal> cylinder_seg;
   cylinder_seg.setOptimizeCoefficients(true);
   cylinder_seg.setModelType(pcl16::SACMODEL_CYLINDER);
   cylinder_seg.setMethodType(pcl16::SAC_RANSAC);
   cylinder_seg.setDistanceThreshold(cylinder_ransac_thresh_);
-  // cylinder_seg.setAxis(v);
+  cylinder_seg.setAxis(z_axis);
   // cylinder_seg.setEpsAngle(cylinder_ransac_angle_thresh_);
   cylinder_seg.setInputCloud(obj.cloud.makeShared());
   cylinder_seg.setInputNormals(obj.normals.makeShared());
