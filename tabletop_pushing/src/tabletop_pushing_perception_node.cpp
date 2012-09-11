@@ -773,6 +773,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_not_moving_thresh", object_not_moving_thresh_, 0.005);
     n_private_.param("gripper_not_moving_count_limit", gripper_not_moving_count_limit_, 100);
     n_private_.param("object_not_moving_count_limit", object_not_moving_count_limit_, 100);
+    n_private_.param("object_not_detected_count_limit", object_not_detected_count_limit_, 5);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1037,6 +1038,10 @@ class TabletopPushingPerceptionNode
     else if (gripperNotMoving())
     {
       abortPushingGoal("Gripper is not moving");
+    }
+    else if (objectDisappeared(tracker_state))
+    {
+      abortPushingGoal("Object disappeared");
     }
     else if (objectTooFarFromGripper(tracker_state.x))
     {
@@ -1448,6 +1453,7 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
+    object_not_detected_count_ = 0;
 
     if (obj_tracker_->isInitialized())
     {
@@ -1479,6 +1485,19 @@ class TabletopPushingPerceptionNode
       object_not_moving_count_ = 0;
     }
     return (object_not_moving_count_  > object_not_moving_count_limit_);
+  }
+
+  bool objectDisappeared(PushTrackerState& tracker_state)
+  {
+    if (tracker_state.no_detection)
+    {
+      ++object_not_detected_count_;
+    }
+    else
+    {
+      object_not_detected_count_ = 0;
+    }
+    return object_not_detected_count_  > object_not_detected_count_limit_;
   }
 
   bool gripperNotMoving()
@@ -1785,6 +1804,8 @@ class TabletopPushingPerceptionNode
   double gripper_not_moving_thresh_;
   int gripper_not_moving_count_;
   int gripper_not_moving_count_limit_;
+  int object_not_detected_count_;
+  int object_not_detected_count_limit_;
 };
 
 int main(int argc, char ** argv)
