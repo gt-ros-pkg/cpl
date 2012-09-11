@@ -103,13 +103,8 @@
 
 // Debugging IFDEFS
 #define DISPLAY_INPUT_COLOR 1
-// #define DISPLAY_INPUT_DEPTH 1
-#define DISPLAY_PROJECTED_OBJECTS 1
-#define DISPLAY_CHOSEN_BOUNDARY 1
-#define DISPLAY_3D_BOUNDARIES 1
-#define DISPLAY_PUSH_VECTOR 1
+#define DISPLAY_INPUT_DEPTH 1
 #define DISPLAY_WAIT 1
-#define DEBUG_PUSH_HISTORY 1
 
 using boost::shared_ptr;
 using tabletop_pushing::LearnPush;
@@ -774,6 +769,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("gripper_not_moving_count_limit", gripper_not_moving_count_limit_, 100);
     n_private_.param("object_not_moving_count_limit", object_not_moving_count_limit_, 100);
     n_private_.param("object_not_detected_count_limit", object_not_detected_count_limit_, 5);
+    n_private_.param("object_too_far_count_limit", object_too_far_count_limit_, 5);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1387,13 +1383,16 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getAnalysisVector(Pose2D goal_pose)
   {
-    PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
-    ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+    bool no_objects = false;
+    ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_,
+                                                         cur_self_filtered_cloud_,
+                                                         no_objects);
+    cv::RotatedRect obj_ellipse = obj_tracker_->fitObjectEllipse(cur_obj);
 
     LearnPush::Response res;
-    if (tracker_state.no_detection)
+    if (no_objects)
     {
-      ROS_WARN_STREAM("No objects found");
+      ROS_WARN_STREAM("No objects found on analysis");
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
@@ -1404,7 +1403,7 @@ class TabletopPushingPerceptionNode
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
-    res.theta = tracker_state.x.theta;
+    res.theta = obj_tracker_->getThetaFromEllipse(obj_ellipse);
 
     return res;
   }
@@ -1454,6 +1453,7 @@ class TabletopPushingPerceptionNode
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
     object_not_detected_count_ = 0;
+    object_too_far_count_ = 0;
 
     if (obj_tracker_->isInitialized())
     {
@@ -1478,13 +1478,13 @@ class TabletopPushingPerceptionNode
     if (tracker_state.x_dot.x < object_not_moving_thresh_ &&
         tracker_state.x_dot.y < object_not_moving_thresh_)
     {
-      object_not_moving_count_++;
+      ++object_not_moving_count_;
     }
     else
     {
       object_not_moving_count_ = 0;
     }
-    return (object_not_moving_count_  > object_not_moving_count_limit_);
+    return object_not_moving_count_  >= object_not_moving_count_limit_;
   }
 
   bool objectDisappeared(PushTrackerState& tracker_state)
@@ -1497,7 +1497,7 @@ class TabletopPushingPerceptionNode
     {
       object_not_detected_count_ = 0;
     }
-    return object_not_detected_count_  > object_not_detected_count_limit_;
+    return object_not_detected_count_  >= object_not_detected_count_limit_;
   }
 
   bool gripperNotMoving()
@@ -1514,13 +1514,13 @@ class TabletopPushingPerceptionNode
     if (gripper_vel.linear.x < gripper_not_moving_thresh_ &&
         gripper_vel.linear.y < gripper_not_moving_thresh_)
     {
-      gripper_not_moving_count_++;
+      ++gripper_not_moving_count_;
     }
     else
     {
       gripper_not_moving_count_ = 0;
     }
-    return (gripper_not_moving_count_  > gripper_not_moving_count_limit_);
+    return gripper_not_moving_count_  >= gripper_not_moving_count_limit_;
   }
 
   // TODO: Make this tolerant within some epislon
@@ -1549,7 +1549,15 @@ class TabletopPushingPerceptionNode
       gripper_pt = r_arm_pose_.pose.position;
     }
     float gripper_dist = hypot(gripper_pt.x-obj_state.x,gripper_pt.y-obj_state.y);
-    return (gripper_dist  > max_object_gripper_dist_);
+    if (gripper_dist  > max_object_gripper_dist_)
+    {
+      ++object_too_far_count_;
+    }
+    else
+    {
+      object_too_far_count_ = 0;
+    }
+    return object_too_far_count_ >= object_too_far_count_limit_;
   }
 
   bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2)
@@ -1569,17 +1577,6 @@ class TabletopPushingPerceptionNode
     const float d_1 = d_1_x*d_1_x + d_1_y*d_1_y;
     const float d_2 = b_x*b_x + b_y*b_y;
 
-    // if (frame_callback_count_ % 15)
-    // {
-    //   ROS_INFO_STREAM("ee_pose (" << pt.x << ", " << pt.y << ")");
-    //   ROS_INFO_STREAM("goal_pose (" << x2.x << ", " << x2.y << ")");
-    //   ROS_INFO_STREAM("obj_pose (" << x1.x << ", " << x1.y << ")");
-    //   ROS_INFO_STREAM("a: (" << a_x << ", " << a_y << ")");
-    //   ROS_INFO_STREAM("b: (" << b_x << ", " << b_y << ")");
-    //   ROS_INFO_STREAM("a_onto_b: (" << d_1_x << ", " << d_1_y << ")");
-    //   ROS_INFO_STREAM("Distance d_1 is: " << d_1);
-    //   ROS_INFO_STREAM("Distance d_2 is: " << d_2 << "\n");
-    // }
     return d_1 < d_2;
   }
 
@@ -1806,6 +1803,8 @@ class TabletopPushingPerceptionNode
   int gripper_not_moving_count_limit_;
   int object_not_detected_count_;
   int object_not_detected_count_limit_;
+  int object_too_far_count_;
+  int object_too_far_count_limit_;
 };
 
 int main(int argc, char ** argv)

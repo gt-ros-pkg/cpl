@@ -138,13 +138,13 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
   // Create the segmentation object
   pcl16::SACSegmentation<PointXYZ> plane_seg;
   plane_seg.setOptimizeCoefficients(true);
-  plane_seg.setModelType(pcl16::SACMODEL_PLANE);
-  // plane_seg.setModelType(pcl16::SACMODEL_PARALLEL_PLANE);
+  // plane_seg.setModelType(pcl16::SACMODEL_PLANE);
+  plane_seg.setModelType(pcl16::SACMODEL_PERPENDICULAR_PLANE);
   plane_seg.setMethodType(pcl16::SAC_RANSAC);
   plane_seg.setDistanceThreshold(table_ransac_thresh_);
   plane_seg.setInputCloud(cloud_filtered.makeShared());
-  Eigen::Vector3f v(1.0,1.0,0.0);
-  plane_seg.setAxis(v);
+  Eigen::Vector3f z_axis(0.0, 0.0, 1.0);
+  plane_seg.setAxis(z_axis);
   // plane_seg.setEpsAngle(table_ransac_angle_thresh_);
   plane_seg.segment(plane_inliers, coefficients);
   pcl16::copyPointCloud(cloud_filtered, plane_inliers, plane_cloud);
