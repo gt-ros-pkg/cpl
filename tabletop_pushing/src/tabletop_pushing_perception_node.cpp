@@ -268,11 +268,13 @@ class ObjectTracker25D
       pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
       lbl_img*=255;
       cv::imshow("sphere",lbl_img);
-      ROS_INFO_STREAM("sphere: " << sphere);
-      // TODO: Update this to the sphere centroid
-      state.x.x = cur_obj.centroid[0];
-      state.x.y = cur_obj.centroid[1];
-      state.z = cur_obj.centroid[2];
+      state.x.x = sphere.values[0];
+      state.x.y = sphere.values[1];
+      state.z = sphere.values[2];
+      ROS_INFO_STREAM("sphere (x,y,z,r): " << state.x.x << ", " << state.x.y << ", " << state.z
+                      << ", " << sphere.values[3] << ")");
+      ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+                      << ", " << cur_obj.centroid[2] << ")");
       state.x.theta = 0.0;
     }
     else if (proxy_name == CYLINDER_PROXY)
@@ -284,11 +286,16 @@ class ObjectTracker25D
       lbl_img*=255;
       cv::imshow("cylinder",lbl_img);
       ROS_INFO_STREAM("cylinder: " << cylinder);
+      // NOTE: Z may be bade, depending on how it is computed
       // TODO: Update this to the cylinder centroid
-      state.x.x = cur_obj.centroid[0];
-      state.x.y = cur_obj.centroid[1];
-      state.z = cur_obj.centroid[2];
+      state.x.x = cylinder.values[0];
+      state.x.y = cylinder.values[1];
+      state.z = cylinder.values[2];
       state.x.theta = 0.0;
+      ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " << state.z
+                      << ")");
+      ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+                      << ", " << cur_obj.centroid[2] << ")");
     }
     else
     {
@@ -381,26 +388,13 @@ class ObjectTracker25D
       state.no_detection = false;
     }
 
-    cv::RotatedRect obj_ellipse;
-    if (use_cv_ellipse_fit_)
-    {
-      obj_ellipse = findFootprintEllipse(cur_obj);
-    }
-    else
-    {
-      obj_ellipse = fit2DMassEllipse(cur_obj);
-    }
-    state.x.theta = getThetaFromEllipse(obj_ellipse);
-    state.x.x = cur_obj.centroid[0];
-    state.x.y = cur_obj.centroid[1];
-    state.z = cur_obj.centroid[2];
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
 
     if (use_displays_ || write_to_disk_)
     {
-      trackerDisplay(in_frame, cur_obj, obj_ellipse);
+      trackerDisplay(in_frame, previous_state_, previous_obj_);
     }
 
     ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
@@ -411,7 +405,6 @@ class ObjectTracker25D
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     previous_obj_ = cur_obj;
-    previous_obj_ellipse_ = obj_ellipse;
     return state;
   }
 

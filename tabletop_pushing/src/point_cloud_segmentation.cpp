@@ -343,8 +343,12 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsCluster(XYZPointCloud& i
 
   XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
   // Find independent regions
+  if (objects_cloud_down.size() < 1)
+  {
+    ProtoObjects objs;
+    return objs;
+  }
   ProtoObjects objs = clusterProtoObjects(objects_cloud_down);
-
   return objs;
 }
 
