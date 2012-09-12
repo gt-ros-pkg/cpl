@@ -61,7 +61,7 @@ class TabletopExecutive:
     def __init__(self, use_singulation, use_learning):
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
-        self.max_push_dist = rospy.get_param('~mix_push_dist', 0.3)
+        self.max_push_dist = rospy.get_param('~max_push_dist', 0.5)
         self.use_overhead_x_thresh = rospy.get_param('~use_overhead_x_thresh', 0.55)
         self.use_sweep_angle_thresh = rospy.get_param('~use_sweep_angle_thresh', pi*0.4)
         self.use_pull_angle_thresh = rospy.get_param('~use_sweep_angle_thresh', pi*0.525)
@@ -718,11 +718,11 @@ class TabletopExecutive:
         # Use the sent wrist yaw
         wrist_yaw = pose_res.push_angle
         push_req.wrist_yaw = wrist_yaw
-        push_req.desired_push_dist = push_dist + abs(self.gripper_x_offset)
+        push_req.desired_push_dist = push_dist + abs(self.gripper_offset_dist)
 
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += self.gripper_x_offset*cos(wrist_yaw)
-        push_req.start_point.point.y += self.gripper_x_offset*sin(wrist_yaw)
+        push_req.start_point.point.x += -self.gripper_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -self.gripper_offset_dist*sin(wrist_yaw)
         push_req.start_point.point.z = self.gripper_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
@@ -786,7 +786,7 @@ class TabletopExecutive:
         # Correctly set the wrist yaw
         wrist_yaw = pose_res.push_angle
         push_req.wrist_yaw = wrist_yaw
-        push_req.desired_push_dist = push_dist
+        push_req.desired_push_dist = push_dist + self.overhead_offset_dist
 
         # Offset pose to not hit the object immediately
         push_req.start_point.point.x += -self.overhead_offset_dist*cos(wrist_yaw)

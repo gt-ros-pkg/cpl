@@ -46,7 +46,7 @@ import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import sin, cos, pi, fabs, sqrt, atan2
+from math import sin, cos, pi, fabs, sqrt, atan2, hypot
 from controller_analysis import ControlAnalysisIO
 import sys
 
@@ -267,23 +267,23 @@ class PositionFeedbackPushNode:
         self.r_arm_F = None
 
         # Open callback services
-        self.overhead_feedback_push_srv = rospy.Service(
-            'overhead_feedback_push', FeedbackPush, self.overhead_feedback_push)
-        self.overhead_feedback_post_push_srv = rospy.Service(
-            'overhead_feedback_post_push', FeedbackPush,
-            self.overhead_feedback_post_push)
+        # self.overhead_feedback_push_srv = rospy.Service(
+        #     'overhead_feedback_push', FeedbackPush, self.overhead_feedback_push)
+        # self.overhead_feedback_post_push_srv = rospy.Service(
+        #     'overhead_feedback_post_push', FeedbackPush,
+        #     self.overhead_feedback_post_push)
 
-        self.gripper_feedback_push_srv = rospy.Service(
-            'gripper_feedback_push', FeedbackPush, self.gripper_feedback_push)
-        self.gripper_feedback_post_push_srv = rospy.Service(
-            'gripper_feedback_post_push', FeedbackPush,
-            self.gripper_feedback_post_push)
+        # self.gripper_feedback_push_srv = rospy.Service(
+        #     'gripper_feedback_push', FeedbackPush, self.gripper_feedback_push)
+        # self.gripper_feedback_post_push_srv = rospy.Service(
+        #     'gripper_feedback_post_push', FeedbackPush,
+        #     self.gripper_feedback_post_push)
 
-        self.gripper_feedback_sweep_srv = rospy.Service(
-            'gripper_feedback_sweep', FeedbackPush, self.gripper_feedback_sweep)
-        self.gripper_feedback_post_sweep_srv = rospy.Service(
-            'gripper_feedback_post_sweep', FeedbackPush,
-            self.gripper_feedback_post_sweep)
+        # self.gripper_feedback_sweep_srv = rospy.Service(
+        #     'gripper_feedback_sweep', FeedbackPush, self.gripper_feedback_sweep)
+        # self.gripper_feedback_post_sweep_srv = rospy.Service(
+        #     'gripper_feedback_post_sweep', FeedbackPush,
+        #     self.gripper_feedback_post_sweep)
 
         # NOTE: old stuff
         self.gripper_push_srv = rospy.Service(
@@ -301,11 +301,11 @@ class PositionFeedbackPushNode:
             'overhead_pre_push', GripperPush, self.overhead_pre_push)
 
         self.gripper_post_push_srv = rospy.Service(
-            'gripper_post_push', GripperPush, self.gripper_post_push)
+            'gripper_post_push', GripperPush, self.gripper_feedback_post_push)
         self.gripper_post_sweep_srv = rospy.Service(
-            'gripper_post_sweep', GripperPush, self.gripper_post_sweep)
+            'gripper_post_sweep', GripperPush, self.gripper_feedback_post_sweep)
         self.overhead_post_push_srv = rospy.Service(
-            'overhead_post_push', GripperPush, self.overhead_post_push)
+            'overhead_post_push', GripperPush, self.overhead_feedback_post_push)
 
         self.raise_and_look_serice = rospy.Service(
             'raise_and_look', RaiseAndLook, self.raise_and_look)
@@ -634,7 +634,7 @@ class PositionFeedbackPushNode:
     # Post behavior functions
     #
     def overhead_feedback_post_push(self, request):
-        response = FeedbackPushResponse()
+        response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -690,10 +690,11 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_feedback_post_push(self, request):
-        response = FeedbackPushResponse()
+        response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        is_pull = request.action_primitive == GRIPPER_PULL
+        # is_pull = request.action_primitive == GRIPPER_PULL
+        is_pull = False
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -761,7 +762,7 @@ class PositionFeedbackPushNode:
         return response
 
     def gripper_feedback_post_sweep(self, request):
-        response = FeedbackPushResponse()
+        response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
@@ -828,7 +829,8 @@ class PositionFeedbackPushNode:
         response = GripperPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        is_pull = request.action_primitive == GRIPPER_PULL
+        # is_pull = request.action_primitive == GRIPPER_PULL
+        is_pull = False
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -1013,11 +1015,11 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
         # pose_err, err_dist = self.move_relative_gripper(
         #     np.matrix([push_dist, 0.0, 0.0]).T, which_arm)
-        # pose_err, err_dist = self.move_relative_torso(
-        #     np.matrix([cos(wrist_yaw)*push_dist,
-        #                sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
-        pose_err, err_dist = self.move_relative_torso_epc(wrist_yaw, push_dist,
-                                                          which_arm)
+        pose_err, err_dist = self.move_relative_torso_vel(
+            np.matrix([cos(wrist_yaw)*push_dist,
+                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+        # pose_err, err_dist = self.move_relative_torso_epc(wrist_yaw, push_dist,
+        #                                                   which_arm)
         rospy.loginfo('Done pushing forward')
 
         response.dist_pushed = push_dist - err_dist
@@ -1097,11 +1099,11 @@ class PositionFeedbackPushNode:
             push_angle = wrist_yaw + pi*0.5
         else:
             push_angle = wrist_yaw - pi*0.5
-        # pose_err, err_dist = self.move_relative_torso(
-        #     np.matrix([cos(push_angle)*push_dist,
-        #                sin(push_angle)*push_dist, 0.0]).T, which_arm)
-        pose_err, err_dist = self.move_relative_torso_epc(push_angle, push_dist,
-                                                          which_arm)
+        pose_err, err_dist = self.move_relative_torso_vel(
+            np.matrix([cos(push_angle)*push_dist,
+                       sin(push_angle)*push_dist, 0.0]).T, which_arm)
+        # pose_err, err_dist = self.move_relative_torso_epc(push_angle, push_dist,
+        #                                                   which_arm)
 
         rospy.logdebug('Done sweeping in')
 
@@ -1167,11 +1169,11 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Pushing forward ' + str(push_dist) + 'm')
         # pose_err, err_dist = self.move_relative_gripper(
         #     np.matrix([0.0, 0.0, push_dist]).T, which_arm)
-        # pose_err, err_dist = self.move_relative_torso(
-        #     np.matrix([cos(wrist_yaw)*push_dist,
-        #                sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
-        pose_err, err_dist = self.move_relative_torso_epc(wrist_yaw, push_dist,
-                                                          which_arm)
+        pose_err, err_dist = self.move_relative_torso_vel(
+            np.matrix([cos(wrist_yaw)*push_dist,
+                       sin(wrist_yaw)*push_dist, 0.0]).T, which_arm)
+        # pose_err, err_dist = self.move_relative_torso_epc(wrist_yaw, push_dist,
+        #                                                   which_arm)
 
         rospy.logdebug('Done pushing forward')
 
@@ -1409,6 +1411,26 @@ class PositionFeedbackPushNode:
         rel_pose.pose.orientation.w = 1.0
         return self.move_to_cart_pose(rel_pose, which_arm,
                                       move_cart_count_thresh, pressure)
+
+    def move_relative_torso_vel(self, rel_push_vector, which_arm):
+        self.switch_to_vel_controllers()
+        u = TwistStamped()
+        u.header.stamp = rospy.Time.now()
+        u.header.frame_id = 'torso_lift_link'
+        push_vel = 0.075
+        push_dist = hypot(rel_push_vector[0], rel_push_vector[1])
+        u.twist.linear.x = push_vel*rel_push_vector[0]/push_dist
+        u.twist.linear.y = push_vel*rel_push_vector[1]/push_dist
+        push_time = push_dist / push_vel
+        rospy.loginfo('Moving a distance of: ' + str(push_dist))
+        rospy.loginfo('Moving with velocity (: ' + str(u.twist.linear.x) + ', '+
+                      str(u.twist.linear.y) + ')')
+        rospy.loginfo('Moving for ' + str(push_time) +'s')
+        self.update_vel(u, which_arm)
+        rospy.sleep(push_time)
+        # TODO: Use feedback on the hand position
+        self.stop_moving_vel(which_arm)
+        return (0.0,0.0)
 
     def move_relative_torso(self, rel_push_vector, which_arm,
                             move_cart_count_thresh=None, pressure=1000):
