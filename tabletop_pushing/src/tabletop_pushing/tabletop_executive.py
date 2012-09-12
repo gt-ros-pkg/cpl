@@ -104,12 +104,6 @@ class TabletopExecutive:
                                                               GripperPush)
                 self.overhead_post_push_proxy = rospy.ServiceProxy('overhead_post_push',
                                                                    GripperPush)
-                self.overhead_pre_pull_proxy = rospy.ServiceProxy('overhead_pre_pull',
-                                                                  GripperPush)
-                self.overhead_pull_proxy = rospy.ServiceProxy('overhead_pull',
-                                                              GripperPush)
-                self.overhead_post_pull_proxy = rospy.ServiceProxy('overhead_post_pull',
-                                                                   GripperPush)
             if use_learning:
                 # New visual feedback proxies
                 self.overhead_feedback_push_proxy = rospy.ServiceProxy(
@@ -795,8 +789,8 @@ class TabletopExecutive:
         push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += self.overhead_offset_dist*cos(wrist_yaw)
-        push_req.start_point.point.y += self.overhead_offset_dist*sin(wrist_yaw)
+        push_req.start_point.point.x += -self.overhead_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += -self.overhead_offset_dist*sin(wrist_yaw)
         push_req.start_point.point.z = self.overhead_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm
@@ -807,46 +801,6 @@ class TabletopExecutive:
         push_res = self.overhead_push_proxy(push_req)
         rospy.loginfo("Calling post overhead push service")
         post_push_res = self.overhead_post_push_proxy(push_req)
-
-    def overhead_pull_object(self, push_dist, which_arm, pose_res, high_init):
-        # Convert pose response to correct push request format
-        push_req = GripperPushRequest()
-        push_req.start_point.header = pose_res.header
-        push_req.start_point.point = pose_res.start_point
-        push_req.arm_init = True
-        push_req.arm_reset = True
-        push_req.high_arm_init = True
-
-        wrist_yaw = pose_res.push_angle
-        # Correctly set the wrist yaw
-        while wrist_yaw < -pi*0.5:
-            wrist_yaw += pi
-        while wrist_yaw > pi*0.5:
-            wrist_yaw -= pi
-        push_req.wrist_yaw = wrist_yaw
-        # Add offset distance to push to compensate
-        push_req.desired_push_dist = push_dist + self.pull_dist_offset
-
-        # Offset pose to not hit the object immediately
-        rospy.loginfo('Pre pull offset (x,y): (' +
-                      str(push_req.start_point.point.x) + ', ' +
-                      str(push_req.start_point.point.y) + ')')
-        push_req.start_point.point.x += self.pull_dist_offset*cos(wrist_yaw)
-        push_req.start_point.point.y += self.pull_dist_offset*sin(wrist_yaw)
-        push_req.start_point.point.z = self.pull_start_z
-        push_req.left_arm = (which_arm == 'l')
-        push_req.right_arm = not push_req.left_arm
-
-        rospy.loginfo('Post pull offset (x,y): (' +
-                      str(push_req.start_point.point.x) + ', ' +
-                      str(push_req.start_point.point.y) + ')')
-
-        rospy.loginfo("Calling pre overhead pull service")
-        pre_push_res = self.overhead_pre_pull_proxy(push_req)
-        rospy.loginfo("Calling overhead pull service")
-        push_res = self.overhead_pull_proxy(push_req)
-        rospy.loginfo("Calling post overhead pull service")
-        post_push_res = self.overhead_post_pull_proxy(push_req)
 
     def generate_random_table_pose(self):
         if _USE_FIXED_GOAL:
@@ -872,8 +826,8 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    use_singulation = False
-    use_learning = True
+    use_singulation = True
+    use_learning = False
     use_guided = True
     max_pushes = 50
     action_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
