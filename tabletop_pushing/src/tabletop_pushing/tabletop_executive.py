@@ -713,7 +713,7 @@ class TabletopExecutive:
         push_req.start_point.point = pose_res.start_point
         push_req.arm_init = True
         push_req.arm_reset = True
-        push_req.high_arm_init = True
+        push_req.high_arm_init = high_init
 
         # Use the sent wrist yaw
         wrist_yaw = pose_res.push_angle
@@ -739,7 +739,7 @@ class TabletopExecutive:
         sweep_req = GripperPushRequest()
         sweep_req.left_arm = (which_arm == 'l')
         sweep_req.right_arm = not sweep_req.left_arm
-        sweep_req.high_arm_init = True
+        sweep_req.high_arm_init = high_init
 
         # Correctly set the wrist yaw
         if pose_res.push_angle > 0.0:

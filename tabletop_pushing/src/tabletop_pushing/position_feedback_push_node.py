@@ -864,7 +864,7 @@ class PositionFeedbackPushNode:
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.logdebug('Done moving to overhead start point')
+            rospy.loginfo('Done moving to overhead start point')
             # Change z to lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
@@ -927,7 +927,7 @@ class PositionFeedbackPushNode:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.logdebug('Done moving to overhead start point')
+            rospy.loginfo('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
@@ -983,7 +983,7 @@ class PositionFeedbackPushNode:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
-            rospy.logdebug('Done moving to overhead start point')
+            rospy.loginfo('Done moving to overhead start point')
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
