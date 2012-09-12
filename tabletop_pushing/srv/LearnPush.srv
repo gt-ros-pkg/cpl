@@ -1,6 +1,7 @@
 bool initialize
 bool analyze_previous
 geometry_msgs/Pose2D goal_pose
+bool get_pose_only
 string controller_name
 string proxy_name
 string action_primitive

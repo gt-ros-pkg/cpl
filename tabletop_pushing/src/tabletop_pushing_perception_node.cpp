@@ -578,6 +578,7 @@ class ObjectTracker25D
   void stopTracking()
   {
     initialized_ = false;
+    paused_ = false;
   }
 
   void setNumDownsamples(int num_downsamples)
@@ -1006,7 +1007,7 @@ class TabletopPushingPerceptionNode
         evaluateGoalAndAbortConditions(tracker_state);
       }
     }
-    else if (obj_tracker_->isPaused())
+    else if (obj_tracker_->isInitialized())
     {
       obj_tracker_->pausedUpdate(cur_color_frame_);
       PointStamped start_point;
@@ -1164,14 +1165,14 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Initializing");
         record_count_ = 0;
         learn_callback_count_ = 0;
-        // Initialize stuff if necessary (i.e. angle to push from)
         res.no_push = true;
         recording_input_ = false;
+        obj_tracker_->stopTracking();
       }
-      else if (req.analyze_previous)
+      else if (req.analyze_previous || req.get_pose_only)
       {
-        ROS_INFO_STREAM("Analyzing previous");
-        res = getAnalysisVector(req.goal_pose);
+        ROS_INFO_STREAM("Getting current object pose");
+        res = getObjectPose();
         res.no_push = true;
         recording_input_ = false;
       }
@@ -1204,6 +1205,7 @@ class TabletopPushingPerceptionNode
 
   LearnPush::Response getPushStartPose(LearnPush::Request& req)
   {
+    LearnPush::Response res;
     PushTrackerState cur_state;
     if (just_spun_)
     {
@@ -1222,7 +1224,6 @@ class TabletopPushingPerceptionNode
       obj_tracker_->pause();
     }
 
-    LearnPush::Response res;
     if (cur_state.no_detection)
     {
       ROS_WARN_STREAM("No objects found");
@@ -1466,7 +1467,7 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  LearnPush::Response getAnalysisVector(Pose2D goal_pose)
+  LearnPush::Response getObjectPose()
   {
     bool no_objects = false;
     ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_,

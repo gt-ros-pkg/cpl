@@ -40,7 +40,7 @@ import tf
 import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import sin, cos, pi, fabs, sqrt
+from math import sin, cos, pi, fabs, sqrt, hypot
 import sys
 from push_learning import PushLearningIO
 from geometry_msgs.msg import Pose2D
@@ -59,6 +59,8 @@ _USE_FIXED_GOAL = False
 class TabletopExecutive:
 
     def __init__(self, use_singulation, use_learning):
+        self.previous_rand_pose = None
+
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
         self.max_push_dist = rospy.get_param('~mix_push_dist', 0.3)
@@ -82,6 +84,12 @@ class TabletopExecutive:
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 3)
+
+        self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.3)
+        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.4)
+        self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.85)
+        self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
+        self.min_workspace_y = -self.max_workspace_y
 
         # Setup service proxies
         if not _OFFLINE:
@@ -321,9 +329,13 @@ class TabletopExecutive:
                      precondition_method='centroid_push'):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
                       + controller_name + ', ' + proxy_name + ')')
+        # TODO: Allow for intterupt here in case object pose / configuration is bad
         continuing = False
         done_with_push = False
-        goal_pose = self.generate_random_table_pose()
+
+        # NOTE: Get initial object pose here to make sure goal pose is far enough away
+        init_pose = self.get_feedback_push_initial_obj_pose()
+        goal_pose = self.generate_random_table_pose(init_pose)
 
         restart_count = 0
         start_time = time.time()
@@ -367,6 +379,27 @@ class TabletopExecutive:
         self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
                           push_vec_res, goal_pose, object_id, precondition_method)
         return res
+
+    def get_feedback_push_initial_obj_pose(self):
+        get_push = True
+        while get_push:
+            goal_pose = Pose2D()
+            controller_name = CENTROID_CONTROLLER
+            proxy_name = ELLIPSE_PROXY
+            action_primitive = OVERHEAD_PUSH
+            push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
+                                                                 proxy_name, action_primitive,
+                                                                 True)
+
+            if push_vec_res is None:
+                return None
+            if push_vec_res.no_objects:
+                code_in = raw_input('No objects found. Place object and press <Enter>: ')
+                if code_in.lower().startswith('q'):
+                    return 'quit'
+            else:
+                return push_vec_res.centroid
+
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                      action_primitive):
@@ -484,7 +517,8 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name, action_primitive):
+    def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
+                                         action_primitive, get_pose_only=False):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -492,6 +526,7 @@ class TabletopExecutive:
         push_vector_req.controller_name = controller_name
         push_vector_req.proxy_name = proxy_name
         push_vector_req.action_primitive = action_primitive
+        push_vector_req.get_pose_only = get_pose_only
         rospy.loginfo("Calling feedback push start service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -848,26 +883,38 @@ class TabletopExecutive:
         rospy.loginfo("Calling post overhead pull service")
         post_push_res = self.overhead_post_pull_proxy(push_req)
 
-    def generate_random_table_pose(self):
+    def generate_random_table_pose(self, init_pose=None):
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
             goal_pose.x = 0.9
             goal_pose.y = -0.4
             goal_pose.theta = 0.0
             return goal_pose
-        # TODO: make these parameters
-        min_x = 0.4
-        max_x = 0.85
-        max_y = 0.3
-        min_y = -max_y
+        min_x = self.min_workspace_x
+        max_x = self.max_workspace_x
+        min_y = self.min_workspace_y
+        max_y = self.max_workspace_y
         max_theta = pi
         min_theta = -pi
-        rand_pose = Pose2D()
-        rand_pose.x = random.uniform(min_x, max_x)
-        rand_pose.y = random.uniform(min_y, max_y)
-        rand_pose.theta = random.uniform(min_theta, max_theta)
+
+        pose_not_found = True
+        while pose_not_found:
+            rand_pose = Pose2D()
+            rand_pose.x = random.uniform(min_x, max_x)
+            rand_pose.y = random.uniform(min_y, max_y)
+            rand_pose.theta = random.uniform(min_theta, max_theta)
+            pose_not_found = False
+            if (self.previous_rand_pose is not None and
+                hypot(self.previous_rand_pose.x-rand_pose.x,
+                      self.previous_rand_pose.y-rand_pose.y) < self.min_new_pose_dist):
+                pose_not_found = True
+            elif (init_pose is not None and
+                hypot(init_pose.x-rand_pose.x, init_pose.y-rand_pose.y) < self.min_new_pose_dist):
+                pose_not_found = True
+
         rospy.loginfo('Rand table pose is: (' + str(rand_pose.x) + ', ' + str(rand_pose.y) +
                       ', ' + str(rand_pose.theta) + ')')
+        self.previous_rand_pose = rand_pose
         return rand_pose
 
 if __name__ == '__main__':
