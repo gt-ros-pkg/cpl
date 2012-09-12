@@ -332,13 +332,15 @@ class TabletopExecutive:
                       + controller_name + ', ' + proxy_name + ')')
         # TODO: Allow for intterupt here in case object pose / configuration is bad
         timeout = 3
-        print "Enter something to pause before pushing: "
+        rospy.loginfo("Enter something to pause before pushing: ")
         rlist, _, _ = select([sys.stdin], [], [], timeout)
         if rlist:
             s = sys.stdin.readline()
-            raw_input('Move object and press <Enter> to continue: ')
+            code_in = raw_input('Move object and press <Enter> to continue: ')
+            if code_in.lower().startswith('q'):
+                return 'quit'
         else:
-            print "No input. Moving on..."
+            rospy.loginfo("No input. Moving on...")
         continuing = False
         done_with_push = False
 
