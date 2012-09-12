@@ -41,6 +41,7 @@
 #include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Pose2D.h>
+#include <geometry_msgs/Point.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -142,6 +143,7 @@ using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::QuaternionStamped;
+using geometry_msgs::Point;
 using visual_servo::VisualServoTwist;
 using visual_servo::VisualServoPose;
 
@@ -213,8 +215,9 @@ class VisualServoNode
       cloud_sub_(n, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
       it_(n), tf_(), have_depth_data_(false), camera_initialized_(false),
-      desire_points_initialized_(false), PHASE(INIT), is_detected_(false),
-      is_gripper_initialized_(false)
+      desire_points_initialized_(false), PHASE(INIT), is_gripper_initialized_(false), gripper_pose_estimated_(false),
+      is_detected_(false), place_detection_(false)
+
   {
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -306,7 +309,7 @@ class VisualServoNode
       cur_point_cloud_ = cloud;
 
       // need to profile this
-      updateGripperFeatures();
+      gripper_pose_estimated_ = updateGripperFeatures();
       executeStatemachine();
 
 #define DISPLAY 1
@@ -522,6 +525,12 @@ class VisualServoNode
 
           case VS_CONTR_2:
             {
+              if (!place_detection_)
+              {
+                place();
+                place_detection_ = true;
+              }
+
               // compute the twist if everything is good to go
 #ifdef VISUAL_SERVO_TYPE
               std::vector<PoseStamped> goals, feats;
@@ -534,20 +543,22 @@ class VisualServoNode
               visual_servo::VisualServoTwist v_srv = getTwist(goal_);
 #endif
               // terminal condition
-              if (v_srv.request.error < vs_err_term_threshold_)
+              if (is_detected_ || v_srv.request.error < vs_err_term_threshold_)
               {
                 // record the height at which the object wasd picked
                 object_z_ = tape_features_.front().workspace.z;
-
                 PHASE = GRAB;
+                sendZeroVelocity();
               }
-              // calling the service provider to move
-              if (v_client_.call(v_srv)){}
-
               else
               {
-                // on failure
-                // ROS_WARN("Service FAILED...");
+                // calling the service provider to move
+                if (v_client_.call(v_srv)){}
+                else
+                {
+                  // on failure
+                  // ROS_WARN("Service FAILED...");
+                }
               }
             }
             break;
@@ -799,6 +810,7 @@ class VisualServoNode
       place_goal.command.acceleration_trigger_magnitude = 2.6;  // set the contact acceleration to n m/s^2
       place_goal.command.slip_trigger_magnitude = .005;
 
+      is_detected_ = false;
       ROS_INFO("Waiting for object placement contact...");
       detector_client_->sendGoal(place_goal,
           boost::bind(&VisualServoNode::placeDoneCB, this, _1, _2));
@@ -808,10 +820,9 @@ class VisualServoNode
       const pr2_gripper_sensor_msgs::PR2GripperEventDetectorResultConstPtr& result)
     {
       if(state == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Place Success");
+        ROS_INFO("[Place ActionLib] Place Success");
       else
-        ROS_INFO("Place Failure");
-
+        ROS_WARN("[Place ActionLib] Place Failure");
       is_detected_ = true;
     }
 
@@ -823,9 +834,9 @@ class VisualServoNode
 
       ROS_INFO("Sending close goal");
       gripper_client_->sendGoal(open);
-      gripper_client_->waitForResult(ros::Duration(10.0));
+      gripper_client_->waitForResult(ros::Duration(20.0));
       if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){}
-      else ROS_INFO("Grab Failed");
+      else ROS_WARN("[Gripper Action Lib] Gripper Close Failed");
     }
 
     void open()
@@ -836,9 +847,9 @@ class VisualServoNode
 
       ROS_INFO("Sending open goal");
       gripper_client_->sendGoal(open);
-      gripper_client_->waitForResult(ros::Duration(10.0));
+      gripper_client_->waitForResult(ros::Duration(20.0));
       if(gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){}
-      else ROS_INFO("Grab Failed");
+      else ROS_WARN("[Gripper Action Lib] Gripper Open Failed");
     }
 
     //Open the gripper, find contact on both fingers, and go into slip-servo control mode
@@ -873,22 +884,15 @@ class VisualServoNode
       ROS_INFO("Waiting for object placement contact...");
       release_client_->sendGoal(place,
       boost::bind(&VisualServoNode::releaseDoneCB, this, _1, _2));
-      /**
-      release_client_->waitForResult();
-      if(release_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Release Success");
-      else
-        ROS_INFO("Place Failure");
-       **/
     }
 
     void releaseDoneCB(const actionlib::SimpleClientGoalState& state,
         const pr2_gripper_sensor_msgs::PR2GripperReleaseResultConstPtr& result)
     {
       if(state == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("Place Success");
+        ROS_INFO("[Contact ActionLib] Release Success");
       else
-        ROS_INFO("Place Failure");
+        ROS_WARN("[Contact ActionLib] Release Failure");
       is_detected_ = true;
       // stop the gripper right away
       sendZeroVelocity();
@@ -1061,16 +1065,15 @@ class VisualServoNode
     {
       // need to get the top of an object
       pcl::PointCloud<pcl::PointXYZ> cloud = po.cloud;
-      float max_z = -5000; unsigned int max_z_ind = 0;
+      float max_z = -5000; 
       for (unsigned int i = 0; i < cloud.size(); i++)
       {
         if (cloud.at(i).z > max_z)
         {
           max_z = cloud.at(i).z;
-          max_z_ind = i;
         }
       }
-      float avg_x, avg_y, avg_z;
+      float avg_x = 0, avg_y = 0, avg_z = 0;
       int num_avg = 0;
 
       float abs = max_z < 0 ? -max_z : max_z;
@@ -1112,6 +1115,11 @@ class VisualServoNode
       printf("%d\n", (int)goal.size());
 
       goal_p = vs_->VSXYZToPoseStamped(goal_.front());
+      // ORIENT
+      /*
+      goal_p.pose.orientation.x = -0.4582;
+      goal_p.pose.orientation.z = 0.8889;
+      */
 
       // for jacobian avg, we need IM at desired location as well
       if (JACOBIAN_TYPE_AVG == jacobian_type_)
@@ -1145,47 +1153,38 @@ class VisualServoNode
       }
 
     }
-    // EDIT
-    /*
-    std::vector<pcl::PointXYZ> getFeaturesFromXYZ(VSXYZ origin_xyz)
-    {
-      pcl::PointXYZ origin = origin_xyz.workspace;
-      std::vector<pcl::PointXYZ> pts; pts.clear();
-
-      // the One has to be offset due to tape orientation
-      origin.x += tape1_offset_x_;
-      origin.y += tape1_offset_y_;
-      origin.z += tape1_offset_z_;
-
-      pcl::PointXYZ two = origin;
-      pcl::PointXYZ three = origin;
-
-      two.x = origin.x + tape1_loc_.x;
-      two.y = origin.y + tape1_loc_.y;
-      two.z = origin.z + tape1_loc_.z;
-
-      three.x = origin.x + tape2_loc_.x;
-      three.y = origin.y + tape2_loc_.y;
-      three.z = origin.z + tape2_loc_.z;
-
-      pts.push_back(origin);
-      pts.push_back(two);
-      pts.push_back(three);
-      return pts;
-    }
-    */
     // Service method
     visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> desire)
     {
       visual_servo::VisualServoTwist srv;
       srv = vs_->getTwist(desire, tape_features_);
+
+      if (gripper_pose_estimated_)
+      {
+        float scale = 0.5;
+        srv.request.twist.twist.linear.x *= scale;
+        srv.request.twist.twist.linear.y *= scale;
+        srv.request.twist.twist.linear.z *= scale;
+        // don't let it have orientational velocity
+        srv.request.twist.twist.angular.x = 0;
+        srv.request.twist.twist.angular.y = 0;
+        srv.request.twist.twist.angular.z = 0;
+      }
       srv.request.error = getError(desire, tape_features_);
       return srv;
     }
 
     // Detect Tapes on Gripepr and update its position
-    void updateGripperFeatures()
+    bool updateGripperFeatures()
     {
+      bool estimated = false;
+      int default_tape_num = 3;
+
+      PoseStamped p;
+      p.header.frame_id = "/l_gripper_tool_frame";
+      tf_->transformPose(workspace_frame_, p, p);
+      Point fkpp = p.pose.position;
+
       //////////////////////
       // Hand 
       // get all the blues 
@@ -1203,20 +1202,51 @@ class VisualServoNode
 
       // convert the features into proper form 
       tape_features_ = vs_->CVPointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-      if (tape_features_.size() == 0)
-        tape_features_p_ = PoseStamped();
-      else
+      if (tape_features_.size() == 0 )
       {
-        tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
-        // it breaks
-        /*
-        QuaternionStamped p;
-        p.quaternion.w = 1;
-        p.header.frame_id = "/l_gripper_tool_frame";
-        tf_->transformQuaternion(workspace_frame_, p, p);
-        tape_features_p_.pose.orientation = p.quaternion;
-        */
+        if (v_fk_diff_.size() > 0)
+        {
+          ROS_WARN("Cannot find tape in image and do not have enough historical data to interpolate");
+          tape_features_p_ = PoseStamped();
+          return false;
+        }
+        estimated = true;
+        std::vector<pcl::PointXYZ> estimated_pose;
+        estimated_pose.resize(default_tape_num);
+        tape_features_.resize(default_tape_num);
+        for (unsigned int i = 0; i < v_fk_diff_.size(); i++)
+        {
+          estimated_pose.at(i).x = v_fk_diff_.at(i).x + fkpp.x;
+          estimated_pose.at(i).y = v_fk_diff_.at(i).y + fkpp.y;
+          estimated_pose.at(i).z = v_fk_diff_.at(i).z + fkpp.z;
+        }
+        tape_features_ = vs_->Point3DToVSXYZ(estimated_pose, tf_);
       }
+      tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
+
+      // ORIENT
+      /*
+         QuaternionStamped p;
+         p.quaternion.w = 1;
+         p.header.frame_id = "/l_gripper_tool_frame";
+         tf_->transformQuaternion(workspace_frame_, p, p);
+         tape_features_p_.pose.orientation = p.quaternion;
+       */
+
+      // we aren't going to let controllers rotate at all when occluded;
+      // vision vs. forward kinematics
+      if (!estimated)
+      {
+        if (v_fk_diff_.size() == 0)
+          v_fk_diff_.resize(default_tape_num); // initialize in case it isn't
+        for (unsigned int i = 0 ; i < tape_features_.size() && i < v_fk_diff_.size(); i++)
+        {
+          v_fk_diff_.at(i).x = tape_features_.at(i).workspace.x - fkpp.x;
+          v_fk_diff_.at(i).y = tape_features_.at(i).workspace.y - fkpp.y;
+          v_fk_diff_.at(i).z = tape_features_.at(i).workspace.z - fkpp.z;
+        }
+      }
+      return estimated;
     }
 
     float getError(std::vector<VSXYZ> a, std::vector<VSXYZ> b)
@@ -1488,7 +1518,6 @@ class VisualServoNode
     std::string cam_info_topic_;
     int tracker_count_;
 
-
     // segmenting
     int target_hue_value_;
     int target_hue_threshold_;
@@ -1520,6 +1549,9 @@ class VisualServoNode
     PoseStamped tape_features_p_;
     VSXYZ desired_;
     cv::Mat K;
+    std::vector<pcl::PointXYZ> v_fk_diff_;
+    bool is_gripper_initialized_;
+    bool gripper_pose_estimated_;
 
     // for debugging purpose
     ros::Publisher chatter_pub_;
@@ -1542,6 +1574,7 @@ class VisualServoNode
 
     // collision detection
     bool is_detected_;
+    bool place_detection_;
     float object_z_;
 
     float close_gripper_dist_;
@@ -1550,7 +1583,6 @@ class VisualServoNode
     // number of objects
     tabletop_pushing::ProtoObjects po_;
 
-    bool is_gripper_initialized_;
 };
 
 int main(int argc, char ** argv)

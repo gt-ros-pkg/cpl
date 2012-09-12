@@ -236,6 +236,11 @@ class VisualServo
       }
     }
 
+    visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> goal, std::vector<VSXYZ> gripper, cv::Mat error) 
+    {
+      return IBVSTwist(goal, gripper, error);
+    }
+
     visual_servo::VisualServoTwist getTwist(std::vector<VSXYZ> goal, std::vector<VSXYZ> gripper)
     {
       return IBVSTwist(goal, gripper);
@@ -362,6 +367,13 @@ class VisualServo
     cv::Mat K;
     sensor_msgs::CameraInfo cam_info_;
 
+    visual_servo::VisualServoTwist PBVSTwist(cv::Mat error_pose, cv::Mat error_rot)
+    {
+      cv::Mat velpos = -gain_vel_*error_pose;
+      cv::Mat velrot = -gain_rot_*error_rot;
+      return VisualServoMsg::createTwistMsg(velpos, velrot);
+    }
+
     visual_servo::VisualServoTwist PBVSTwist(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
     {
       // although PBVS takes in vector, we only need one pose from goal and gripper
@@ -400,6 +412,7 @@ class VisualServo
       float tcquat[3] = {tr, tp, ty};
       // matrix-current rotation
       cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).t();
+      return PBVSTwist(mcpos - mgpos, MatDiffAngle(mcrot, mgrot));
 
       /** this is for another approach of PBVS
       // According to Chaumette 2006
@@ -417,9 +430,6 @@ class VisualServo
       cv::Mat velpos = -gain_vel_*((mgpos - mcpos) + ctox*(mgrot-mcrot));
       cv::Mat velrot = -gain_rot_*(mgrot - mcrot);
       */
-      cv::Mat velpos = -gain_vel_*(mcpos - mgpos);
-      cv::Mat velrot = -gain_rot_*MatDiffAngle(mcrot, mgrot);
-      return VisualServoMsg::createTwistMsg(velpos, velrot);
     }
 
     cv::Mat MatDiffAngle(cv::Mat m0, cv::Mat m1)
@@ -452,7 +462,6 @@ class VisualServo
     visual_servo::VisualServoTwist IBVSTwist(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts)
     {
       cv::Mat error_mat;
-      cv::Mat im;
 
       // return 0 twist if number of features does not equal to that of desired features
       if (pts.size() != desired.size())
@@ -466,6 +475,19 @@ class VisualServo
         error.at<float>(1,0) = (pts.at(i)).camera.y - (desired.at(i)).camera.y;
         error_mat.push_back(error);
       }
+      return IBVSTwist(desired, pts, error_mat);
+    }
+
+    // compute twist in camera frame 
+    visual_servo::VisualServoTwist IBVSTwist(std::vector<VSXYZ> desired, std::vector<VSXYZ> pts, cv::Mat error_mat)
+    {
+      cv::Mat im;
+      if (im.cols != 1 || im.rows != 6)
+        im = im.reshape(1, 6);
+
+      // return 0 twist if number of features does not equal to that of desired features
+      if (pts.size() != desired.size())
+        return visual_servo::VisualServoTwist();
 
       im = getMeterInteractionMatrix(pts);
       return computeTwist(error_mat, im, optical_frame_);
