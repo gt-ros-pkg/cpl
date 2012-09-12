@@ -136,6 +136,7 @@ const std::string ELLIPSE_PROXY = "ellipse";
 const std::string CENTROID_PROXY = "centroid";
 const std::string SPHERE_PROXY = "sphere";
 const std::string CYLINDER_PROXY = "cylinder";
+const std::string BOUNDING_BOX_XY_PROXY = "bounding_box_xy";
 
 class ObjectTracker25D
 {
@@ -216,6 +217,7 @@ class ObjectTracker25D
     PushTrackerState state;
     // TODO: Have each proxy create an image, and send that image to the trackerDisplay
     // function to deal with saving and display.
+    cv::RotatedRect obj_ellipse;
     if (proxy_name == CENTROID_PROXY)
     {
       state.x.x = cur_obj.centroid[0];
@@ -225,7 +227,7 @@ class ObjectTracker25D
     }
     else if (proxy_name == ELLIPSE_PROXY)
     {
-      cv::RotatedRect obj_ellipse = fitObjectEllipse(cur_obj);
+      obj_ellipse = fitObjectEllipse(cur_obj);
       previous_obj_ellipse_ = obj_ellipse;
       state.x.theta = getThetaFromEllipse(obj_ellipse);
       state.x.x = cur_obj.centroid[0];
@@ -266,11 +268,11 @@ class ObjectTracker25D
       state.x.x = sphere.values[0];
       state.x.y = sphere.values[1];
       state.z = sphere.values[2];
-      ROS_INFO_STREAM("sphere (x,y,z,r): " << state.x.x << ", " << state.x.y << ", " << state.z
-                      << ", " << sphere.values[3] << ")");
-      ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
-                      << ", " << cur_obj.centroid[2] << ")");
       state.x.theta = 0.0;
+      // ROS_INFO_STREAM("sphere (x,y,z,r): " << state.x.x << ", " << state.x.y << ", " << state.z
+      //                 << ", " << sphere.values[3] << ")");
+      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+      //                 << ", " << cur_obj.centroid[2] << ")");
     }
     else if (proxy_name == CYLINDER_PROXY)
     {
@@ -287,15 +289,78 @@ class ObjectTracker25D
       state.x.y = cylinder.values[1];
       state.z = cur_obj.centroid[2];//# cylinder.values[2];
       state.x.theta = 0.0;
-      ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
-                      cylinder.values[2] << ")");
-      ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
-                      << ", " << cur_obj.centroid[2] << ")");
+      // ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
+      //                 cylinder.values[2] << ")");
+      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+      //                 << ", " << cur_obj.centroid[2] << ")");
+    }
+    else if (proxy_name == BOUNDING_BOX_XY_PROXY)
+    {
+      obj_ellipse = findFootprintBox(cur_obj);
+      double min_z = 10000;
+      double max_z = -10000;
+      for (int i = 0; i < cur_obj.cloud.size(); ++i)
+      {
+        if (cur_obj.cloud.at(i).z < min_z)
+        {
+          min_z = cur_obj.cloud.at(i).z;
+        }
+        if (cur_obj.cloud.at(i).z > max_z)
+        {
+          max_z = cur_obj.cloud.at(i).z;
+        }
+      }
+      previous_obj_ellipse_ = obj_ellipse;
+
+      state.x.x = obj_ellipse.center.x;
+      state.x.y = obj_ellipse.center.y;
+      state.z = (min_z+max_z)*0.5;
+
+      state.x.theta = getThetaFromEllipse(obj_ellipse);
+      if(swap_orientation_)
+      {
+        if(state.x.theta > 0.0)
+          state.x.theta += - M_PI;
+        else
+          state.x.theta += M_PI;
+      }
+      if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
+      {
+        if ((fabs(state.x.theta) > M_PI*0.25 &&
+             fabs(state.x.theta) < (M_PI*0.75 )) ||
+            (fabs(previous_state_.x.theta) > 1.0 &&
+             fabs(previous_state_.x.theta) < (M_PI - 0.5)))
+        {
+          swap_orientation_ = !swap_orientation_;
+          // We either need to swap or need to undo the swap
+          if(state.x.theta > 0.0)
+            state.x.theta += -M_PI;
+          else
+            state.x.theta += M_PI;
+        }
+      }
+      // ROS_INFO_STREAM("box (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
+      //                 state.z << ")");
+      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+      //                 << ", " << cur_obj.centroid[2] << ")");
     }
     else
     {
       ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
     }
+
+    if (use_displays_ || write_to_disk_)
+    {
+      if (proxy_name == ELLIPSE_PROXY || proxy_name == BOUNDING_BOX_XY_PROXY)
+      {
+        trackerDisplay(in_frame, cur_obj, obj_ellipse);
+      }
+      else
+      {
+        trackerDisplay(in_frame, state, cur_obj);
+      }
+    }
+
     return state;
   }
 
@@ -320,8 +385,22 @@ class ObjectTracker25D
       obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
     }
     ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
-    cv::RotatedRect obj_ellipse = fitEllipse(obj_pts);
+    cv::RotatedRect obj_ellipse = cv::fitEllipse(obj_pts);
     return obj_ellipse;
+  }
+
+
+  cv::RotatedRect findFootprintBox(ProtoObject& obj)
+  {
+    // Get 2D footprint of object and fit an ellipse to it
+    std::vector<cv::Point2f> obj_pts;
+    for (unsigned int i = 0; i < obj.cloud.size(); ++i)
+    {
+      obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
+    }
+    ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
+    cv::RotatedRect box = cv::minAreaRect(obj_pts);
+    return box;
   }
 
   cv::RotatedRect fit2DMassEllipse(ProtoObject& obj)
@@ -332,6 +411,17 @@ class ObjectTracker25D
     cloud_no_z.width = obj.cloud.size();
     cloud_no_z.height = 1;
     cloud_no_z.resize(obj.cloud.size());
+    if (obj.cloud.size() < 3)
+    {
+      ROS_WARN_STREAM("Too few points to find ellipse");
+      cv::RotatedRect obj_ellipse;
+      obj_ellipse.center.x = 0.0;
+      obj_ellipse.center.y = 0.0;
+      obj_ellipse.angle = 0;
+      obj_ellipse.size.width = 0;
+      obj_ellipse.size.height = 0;
+      return obj_ellipse;
+    }
     for (unsigned int i = 0; i < obj.cloud.size(); ++i)
     {
       cloud_no_z[i] = obj.cloud[i];
@@ -376,7 +466,6 @@ class ObjectTracker25D
     }
     else
     {
-      // TODO: Make sure this didn't fuck some shit up
       state = computeState(cur_obj, cloud, proxy_name, in_frame);
       state.header.seq = 0;
       state.header.stamp = cloud.header.stamp;
@@ -387,11 +476,6 @@ class ObjectTracker25D
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
-
-    if (use_displays_ || write_to_disk_)
-    {
-      trackerDisplay(in_frame, previous_state_, previous_obj_);
-    }
 
     ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
                      state.x.theta << ")");
@@ -460,11 +544,6 @@ class ObjectTracker25D
                        state.x.theta << ")");
       ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
                        << ", " << state.x_dot.theta << ")");
-
-      if (use_displays_ || write_to_disk_)
-      {
-        trackerDisplay(in_frame, state, cur_obj);
-      }
       previous_obj_ = cur_obj;
     }
     // We updat the header and take care of other bookkeeping before returning
@@ -587,12 +666,12 @@ class ObjectTracker25D
     cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
     if (use_displays_)
     {
-      cv::imshow("Ellipse Axes", centroid_frame);
+      cv::imshow("Object State", centroid_frame);
     }
     if (write_to_disk_)
     {
       std::stringstream out_name;
-      out_name << base_output_path_ << "ellipse_axes_" << frame_set_count_ << "_"
+      out_name << base_output_path_ << "obj_state_" << frame_set_count_ << "_"
                << record_count_ << ".png";
       cv::imwrite(out_name.str(), centroid_frame);
     }
@@ -631,9 +710,9 @@ class ObjectTracker25D
                                 std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
     float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
                                          img_maj_idx.x-img_c_idx.x));
-    cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
-    cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
+    // cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+    // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
+    // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
 
     if (use_displays_)
     {
@@ -951,7 +1030,7 @@ class TabletopPushingPerceptionNode
     if (use_displays_)
     {
       cv::imshow("color", cur_color_frame_);
-      cv::imshow("self_mask", cur_self_mask_);
+      // cv::imshow("self_mask", cur_self_mask_);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
@@ -959,9 +1038,9 @@ class TabletopPushingPerceptionNode
       std::stringstream out_name;
       out_name << base_output_path_ << "input" << record_count_ << ".png";
       cv::imwrite(out_name.str(), cur_color_frame_);
-      std::stringstream self_out_name;
-      self_out_name << base_output_path_ << "self" << record_count_ << ".png";
-      cv::imwrite(self_out_name.str(), cur_self_mask_);
+      // std::stringstream self_out_name;
+      // self_out_name << base_output_path_ << "self" << record_count_ << ".png";
+      // cv::imwrite(self_out_name.str(), cur_self_mask_);
       record_count_++;
     }
 #endif // DISPLAY_INPUT_COLOR
@@ -1393,8 +1472,6 @@ class TabletopPushingPerceptionNode
     ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_,
                                                          cur_self_filtered_cloud_,
                                                          no_objects);
-    cv::RotatedRect obj_ellipse = obj_tracker_->fitObjectEllipse(cur_obj);
-
     LearnPush::Response res;
     if (no_objects)
     {
@@ -1402,9 +1479,11 @@ class TabletopPushingPerceptionNode
       res.centroid.x = 0.0;
       res.centroid.y = 0.0;
       res.centroid.z = 0.0;
+      res.theta = 0.0;
       res.no_objects = true;
       return res;
     }
+    cv::RotatedRect obj_ellipse = obj_tracker_->fitObjectEllipse(cur_obj);
     res.no_objects = false;
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
