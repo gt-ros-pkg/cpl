@@ -42,6 +42,7 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt, hypot
 import sys
+from select import select
 from push_learning import PushLearningIO
 from geometry_msgs.msg import Pose2D
 import time
@@ -87,7 +88,7 @@ class TabletopExecutive:
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.3)
         self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.4)
-        self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.85)
+        self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.8)
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
         self.min_workspace_y = -self.max_workspace_y
 
@@ -330,6 +331,14 @@ class TabletopExecutive:
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
                       + controller_name + ', ' + proxy_name + ')')
         # TODO: Allow for intterupt here in case object pose / configuration is bad
+        timeout = 3
+        print "Enter something to pause before pushing: "
+        rlist, _, _ = select([sys.stdin], [], [], timeout)
+        if rlist:
+            s = sys.stdin.readline()
+            raw_input('Move object and press <Enter> to continue: ')
+        else:
+            print "No input. Moving on..."
         continuing = False
         done_with_push = False
 
