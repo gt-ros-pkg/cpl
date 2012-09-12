@@ -717,8 +717,6 @@ class VisualServoNode
       sprintf(phase_char, "Phase: %d", PHASE);
       std::string phase_str = phase_char;
       cv::putText(cur_orig_color_frame_, phase_str, cv::Point(529, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
-      cv::putText(cur_orig_color_frame_, phase_str, cv::Point(531, 18), 2, 0.60, cv::Scalar(255, 255, 255), 1);
-      cv::putText(cur_orig_color_frame_, phase_str, cv::Point(530, 18), 2, 0.60, cv::Scalar(40, 40, 40), 1);
 
       if (po_.size() > 0)
       {
@@ -764,6 +762,10 @@ class VisualServoNode
       {
         cv::Point p = tape_features_.at(i).image;
         cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+        if(gripper_pose_estimated_)
+        {
+          cv::circle(cur_orig_color_frame_, p, 3, cv::Scalar(255,140,0), 2);
+        }
       }
 
       if (PHASE == INIT_DESIRED)
@@ -1116,10 +1118,9 @@ class VisualServoNode
 
       goal_p = vs_->VSXYZToPoseStamped(goal_.front());
       // ORIENT
-      /*
       goal_p.pose.orientation.x = -0.4582;
       goal_p.pose.orientation.z = 0.8889;
-      */
+      goal_p.pose.orientation.w = 0;
 
       // for jacobian avg, we need IM at desired location as well
       if (JACOBIAN_TYPE_AVG == jacobian_type_)
@@ -1182,8 +1183,10 @@ class VisualServoNode
 
       PoseStamped p;
       p.header.frame_id = "/l_gripper_tool_frame";
+      p.pose.orientation.w = 1;
       tf_->transformPose(workspace_frame_, p, p);
       Point fkpp = p.pose.position;
+
 
       //////////////////////
       // Hand 
@@ -1202,9 +1205,9 @@ class VisualServoNode
 
       // convert the features into proper form 
       tape_features_ = vs_->CVPointToVSXYZ(cur_point_cloud_, cur_depth_frame_, pts);
-      if (tape_features_.size() == 0 )
+      if ((int)tape_features_.size() != default_tape_num)
       {
-        if (v_fk_diff_.size() > 0)
+        if ((int)v_fk_diff_.size() != default_tape_num)
         {
           ROS_WARN("Cannot find tape in image and do not have enough historical data to interpolate");
           tape_features_p_ = PoseStamped();
@@ -1225,13 +1228,11 @@ class VisualServoNode
       tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
 
       // ORIENT
-      /*
-         QuaternionStamped p;
-         p.quaternion.w = 1;
-         p.header.frame_id = "/l_gripper_tool_frame";
-         tf_->transformQuaternion(workspace_frame_, p, p);
-         tape_features_p_.pose.orientation = p.quaternion;
-       */
+      QuaternionStamped q;
+      q.quaternion.w = 1;
+      q.header.frame_id = "/l_gripper_tool_frame";
+      tf_->transformQuaternion(workspace_frame_, q, q);
+      tape_features_p_.pose.orientation = q.quaternion;
 
       // we aren't going to let controllers rotate at all when occluded;
       // vision vs. forward kinematics

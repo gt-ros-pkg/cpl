@@ -412,7 +412,12 @@ class VisualServo
       float tcquat[3] = {tr, tp, ty};
       // matrix-current rotation
       cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).t();
-      return PBVSTwist(mcpos - mgpos, MatDiffAngle(mcrot, mgrot));
+      cv::Mat ang_diff = -1*MatDiffAngle(mcrot, mgrot); 
+
+      // idk why but this fixes the problem... 
+      // this or the problem is at diffAngle with large +ve and -ve angles
+      ang_diff.at<float>(2) = -ang_diff.at<float>(2); 
+      return PBVSTwist(mcpos - mgpos, ang_diff);
 
       /** this is for another approach of PBVS
       // According to Chaumette 2006
