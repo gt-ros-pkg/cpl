@@ -332,6 +332,7 @@ class PointCloudSegmentation
   double cylinder_ransac_thresh_;
   double cylinder_ransac_angle_thresh_;
   double sphere_ransac_thresh_;
+  bool optimize_cylinder_coefficients_;
 };
 
 XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)

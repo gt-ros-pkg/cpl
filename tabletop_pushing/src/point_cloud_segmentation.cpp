@@ -494,25 +494,12 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& 
   ne.setRadiusSearch (0.03);
   ne.compute(obj.normals);
 
-  // cv::Mat normals_img(cv::Size(320,240), CV_32FC3, cv::Scalar(0.0,0.0,0.0));
-  // for (int i = 0; i < obj.normals.size(); ++i)
-  // {
-  //   cv::Vec3f norm;
-  //   norm[0] = abs(obj.normals[i].normal_x);
-  //   norm[1] = abs(obj.normals[i].normal_y);
-  //   norm[2] = abs(obj.normals[i].normal_z);
-  //   cv::Point idx = projectPointIntoImage(obj.cloud[i], obj.cloud.header.frame_id,
-  //                                         cur_camera_header_.frame_id);
-  //   normals_img.at<cv::Vec3f>(idx.y,idx.x) = norm;
-  // }
-  // cv::imshow("normals", normals_img);
-
   // Create the segmentation object
   pcl16::ModelCoefficients coefficients;
   Eigen::Vector3f z_axis(0.0,0.0,1.0);
   pcl16::PointIndices cylinder_inliers;
   pcl16::SACSegmentationFromNormals<PointXYZ,pcl16::Normal> cylinder_seg;
-  cylinder_seg.setOptimizeCoefficients(true);
+  cylinder_seg.setOptimizeCoefficients(optimize_cylinder_coefficients_);
   cylinder_seg.setModelType(pcl16::SACMODEL_CYLINDER);
   cylinder_seg.setMethodType(pcl16::SAC_RANSAC);
   cylinder_seg.setDistanceThreshold(cylinder_ransac_thresh_);

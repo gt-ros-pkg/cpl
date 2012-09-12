@@ -734,9 +734,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("table_ransac_angle_thresh",
                      pcl_segmenter_->table_ransac_angle_thresh_, 30.0);
     n_private_.param("cylinder_ransac_thresh",
-                     pcl_segmenter_->cylinder_ransac_thresh_, 0.01);
+                     pcl_segmenter_->cylinder_ransac_thresh_, 0.03);
     n_private_.param("cylinder_ransac_angle_thresh",
                      pcl_segmenter_->cylinder_ransac_angle_thresh_, 1.5);
+    n_private_.param("optimize_cylinder_coefficients",
+                     pcl_segmenter_->optimize_cylinder_coefficients_,
+                     false);
     n_private_.param("sphere_ransac_thresh",
                      pcl_segmenter_->sphere_ransac_thresh_, 0.01);
     n_private_.param("pcl_cluster_tolerance", pcl_segmenter_->cluster_tolerance_,

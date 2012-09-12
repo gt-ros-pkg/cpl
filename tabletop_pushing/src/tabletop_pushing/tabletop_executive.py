@@ -76,7 +76,7 @@ class TabletopExecutive:
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
 
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
-        self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.275)
+        self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.29)
 
         self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
@@ -180,7 +180,7 @@ class TabletopExecutive:
         # NOTE: Should exit before reaching num_pushes, this is just a backup
         for i in xrange(num_pushes):
             if _OFFLINE:
-                code_in = raw_input("Press <ENTER> to determine next singulation push: ")
+                code_in = raw_input("Press <Enter> to determine next singulation push: ")
                 if code_in.startswith('q'):
                     break
             pose_res = self.request_singulation_push(use_guided)
