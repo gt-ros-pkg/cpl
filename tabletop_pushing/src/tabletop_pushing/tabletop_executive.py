@@ -747,29 +747,31 @@ class TabletopExecutive:
         sweep_req.right_arm = not sweep_req.left_arm
         sweep_req.high_arm_init = True
 
-        # if sweep_req.left_arm:
-        if pose_res.push_angle > 0:
-            y_offset_dir = -1
-        else:
-            y_offset_dir = +1
-
         # Correctly set the wrist yaw
         if pose_res.push_angle > 0.0:
+            y_offset_dir = -1
             wrist_yaw = pose_res.push_angle - pi/2
         else:
             wrist_yaw = pose_res.push_angle + pi/2
-        sweep_req.wrist_yaw = wrist_yaw
-        sweep_req.desired_push_dist = -y_offset_dir*(self.sweep_y_offset +
-                                                     push_dist)
+            y_offset_dir = +1
 
         # Set offset in x y, based on distance
+        sweep_req.wrist_yaw = wrist_yaw
+        face_x_offset = -self.sweep_face_offset_dist*sin(wrist_yaw)
+        face_y_offset = y_offset_dir*self.sweep_face_offset_dist*cos(wrist_yaw)
+        wrist_x_offset = self.sweep_wrist_offset_dist*cos(wrist_yaw)
+        wrist_y_offset = self.sweep_wrist_offset_dist*sin(wrist_yaw)
+
         sweep_req.start_point.header = pose_res.header
         sweep_req.start_point.point = pose_res.start_point
-        sweep_req.start_point.point.x += self.sweep_x_offset
-        sweep_req.start_point.point.y += y_offset_dir*self.sweep_y_offset
+        sweep_req.start_point.point.x += face_x_offset + wrist_x_offset
+        sweep_req.start_point.point.y += face_y_offset + wrist_y_offset
         sweep_req.start_point.point.z = self.sweep_start_z
         sweep_req.arm_init = True
         sweep_req.arm_reset = True
+
+        sweep_req.desired_push_dist = -y_offset_dir*(self.sweep_face_offset_dist + push_dist)
+
 
         rospy.loginfo("Calling gripper pre sweep service")
         pre_sweep_res = self.gripper_pre_sweep_proxy(sweep_req)
@@ -793,8 +795,8 @@ class TabletopExecutive:
         push_req.desired_push_dist = push_dist
 
         # Offset pose to not hit the object immediately
-        push_req.start_point.point.x += self.overhead_x_offset*cos(wrist_yaw)
-        push_req.start_point.point.y += self.overhead_x_offset*sin(wrist_yaw)
+        push_req.start_point.point.x += self.overhead_offset_dist*cos(wrist_yaw)
+        push_req.start_point.point.y += self.overhead_offset_dist*sin(wrist_yaw)
         push_req.start_point.point.z = self.overhead_start_z
         push_req.left_arm = (which_arm == 'l')
         push_req.right_arm = not push_req.left_arm

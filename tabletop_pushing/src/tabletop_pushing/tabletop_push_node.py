@@ -105,11 +105,11 @@ class TabletopPushNode:
 
     def __init__(self):
         rospy.init_node('tabletop_push_node', log_level=rospy.DEBUG)
-        self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.15)
-        self.look_pt_x = rospy.get_param('~look_point_x', 0.45)
+        self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
+        self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.05)
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
-                                                   'openni_rgb_frame')
+                                                   'head_mount_kinect_rgb_link')
         self.default_torso_height = rospy.get_param('~default_torso_height',
                                                     0.2)
         self.gripper_raise_dist = rospy.get_param('~graipper_post_push_raise_dist',
@@ -179,7 +179,7 @@ class TabletopPushNode:
                                                         self.overhead_post_pull_action)
         self.raise_and_look_serice = rospy.Service('raise_and_look',
                                                    RaiseAndLook,
-                                                   self.raise_and_look_action)
+                                                   self.raise_and_look)
 
     #
     # Arm pose initialization functions
@@ -824,7 +824,7 @@ class TabletopPushNode:
             self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
-    def raise_and_look_action(self, request):
+    def raise_and_look(self, request):
         '''
         Service callback to raise the spine to a specific height relative to the
         table height and tilt the head so that the Kinect views the table
@@ -837,22 +837,29 @@ class TabletopPushNode:
             response.head_succeeded = self.init_head_pose(request.camera_frame)
             return response
 
+        if not request.have_table_centroid:
+            response = RaiseAndLookResponse()
+            response.head_succeeded = self.init_head_pose(request.camera_frame)
+            self.init_spine_pose()
+            return response
+
         # Get torso_lift_link position in base_link frame
-        (trans, rot) = self.tf_listener.lookupTransform('/base_link',
-                                                        '/torso_lift_link',
+        (trans, rot) = self.tf_listener.lookupTransform('base_link',
+                                                        'torso_lift_link',
                                                         rospy.Time(0))
         lift_link_z = trans[2]
 
         # tabletop position in base_link frame
-        table_base = self.tf_listener.transformPose('/base_link',
+        request.table_centroid.header.stamp = rospy.Time(0)
+        table_base = self.tf_listener.transformPose('base_link',
                                                     request.table_centroid)
         table_z = table_base.pose.position.z
         goal_lift_link_z = table_z + self.torso_z_offset
         lift_link_delta_z = goal_lift_link_z - lift_link_z
-        rospy.loginfo('Torso height (m): ' + str(lift_link_z))
-        rospy.loginfo('Table height (m): ' + str(table_z))
-        rospy.loginfo('Torso goal height (m): ' + str(goal_lift_link_z))
-        rospy.loginfo('Torso delta (m): ' + str(lift_link_delta_z))
+        # rospy.logdebug('Torso height (m): ' + str(lift_link_z))
+        rospy.logdebug('Table height (m): ' + str(table_z))
+        rospy.logdebug('Torso goal height (m): ' + str(goal_lift_link_z))
+        # rospy.logdebug('Torso delta (m): ' + str(lift_link_delta_z))
 
         # Set goal height based on passed on table height
         # TODO: Set these better
@@ -862,22 +869,23 @@ class TabletopPushNode:
         torso_goal_position = current_torso_position + lift_link_delta_z
         torso_goal_position = (max(min(torso_max, torso_goal_position),
                                    torso_min))
-        rospy.loginfo('Moving torso to ' + str(torso_goal_position))
+        # rospy.logdebug('Moving torso to ' + str(torso_goal_position))
         # Multiply by 2.0, because of units of spine
         self.robot.torso.set_pose(torso_goal_position)
 
-        rospy.loginfo('Got torso client result')
+        # rospy.logdebug('Got torso client result')
         new_torso_position = np.asarray(self.robot.torso.pose()).ravel()[0]
-        rospy.loginfo('New torso position is: ' + str(new_torso_position))
+        rospy.loginfo('New spine height is ' + str(new_torso_position))
 
         # Get torso_lift_link position in base_link frame
-        (new_trans, rot) = self.tf_listener.lookupTransform('/base_link',
-                                                            '/torso_lift_link',
+
+        (new_trans, rot) = self.tf_listener.lookupTransform('base_link',
+                                                            'torso_lift_link',
                                                             rospy.Time(0))
         new_lift_link_z = new_trans[2]
-        rospy.loginfo('New Torso height (m): ' + str(new_lift_link_z))
+        # rospy.logdebug('New Torso height (m): ' + str(new_lift_link_z))
         # tabletop position in base_link frame
-        new_table_base = self.tf_listener.transformPose('/base_link',
+        new_table_base = self.tf_listener.transformPose('base_link',
                                                         request.table_centroid)
         new_table_z = new_table_base.pose.position.z
         rospy.loginfo('New Table height: ' + str(new_table_z))
@@ -887,7 +895,7 @@ class TabletopPushNode:
         look_pt = np.asmatrix([self.look_pt_x,
                                0.0,
                                -self.torso_z_offset])
-        rospy.loginfo('Point head at ' + str(look_pt))
+        rospy.logdebug('Point head at ' + str(look_pt))
         head_res = self.robot.head.look_at(look_pt,
                                            request.table_centroid.header.frame_id,
                                            request.camera_frame)
@@ -896,7 +904,7 @@ class TabletopPushNode:
             rospy.loginfo('Succeeded in pointing head')
             response.head_succeeded = True
         else:
-            rospy.loginfo('Failed to point head')
+            rospy.logwarn('Failed to point head')
             response.head_succeeded = False
         return response
 
