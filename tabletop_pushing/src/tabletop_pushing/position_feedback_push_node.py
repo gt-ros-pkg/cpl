@@ -154,6 +154,7 @@ class PositionFeedbackPushNode:
         self.gripper_push_reverse_dist = rospy.get_param('~gripper_push_reverse_dist',
                                                          0.03)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
+        self.lower_arm_init_z = rospy.get_param('~high_arm_start_z', -0.20)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
@@ -912,6 +913,10 @@ class PositionFeedbackPushNode:
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
             rospy.logdebug('Done moving to overhead start point')
+            start_pose.pose.position.z = self.lower_arm_init_z
+            self.move_to_cart_pose(start_pose, which_arm)
+            rospy.loginfo('Done moving to lower start point')
+
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
@@ -968,6 +973,10 @@ class PositionFeedbackPushNode:
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
             rospy.logdebug('Done moving to overhead start point')
+            start_pose.pose.position.z = self.lower_arm_init_z
+            self.move_to_cart_pose(start_pose, which_arm)
+            rospy.loginfo('Done moving to lower start point')
+
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
