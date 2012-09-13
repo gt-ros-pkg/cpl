@@ -764,6 +764,7 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             robot_gripper = self.robot.right_gripper
 
+        # TODO: Make this better
         rospy.logdebug('Moving gripper up')
         pose_err, err_dist = self.move_relative_gripper(
             np.matrix([0.0, -self.gripper_raise_dist, 0.0]).T, which_arm,

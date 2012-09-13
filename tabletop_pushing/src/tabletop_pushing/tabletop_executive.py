@@ -330,8 +330,7 @@ class TabletopExecutive:
                      precondition_method='centroid_push'):
         rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
                       + controller_name + ', ' + proxy_name + ')')
-        # TODO: Allow for intterupt here in case object pose / configuration is bad
-        timeout = 3
+        timeout = 2
         rospy.loginfo("Enter something to pause before pushing: ")
         rlist, _, _ = select([sys.stdin], [], [], timeout)
         if rlist:
@@ -346,6 +345,13 @@ class TabletopExecutive:
 
         # NOTE: Get initial object pose here to make sure goal pose is far enough away
         init_pose = self.get_feedback_push_initial_obj_pose()
+        while self.out_of_workspace(init_pose):
+            rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
+                          str(init_pose.y) + ')')
+            code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
+            if code_in.lower().startswith('q'):
+                return 'quit'
+            init_pose = self.get_feedback_push_initial_obj_pose()
         goal_pose = self.generate_random_table_pose(init_pose)
 
         restart_count = 0
@@ -893,6 +899,10 @@ class TabletopExecutive:
         push_res = self.overhead_pull_proxy(push_req)
         rospy.loginfo("Calling post overhead pull service")
         post_push_res = self.overhead_post_pull_proxy(push_req)
+
+    def out_of_workspace(self, init_pose):
+        return (init_pose.x < self.min_workspace_x or init_pose.x > self.max_workspace_x or
+                init_pose.y < self.min_workspace_y or init_pose.y > self.max_workspace_y)
 
     def generate_random_table_pose(self, init_pose=None):
         if _USE_FIXED_GOAL:
