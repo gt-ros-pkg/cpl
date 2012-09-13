@@ -187,9 +187,7 @@ class PositionFeedbackPushNode:
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
-        self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.03)
-
-        self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
+        self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.015)
 
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
@@ -502,8 +500,7 @@ class PositionFeedbackPushNode:
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
-        # TODO: Make this a function of the measured pressure?
-        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
+        u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
@@ -536,8 +533,7 @@ class PositionFeedbackPushNode:
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
         u.header.stamp = rospy.Time.now()
-        # TODO: Make this a function of the measured pressure?
-        u.twist.linear.x = 0.0 # -self.overhead_fb_down_vel
+        u.twist.linear.x = 0.0
         # TODO: Track object rotation with gripper angle
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
@@ -558,8 +554,7 @@ class PositionFeedbackPushNode:
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
-        # TODO: Make this a function of the measured pressure?
-        u.twist.linear.z = 0.0 # -self.overhead_fb_down_vel
+        u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
