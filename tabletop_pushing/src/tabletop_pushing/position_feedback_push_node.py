@@ -478,11 +478,13 @@ class PositionFeedbackPushNode:
                                                               cur_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
+        elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
+            update_twist = self.directGoalGripperController(feedback, self.desired_pose, cur_pose)
         elif feedback.controller_name == SPIN_COMPENSATION:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
 
         if self.feedback_count % 5 == 0:
-            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ',' +
+            rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
 
@@ -610,6 +612,32 @@ class PositionFeedbackPushNode:
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
                           str(goal_y_dot) + ')')
+        return u
+
+    def directGoalGripperController(self, cur_state, desired_state, ee_pose):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        ee = ee_pose.pose.position
+
+        # Push centroid towards the desired goal
+        centroid = cur_state.x
+        x_error = desired_state.x - ee.x
+        y_error = desired_state.y - ee.y
+        goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
+        goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
+
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot
+        u.twist.linear.y = goal_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('ee_x: (' + str(ee.x) + ', ' + str(ee.y) + ', ' + str(ee.z) + ')')
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' + str(goal_y_dot) + ')')
         return u
 
     #
@@ -849,12 +877,14 @@ class PositionFeedbackPushNode:
             self.move_to_cart_pose(start_pose, which_arm)
             rospy.logdebug('Done moving to overhead start point')
             # Change z to lower arm to table
+            start_pose.pose.position.z = self.lower_arm_init_z
+            self.move_to_cart_pose(start_pose, which_arm)
+            rospy.loginfo('Done moving to lower start point')
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
 
         # Move to start pose
-        self.move_to_cart_pose(start_pose, which_arm,
-                               self.pre_push_count_thresh)
+        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
         if is_pull:
             rospy.loginfo('Moving forward to grasp pose')

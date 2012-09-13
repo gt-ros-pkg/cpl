@@ -997,6 +997,7 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
+      displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
 
@@ -1022,6 +1023,7 @@ class TabletopPushingPerceptionNode
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
+      displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
     }
@@ -1061,10 +1063,6 @@ class TabletopPushingPerceptionNode
       cv::waitKey(display_wait_ms_);
     }
 #endif // DISPLAY_WAIT
-    // if (frame_callback_count_ == 0)
-    // {
-    //   cv::imwrite("/home/thermans/Desktop/use_for_display.png", cur_color_frame_);
-    // }
     ++frame_callback_count_;
   }
 
@@ -1128,7 +1126,7 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object is too far from gripper.");
     }
-    else if (controller_name_ != "direct_goal_controller" &&
+    else if (action_primitive_ != "gripper_pull" &&
              objectNotBetweenGoalAndGripper(tracker_state.x))
     {
       abortPushingGoal("Object is not between gripper and goal.");
@@ -1823,6 +1821,33 @@ class TabletopPushingPerceptionNode
       cv::imwrite(push_out_name.str(), disp_img);
     }
   }
+
+  void displayRobotGripperPoses(cv::Mat& img)
+  {
+    cv::Mat disp_img;
+    img.copyTo(disp_img);
+
+    PointStamped l_gripper;
+    l_gripper.header.frame_id = "torso_lift_link";
+    l_gripper.header.stamp = ros::Time(0);
+    l_gripper.point = l_arm_pose_.pose.position;
+    PointStamped r_gripper;
+    r_gripper.header.frame_id = "torso_lift_link";
+    r_gripper.header.stamp = ros::Time(0);
+    r_gripper.point = r_arm_pose_.pose.position;
+    cv::Point l_gripper_img_point = pcl_segmenter_->projectPointIntoImage(l_gripper);
+    cv::Point r_gripper_img_point = pcl_segmenter_->projectPointIntoImage(r_gripper);
+    cv::circle(disp_img, l_gripper_img_point, 4, cv::Scalar(0,0,0),3);
+    cv::circle(disp_img, l_gripper_img_point, 4, cv::Scalar(0,255,0));
+    cv::circle(disp_img, r_gripper_img_point, 4, cv::Scalar(0,0,0),3);
+    cv::circle(disp_img, r_gripper_img_point, 4, cv::Scalar(0,0,255));
+
+    if (use_displays_)
+    {
+      cv::imshow("grippers", disp_img);
+    }
+  }
+
 
   /**
    * Executive control function for launching the node.

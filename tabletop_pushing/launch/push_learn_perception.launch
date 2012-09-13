@@ -56,8 +56,8 @@
     <param name="max_object_gripper_dist" value="0.15" type="double"/>
     <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
     <param name="object_not_moving_thresh" value="0.003" type="double"/>
-    <param name="gripper_not_moving_count_limit" value="50" type="int"/>
-    <param name="object_not_moving_count_limit" value="30" type="int"/>
+    <param name="gripper_not_moving_count_limit" value="20" type="int"/>
+    <param name="object_not_moving_count_limit" value="20" type="int"/>
     <param name="object_not_detected_count_limit" value="5" type="int"/>
     <param name="object_too_far_count_limit" value="2" type="int"/>
     <param name="object_not_between_count_limit" value="2" type="int"/>
