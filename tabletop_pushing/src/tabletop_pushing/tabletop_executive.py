@@ -312,18 +312,23 @@ class TabletopExecutive:
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
-                    precondition_method = PRECONDITION_METHODS[action_primitive]
-                    res = self.explore_push(action_primitive, controller, proxy, object_id,
-                                            precondition_method)
-                    if res == 'quit':
-                        rospy.loginfo('Quiting on user request')
+                    for arm in ['l','r']:
+                        precondition_method = PRECONDITION_METHODS[action_primitive]
+                        res = self.explore_push(action_primitive, controller, proxy, object_id,
+                                                precondition_method, arm)
+                        if res == 'quit':
+                            rospy.loginfo('Quiting on user request')
                         return False
         return True
 
     def explore_push(self, action_primitive, controller_name, proxy_name, object_id,
-                     precondition_method='centroid_push'):
-        rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
-                      + controller_name + ', ' + proxy_name + ')')
+                     precondition_method='centroid_push', input_arm=None):
+        if input_arm is not None:
+            rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
+                          + controller_name + ', ' + proxy_name + ', ' + input_arm + ')')
+        else:
+            rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
+                          + controller_name + ', ' + proxy_name + ')')
         timeout = 2
         rospy.loginfo("Enter something to pause before pushing: ")
         rlist, _, _ = select([sys.stdin], [], [], timeout)
@@ -364,7 +369,10 @@ class TabletopExecutive:
             #     continuing = False
             # else:
             #     which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            which_arm = self.choose_arm(push_vec_res.push, controller_name)
+            if input_arm is None:
+                which_arm = self.choose_arm(push_vec_res.push, controller_name)
+            else:
+                which_arm = input_arm
 
             res, push_res = self.perform_push(which_arm, action_primitive,
                                               push_vec_res, goal_pose,
