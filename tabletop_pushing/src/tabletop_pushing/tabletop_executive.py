@@ -435,14 +435,19 @@ class TabletopExecutive:
                 return push_vec_res
 
     def choose_arm(self, push_vec, controller_name):
-        if controller_name == SPIN_TO_HEADING or controller_name == DIRECT_GOAL_CONTROLLER:
+        if controller_name == SPIN_TO_HEADING:
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
             else:
                 which_arm = 'l'
             return which_arm
-        if (fabs(push_vec.start_point.y) > self.use_same_side_y_thresh or
-            push_vec.start_point.x > self.use_same_side_x_thresh):
+        elif controller_name == DIRECT_GOAL_CONTROLLER:
+            if push_vec.push_angle > 0:
+                which_arm = 'r'
+            else:
+                which_arm = 'l'
+        elif (fabs(push_vec.start_point.y) > self.use_same_side_y_thresh or
+              push_vec.start_point.x > self.use_same_side_x_thresh):
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
             else:

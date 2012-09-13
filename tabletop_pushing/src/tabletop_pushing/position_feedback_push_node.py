@@ -187,6 +187,7 @@ class PositionFeedbackPushNode:
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
+        self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.03)
 
         self.overhead_fb_down_vel = rospy.get_param('~overhead_feedback_down_vel', 0.01)
 
@@ -605,8 +606,8 @@ class PositionFeedbackPushNode:
         centroid = cur_state.x
         x_error = desired_state.x - centroid.x
         y_error = desired_state.y - centroid.y
-        goal_x_dot = self.k_g_direct*x_error
-        goal_y_dot = self.k_g_direct*y_error
+        goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
+        goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
 
         # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot
