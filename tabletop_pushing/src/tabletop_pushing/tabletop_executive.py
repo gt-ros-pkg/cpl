@@ -75,7 +75,7 @@ class TabletopExecutive:
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
         self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
-        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.07)
+        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.02)
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
 
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
@@ -723,16 +723,20 @@ class TabletopExecutive:
         else:
             y_offset_dir = +1
             wrist_yaw = push_vector.push_angle + pi/2.0
+        if abs(push_vector.push_angle) > pi/2:
+            x_offset_dir = +1
+        else:
+            x_offset_dir = -1
 
+        # Set offset in x y, based on distance
         push_req.wrist_yaw = wrist_yaw
-        # Offset pose to not hit the object immediately
-        face_x_offset = -self.sweep_face_offset_dist*sin(wrist_yaw)
+        face_x_offset = self.sweep_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
         face_y_offset = y_offset_dir*self.sweep_face_offset_dist*cos(wrist_yaw)
         wrist_x_offset = self.sweep_wrist_offset_dist*cos(wrist_yaw)
         wrist_y_offset = self.sweep_wrist_offset_dist*sin(wrist_yaw)
-        # rospy.loginfo('wrist_yaw: ' + str(wrist_yaw))
-        # rospy.loginfo('Face offset: (' + str(face_x_offset) + ', ' + str(face_y_offset) +')')
-        # rospy.loginfo('Wrist offset: (' + str(wrist_x_offset) + ', ' + str(wrist_y_offset) +')')
+        rospy.loginfo('wrist_yaw: ' + str(wrist_yaw))
+        rospy.loginfo('Face offset: (' + str(face_x_offset) + ', ' + str(face_y_offset) +')')
+        rospy.loginfo('Wrist offset: (' + str(wrist_x_offset) + ', ' + str(wrist_y_offset) +')')
 
         push_req.start_point.point.x += face_x_offset + wrist_x_offset
         push_req.start_point.point.y += face_y_offset + wrist_y_offset
@@ -804,10 +808,14 @@ class TabletopExecutive:
         else:
             wrist_yaw = pose_res.push_angle + pi/2
             y_offset_dir = +1
+        if abs(pose_res.push_angle) > pi/2:
+            x_offset_dir = +1
+        else:
+            x_offset_dir = -1
 
         # Set offset in x y, based on distance
         sweep_req.wrist_yaw = wrist_yaw
-        face_x_offset = -self.sweep_face_offset_dist*sin(wrist_yaw)
+        face_x_offset = self.sweep_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
         face_y_offset = y_offset_dir*self.sweep_face_offset_dist*cos(wrist_yaw)
         wrist_x_offset = self.sweep_wrist_offset_dist*cos(wrist_yaw)
         wrist_y_offset = self.sweep_wrist_offset_dist*sin(wrist_yaw)
@@ -865,9 +873,9 @@ class TabletopExecutive:
     def generate_random_table_pose(self, init_pose=None):
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
-            goal_pose.x = 0.9
-            goal_pose.y = -0.4
-            goal_pose.theta = 0.0
+            goal_pose.x = 0.55
+            goal_pose.y = 0.0
+            goal_pose.theta = 3.01697971833
             return goal_pose
         min_x = self.min_workspace_x
         max_x = self.max_workspace_x
