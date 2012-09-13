@@ -84,7 +84,7 @@ class TabletopExecutive:
         self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
 
-        self.max_restart_limit = rospy.get_param('~max_restart_limit', 3)
+        self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
         self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.4)
@@ -312,19 +312,20 @@ class TabletopExecutive:
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
-                    for arm in ['l','r']:
+                    for arm in ['r', 'l']:
                         precondition_method = PRECONDITION_METHODS[action_primitive]
                         res = self.explore_push(action_primitive, controller, proxy, object_id,
                                                 precondition_method, arm)
+                        rospy.loginfo('Result was: ' + str(res))
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
-                        return False
+                            return False
         return True
 
     def explore_push(self, action_primitive, controller_name, proxy_name, object_id,
                      precondition_method='centroid_push', input_arm=None):
         if input_arm is not None:
-            rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
+            rospy.loginfo('Exploring push behavior: (' + action_primitive + ', '
                           + controller_name + ', ' + proxy_name + ', ' + input_arm + ')')
         else:
             rospy.loginfo('Exploring push triple: (' + action_primitive + ', '
@@ -339,9 +340,9 @@ class TabletopExecutive:
                 return 'quit'
         else:
             rospy.loginfo("No input. Moving on...")
+
         continuing = False
         done_with_push = False
-
         # NOTE: Get initial object pose here to make sure goal pose is far enough away
         init_pose = self.get_feedback_push_initial_obj_pose()
         while self.out_of_workspace(init_pose):
@@ -354,8 +355,8 @@ class TabletopExecutive:
         goal_pose = self.generate_random_table_pose(init_pose)
 
         restart_count = 0
-        start_time = time.time()
         while not done_with_push:
+            start_time = time.time()
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
                                                              proxy_name, action_primitive)
 
@@ -377,6 +378,10 @@ class TabletopExecutive:
             res, push_res = self.perform_push(which_arm, action_primitive,
                                               push_vec_res, goal_pose,
                                               controller_name, proxy_name)
+            push_time = time.time() - start_time
+            self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
+                              push_vec_res, goal_pose, object_id, precondition_method)
+
             if res == 'quit':
                 return res
             elif res == 'aborted':
@@ -387,16 +392,10 @@ class TabletopExecutive:
                     continue
                 else:
                     done_with_push = True
+                    rospy.loginfo('Stopping push attempt because of too many restarts')
             else:
-                rospy.loginfo('Stopping push attempt because of too many restarts')
+                rospy.loginfo('Stopping push attempt because reached goal')
                 done_with_push = True
-        push_time = time.time() - start_time
-        if _OFFLINE:
-            code_in = raw_input('Press <Enter> to get analysis vector: ')
-            if code_in.lower().startswith('q'):
-                return 'quit'
-        self.analyze_push(action_primitive, controller_name, proxy_name, which_arm, push_time,
-                          push_vec_res, goal_pose, object_id, precondition_method)
         return res
 
     def get_feedback_push_initial_obj_pose(self):
@@ -467,17 +466,16 @@ class TabletopExecutive:
         # NOTE: Use commanded push distance not visually decided minimal distance
         if push_vector_res is None:
             rospy.logwarn("push_vector_res is None. Exiting pushing");
-            return (False, None)
+            return ('quit', None)
         if push_vector_res.no_push:
             rospy.loginfo("No push. Exiting pushing.");
-            return (False, None)
+            return ('quit', None)
         # Decide push based on the orientation returned
         rospy.loginfo('Push start_point: (' +
                       str(push_vector_res.push.start_point.x) + ', ' +
                       str(push_vector_res.push.start_point.y) + ', ' +
                       str(push_vector_res.push.start_point.z) + ')')
         rospy.loginfo('Push angle: ' + str(push_angle))
-        start_time = time.time()
         # TODO: Unify framework here, implement classes for each behavior and make this class simpler
         if not _OFFLINE:
             if action_primitive == OVERHEAD_PUSH:
@@ -936,5 +934,6 @@ if __name__ == '__main__':
                 break
             clean_exploration = node.run_push_exploration(object_id=code_in)
             if not clean_exploration:
+                rospy.loginfo('Not clean end to pushing stuff')
                 break
         node.finish_learning()
