@@ -72,7 +72,7 @@ class TabletopExecutive:
         self.use_same_side_x_thresh = rospy.get_param('~use_same_side_x_thresh', 0.8)
 
         self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
-        self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
+        self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
         self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
         self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.02)
@@ -316,7 +316,6 @@ class TabletopExecutive:
                         precondition_method = PRECONDITION_METHODS[action_primitive]
                         res = self.explore_push(action_primitive, controller, proxy, object_id,
                                                 precondition_method, arm)
-                        rospy.loginfo('Result was: ' + str(res))
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
                             return False
@@ -392,9 +391,9 @@ class TabletopExecutive:
                     continue
                 else:
                     done_with_push = True
-                    rospy.loginfo('Stopping push attempt because of too many restarts')
+                    rospy.loginfo('Stopping push attempt because of too many restarts\n')
             else:
-                rospy.loginfo('Stopping push attempt because reached goal')
+                rospy.loginfo('Stopping push attempt because reached goal\n')
                 done_with_push = True
         return res
 
