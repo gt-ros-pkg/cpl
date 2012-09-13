@@ -59,7 +59,7 @@
     <param name="gripper_not_moving_count_limit" value="50" type="int"/>
     <param name="object_not_moving_count_limit" value="30" type="int"/>
     <param name="object_not_detected_count_limit" value="5" type="int"/>
-    <param name="object_too_far_count_limit" value="5" type="int"/>
+    <param name="object_too_far_count_limit" value="2" type="int"/>
     <param name="object_not_between_count_limit" value="2" type="int"/>
     <param name="object_not_between_epsilon" value="0.02" type="double"/>
   </node>

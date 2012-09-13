@@ -677,7 +677,6 @@ class TabletopExecutive:
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
         push_req.wrist_yaw = wrist_yaw
-
         # Offset pose to not hit the object immediately
         if action_primitive == GRIPPER_PULL:
             offset_dist = self.gripper_pull_offset_dist

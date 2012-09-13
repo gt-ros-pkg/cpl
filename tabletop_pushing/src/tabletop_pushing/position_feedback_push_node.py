@@ -150,7 +150,7 @@ class PositionFeedbackPushNode:
         self.gripper_pull_reverse_dist = rospy.get_param('~gripper_pull_reverse_dist',
                                                          0.1)
         self.gripper_pull_forward_dist = rospy.get_param('~gripper_pull_forward_dist',
-                                                         0.1)
+                                                         0.15)
         self.gripper_push_reverse_dist = rospy.get_param('~gripper_push_reverse_dist',
                                                          0.03)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
@@ -691,6 +691,7 @@ class PositionFeedbackPushNode:
             robot_gripper = self.robot.right_gripper
 
         if is_pull:
+            self.stop_moving_vel(which_arm)
             rospy.loginfo('Opening gripper')
             res = robot_gripper.open(position=0.9,block=True)
             rospy.loginfo('Done opening gripper')
@@ -1644,6 +1645,7 @@ class PositionFeedbackPushNode:
         vel_pub.publish(update_twist)
 
     def stop_moving_vel(self, which_arm):
+        rospy.loginfo('Stopping to move velocity for ' + which_arm + '_arm')
         self.switch_to_vel_controllers()
         if which_arm == 'l':
             vel_pub = self.l_arm_cart_vel_pub
