@@ -82,7 +82,7 @@ class TabletopExecutive:
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.29)
 
         self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
-        self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.25)
+        self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
 
