@@ -87,7 +87,7 @@ class TabletopExecutive:
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
-        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.4)
+        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.425)
         self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.8)
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
         self.min_workspace_y = -self.max_workspace_y
@@ -384,10 +384,10 @@ class TabletopExecutive:
             if res == 'quit':
                 return res
             elif res == 'aborted':
-                rospy.loginfo('Continuing after push was aborted')
                 continuing = True
                 restart_count += 1
                 if restart_count <= self.max_restart_limit:
+                    rospy.loginfo('Continuing after push was aborted')
                     continue
                 else:
                     done_with_push = True
@@ -896,11 +896,11 @@ class TabletopExecutive:
             rand_pose.y = random.uniform(min_y, max_y)
             rand_pose.theta = random.uniform(min_theta, max_theta)
             pose_not_found = False
-            if (self.previous_rand_pose is not None and
-                hypot(self.previous_rand_pose.x-rand_pose.x,
-                      self.previous_rand_pose.y-rand_pose.y) < self.min_new_pose_dist):
-                pose_not_found = True
-            elif (init_pose is not None and
+            # if (self.previous_rand_pose is not None and
+            #     hypot(self.previous_rand_pose.x-rand_pose.x,
+            #           self.previous_rand_pose.y-rand_pose.y) < self.min_new_pose_dist):
+            #     pose_not_found = True
+            if (init_pose is not None and
                 hypot(init_pose.x-rand_pose.x, init_pose.y-rand_pose.y) < self.min_new_pose_dist):
                 pose_not_found = True
 

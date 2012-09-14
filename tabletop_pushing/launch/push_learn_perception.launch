@@ -53,7 +53,7 @@
     <param name="push_tracker_angle_thresh" value="0.1" type="double"/>
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
     <param name="use_cv_ellipse" value="false" type="bool"/>
-    <param name="max_object_gripper_dist" value="0.15" type="double"/>
+    <param name="max_object_gripper_dist" value="0.25" type="double"/>
     <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
     <param name="object_not_moving_thresh" value="0.003" type="double"/>
     <param name="gripper_not_moving_count_limit" value="50" type="int"/>
