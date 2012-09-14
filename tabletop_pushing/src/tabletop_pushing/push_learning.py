@@ -420,7 +420,6 @@ class PushLearningAnalysis:
             if c.score < score_threshold:
                 valid_choices += 1
         if valid_choices == 0:
-            print 'No valid display points, skipping this loc'
             return img
         # Draw circle for the location
         radius = 13
