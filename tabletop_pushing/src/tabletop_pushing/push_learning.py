@@ -174,9 +174,9 @@ class PushLearningAnalysis:
     def workspace_ranking(self):
         # likelihood_arg=['behavior_primitive','proxy','controller','which_arm']
         likelihood_arg=['behavior_primitive','which_arm']
-        workspace_ranks = self.rank_pushes(trial_hash_fnc=self.hash_push_xy_angle,
-                                           likelihood_arg=likelihood_arg,
-                                           mean_push_fnc=self.get_mean_workspace_push)
+        workspace_ranks = self.rank_avg_pushes(trial_hash_fnc=self.hash_push_xy_angle,
+                                               likelihood_arg=likelihood_arg,
+                                               mean_push_fnc=self.get_mean_workspace_push)
         print "Workspace push rankings:"
         for ranks in workspace_ranks:
             self.output_push_ranks(ranks,
@@ -184,7 +184,7 @@ class PushLearningAnalysis:
                                    likelihood_arg, n=3)
         return workspace_ranks
 
-    def object_ranking(self):
+    def object_ranking(self, use_raw=False):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
@@ -192,12 +192,19 @@ class PushLearningAnalysis:
         likelihood_arg=['behavior_primitive','proxy','controller']
         # score_fnc=self.compute_normalized_push_time
         score_fnc=self.compute_push_error_xy
-        rankings = self.rank_pushes(trial_grouping_arg=cond_arg,
-                                    likelihood_arg=likelihood_arg,
-                                    score_fnc=score_fnc)
-        print "\nObject behavior rankings:"
-        for ranks in rankings:
-            self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
+        if use_raw:
+            rankings = self.rank_raw_pushes(trial_grouping_arg=cond_arg,
+                                            score_fnc=score_fnc)
+            print "\Raw object behavior rankings:"
+            for ranks in rankings:
+                self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=5)
+        else:
+            rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
+                                            likelihood_arg=likelihood_arg,
+                                            score_fnc=score_fnc)
+            print "\nObject behavior rankings:"
+            for ranks in rankings:
+                self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=5)
         return rankings
 
     def object_proxy_ranking(self):
@@ -208,9 +215,9 @@ class PushLearningAnalysis:
         likelihood_arg='proxy'
         # score_fnc=self.compute_normalized_push_time
         score_fnc=self.compute_push_error_xy
-        rankings = self.rank_pushes(trial_grouping_arg=cond_arg,
-                                    likelihood_arg=likelihood_arg,
-                                    score_fnc=score_fnc)
+        rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
+                                        likelihood_arg=likelihood_arg,
+                                        score_fnc=score_fnc)
         print "\nObject proxy rankings:"
         for ranks in rankings:
             self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
@@ -221,7 +228,7 @@ class PushLearningAnalysis:
         Method to find the best performing (on average) behavior_primitive as a function of push_angle
         '''
         likelihood_arg=['behavior_primitive','proxy','controller']
-        angle_ranks = self.rank_pushes(
+        angle_ranks = self.rank_avg_pushes(
             trial_hash_fnc=self.hash_push_angle, likelihood_arg=likelihood_arg,
             mean_push_fnc=self.get_mean_angle_push)
         print "Angle push rankings:"
@@ -229,8 +236,8 @@ class PushLearningAnalysis:
             self.output_push_ranks(rank, 'push_angle', likelihood_arg, n=3)
         return angle_ranks
 
-    def rank_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
-                    likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
+    def rank_avg_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                        likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
         '''
         '''
         # Compute scores
@@ -265,6 +272,29 @@ class PushLearningAnalysis:
         for i, group in enumerate(mean_groups):
             group.sort(compare_pushes)
             ranked_pushes.append(group)
+        return ranked_pushes
+
+
+    def rank_raw_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None, score_fnc=None):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
+
+        # Group multiple trials of same type
+        ranked_pushes = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            trial_group.sort(compare_pushes)
+            ranked_pushes.append(trial_group)
         return ranked_pushes
 
 
