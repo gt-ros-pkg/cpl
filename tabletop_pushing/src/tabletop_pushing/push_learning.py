@@ -83,6 +83,14 @@ class PushTrial:
                 'goal_pose:\n' + str(self.goal_pose) + '\n'+
                 'push_time: ' + str(self.push_time))
 
+def compare_pushes(a, b):
+    if a.score < b.score:
+        return -1
+    elif a.score > b.score:
+        return 1
+    else:
+        return 0
+
 class PushLearningIO:
     def __init__(self):
         self.data_out = None
@@ -163,17 +171,19 @@ class PushLearningAnalysis:
     #
     # Methods for computing marginals
     #
-    def workspace_distribution(self):
+    def workspace_ranking(self):
         likelihood_arg=['behavior_primitive','proxy','controller']
-        angle_choices = self.conditional_max_likelihood(
-            trial_hash_fnc=self.hash_push_xy_angle, likelihood_arg=likelihood_arg,
-            mean_push_fnc=self.get_mean_workspace_push)
-        print "(X,Y, angle) push choices:"
-        for c in angle_choices:
-            self.output_push_choice(c, 'push_angle', likelihood_arg)
-        return angle_choices
+        workspace_ranks = self.rank_pushes(trial_hash_fnc=self.hash_push_xy_angle,
+                                           likelihood_arg=likelihood_arg,
+                                           mean_push_fnc=self.get_mean_workspace_push)
+        print "Workspace push rankings:"
+        for ranks in workspace_ranks:
+            self.output_push_ranks(ranks,
+                                   ['init_centroid.x','init_centroid.y','push_angle'],
+                                   likelihood_arg, n=3)
+        return workspace_ranks
 
-    def object_distribution(self):
+    def object_ranking(self):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
@@ -181,29 +191,45 @@ class PushLearningAnalysis:
         likelihood_arg=['behavior_primitive','proxy','controller']
         # score_fnc=self.compute_normalized_push_time
         score_fnc=self.compute_push_error_xy
-        object_choices = self.conditional_max_likelihood(trial_grouping_arg=cond_arg,
-                                                         likelihood_arg=likelihood_arg,
-                                                         score_fnc=score_fnc)
-        print "Object push choices:"
-        for c in object_choices:
-            self.output_push_choice(c, cond_arg, likelihood_arg)
+        rankings = self.rank_pushes(trial_grouping_arg=cond_arg,
+                                    likelihood_arg=likelihood_arg,
+                                    score_fnc=score_fnc)
+        print "\nObject behavior rankings:"
+        for ranks in rankings:
+            self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
+        return rankings
 
+    def object_proxy_ranking(self):
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of object_id
+        '''
+        cond_arg='object_id'
+        likelihood_arg='proxy'
+        # score_fnc=self.compute_normalized_push_time
+        score_fnc=self.compute_push_error_xy
+        rankings = self.rank_pushes(trial_grouping_arg=cond_arg,
+                                    likelihood_arg=likelihood_arg,
+                                    score_fnc=score_fnc)
+        print "\nObject proxy rankings:"
+        for ranks in rankings:
+            self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
+        return rankings
 
-    def angle_distribution(self):
+    def angle_ranking(self):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of push_angle
         '''
         likelihood_arg=['behavior_primitive','proxy','controller']
-        angle_choices = self.conditional_max_likelihood(
+        angle_ranks = self.rank_pushes(
             trial_hash_fnc=self.hash_push_angle, likelihood_arg=likelihood_arg,
             mean_push_fnc=self.get_mean_angle_push)
-        print "Angle push choices:"
-        for c in angle_choices:
-            self.output_push_choice(c, 'push_angle', likelihood_arg)
-        return angle_choices
+        print "Angle push rankings:"
+        for rank in angle_ranks:
+            self.output_push_ranks(rank, 'push_angle', likelihood_arg, n=3)
+        return angle_ranks
 
-    def conditional_max_likelihood(self, trial_hash_fnc=None, trial_grouping_arg=None,
-                                   likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
+    def rank_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                    likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
         '''
         '''
         # Compute scores
@@ -234,16 +260,12 @@ class PushLearningAnalysis:
             mean_groups.append(mean_group)
 
         # Choose best push for each conditional group
-        best_pushes = []
+        ranked_pushes = []
         for i, group in enumerate(mean_groups):
-            min_score = 200000.0 # Meters
-            min_score_push = None
-            for j, t in enumerate(group):
-                if t.score < min_score:
-                    min_score = t.score
-                    min_score_push = t
-            best_pushes.append(min_score_push)
-        return best_pushes
+            group.sort(compare_pushes)
+            ranked_pushes.append(group)
+        return ranked_pushes
+
 
     def get_mean_push(self, arg_list, trial_grouping_arg, likelihood_arg):
         mean_score = 0
@@ -355,21 +377,24 @@ class PushLearningAnalysis:
     #
     # Visualization functions
     #
-    def visualize_push_choices(self, choices):
+    def visualize_push_choices(self, ranks, score_threshold=100.0):
+        choices = []
+        for rank in ranks:
+            choices.append(rank[0])
         # load in image from dropbox folder
-        # TODO: Get new image of the table we use now
         disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/use_for_display.png')
 
         xy_groups = self.group_trials_by_xy(choices)
 
-        # TODO: Draw all choices for a specific (x,y) together to get better matting of shadows
         for group_key in xy_groups:
-            disp_img = self.draw_push_choices_on_image(xy_groups[group_key], disp_img)
+            disp_img = self.draw_push_choices_on_image(xy_groups[group_key], disp_img,
+                                                       score_threshold=score_threshold)
         cv2.imshow('Chosen pushes', disp_img)
         cv2.imwrite('/u/thermans/Desktop/push_learn_out.png', disp_img)
         cv2.waitKey()
 
-    def draw_push_choices_on_image(self, choices, img):
+    def draw_push_choices_on_image(self, choices, img, score_threshold=100.0):
+        # TODO: Double check that this is all correct
         # TODO: load in transform and camera parameters from saved info file
         K = np.matrix([[525, 0, 319.5, 0.0],
                        [0, 525, 239.5, 0.0],
@@ -377,7 +402,6 @@ class PushLearningAnalysis:
         tl = np.asarray([-0.0115423, 0.441939, 0.263569])
         q = np.asarray([0.693274, -0.685285, 0.157732, 0.157719])
         num_downsamples = 0
-        # TODO: Save table height in trial data
         table_height = -0.3
         P_w = np.matrix([[choices[0].init_centroid.x], [choices[0].init_centroid.y],
                          [table_height], [1.0]])
@@ -390,15 +414,27 @@ class PushLearningAnalysis:
         P_i = P_i / P_i[2]
         u = P_i[0]/pow(2,num_downsamples)
         v = P_i[1]/pow(2,num_downsamples)
+
+        valid_choices = 0
+        for c in choices:
+            if c.score < score_threshold:
+                valid_choices += 1
+        if valid_choices == 0:
+            print 'No valid display points, skipping this loc'
+            return img
         # Draw circle for the location
         radius = 13
         cv2.circle(img, (u,v), 3, [0.0,0.0,0.0],3)
         cv2.circle(img, (u,v), 3, [255.0,255.0,255.0], 1)
         # Draw Shadows for all angles
         for c in choices:
+            if c.score > score_threshold:
+                continue
             end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
             cv2.line(img, (u,v), end_point, [0.0,0.0,0.0],3)
         for c in choices:
+            if c.score > score_threshold:
+                continue
             # Choose color by push type
             if c.behavior_primitive == GRIPPER_PUSH:
                 color = [255.0, 0.0, 0.0] # Blue
@@ -438,6 +474,32 @@ class PushLearningAnalysis:
         else:
             arg_str = str(get_attr(c,arg_value))
         print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score)
+
+    def output_push_ranks(self, ranks, conditional_value, arg_value, n=3):
+        '''
+        Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
+        '''
+        if len(ranks) == 0:
+            return
+        if type(conditional_value) == list:
+            conditional_str = ''
+            for val in conditional_value:
+                conditional_str += str(get_attr(ranks[0], val))+', '
+            conditional_str = conditional_str[:-2]
+        else:
+            conditional_str = str(get_attr(ranks[0], conditional_value))
+        print 'Ranks for (' +  conditional_str + '):'
+        for i, c in enumerate(ranks):
+            if i >= n:
+                break
+            if type(arg_value) == list:
+                arg_str = ''
+                for val in arg_value:
+                    arg_str += str(get_attr(c,val))+', '
+                arg_str = arg_str[:-2]
+            else:
+                arg_str = str(get_attr(c,arg_value))
+            print '\t ('+ arg_str+ ') : ' + str(c.score)
 
     def output_loc_push_choices(self, choices):
         print "Loc push choices:"
@@ -500,7 +562,8 @@ if __name__ == '__main__':
     pla.read_in_push_trials(data_path)
 
     # TODO: Use command line arguments to choose these
-    angle_pushes = pla.angle_distribution()
-    object_pushes = pla.object_distribution()
-    workspace_pushes = pla.workspace_distribution()
-    pla.visualize_push_choices(workspace_pushes)
+    workspace_ranks = pla.workspace_ranking()
+    angle_ranks = pla.angle_ranking()
+    pla.object_ranking()
+    pla.object_proxy_ranking()
+    pla.visualize_push_choices(workspace_ranks, 0.3)
