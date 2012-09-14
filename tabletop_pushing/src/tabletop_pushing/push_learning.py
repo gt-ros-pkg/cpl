@@ -370,10 +370,6 @@ class PushLearningAnalysis:
         cv2.waitKey()
 
     def draw_push_choices_on_image(self, choices, img):
-        # TODO: Double check where the bin centroid is
-        # c.init_centroid.x += 0.5/self.xy_hash_precision
-        # c.init_centroid.y += 0.5/self.xy_hash_precision
-
         # TODO: load in transform and camera parameters from saved info file
         K = np.matrix([[525, 0, 319.5, 0.0],
                        [0, 525, 239.5, 0.0],
@@ -395,7 +391,7 @@ class PushLearningAnalysis:
         u = P_i[0]/pow(2,num_downsamples)
         v = P_i[1]/pow(2,num_downsamples)
         # Draw circle for the location
-        radius = 15
+        radius = 13
         cv2.circle(img, (u,v), 3, [0.0,0.0,0.0],3)
         cv2.circle(img, (u,v), 3, [255.0,255.0,255.0], 1)
         # Draw Shadows for all angles
