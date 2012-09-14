@@ -862,7 +862,8 @@ class PositionFeedbackPushNode:
         start_pose.pose.position.x = start_point.x
         start_pose.pose.position.y = start_point.y
         start_pose.pose.position.z = start_point.z
-        q = tf.transformations.quaternion_from_euler(0.0, -0.1, wrist_yaw)
+        # q = tf.transformations.quaternion_from_euler(0.0, -0.1, wrist_yaw)
+        q = tf.transformations.quaternion_from_euler(0.0, 0.0, wrist_yaw)
         start_pose.pose.orientation.x = q[0]
         start_pose.pose.orientation.y = q[1]
         start_pose.pose.orientation.z = q[2]
