@@ -71,6 +71,7 @@ class PushTrial:
         # NOTE: Everything below not saved to disk, just computed for convenience
         self.push_angle = 0.0
         self.push_dist = 0.0
+        self.continuation = False
 
     def __str__(self):
         return (self.object_id +
@@ -150,7 +151,22 @@ class PushLearningIO:
         data_in = file(file_name, 'r')
         x = [self.parse_line(l) for l in data_in.readlines()]
         data_in.close()
-        return filter(None, x)
+        x = filter(None, x)
+        return self.link_repeat_trials(x)
+
+    def link_repeat_trials(self, trials):
+        for i in range(1,len(trials)):
+            if (trials[i].goal_pose.y == trials[i-1].goal_pose.y and
+                trials[i].goal_pose.x == trials[i-1].goal_pose.x and
+                trials[i].behavior_primitive == trials[i-1].behavior_primitive and
+                trials[i].proxy == trials[i-1].proxy and
+                trials[i].controller == trials[i-1].controller):
+                if trials[i].which_arm == trials[i-1].which_arm:
+                    # print 'Continuation with different arm'
+                    pass
+                else:
+                    trials[i].continuation = True
+        return trials
 
     def open_out_file(self, file_name):
         self.data_out = file(file_name, 'a')
@@ -172,10 +188,11 @@ class PushLearningAnalysis:
     # Methods for computing marginals
     #
     def workspace_ranking(self):
-        likelihood_arg=['behavior_primitive','proxy','controller']
-        workspace_ranks = self.rank_pushes(trial_hash_fnc=self.hash_push_xy_angle,
-                                           likelihood_arg=likelihood_arg,
-                                           mean_push_fnc=self.get_mean_workspace_push)
+        # likelihood_arg=['behavior_primitive','proxy','controller','which_arm']
+        likelihood_arg=['behavior_primitive','which_arm']
+        workspace_ranks = self.rank_avg_pushes(trial_hash_fnc=self.hash_push_xy_angle,
+                                               likelihood_arg=likelihood_arg,
+                                               mean_push_fnc=self.get_mean_workspace_push)
         print "Workspace push rankings:"
         for ranks in workspace_ranks:
             self.output_push_ranks(ranks,
@@ -183,7 +200,7 @@ class PushLearningAnalysis:
                                    likelihood_arg, n=3)
         return workspace_ranks
 
-    def object_ranking(self):
+    def object_ranking(self, use_raw=False):
         '''
         Method to find the best performing (on average) behavior_primitive as a function of object_id
         '''
@@ -191,12 +208,19 @@ class PushLearningAnalysis:
         likelihood_arg=['behavior_primitive','proxy','controller']
         # score_fnc=self.compute_normalized_push_time
         score_fnc=self.compute_push_error_xy
-        rankings = self.rank_pushes(trial_grouping_arg=cond_arg,
-                                    likelihood_arg=likelihood_arg,
-                                    score_fnc=score_fnc)
-        print "\nObject behavior rankings:"
-        for ranks in rankings:
-            self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
+        if use_raw:
+            rankings = self.rank_raw_pushes(trial_grouping_arg=cond_arg,
+                                            score_fnc=score_fnc)
+            print "\Raw object behavior rankings:"
+            for ranks in rankings:
+                self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=5)
+        else:
+            rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
+                                            likelihood_arg=likelihood_arg,
+                                            score_fnc=score_fnc)
+            print "\nObject behavior rankings:"
+            for ranks in rankings:
+                self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=5)
         return rankings
 
     def object_proxy_ranking(self):
@@ -207,9 +231,9 @@ class PushLearningAnalysis:
         likelihood_arg='proxy'
         # score_fnc=self.compute_normalized_push_time
         score_fnc=self.compute_push_error_xy
-        rankings = self.rank_pushes(trial_grouping_arg=cond_arg,
-                                    likelihood_arg=likelihood_arg,
-                                    score_fnc=score_fnc)
+        rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
+                                        likelihood_arg=likelihood_arg,
+                                        score_fnc=score_fnc)
         print "\nObject proxy rankings:"
         for ranks in rankings:
             self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
@@ -220,7 +244,7 @@ class PushLearningAnalysis:
         Method to find the best performing (on average) behavior_primitive as a function of push_angle
         '''
         likelihood_arg=['behavior_primitive','proxy','controller']
-        angle_ranks = self.rank_pushes(
+        angle_ranks = self.rank_avg_pushes(
             trial_hash_fnc=self.hash_push_angle, likelihood_arg=likelihood_arg,
             mean_push_fnc=self.get_mean_angle_push)
         print "Angle push rankings:"
@@ -228,8 +252,8 @@ class PushLearningAnalysis:
             self.output_push_ranks(rank, 'push_angle', likelihood_arg, n=3)
         return angle_ranks
 
-    def rank_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
-                    likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
+    def rank_avg_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                        likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
         '''
         '''
         # Compute scores
@@ -267,14 +291,33 @@ class PushLearningAnalysis:
         return ranked_pushes
 
 
-    def get_mean_push(self, arg_list, trial_grouping_arg, likelihood_arg):
-        mean_score = 0
-        for push in arg_list:
-            mean_score += push.score
-        mean_score = mean_score / float(len(arg_list))
+    def rank_raw_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None, score_fnc=None):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
 
+        # Group multiple trials of same type
+        ranked_pushes = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            trial_group.sort(compare_pushes)
+            ranked_pushes.append(trial_group)
+        return ranked_pushes
+
+    def get_mean_push(self, arg_list, trial_grouping_arg, likelihood_arg):
         mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
         mean_push.score = mean_score
+        mean_push.var = score_var
         if type(trial_grouping_arg) is not list:
             trial_grouping_arg = [trial_grouping_arg]
         if type(likelihood_arg) is not list:
@@ -286,13 +329,10 @@ class PushLearningAnalysis:
         return mean_push
 
     def get_mean_angle_push(self, arg_list):
-        mean_score = 0
-        for push in arg_list:
-            mean_score += push.score
-        mean_score = mean_score / float(len(arg_list))
-
         mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
         mean_push.score = mean_score
+        mean_push.var = score_var
         mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
         mean_push.behavior_primitive = arg_list[0].behavior_primitive
         mean_push.controller = arg_list[0].controller
@@ -300,21 +340,35 @@ class PushLearningAnalysis:
         return mean_push
 
     def get_mean_workspace_push(self, arg_list):
-        mean_score = 0
-        for push in arg_list:
-            mean_score += push.score
-        mean_score = mean_score / float(len(arg_list))
-
         mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
         mean_push.score = mean_score
+        mean_push.var = score_var
         mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
             arg_list[0].init_centroid.x, arg_list[0].init_centroid.y)
         mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
         mean_push.behavior_primitive = arg_list[0].behavior_primitive
         mean_push.controller = arg_list[0].controller
         mean_push.proxy = arg_list[0].proxy
+        mean_push.which_arm = arg_list[0].which_arm
         return mean_push
 
+    def mean_and_variance(self, pushes):
+        n = len(pushes)
+        mean_score = 0
+        for push in pushes:
+            mean_score += push.score
+        mean_score = mean_score / n
+
+        if n <= 1:
+            return (mean_score, 0)
+
+        var_sum = 0
+        for push in pushes:
+            var_sum += push.score**2
+        score_var = (var_sum-n*mean_score**2)/(n-1)
+
+        return (mean_score, score_var)
     #
     # Grouping methods
     #
@@ -429,22 +483,33 @@ class PushLearningAnalysis:
         for c in choices:
             if c.score > score_threshold:
                 continue
-            end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
-            cv2.line(img, (u,v), end_point, [0.0,0.0,0.0],3)
+            end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
+            color = [0.0, 0.0, 0.0] # Black
+            cv2.line(img, (u,v), end_point, color,3)
         for c in choices:
             if c.score > score_threshold:
                 continue
             # Choose color by push type
-            if c.behavior_primitive == GRIPPER_PUSH:
-                color = [255.0, 0.0, 0.0] # Blue
-            elif c.behavior_primitive == GRIPPER_SWEEP:
-                color = [0.0, 255.0, 0.0] # Green
-            elif c.behavior_primitive == OVERHEAD_PUSH:
-                color = [0.0, 0.0, 255.0] # Red
-            elif c.behavior_primitive == GRIPPER_PULL:
-                color = [0.0, 255.0, 255.0] # Yellow
+            if c.which_arm == 'l':
+                if c.behavior_primitive == GRIPPER_PUSH:
+                    color = [255.0, 0.0, 0.0] # Blue
+                elif c.behavior_primitive == GRIPPER_SWEEP:
+                    color = [0.0, 255.0, 0.0] # Green
+                elif c.behavior_primitive == OVERHEAD_PUSH:
+                    color = [0.0, 0.0, 255.0] # Red
+                elif c.behavior_primitive == GRIPPER_PULL:
+                    color = [0.0, 255.0, 255.0] # Yellow
+            else:
+                if c.behavior_primitive == GRIPPER_PUSH:
+                    color = [128.0, 0.0, 128.0] # Magenta
+                elif c.behavior_primitive == GRIPPER_SWEEP:
+                    color = [0.0, 64.0, 129.0] # Brown
+                elif c.behavior_primitive == OVERHEAD_PUSH:
+                    color = [128.0, 128.0, 0.0] # Cyan
+                elif c.behavior_primitive == GRIPPER_PULL:
+                    color = [200.0, 200.0, 200.0] # White
             # Draw line depicting the angle
-            end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
+            end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
             cv2.line(img, (u,v), end_point, color)
         return img
 
@@ -472,7 +537,7 @@ class PushLearningAnalysis:
             arg_str = arg_str[:-2]
         else:
             arg_str = str(get_attr(c,arg_value))
-        print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score)
+        print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
 
     def output_push_ranks(self, ranks, conditional_value, arg_value, n=3):
         '''
@@ -498,7 +563,7 @@ class PushLearningAnalysis:
                 arg_str = arg_str[:-2]
             else:
                 arg_str = str(get_attr(c,arg_value))
-            print '\t ('+ arg_str+ ') : ' + str(c.score)
+            print '\t ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
 
     def output_loc_push_choices(self, choices):
         print "Loc push choices:"
@@ -525,8 +590,8 @@ class PushLearningAnalysis:
 
     def hash_xy(self, x,y):
         # Group different pushes by push_angle
-        x_prime = round(x*self.xy_hash_precision)/self.xy_hash_precision
-        y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
+        x_prime = (round(x*self.xy_hash_precision)-1)/self.xy_hash_precision
+        y_prime = (round(y*self.xy_hash_precision)-1)/self.xy_hash_precision
         return (x_prime, y_prime)
 
     #
@@ -562,7 +627,7 @@ if __name__ == '__main__':
 
     # TODO: Use command line arguments to choose these
     workspace_ranks = pla.workspace_ranking()
-    angle_ranks = pla.angle_ranking()
+    # angle_ranks = pla.angle_ranking()
     pla.object_ranking()
     pla.object_proxy_ranking()
     pla.visualize_push_choices(workspace_ranks, 0.3)
