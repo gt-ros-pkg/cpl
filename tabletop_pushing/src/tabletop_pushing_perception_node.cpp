@@ -1608,7 +1608,6 @@ class TabletopPushingPerceptionNode
     return gripper_not_moving_count_  >= gripper_not_moving_count_limit_;
   }
 
-  // TODO: Make this tolerant within some epislon
   bool objectNotBetweenGoalAndGripper(Pose2D& obj_state)
   {
     if (pushing_arm_ == "l")
