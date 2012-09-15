@@ -313,15 +313,11 @@ class PushLearningAnalysis:
             ranked_pushes.append(trial_group)
         return ranked_pushes
 
-
     def get_mean_push(self, arg_list, trial_grouping_arg, likelihood_arg):
-        mean_score = 0
-        for push in arg_list:
-            mean_score += push.score
-        mean_score = mean_score / float(len(arg_list))
-
         mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
         mean_push.score = mean_score
+        mean_push.var = score_var
         if type(trial_grouping_arg) is not list:
             trial_grouping_arg = [trial_grouping_arg]
         if type(likelihood_arg) is not list:
@@ -333,13 +329,10 @@ class PushLearningAnalysis:
         return mean_push
 
     def get_mean_angle_push(self, arg_list):
-        mean_score = 0
-        for push in arg_list:
-            mean_score += push.score
-        mean_score = mean_score / float(len(arg_list))
-
         mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
         mean_push.score = mean_score
+        mean_push.var = score_var
         mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
         mean_push.behavior_primitive = arg_list[0].behavior_primitive
         mean_push.controller = arg_list[0].controller
@@ -347,13 +340,10 @@ class PushLearningAnalysis:
         return mean_push
 
     def get_mean_workspace_push(self, arg_list):
-        mean_score = 0
-        for push in arg_list:
-            mean_score += push.score
-        mean_score = mean_score / float(len(arg_list))
-
         mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
         mean_push.score = mean_score
+        mean_push.var = score_var
         mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
             arg_list[0].init_centroid.x, arg_list[0].init_centroid.y)
         mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
@@ -363,6 +353,22 @@ class PushLearningAnalysis:
         mean_push.which_arm = arg_list[0].which_arm
         return mean_push
 
+    def mean_and_variance(self, pushes):
+        n = len(pushes)
+        mean_score = 0
+        for push in pushes:
+            mean_score += push.score
+        mean_score = mean_score / n
+
+        if n <= 1:
+            return (mean_score, 0)
+
+        var_sum = 0
+        for push in pushes:
+            var_sum += push.score**2
+        score_var = (var_sum-n*mean_score**2)/(n-1)
+
+        return (mean_score, score_var)
     #
     # Grouping methods
     #
@@ -531,7 +537,7 @@ class PushLearningAnalysis:
             arg_str = arg_str[:-2]
         else:
             arg_str = str(get_attr(c,arg_value))
-        print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score)
+        print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
 
     def output_push_ranks(self, ranks, conditional_value, arg_value, n=3):
         '''
@@ -557,7 +563,7 @@ class PushLearningAnalysis:
                 arg_str = arg_str[:-2]
             else:
                 arg_str = str(get_attr(c,arg_value))
-            print '\t ('+ arg_str+ ') : ' + str(c.score)
+            print '\t ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
 
     def output_loc_push_choices(self, choices):
         print "Loc push choices:"
