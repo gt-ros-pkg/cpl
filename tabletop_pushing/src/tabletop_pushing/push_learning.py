@@ -71,6 +71,7 @@ class PushTrial:
         # NOTE: Everything below not saved to disk, just computed for convenience
         self.push_angle = 0.0
         self.push_dist = 0.0
+        self.continuation = False
 
     def __str__(self):
         return (self.object_id +
@@ -150,7 +151,22 @@ class PushLearningIO:
         data_in = file(file_name, 'r')
         x = [self.parse_line(l) for l in data_in.readlines()]
         data_in.close()
-        return filter(None, x)
+        x = filter(None, x)
+        return self.link_repeat_trials(x)
+
+    def link_repeat_trials(self, trials):
+        for i in range(1,len(trials)):
+            if (trials[i].goal_pose.y == trials[i-1].goal_pose.y and
+                trials[i].goal_pose.x == trials[i-1].goal_pose.x and
+                trials[i].behavior_primitive == trials[i-1].behavior_primitive and
+                trials[i].proxy == trials[i-1].proxy and
+                trials[i].controller == trials[i-1].controller):
+                if trials[i].which_arm == trials[i-1].which_arm:
+                    # print 'Continuation with different arm'
+                    pass
+                else:
+                    trials[i].continuation = True
+        return trials
 
     def open_out_file(self, file_name):
         self.data_out = file(file_name, 'a')
@@ -461,11 +477,7 @@ class PushLearningAnalysis:
         for c in choices:
             if c.score > score_threshold:
                 continue
-            end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
-            # if c.which_arm == 'l':
-            #     color = [0.0, 0.0, 0.0] # Black
-            # else:
-            #     color = [255.0, 255.0, 255.0] # White
+            end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
             color = [0.0, 0.0, 0.0] # Black
             cv2.line(img, (u,v), end_point, color,3)
         for c in choices:
@@ -491,7 +503,7 @@ class PushLearningAnalysis:
                 elif c.behavior_primitive == GRIPPER_PULL:
                     color = [200.0, 200.0, 200.0] # White
             # Draw line depicting the angle
-            end_point = (u+cos(c.push_angle)*(radius), v+sin(c.push_angle)*(radius))
+            end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
             cv2.line(img, (u,v), end_point, color)
         return img
 
@@ -572,8 +584,8 @@ class PushLearningAnalysis:
 
     def hash_xy(self, x,y):
         # Group different pushes by push_angle
-        x_prime = round(x*self.xy_hash_precision)/self.xy_hash_precision
-        y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
+        x_prime = (round(x*self.xy_hash_precision)-1)/self.xy_hash_precision
+        y_prime = (round(y*self.xy_hash_precision)-1)/self.xy_hash_precision
         return (x_prime, y_prime)
 
     #
