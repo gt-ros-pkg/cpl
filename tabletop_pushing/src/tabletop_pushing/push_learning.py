@@ -145,6 +145,8 @@ class PushLearningIO:
                                 push.goal_pose.x-push.init_centroid.x)
         push.push_dist = hypot(push.goal_pose.y-push.init_centroid.y,
                                push.goal_pose.x-push.init_centroid.x)
+        if push.init_centroid.x > 1.0:
+            print 'Greater than 1.0 x: ', str(push)
         return push
 
     def read_in_data_file(self, file_name):
@@ -188,8 +190,8 @@ class PushLearningAnalysis:
     # Methods for computing marginals
     #
     def workspace_ranking(self):
-        likelihood_arg=['behavior_primitive','proxy','controller','which_arm']
-        # likelihood_arg=['which_arm']
+        # likelihood_arg=['behavior_primitive','proxy','controller','which_arm']
+        likelihood_arg=['which_arm']
         score_fnc=self.compute_change_in_push_error_xy
         workspace_ranks = self.rank_avg_pushes(trial_hash_fnc=self.hash_push_xy_angle,
                                                likelihood_arg=likelihood_arg,
@@ -233,7 +235,8 @@ class PushLearningAnalysis:
         cond_arg='object_id'
         likelihood_arg='proxy'
         # score_fnc=self.compute_normalized_push_time
-        score_fnc=self.compute_push_error_xy
+        # score_fnc=self.compute_push_error_xy
+        score_fnc=self.compute_change_in_push_error_xy
         rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
                                         likelihood_arg=likelihood_arg,
                                         score_fnc=score_fnc)
@@ -508,7 +511,7 @@ class PushLearningAnalysis:
                     color = [0.0, 0.0, 255.0] # Red
                 elif c.behavior_primitive == GRIPPER_PULL:
                     color = [0.0, 255.0, 255.0] # Yellow
-                # color = [0.0, 255.0, 0.0] # Green
+                color = [0.0, 255.0, 0.0] # Green
             else:
                 if c.behavior_primitive == GRIPPER_PUSH:
                     color = [128.0, 0.0, 128.0] # Magenta
@@ -518,7 +521,7 @@ class PushLearningAnalysis:
                     color = [128.0, 128.0, 0.0] # Cyan
                 elif c.behavior_primitive == GRIPPER_PULL:
                     color = [200.0, 200.0, 200.0] # White
-                # color = [0.0, 0.0, 255.0] # Red
+                color = [0.0, 0.0, 255.0] # Red
             # Draw line depicting the angle
             end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
             cv2.line(img, (u,v), end_point, color)
@@ -671,8 +674,9 @@ if __name__ == '__main__':
     pla.read_in_push_trials(data_path)
 
     # TODO: Use command line arguments to choose these
-    workspace_ranks = pla.workspace_ranking()
+    # workspace_ranks = pla.workspace_ranking()
+    # pla.visualize_push_choices(workspace_ranks, 1.0)
     # angle_ranks = pla.angle_ranking()
-    pla.object_ranking()
-    pla.object_proxy_ranking()
-    pla.visualize_push_choices(workspace_ranks, 1.0)
+    # pla.object_ranking()
+    # pla.object_proxy_ranking()
+    print 'Num trials: ' + str(len(pla.all_trials))
