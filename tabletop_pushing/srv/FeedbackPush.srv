@@ -1,0 +1,13 @@
+geometry_msgs/PointStamped start_point
+float64 wrist_yaw
+geometry_msgs/Pose2D goal_pose
+string controller_name
+string proxy_name
+string action_primitive
+bool left_arm
+bool right_arm
+bool high_arm_init
+bool open_gripper
+---
+geometry_msgs/Pose2D goal_error
+bool action_aborted
