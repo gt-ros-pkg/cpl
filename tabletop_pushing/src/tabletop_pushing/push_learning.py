@@ -235,8 +235,14 @@ class PushLearningAnalysis:
                                                     likelihood_arg=likelihood_arg,
                                                     score_fnc=score_fnc)
             print "\Successful counts for affordance-behaviors on different objects:"
+            total_good = 0
+            total_attempts = 0
             for ranks in rankings:
-                self.output_push_counts(ranks, cond_arg, likelihood_arg, n=100)
+                num_good, num_attempts = self.output_push_counts(ranks, cond_arg, likelihood_arg, n=50)
+                total_good += num_good
+                total_attempts += num_attempts
+            print 'Total good', total_good
+            print 'Total attempts', total_attempts
         else:
             rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
                                             likelihood_arg=likelihood_arg,
@@ -348,6 +354,35 @@ class PushLearningAnalysis:
             group.sort(compare_counts)
             ranked_pushes.append(group)
         return ranked_pushes
+
+    def get_successful_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                              likelihood_arg=None, mean_push_fnc=None,score_fnc=None, score_thresh=0.02):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
+
+        # Group multiple trials of same type
+        count_groups = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            likelihood_arg_dict = self.group_trials(trial_group, likelihood_arg)
+            # Average errors for each push key
+            count_group = []
+            for arg_key in likelihood_arg_dict:
+                for push in likelihood_arg_dict[arg_key]:
+                    if push.score < score_thresh:
+                        count_group.append(push)
+            count_groups.append(count_group)
+        return count_groups
 
     def rank_raw_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None, score_fnc=None):
         '''
@@ -675,6 +710,8 @@ class PushLearningAnalysis:
         '''
         Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
         '''
+        total_good = 0
+        total_attempts = 0
         if len(ranks) == 0:
             return
         if type(conditional_value) == list:
@@ -684,19 +721,24 @@ class PushLearningAnalysis:
             conditional_str = conditional_str[:-2]
         else:
             conditional_str = str(get_attr(ranks[0], conditional_value))
-        print 'Ranks for (' +  conditional_str + '):'
+        print conditional_str + ''
         for i, c in enumerate(ranks):
             if i >= n:
                 break
             if type(arg_value) == list:
                 arg_str = ''
                 for val in arg_value:
-                    arg_str += str(get_attr(c,val))+', '
-                arg_str = arg_str[:-2]
+                    arg_str += str(get_attr(c,val))+' & '
+                arg_str = arg_str[:-3]
             else:
                 arg_str = str(get_attr(c,arg_value))
-            print '\t ('+ arg_str+ ') : ' + str(c.successful_count) + ', ' + str(c.total_count)
-
+            if c.successful_count > 0:
+                total_good += c.successful_count
+                total_attempts += c.total_count
+            #     print ' & '+ arg_str+ ' & & ' + str(c.successful_count) + ' & ' + str(c.total_count) + ' \\\\'
+        # print 'Total good: ', total_good
+        # print 'Total attempts: ', total_attempts
+        return total_good, total_attempts
     def output_loc_push_choices(self, choices):
         print "Loc push choices:"
         for c in choices:
