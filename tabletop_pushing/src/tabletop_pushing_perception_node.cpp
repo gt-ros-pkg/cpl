@@ -262,13 +262,25 @@ class ObjectTracker25D
       XYZPointCloud sphere_cloud;
       pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
       cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+      cv::Mat disp_img(in_frame.size(), CV_8UC3, cv::Scalar(0,0,0));
       pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
       lbl_img*=255;
-      cv::imshow("sphere",lbl_img);
+      pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
+      cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
+      const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+          centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
+      cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
+      cv::imshow("sphere",disp_img);
       state.x.x = sphere.values[0];
       state.x.y = sphere.values[1];
       state.z = sphere.values[2];
       state.x.theta = 0.0;
+      // TODO: Draw ellipse of the projected circle parallel to the table 
+      std::stringstream out_name;
+      out_name << base_output_path_ << "sphere_" << frame_set_count_ << "_"
+               << record_count_ << ".png";
+      cv::imwrite(out_name.str(), disp_img);
+
       // ROS_INFO_STREAM("sphere (x,y,z,r): " << state.x.x << ", " << state.x.y << ", " << state.z
       //                 << ", " << sphere.values[3] << ")");
       // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
@@ -351,9 +363,13 @@ class ObjectTracker25D
 
     if (use_displays_ || write_to_disk_)
     {
-      if (proxy_name == ELLIPSE_PROXY || proxy_name == BOUNDING_BOX_XY_PROXY)
+      if (proxy_name == ELLIPSE_PROXY)
       {
         trackerDisplay(in_frame, cur_obj, obj_ellipse);
+      }
+      else if(proxy_name == BOUNDING_BOX_XY_PROXY)
+      {
+        trackerBoxDisplay(in_frame, cur_obj, obj_ellipse);
       }
       else
       {
@@ -437,8 +453,8 @@ class ObjectTracker25D
     obj_ellipse.center.y = centroid[1];
     obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
     // NOTE: major axis is defined by height
-    obj_ellipse.size.height = std::max(eigen_values(0)*0.05, 0.05);
-    obj_ellipse.size.width = std::max(eigen_values(1)*0.05, 0.05*eigen_values(1)/eigen_values(0));
+    obj_ellipse.size.height = std::max(eigen_values(0)*0.1, 0.07);
+    obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.07*eigen_values(1)/eigen_values(0));
     return obj_ellipse;
   }
 
@@ -665,6 +681,72 @@ class ObjectTracker25D
     cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
     cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
     cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
+    if (use_displays_)
+    {
+      cv::imshow("Object State", centroid_frame);
+    }
+    if (write_to_disk_)
+    {
+      ROS_INFO_STREAM("Writing ellipse to disk!");
+      std::stringstream out_name;
+      out_name << base_output_path_ << "obj_state_" << frame_set_count_ << "_"
+               << record_count_ << ".png";
+      cv::imwrite(out_name.str(), centroid_frame);
+    }
+  }
+
+  // TODO: Make this draw the bounding box
+  void trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
+  {
+    cv::Mat centroid_frame;
+    in_frame.copyTo(centroid_frame);
+    pcl16::PointXYZ centroid_point(cur_obj.centroid[0], cur_obj.centroid[1],
+                                 cur_obj.centroid[2]);
+    const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+        centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
+    // double ellipse_angle_rad = subPIAngle(DEG2RAD(obj_ellipse.angle));
+    double theta = getThetaFromEllipse(obj_ellipse);
+    if(swap_orientation_)
+    {
+      if(theta > 0.0)
+        theta += - M_PI;
+      else
+        theta += M_PI;
+    }
+    const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
+    const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
+    pcl16::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
+                                  centroid_point.z);
+    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
+    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
+    pcl16::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
+                                  centroid_point.z);
+    const cv::Point2f img_min_idx = pcl_segmenter_->projectPointIntoImage(
+        table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
+    const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
+        table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+    cv::Size img_size;
+    img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                               std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+    img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                                std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
+    float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+                                         img_maj_idx.x-img_c_idx.x));
+    cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
+    cv::Point2f vertices[4];
+    img_ellipse.points(vertices);
+    for (int i = 0; i < 4; i++)
+    {
+      cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(0,0,0), 3);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(0,255,255), 1);
+    }
     if (use_displays_)
     {
       cv::imshow("Object State", centroid_frame);
@@ -1008,7 +1090,7 @@ class TabletopPushingPerceptionNode
         evaluateGoalAndAbortConditions(tracker_state);
       }
     }
-    else if (obj_tracker_->isInitialized())
+    else if (obj_tracker_->isInitialized() && obj_tracker_->isPaused())
     {
       obj_tracker_->pausedUpdate(cur_color_frame_);
       PointStamped start_point;
