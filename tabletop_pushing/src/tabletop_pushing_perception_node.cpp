@@ -1033,7 +1033,7 @@ class TabletopPushingPerceptionNode
     if (use_displays_)
     {
       cv::imshow("color", cur_color_frame_);
-      // cv::imshow("self_mask", cur_self_mask_);
+      cv::imshow("self_mask", cur_self_mask_);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)

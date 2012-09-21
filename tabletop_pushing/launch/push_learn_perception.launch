@@ -35,7 +35,7 @@
 
     <param name="cylinder_ransac_thresh" value="0.015" type="double"/>
     <param name="cylinder_ransac_angle_thresh" value="5.0" type="double"/>
-    <patam name="optimize_cylinder_coefficients" value="false" type="bool"/>
+    <param name="optimize_cylinder_coefficients" value="false" type="bool"/>
 
     <param name="sphere_ransac_thresh" value="0.015" type="double"/>
 
