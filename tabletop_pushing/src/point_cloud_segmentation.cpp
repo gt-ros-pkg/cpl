@@ -236,9 +236,9 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   ROS_WARN_STREAM("Finding tabletop objects MPS!");
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
-  ne.setMaxDepthChangeFactor (0.03f);
-  ne.setNormalSmoothingSize (20.0f);
-  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
+  ne.setMaxDepthChangeFactor(0.03f);
+  ne.setNormalSmoothingSize(20.0f);
+  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud(new pcl16::PointCloud<pcl16::Normal>);
   ne.setInputCloud(input_cloud.makeShared());
   ne.compute(*normal_cloud);
 
@@ -265,33 +265,35 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   mps.setInputCloud(input_cloud.makeShared());
   std::vector<pcl16::PlanarRegion<PointXYZ>,
               Eigen::aligned_allocator<pcl16::PlanarRegion<PointXYZ> > > regions;
-  std::vector<pcl16::ModelCoefficients> coefficients;
-  std::vector<pcl16::PointIndices> point_indices;
-  pcl16::OrganizedMultiPlaneSegmentation<PointXYZ, pcl16::Normal, pcl16::Label>::PointCloudLPtr labels;
-  std::vector<pcl16::PointIndices> label_indices;
-  std::vector<pcl16::PointIndices> boundary_indices;
   regions.clear();
-  point_indices.clear();
-  label_indices.clear();
-  boundary_indices.clear();
+  // std::vector<pcl16::ModelCoefficients> coefficients;
+  // std::vector<pcl16::PointIndices> point_indices;
+  // pcl16::PointCloud<pcl16::Label>::Ptr labels;
+  // std::vector<pcl16::PointIndices> label_indices;
+  // std::vector<pcl16::PointIndices> boundary_indices;
+  // point_indices.clear();
+  // label_indices.clear();
+  // boundary_indices.clear();
   ROS_WARN_STREAM("Segmenting and refining!");
   mps.segmentAndRefine(regions);
-  ROS_WARN_STREAM("Segmented and refined!");
   // mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
-
+  ROS_WARN_STREAM("Segmented and refined!");
   // TODO: Get table plane
   // TODO: Create objects and their clouds
   // TODO: Filter out arm
   ProtoObjects objs;
-  ROS_WARN_STREAM("Iterating throught " << regions.size() << " regions!");
+  ROS_WARN_STREAM("Iterating through " << regions.size() << " regions!");
+  cv::Mat obj_img(cv::Size(640,480), CV_8UC1, cv::Scalar(0));
   for (size_t i = 0; i < regions.size (); i++)
   {
+    ROS_INFO_STREAM("Creating ProtoObject.");
     ProtoObject po;
     po.push_history.clear();
     po.boundary_angle_dist.clear();
     po.id = i;
     // TODO: Get object point cloud
-    pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
+    ROS_INFO_STREAM("Copying point cloud.");
+    // pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
     ROS_INFO_STREAM("Object has " << po.cloud.size() << " points");
     po.centroid[0] = regions[i].getCentroid()[0];
     po.centroid[1] = regions[i].getCentroid()[1];
@@ -301,15 +303,22 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     po.transform = Eigen::Matrix4f::Identity();
     po.singulated = false;
     objs.push_back(po);
-    Eigen::Vector4f model = regions[i].getCoefficients ();
+    Eigen::Vector4f model = regions[i].getCoefficients();
     // TODO: Save object counter
     XYZPointCloud boundary_cloud;
-    boundary_cloud.points = regions[i].getContour ();
+    boundary_cloud.points = regions[i].getContour();
+    boundary_cloud.header.frame_id = input_cloud.header.frame_id;
+    boundary_cloud.header.stamp = ros::Time(0);
+    ROS_INFO_STREAM("Boundary cloud header: " << boundary_cloud.header.frame_id);
     printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
             po.centroid[0], po.centroid[1], po.centroid[2],
             model[0], model[1], model[2], model[3],
             boundary_cloud.points.size ());
+    projectPointCloudIntoImage(boundary_cloud, obj_img, cur_camera_header_.frame_id, (i+1)*60);
+    pcl16::copyPointCloud(boundary_cloud, po.cloud);
   }
+  cv::imshow("regions", obj_img);
+  cv::waitKey();
   return objs;
 }
 

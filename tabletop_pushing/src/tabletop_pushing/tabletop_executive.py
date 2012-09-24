@@ -344,7 +344,7 @@ class TabletopExecutive:
         done_with_push = False
         # NOTE: Get initial object pose here to make sure goal pose is far enough away
         init_pose = self.get_feedback_push_initial_obj_pose()
-        while self.out_of_workspace(init_pose):
+        while not _OFFLINE and self.out_of_workspace(init_pose):
             rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
                           str(init_pose.y) + ')')
             code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
