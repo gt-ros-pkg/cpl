@@ -118,7 +118,6 @@ class PositionFeedbackPushNode:
 
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
-
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
         self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
@@ -158,6 +157,7 @@ class PositionFeedbackPushNode:
         self.vel_controller_state_msg = JinvTeleopControllerState
 
         # Set joint gains
+        rospy.loginfo('Craeting cs object')
         self.arm_mode = None
         self.cs = ControllerSwitcher()
         self.init_joint_controllers()

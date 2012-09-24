@@ -31,11 +31,15 @@ rosbuild_add_boost_directories()
 #rosbuild_add_executable(visual_servo_node src/vs_line.cpp)
 #target_link_libraries(visual_servo_node tabletop_pushing)
 
-rosbuild_add_executable(visual_servo_node src/vs_grasp.cpp)
-rosbuild_link_boost(visual_servo_node signals)
-# overhead grasp with distance
-#rosbuild_link_boost(vsp signals)
-find_library(LOG4CXX_LIB log4cxx)
-target_link_libraries(visual_servo_node ${LOG4CXX_LIB})
-# target_link_libraries(visual_servo_node libboost_signals.so liblog4cxx.so ${Boost_SYSTEM_LIBRARY} )
-#rosbuild_add_executable(visual_servo_node src/vs_pt.cpp)
+find_library(LOG4CXX_LIB log4cxx REQUIRED)
+rosbuild_add_executable(vsaction src/vs_action.cpp)
+rosbuild_link_boost(vsaction signals)
+target_link_libraries(vsaction ${LOG4CXX_LIB})
+
+rosbuild_add_executable(test src/vs_pose.cpp)
+rosbuild_link_boost(test signals)
+target_link_libraries(test ${LOG4CXX_LIB})
+
+#rosbuild_add_executable(visual_servo_node src/vs_grasp.cpp)
+#rosbuild_link_boost(visual_servo_node signals)
+#target_link_libraries(visual_servo_node ${LOG4CXX_LIB})

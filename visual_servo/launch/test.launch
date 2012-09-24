@@ -1,0 +1,49 @@
+<launch>
+  <!-- <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> -->
+  <!-- <include file="$(find visual_servo)/launch/kinect_head.launch"/>  -->
+  <node name="test_node" pkg="visual_servo" type="test" respawn="false" output="screen">
+
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
+    <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
+    <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
+    <param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/>
+
+    <!-- <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> -->
+    <!--<remap from="depth_image_topic" to="/kinect_head/depth/image"/> -->
+    <!--<remap from="point_cloud_topic" to="/kinect_head/depth/points"/> -->
+    <!--<param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/> -->
+
+    <!-- IMPORTANT ONE -->
+    <param name="vs_err_term_thres" value="0.00095" type="double"/>
+    <param name="jacobian_type" value="1" type="int"/>
+
+    <param name="target_hue_value" value="350" type="int"/>
+    <param name="target_hue_threshold" value="48" type="int"/>
+    <param name="gripper_tape_hue_value" value="200" type="int"/>
+    <param name="gripper_tape_hue_threshold" value="50" type="int"/>
+    <param name="default_sat_bot_value" value="20" type="int"/>
+    <param name="default_sat_top_value" value="100" type="int"/>
+    <param name="default_val_value" value="100" type="int"/>
+
+    <!-- gripper_tape1_offset_[x,y,z]: offset from fingers -->
+    <param name="gripper_tape1_offset_x" value="0.02" type="double"/>
+    <param name="gripper_tape1_offset_z" value="0.07" type="double"/>
+
+    <param name="place_z_velocity" value="-0.025" type="double"/>
+
+    <param name="camera_y" value="0.5" type="double"/>
+    <param name="camera_z" value="0.0" type="double"/>
+    <param name="camera_wx" value="0.4" type="double"/>
+    <param name="camera_wy" value="0.5" type="double"/>
+    <param name="camera_wz" value="0" type="double"/>
+
+    <param name="sim_time" value="8" type="double"/>
+    <param name="feature_size" value="3" type="double"/>
+    <!-- percentage -->
+    <param name="sim_noise_z" value="0" type="double"/>
+
+    <param name="display_wait_ms" value="3" type="int"/>
+    <param name="workspace_frame" value="/torso_lift_link" type="string"/>
+    <param name="optical_frame" value="/head_mount_kinect_rgb_optical_frame" type="string"/>
+  </node>
+</launch>
