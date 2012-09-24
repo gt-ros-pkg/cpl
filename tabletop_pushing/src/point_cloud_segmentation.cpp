@@ -236,9 +236,9 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   ROS_WARN_STREAM("Finding tabletop objects MPS!");
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
-  ne.setMaxDepthChangeFactor (0.03f);
-  ne.setNormalSmoothingSize (20.0f);
-  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
+  ne.setMaxDepthChangeFactor(0.03f);
+  ne.setNormalSmoothingSize(20.0f);
+  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud(new pcl16::PointCloud<pcl16::Normal>);
   ne.setInputCloud(input_cloud.makeShared());
   ne.compute(*normal_cloud);
 
@@ -306,13 +306,16 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     Eigen::Vector4f model = regions[i].getCoefficients();
     // TODO: Save object counter
     XYZPointCloud boundary_cloud;
-    boundary_cloud.points = regions[i].getContour ();
+    boundary_cloud.points = regions[i].getContour();
+    boundary_cloud.header.frame_id = input_cloud.header.frame_id;
+    boundary_cloud.header.stamp = ros::Time(0);
+    ROS_INFO_STREAM("Boundary cloud header: " << boundary_cloud.header.frame_id);
     printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
             po.centroid[0], po.centroid[1], po.centroid[2],
             model[0], model[1], model[2], model[3],
             boundary_cloud.points.size ());
     projectPointCloudIntoImage(boundary_cloud, obj_img, cur_camera_header_.frame_id, (i+1)*60);
-
+    pcl16::copyPointCloud(boundary_cloud, po.cloud);
   }
   cv::imshow("regions", obj_img);
   cv::waitKey();
