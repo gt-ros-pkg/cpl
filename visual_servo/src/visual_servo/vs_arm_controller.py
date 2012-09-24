@@ -37,7 +37,6 @@ from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
 import tf
 from visual_servo.srv import *
-from std_srvs.srv import Empty
 # import tabletop_pushing.position_feedback_push_node as pn
 
 import visual_servo.position_feedback_push_node as pn
@@ -54,48 +53,34 @@ RIGHT_ARM_READY_JOINTS = np.matrix([[-0.42427649, 0.0656137,
                                      15.78839978, -1.64163257,
                                      8.64421842e+01]]).T
 
-class VNode:
+class ArmController:
 
     def __init__(self):
 
-        # Setup parameters
-        self.vel_sat_param = rospy.get_param('~vel_sat_param', 0.20)
-        self.vel_scale_param = rospy.get_param('~vel_scale_param', 0.20)
-
+        rospy.loginfo('Initializing Arm Controller')
         # Initialize vel controller
         self.pn = pn.PositionFeedbackPushNode()
         self.l_cart_twist_pub = self.pn.l_arm_cart_vel_pub
+        self.r_cart_twist_pub = self.pn.r_arm_cart_vel_pub
         self.l_cart_pub = self.pn.l_arm_cart_pub
+        self.r_cart_pub = self.pn.r_arm_cart_pub
         self.pn.init_spine_pose()
         self.pn.init_head_pose(self.pn.head_pose_cam_frame)
         self.pn.init_arms()
-        self.pn.gripper_open()
+        # open both gripper for init
+        self.pn.gripper_open('l')
+        self.pn.gripper_open('r')
 
         # self.init_arm_servo()
         self.pn.switch_to_cart_controllers()
 
-        self.which_arm = 'l'
+        # Setup parameters
+        self.vel_sat_param = rospy.get_param('/arm_controller/vel_sat_param', 0.20)
+        self.vel_scale_param = rospy.get_param('/arm_controller/vel_scale_param', 0.20)
 
         rospy.loginfo('Done moving to robot initial pose')
 
         # self.pn.gripper_pose()
-
-    # util
-    #
-    def init_arm_servo(self, which_arm='l'):
-        '''
-        Move the arm to the initial pose to be out of the way for viewing the
-        tabletop
-        '''
-        if which_arm == 'l':
-            ready_joints = LEFT_ARM_READY_JOINTS
-        else:
-            ready_joints = RIGHT_ARM_READY_JOINTS
-
-        rospy.loginfo('Moving %s_arm to init servo pose' % which_arm)
-        self.pn.set_arm_joint_pose(ready_joints, which_arm)
-        rospy.loginfo('Moved %s_arm to init servo pose' % which_arm)
-
 
     def adjust_velocity(self, vel):
       ret = vel * self.vel_scale
@@ -107,19 +92,19 @@ class VNode:
 
     def handle_pose_request(self, req):
       pose = req.p # PoseStamped
-      #pose.pose.orientation.x = -0.7071
-      #pose.pose.orientation.y = 0
-      #pose.pose.orientation.z = 0.7071
-      #pose.pose.orientation.w = 0
+      which_arm = req.arm
+      if which_arm == 'l':
+        self.pn.move_to_cart_pose(pose, 'l')
+      else:
+        self.pn.move_to_cart_pose(pose, 'r')
 
-      self.pn.move_to_cart_pose(pose, 'l')
       rospy.loginfo(pose)
-      return {'result': 0}
-      # return VisualServoTwistResponse('{0}')
 
     def handle_twist_request(self, req):
       t = req.twist # service call
       e = req.error
+      which_arm = req.arm
+
       self.vel_scale = sqrt(e + self.vel_scale_param)
       self.vel_sat = sqrt(e * self.vel_sat_param)
       if self.vel_sat > 0.08: 
@@ -137,14 +122,14 @@ class VNode:
         twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
         twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
         twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-        if self.which_arm == 'l':
+        if which_arm == 'l':
             vel_pub = self.pn.l_arm_cart_vel_pub
             posture_pub = self.pn.l_arm_vel_posture_pub
+            m = self.pn.get_desired_posture('l')
         else:
             vel_pub = self.pn.r_arm_cart_vel_pub
             posture_pub = self.pn.r_arm_vel_posture_pub
-
-        m = self.pn.get_desired_posture('l')
+            m = self.pn.get_desired_posture('r')
         posture_pub.publish(m)
         vel_pub.publish(twist)
 
@@ -158,19 +143,19 @@ class VNode:
            twist.twist.angular.y, t.twist.angular.y, \
            twist.twist.angular.z, t.twist.angular.z)
       except rospy.ServiceException, e:
-        self.pn.stop_moving_vel('l')
+        if which_arm == 'l':
+          self.pn.stop_moving_vel('l')
+        else:
+          self.pn.stop_moving_vel('r')
 
       return VisualServoTwistResponse()
 
     def handle_init_request(self, req):
       self.pn.init_arms()
-      self.pn.gripper_open()
-      return EmptyResponse()
 
 if __name__ == '__main__':
   try:
-    node = VNode()
-
+    node = ArmController()
     rospy.loginfo('Done initializing... Now advertise the Service')
     rospy.Service('vs_pose', VisualServoPose , node.handle_pose_request)
     rospy.Service('vs_twist', VisualServoTwist , node.handle_twist_request)
