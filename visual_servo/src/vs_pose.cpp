@@ -250,6 +250,7 @@ class VisualServoNode
             ROS_INFO("Phase Settle: Move Gripper to Init Position");
             // Move Hand to Some Preset Pose
             visual_servo::VisualServoPose p_srv = formPoseService(0.62, 0.05, -0.1);
+            p_srv.request.arm = "l";
             if (p_client_.call(p_srv))
             {
               PHASE = VS_CONTR_1;
@@ -257,6 +258,8 @@ class VisualServoNode
             else
             {
               ROS_WARN("Failed to put the hand in initial configuration");
+              ROS_WARN("For debug purpose, just skipping to the next step");
+              PHASE = VS_CONTR_1;
             }
           }
           break;
@@ -269,11 +272,14 @@ class VisualServoNode
             p.pose.position.x = 0.55;
             p.pose.position.y = 0.2;
             p.pose.position.z = 0.05;
-
             goal.pose = p;
+
+            double timeout = 30.0;
+            ROS_INFO("Sending Goal [%.3f %.3f %.3f] (TO = %.1f)", p.pose.position.x,
+            p.pose.position.y, p.pose.position.z, timeout);
             l_vs_client_->sendGoal(goal);
 
-            bool finished_before_timeout = l_vs_client_->waitForResult(ros::Duration(30.0));
+            bool finished_before_timeout = l_vs_client_->waitForResult(ros::Duration(timeout));
 
             if (finished_before_timeout)
             {
@@ -305,14 +311,11 @@ class VisualServoNode
       }
     }
 
-#ifdef DISPLAY
     void setDisplay()
     {
       cv::imshow("in", cur_orig_color_frame_); 
       cv::waitKey(display_wait_ms_);
     }
-#endif
-
 
     void initializeService()
     {

@@ -97,8 +97,8 @@ class ArmController:
         self.pn.move_to_cart_pose(pose, 'l')
       else:
         self.pn.move_to_cart_pose(pose, 'r')
-
       rospy.loginfo(pose)
+      return {'result': 0}
 
     def handle_twist_request(self, req):
       t = req.twist # service call
@@ -107,9 +107,8 @@ class ArmController:
 
       self.vel_scale = sqrt(e + self.vel_scale_param)
       self.vel_sat = sqrt(e * self.vel_sat_param)
-      if self.vel_sat > 0.08: 
-        self.vel_sat =  0.08 
-      # self.vel_sat = self.vel_sat_param
+      if self.vel_sat > 0.08:
+        self.vel_sat =  0.08
       try:
         twist = TwistStamped()
         twist.header.stamp = rospy.Time(0)

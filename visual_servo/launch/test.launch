@@ -1,7 +1,7 @@
 <launch>
   <!-- <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> -->
   <!-- <include file="$(find visual_servo)/launch/kinect_head.launch"/>  -->
-  <node name="test_node" pkg="visual_servo" type="test" respawn="false" output="screen">
+  <node name="test_node" pkg="visual_servo" type="tester" respawn="false" output="screen">
 
     <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
     <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 

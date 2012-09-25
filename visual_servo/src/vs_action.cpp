@@ -235,7 +235,8 @@ class VisualServoAction
     void goalCB()
     {
       goal_p_ = as_.acceptNewGoal()->pose;
-      ROS_INFO("[vsaction] \e[1;34m Goal Accepted");
+      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: [%.3f %.3f %.3f]", goal_p_.pose.position.x,
+      goal_p_.pose.position.y, goal_p_.pose.position.z);
       setTimer(max_exec_time_);
       return;
     }
@@ -248,7 +249,7 @@ class VisualServoAction
         const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     {
       if (!as_.isActive())
-        return; 
+        return;
 
       // Store camera information only once
       if (!camera_initialized_)
@@ -292,6 +293,7 @@ class VisualServoAction
 
       // setting action values
       feedback_.error = err;
+      feedback_.ee = tape_features_p_;
       result_.error = err;
 
       if (v_client_.call(v_srv)){}
@@ -299,10 +301,12 @@ class VisualServoAction
       // termination condition
       if (v_srv.request.error < vs_err_term_threshold_)
       {
+        ROS_INFO("\e[1;31mSuccess!");
         as_.setSucceeded(result_);
       }
       else if (isExpired())
       {
+        ROS_WARN("Failed to go to the goal in time given. Aborting");
         as_.setAborted(result_, "timeout");
       }
     }
