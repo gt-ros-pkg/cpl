@@ -241,15 +241,18 @@ class VisualServoNode
             ROS_INFO("Initializing Services and Robot Configuration");
             std_srvs::Empty e;
             i_client_.call(e);
-            PHASE = SETTLE;
+            PHASE = VS_CONTR_1;
           }
           break;
 
-        case SETTLE:
+        case VS_CONTR_1:
           {
-            ROS_INFO("Phase Settle: Move Gripper to Init Position");
-            // Move Hand to Some Preset Pose
-            visual_servo::VisualServoPose p_srv = formPoseService(0.62, 0.05, -0.1);
+            l_vs_client_ = new VisualServoClient(n_, "l_vs_controller/vsaction");
+            while(!l_vs_client_->waitForServer(ros::Duration(5.0))){
+              ROS_INFO("Waiting for Visual Servo action...");
+            }
+
+            visual_servo::VisualServoPose p_srv = formPoseService(0.45, 0.13, 0.05);
             p_srv.request.arm = "l";
             if (p_client_.call(p_srv))
             {
@@ -258,20 +261,20 @@ class VisualServoNode
             else
             {
               ROS_WARN("Failed to put the hand in initial configuration");
-              ROS_WARN("For debug purpose, just skipping to the next step");
-              PHASE = VS_CONTR_1;
             }
-          }
-          break;
 
-        case VS_CONTR_1:
-          {
+            sleep(3);
+
             // send a goal to the action
             visual_servo::VisualServoGoal goal;
             PoseStamped p;
-            p.pose.position.x = 0.55;
-            p.pose.position.y = 0.2;
-            p.pose.position.z = 0.05;
+            p.pose.position.x = 0.7;
+            p.pose.position.y = 0.08;
+            p.pose.position.z = -.12;
+            p.pose.orientation.x = -0.062;
+            p.pose.orientation.y = 0.0291;
+            p.pose.orientation.z = 0.0402;
+            p.pose.orientation.w = 0.9968;
             goal.pose = p;
 
             double timeout = 30.0;
@@ -327,10 +330,6 @@ class VisualServoNode
 
       // uncomment below depending on which arm you want
       // l_vs_client_ = new VisualServoClient(n_, "r_vs_controller/vsaction");
-      l_vs_client_ = new VisualServoClient(n_, "l_vs_controller/vsaction");
-      while(!l_vs_client_->waitForServer(ros::Duration(5.0))){
-        ROS_INFO("Waiting for Visual Servo action...");
-      }
     }
 
 
@@ -350,7 +349,7 @@ class VisualServoNode
 
     visual_servo::VisualServoPose formPoseService(float px, float py, float pz)
     {
-      return VisualServoMsg::createPoseMsg(px, py, pz, -0.4582, 0, 0.8889, 0);
+      return VisualServoMsg::createPoseMsg(px, py, pz, 0, 0, 0, 1);
     }
 
     void printMatrix(cv::Mat_<double> in)

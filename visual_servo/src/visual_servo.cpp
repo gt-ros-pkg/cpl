@@ -413,7 +413,14 @@ class VisualServo
       // matrix-current rotation
       cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).t();
       cv::Mat ang_diff = -1*MatDiffAngle(mcrot, mgrot); 
-
+      /*
+      printf("vs: ");
+      printf("%f %f %f %f\n", gquat.x, gquat.y, gquat.z, gquat.w);
+      printf("%f %f %f %f\n", cquat.x, cquat.y, cquat.z, cquat.w);
+      printMatrix(mcrot.t());
+      printMatrix(mgrot.t());
+      printMatrix(ang_diff.t());
+      */
       // idk why but this fixes the problem... 
       // this or the problem is at diffAngle with large +ve and -ve angles
       ang_diff.at<float>(2) = -ang_diff.at<float>(2); 

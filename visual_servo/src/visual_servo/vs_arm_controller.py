@@ -97,6 +97,7 @@ class ArmController:
         self.pn.move_to_cart_pose(pose, 'l')
       else:
         self.pn.move_to_cart_pose(pose, 'r')
+      rospy.loginfo('[arm_controller] pose')
       rospy.loginfo(pose)
       return {'result': 0}
 
@@ -133,6 +134,7 @@ class ArmController:
         vel_pub.publish(twist)
 
         # after(before) adjustment
+        rospy.loginfo('[arm_controller] twist')
         rospy.loginfo('[e=%.4f][sca=%.4f][sat=%.4f] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', e, self.vel_scale, self.vel_sat, \
            twist.twist.linear.x, t.twist.linear.x, \
            twist.twist.linear.y, t.twist.linear.y, \

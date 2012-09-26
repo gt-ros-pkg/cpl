@@ -97,6 +97,10 @@
 // floating point mod
 #define fmod(a,b) a - (float)((int)(a/b)*b)
 
+#define NO_TAPE 2
+#define ESTIMATED 1
+#define MEASURED 0
+
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::PointCloud2> MySyncPolicy;
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 
@@ -194,13 +198,13 @@ class VisualServoAction
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
 
     // color segmentation parameters
-    n_private_.param("target_hue_value", target_hue_value_, 10);
-    n_private_.param("target_hue_threshold", target_hue_threshold_, 20);
-    n_private_.param("gripper_tape_hue_value", gripper_tape_hue_value_, 180);
+    n_private_.param("target_hue_value", target_hue_value_, 350);
+    n_private_.param("target_hue_threshold", target_hue_threshold_, 48);
+    n_private_.param("gripper_tape_hue_value", gripper_tape_hue_value_, 200);
     n_private_.param("gripper_tape_hue_threshold", gripper_tape_hue_threshold_, 50);
-    n_private_.param("default_sat_bot_value", default_sat_bot_value_, 40);
-    n_private_.param("default_sat_top_value", default_sat_top_value_, 40);
-    n_private_.param("default_val_value", default_val_value_, 200);
+    n_private_.param("default_sat_bot_value", default_sat_bot_value_, 20);
+    n_private_.param("default_sat_top_value", default_sat_top_value_, 100);
+    n_private_.param("default_val_value", default_val_value_, 100);
     n_private_.param("min_contour_size", min_contour_size_, 10.0);
 
     // others
@@ -216,7 +220,7 @@ class VisualServoAction
 
     // Setup ros node connections
     sync_.registerCallback(&VisualServoAction::sensorCallback, this);
-    v_client_ = n_.serviceClient<visual_servo::VisualServoTwist>("vs_twist");
+    v_client_ = n_.serviceClient<visual_servo::VisualServoTwist>("/vs_twist");
 
     gripper_tape_ = GripperTape();
     gripper_tape_.setOffset(pcl::PointXYZ(tape1_offset_x_, tape1_offset_y_, tape1_offset_z_));
@@ -235,8 +239,9 @@ class VisualServoAction
     void goalCB()
     {
       goal_p_ = as_.acceptNewGoal()->pose;
-      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: [%.3f %.3f %.3f]", goal_p_.pose.position.x,
-      goal_p_.pose.position.y, goal_p_.pose.position.z);
+      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f]", goal_p_.pose.position.x,goal_p_.pose.position.y, goal_p_.pose.position.z,
+goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.z
+      );
       setTimer(max_exec_time_);
       return;
     }
@@ -248,9 +253,6 @@ class VisualServoAction
     void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg, 
         const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     {
-      if (!as_.isActive())
-        return;
-
       // Store camera information only once
       if (!camera_initialized_)
       {
@@ -259,6 +261,9 @@ class VisualServoAction
         vs_->setCamInfo(cam_info_);
         ROS_INFO("[vsaction]Initialization: Camera Info Done");
       }
+
+      if (!as_.isActive())
+        return;
 
       cv::Mat color_frame, depth_frame;
       cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
@@ -279,7 +284,16 @@ class VisualServoAction
       cur_point_cloud_ = cloud;
 
       // tape features are updated (can be interpolated too)
-      gripper_pose_estimated_ = updateGripperFeatures();
+      int u = updateGripperFeatures();
+
+      // Draw Features
+      for (unsigned int i = 0; i < tape_features_.size(); i++)
+      {
+        cv::Point p = tape_features_.at(i).image;
+        cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+      }
+      cv::imshow("in", cur_orig_color_frame_); 
+      cv::waitKey(5);
 
       std::vector<PoseStamped> goals, feats;
       goals.push_back(goal_p_);
@@ -298,6 +312,7 @@ class VisualServoAction
 
       if (v_client_.call(v_srv)){}
       as_.publishFeedback(feedback_);
+
       // termination condition
       if (v_srv.request.error < vs_err_term_threshold_)
       {
@@ -329,20 +344,19 @@ class VisualServoAction
     }
 
     // Detect Tapes on Gripepr and update its position
-    bool updateGripperFeatures()
+    int updateGripperFeatures()
     {
-      bool estimated = false;
+      int ret = MEASURED;
       int default_tape_num = 3;
 
       PoseStamped p;
-      if (which_arm_.compare("l" == 0))
+      if (which_arm_.compare("l") == 0)
           p.header.frame_id = "/l_gripper_tool_frame";
       else
         p.header.frame_id = "/r_gripper_tool_frame";
       p.pose.orientation.w = 1;
       tf_->transformPose(workspace_frame_, p, p);
       Point fkpp = p.pose.position;
-
 
       //////////////////////
       // Hand 
@@ -367,9 +381,9 @@ class VisualServoAction
         {
           ROS_WARN("[vsaction]Cannot find tape in image and do not have enough historical data to interpolate");
           tape_features_p_ = PoseStamped();
-          return false;
+          return NO_TAPE;
         }
-        estimated = true;
+        ret = ESTIMATED;
         std::vector<pcl::PointXYZ> estimated_pose;
         estimated_pose.resize(default_tape_num);
         tape_features_.resize(default_tape_num);
@@ -387,7 +401,7 @@ class VisualServoAction
       QuaternionStamped q;
       q.quaternion.w = 1;
 
-      if (which_arm_.compare("l" == 0))
+      if (which_arm_.compare("l") == 0)
         q.header.frame_id = "/l_gripper_tool_frame";
       else
         q.header.frame_id = "/r_gripper_tool_frame";
@@ -396,7 +410,7 @@ class VisualServoAction
 
       // we aren't going to let controllers rotate at all when occluded;
       // vision vs. forward kinematics
-      if (!estimated)
+      if (ret == MEASURED)
       {
         if (v_fk_diff_.size() == 0)
           v_fk_diff_.resize(default_tape_num); // initialize in case it isn't
@@ -407,12 +421,22 @@ class VisualServoAction
           v_fk_diff_.at(i).z = tape_features_.at(i).workspace.z - fkpp.z;
         }
       }
-      return estimated;
+      return ret;
     }
 
     float getError(PoseStamped a, PoseStamped b)
     {
+      ROS_DEBUG("[vsaction] getError: [%.3f %.3f %.3f] vs [%.3f %.3f %.3f]",
+      a.pose.position.x, a.pose.position.y, a.pose.position.z,
+      b.pose.position.x, b.pose.position.y, b.pose.position.z);
       float e(0.0);
+      /*
+      e += pow(a.pose.orientation.x - b.pose.orientation.x, 2);
+      e += pow(a.pose.orientation.y - b.pose.orientation.y, 2);
+      e += pow(a.pose.orientation.z - b.pose.orientation.z, 2);
+      e += pow(a.pose.orientation.w - b.pose.orientation.w, 2);
+      e /= 2;
+      */
       e += pow(a.pose.position.x - b.pose.position.x, 2);
       e += pow(a.pose.position.y - b.pose.position.y, 2);
       e += pow(a.pose.position.z - b.pose.position.z, 2);
@@ -699,8 +723,8 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "vsaction");
 
   log4cxx::LoggerPtr my_logger = log4cxx::Logger::getLogger(ROSCONSOLE_DEFAULT_NAME);
-  my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Info]);
-
+  //my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Info]);
+  my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Debug]);
   ros::NodeHandle n;
   std::string which_arm = argv[1];
   VisualServoAction vsa(n, which_arm);

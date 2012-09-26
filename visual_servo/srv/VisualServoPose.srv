@@ -1,3 +1,4 @@
 geometry_msgs/PoseStamped p
 string arm
 ---
+int8 result

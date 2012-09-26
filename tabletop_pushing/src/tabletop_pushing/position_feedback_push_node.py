@@ -49,6 +49,8 @@ from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt, atan2
 from controller_analysis import ControlAnalysisIO
 import sys
+import actionlib
+import visual_servo.msg
 
 from push_primitives import *
 
@@ -294,6 +296,12 @@ class PositionFeedbackPushNode:
 
         self.raise_and_look_serice = rospy.Service(
             'raise_and_look', RaiseAndLook, self.raise_and_look)
+
+        ## TODO: change here
+        self.vs_action_l_client = actionlib.SimpleActionClient('l_vs_controller/vsaction', visual_servo.msg.VisualServoAction)
+        self.vs_action_l_client.wait_for_server()
+        self.vs_action_r_client = actionlib.SimpleActionClient('r_vs_controller/vsaction', visual_servo.msg.VisualServoAction)
+        self.vs_action_r_client.wait_for_server()
     #
     # Initialization functions
     #
@@ -887,6 +895,16 @@ class PositionFeedbackPushNode:
         self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
         if is_pull:
+            ## changes
+            # hopefully this will make the gripper close enough
+            goal = visual_servo.msg.VisualServoGoal(pose = start_pose)
+            if which_arm == 'l':
+              vs_client = self.vs_action_l_client
+            else
+              vs_client = self.vs_action_r_client
+            vs_client.send_goal(goal)
+            vs_client.wait_for_result(20)
+
             rospy.loginfo('Moving forward to grasp pose')
             pose_err, err_dist = self.move_relative_gripper(
                 np.matrix([self.gripper_pull_forward_dist, 0, 0]).T, which_arm,

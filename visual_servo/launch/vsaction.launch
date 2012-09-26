@@ -11,12 +11,20 @@
   <group if="$(arg right_arm)" ns="r_vs_controller">
   <!-- we need the argument to use specific arm -->
     <node name="visual_servo_action_node"  output="screen" pkg="visual_servo" type="vsaction"
-    args="r" />
+    args="r" >
+      <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
+      <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
+      <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
+    </node>
   </group>
 
 
   <group if="$(arg left_arm)" ns="l_vs_controller">
     <node name="visual_servo_action_node" output="screen"
-          args="l" pkg="visual_servo" type="vsaction" />
+          args="l" pkg="visual_servo" type="vsaction" >
+      <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
+      <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
+      <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
+    </node>
   </group>
 </launch>
