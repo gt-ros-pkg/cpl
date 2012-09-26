@@ -209,7 +209,7 @@ class VisualServoAction
 
     // others
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
-    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.001);
+    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.005);
     n_private_.param("pose_servo_z_offset", pose_servo_z_offset_, 0.045);
     n_private_.param("place_z_velocity", place_z_velocity_, -0.025);
     n_private_.param("gripper_tape1_offset_x", tape1_offset_x_, 0.02);
@@ -295,6 +295,11 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       cv::imshow("in", cur_orig_color_frame_); 
       cv::waitKey(5);
 
+      // exit before computing bad vs values
+      if (u == NO_TAPE)
+        return;
+
+      // get the VS value 
       std::vector<PoseStamped> goals, feats;
       goals.push_back(goal_p_);
       feats.push_back(tape_features_p_);
@@ -302,8 +307,9 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       // setting arm_controller values
       visual_servo::VisualServoTwist v_srv = vs_->getTwist(goals,feats);
       v_srv.request.arm = which_arm_;
-      float err = getError(goal_p_, tape_features_p_);
-      v_srv.request.error = err;
+      //float err = getError(goal_p_, tape_features_p_);
+      //v_srv.request.error = err;
+      float err = v_srv.request.error;
 
       // setting action values
       feedback_.error = err;

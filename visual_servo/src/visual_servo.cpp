@@ -200,7 +200,7 @@ class VisualServo
 
     // others
     n_private_.param("gain_vel", gain_vel_, 1.0);
-    n_private_.param("gain_rot", gain_rot_, 1.0);
+    n_private_.param("gain_rot", gain_rot_, 0.2);
     // n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
 
     try
@@ -371,7 +371,20 @@ class VisualServo
     {
       cv::Mat velpos = -gain_vel_*error_pose;
       cv::Mat velrot = -gain_rot_*error_rot;
-      return VisualServoMsg::createTwistMsg(velpos, velrot);
+      visual_servo::VisualServoTwist t = VisualServoMsg::createTwistMsg(velpos, velrot);
+
+      cv::pow(error_pose,2,error_pose); 
+      cv::pow(error_rot,2,error_rot);
+      float e = 0;
+
+      // pose error in meters
+      for (int i = 0; i < error_pose.rows; i++)
+        e += error_pose.at<float>(i); 
+      // pose error in degrees (need to scale it down...)
+      for (int i = 0; i < error_rot.rows; i++)
+        e += error_rot.at<float>(i)/10; 
+      t.request.error = e; 
+      return t;
     }
 
     visual_servo::VisualServoTwist PBVSTwist(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
