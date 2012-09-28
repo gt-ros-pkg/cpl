@@ -179,7 +179,6 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
   // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
   // projectPointCloudIntoImage(plane_cloud, plane_img, cur_camera_header_.frame_id, 255);
   // cv::imshow("table plane", plane_img);
-
   return table_centroid;
 }
 
