@@ -846,8 +846,9 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             robot_gripper = self.robot.right_gripper
 
-        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
-        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+        if request.arm_init:
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -917,9 +918,9 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
 
-
-        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
-        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+        if request.arm_init:
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
         # Rotate wrist before moving to position
         rospy.logdebug('Rotating wrist for sweep')
         arm_pose = self.get_arm_joint_pose(which_arm)
@@ -977,8 +978,9 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.w = q[3]
 
 
-        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
-        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+        if request.arm_init:
+            rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+            self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
 
         if not request.high_arm_init:
             # Rotate wrist before moving to position

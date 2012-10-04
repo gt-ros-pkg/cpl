@@ -227,6 +227,12 @@ class TabletopExecutive:
             push_dist = max(min(push_dist, self.max_push_dist),
                             self.min_push_dist)
 
+            if i == 0:
+                code_in = raw_input('To perform singulation push press <Enter>: ')
+                if code_in.lower().startswith('q'):
+                    rospy.loginfo('Qutting on user request')
+                    return
+
             if _OFFLINE:
                 continue
             if action_primitive == GRIPPER_PUSH:
@@ -711,7 +717,7 @@ class TabletopExecutive:
         push_req = GripperPushRequest()
         push_req.start_point.header = pose_res.header
         push_req.start_point.point = pose_res.start_point
-        push_req.arm_init = True
+        push_req.arm_init = False
         push_req.arm_reset = True
         push_req.high_arm_init = high_init
 
@@ -739,6 +745,7 @@ class TabletopExecutive:
         sweep_req = GripperPushRequest()
         sweep_req.left_arm = (which_arm == 'l')
         sweep_req.right_arm = not sweep_req.left_arm
+        sweep_req.arm_init = True
         sweep_req.high_arm_init = high_init
 
         # Correctly set the wrist yaw
