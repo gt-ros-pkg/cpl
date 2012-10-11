@@ -8,14 +8,9 @@
     <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
     <param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/>
 
-    <!-- <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> -->
-    <!--<remap from="depth_image_topic" to="/kinect_head/depth/image"/> -->
-    <!--<remap from="point_cloud_topic" to="/kinect_head/depth/points"/> -->
-    <!--<param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/> -->
-
-    <!-- IMPORTANT ONE -->
-    <param name="vs_err_term_thres" value="0.00095" type="double"/>
+    <param name="vs_err_term_thres" value="0.00015" type="double"/>
     <param name="jacobian_type" value="1" type="int"/>
+    <param name="test_type" value="0" type="int"/>
 
     <param name="target_hue_value" value="350" type="int"/>
     <param name="target_hue_threshold" value="48" type="int"/>
@@ -26,8 +21,9 @@
     <param name="default_val_value" value="100" type="int"/>
 
     <!-- gripper_tape1_offset_[x,y,z]: offset from fingers -->
-    <param name="gripper_tape1_offset_x" value="0.02" type="double"/>
-    <param name="gripper_tape1_offset_z" value="0.07" type="double"/>
+    <param name="gripper_tape1_offset_x" value="-0.08" type="double"/>
+    <param name="gripper_tape1_offset_y" value="0.05" type="double"/>
+    <param name="gripper_tape1_offset_z" value="0.03" type="double"/>
 
     <param name="place_z_velocity" value="-0.025" type="double"/>
 

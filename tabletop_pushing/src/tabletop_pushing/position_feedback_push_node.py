@@ -893,18 +893,16 @@ class PositionFeedbackPushNode:
 
         # Move to start pose
         self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+        ## changes
+        # hopefully this will make the gripper close enough
+        goal = visual_servo.msg.VisualServoGoal(pose = start_pose)
+        if which_arm == 'l':
+          vs_client = self.vs_action_l_client
+          vs_client.send_goal(goal)
+          vs_client.wait_for_result()
+          rospy.loginfo('Used actionlib')
         rospy.loginfo('Done moving to start point')
         if is_pull:
-            ## changes
-            # hopefully this will make the gripper close enough
-            goal = visual_servo.msg.VisualServoGoal(pose = start_pose)
-            if which_arm == 'l':
-              vs_client = self.vs_action_l_client
-            else
-              vs_client = self.vs_action_r_client
-            vs_client.send_goal(goal)
-            vs_client.wait_for_result(20)
-
             rospy.loginfo('Moving forward to grasp pose')
             pose_err, err_dist = self.move_relative_gripper(
                 np.matrix([self.gripper_pull_forward_dist, 0, 0]).T, which_arm,

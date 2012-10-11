@@ -152,7 +152,8 @@ class TabletopExecutive:
         # Singulation Push proxy
         if _USE_LEARN_IO:
             self.learn_io = PushLearningIO()
-            learn_file_name = '/u/thermans/data/new/aff_learn_out_'+str(rospy.get_time())+'.txt'
+            # learn_file_name = '/u/thermans/data/new/aff_learn_out_'+str(rospy.get_time())+'.txt'
+            learn_file_name = '/u/swl33/data/new/aff_learn_out_'+str(rospy.get_time())+'.txt'
             rospy.loginfo('Opening learn file: '+learn_file_name)
             self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(

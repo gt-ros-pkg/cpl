@@ -28,6 +28,7 @@
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
   <depend package="pr2_camera_self_filter"/>
+  <depend package="visual_servo"/>
   <export>
     <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lpoint_cloud_segmentation" />
   </export>

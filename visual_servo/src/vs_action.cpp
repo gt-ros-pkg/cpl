@@ -209,7 +209,7 @@ class VisualServoAction
 
     // others
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
-    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.005);
+    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.0015);
     n_private_.param("pose_servo_z_offset", pose_servo_z_offset_, 0.045);
     n_private_.param("place_z_velocity", place_z_velocity_, -0.025);
     n_private_.param("gripper_tape1_offset_x", tape1_offset_x_, 0.02);
@@ -242,10 +242,13 @@ class VisualServoAction
       ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f]", goal_p_.pose.position.x,goal_p_.pose.position.y, goal_p_.pose.position.z,
 goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.z
       );
+
+      // parameter resets
+      max_no_tape_ = 0;
       setTimer(max_exec_time_);
+
       return;
     }
-
 
     /**
      * Called when Kinect information is avaiable. Refresh rate of about 30Hz 
@@ -297,6 +300,12 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
 
       // exit before computing bad vs values
       if (u == NO_TAPE)
+        // if we couldn't find no tape for 60 frames (about 2 seconds)
+        if (max_no_tape_++ > 60)
+        {
+          ROS_WARN("Cannot find the end-effector. Aborting");
+          as_.setAborted(result_, "no_tape");
+        }
         return;
 
       // get the VS value 
@@ -661,6 +670,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
     std::string which_arm_;
     ros::Time timer_;
     double max_exec_time_;
+    unsigned int max_no_tape_;
 
     visual_servo::VisualServoFeedback feedback_;
     visual_servo::VisualServoResult result_;

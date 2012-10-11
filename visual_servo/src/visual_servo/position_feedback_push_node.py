@@ -145,7 +145,7 @@ class PositionFeedbackPushNode:
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
         self.use_jinv = rospy.get_param('~use_jinv', True)
-        self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
+        self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', False)
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
@@ -1342,23 +1342,23 @@ class PositionFeedbackPushNode:
         self.arm_mode = 'cart_mode'
         if self.use_jinv:
             self.cs.carefree_switch('r', '%s'+self.base_cart_controller_name,
-                                    '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+                                    '$(find visual_servo)/params/j_inverse_params_low.yaml')
             self.cs.carefree_switch('l', '%s'+self.base_cart_controller_name,
-                                    '$(find tabletop_pushing)/params/j_inverse_params_low.yaml')
+                                    '$(find visual_servo)/params/j_inverse_params_low.yaml')
         else:
             self.cs.carefree_switch('r', '%s'+self.base_cart_controller_name,
-                                    '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+                                    '$(find visual_servo)/params/j_transpose_task_params_pos_feedback_push.yaml')
             self.cs.carefree_switch('l', '%s'+self.base_cart_controller_name,
-                                    '$(find tabletop_pushing)/params/j_transpose_task_params_pos_feedback_push.yaml')
+                                    '$(find visual_servo)/params/j_transpose_task_params_pos_feedback_push.yaml')
 
         rospy.sleep(self.post_controller_switch_sleep)
 
     def init_vel_controllers(self):
         self.arm_mode = 'vel_mode'
         self.cs.carefree_switch('r', '%s'+self.base_vel_controller_name,
-                                '$(find tabletop_pushing)/params/j_inverse_params_custom.yaml')
+                                '$(find visual_servo)/params/j_inverse_params_custom.yaml')
         self.cs.carefree_switch('l', '%s'+self.base_vel_controller_name,
-                                '$(find tabletop_pushing)/params/j_inverse_params_custom.yaml')
+                                '$(find visual_servo)/params/j_inverse_params_custom.yaml')
 
     def switch_to_cart_controllers(self):
         if self.arm_mode != 'cart_mode':
