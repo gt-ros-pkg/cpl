@@ -57,6 +57,7 @@
 // TF
 #include <tf/transform_listener.h>
 #include <tf/transform_datatypes.h>
+#include <tf/transform_broadcaster.h>
 
 // PCL
 #include <pcl/point_cloud.h>
@@ -93,6 +94,7 @@
 #include <visual_servo/VisualServoTwist.h>
 #include <visual_servo/VisualServoPose.h>
 #include "visual_servo.cpp"
+#include "gripper_tape.cpp"
 
 // floating point mod
 #define fmod(a,b) a - (float)((int)(a/b)*b)
@@ -112,64 +114,6 @@ using geometry_msgs::Point;
 using visual_servo::VisualServoTwist;
 using visual_servo::VisualServoPose;
 
-class GripperTape
-{
-  /**
-   * Our gripper has three blue tapes used for gripper pose perception.
-   * These tapes are stored as follows: position away from gripper tip center (between l and r)
-   * Relative position of tape 1 and 2 from tape 0
-   * This will be replaced with better feature perception.
-   **/
-  public:
-    GripperTape()
-    {
-    }
-
-    void setTapeRelLoc(pcl::PointXYZ tape0, pcl::PointXYZ tape1, pcl::PointXYZ tape2)
-    {
-      tape1_loc_.x = tape1.x - tape0.x;
-      tape1_loc_.y = tape1.y - tape0.y;
-      tape1_loc_.z = tape1.z - tape0.z;
-      tape2_loc_.x = tape2.x - tape0.x;
-      tape2_loc_.y = tape2.y - tape0.y;
-      tape2_loc_.z = tape2.z - tape0.z;
-    }
-
-    // this is the offset from tip center to tape0
-    void setOffset(pcl::PointXYZ offset)
-    {
-      tape0_loc_ = offset;
-    }
-
-    std::vector<pcl::PointXYZ> getTapePoseFromXYZ(pcl::PointXYZ orig)
-    {
-      std::vector<pcl::PointXYZ> pts; pts.clear();
-      pcl::PointXYZ zero = addPointXYZ(orig, tape0_loc_);
-      pcl::PointXYZ one = addPointXYZ(zero, tape1_loc_);
-      pcl::PointXYZ two = addPointXYZ(zero, tape2_loc_);
-
-      pts.push_back(zero);
-      pts.push_back(one);
-      pts.push_back(two);
-
-      return pts;
-    }
-
-  private:
-    pcl::PointXYZ tape0_loc_;
-    pcl::PointXYZ tape1_loc_;
-    pcl::PointXYZ tape2_loc_;
-
-    pcl::PointXYZ addPointXYZ(pcl::PointXYZ a, pcl::PointXYZ b)
-    {
-      pcl::PointXYZ r;
-      r.x = a.x + b.x;
-      r.y = a.y + b.y;
-      r.z = a.z + b.z;
-      return r;
-    }
-};
-
 class VisualServoAction
 {
   public:
@@ -182,20 +126,31 @@ class VisualServoAction
       depth_sub_(n_, "depth_image_topic", 1),
       cloud_sub_(n_, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
-      it_(n_), tf_(), camera_initialized_(false)
+      it_(n_), tf_(), br_(), camera_initialized_(false)
   {
     vs_ = shared_ptr<VisualServo>(new VisualServo(JACOBIAN_TYPE_PSEUDO));
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
+    br_ = shared_ptr<tf::TransformBroadcaster>(new tf::TransformBroadcaster());
     which_arm_ = which_arm;
 
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
 
     std::string default_optical_frame = "/head_mount_kinect_rgb_optical_frame";
     n_private_.param("optical_frame", optical_frame_, default_optical_frame);
-    std::string default_workspace_frame = "/torso_lift_link";
-    n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
     std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
     n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
+    std::string default_workspace_frame = "/torso_lift_link";
+    n_private_.param("workspace_frame", workspace_frame_, default_workspace_frame);
+   std::string default_left_tool_frame = "/l_gripper_tool_frame";
+    n_private_.param("l_tool_frame", left_tool_frame_, default_left_tool_frame);
+    std::string default_right_tool_frame = "/r_gripper_tool_frame";
+    n_private_.param("r_tool_frame", right_tool_frame_, default_right_tool_frame);
+    if (which_arm_.compare("l") == 0)
+      tool_frame_ = left_tool_frame_;
+    else
+      tool_frame_ = right_tool_frame_;
+std::string default_task_frame = "/vs_goal_frame";
+    n_private_.param("task_frame", task_frame_, default_task_frame);
 
     // color segmentation parameters
     n_private_.param("target_hue_value", target_hue_value_, 350);
@@ -223,7 +178,6 @@ class VisualServoAction
     v_client_ = n_.serviceClient<visual_servo::VisualServoTwist>("/vs_twist");
 
     gripper_tape_ = GripperTape();
-    gripper_tape_.setOffset(pcl::PointXYZ(tape1_offset_x_, tape1_offset_y_, tape1_offset_z_));
 
     as_.registerGoalCallback(boost::bind(&VisualServoAction::goalCB, this));
     ROS_DEBUG("[vsaction] Initialization 0: Node init & Register Callback Done");
@@ -236,9 +190,22 @@ class VisualServoAction
     {
     }
 
+    void updateGoalTransform(PoseStamped p)
+    {
+      tf::Transform tr;
+      tr.setOrigin(tf::Vector3(p.pose.position.x, p.pose.position.y, p.pose.position.z));
+      tr.setRotation(tf::Quaternion(p.pose.orientation.x, p.pose.orientation.y,
+            p.pose.orientation.z, p.pose.orientation.w));
+      br_->sendTransform(tf::StampedTransform(tr, ros::Time::now(), workspace_frame_, task_frame_));
+    }
+
     void goalCB()
     {
-      goal_p_ = as_.acceptNewGoal()->pose;
+      // goal pose given is the pose in tool frame
+      tcp_goal_p_ = as_.acceptNewGoal()->pose;
+      updateGoalTransform(tcp_goal_p_);
+      goal_p_ = gripper_tape_.getTaskTape0Pose(tf_, task_frame_, workspace_frame_);
+
       ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f]", goal_p_.pose.position.x,goal_p_.pose.position.y, goal_p_.pose.position.z,
 goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.z
       );
@@ -301,7 +268,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       // exit before computing bad vs values
       if (u == NO_TAPE)
         // if we couldn't find no tape for 60 frames (about 2 seconds)
-        if (max_no_tape_++ > 60)
+        if (max_no_tape_++ > 40)
         {
           ROS_WARN("Cannot find the end-effector. Aborting");
           as_.setAborted(result_, "no_tape");
@@ -365,10 +332,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       int default_tape_num = 3;
 
       PoseStamped p;
-      if (which_arm_.compare("l") == 0)
-          p.header.frame_id = "/l_gripper_tool_frame";
-      else
-        p.header.frame_id = "/r_gripper_tool_frame";
+      p.header.frame_id = tool_frame_;
       p.pose.orientation.w = 1;
       tf_->transformPose(workspace_frame_, p, p);
       Point fkpp = p.pose.position;
@@ -415,13 +379,10 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       // ORIENT
       QuaternionStamped q;
       q.quaternion.w = 1;
-
-      if (which_arm_.compare("l") == 0)
-        q.header.frame_id = "/l_gripper_tool_frame";
-      else
-        q.header.frame_id = "/r_gripper_tool_frame";
+      q.header.frame_id = tool_frame_;
       tf_->transformQuaternion(workspace_frame_, q, q);
       tape_features_p_.pose.orientation = q.quaternion;
+      gripper_tape_.setTapeLoc(tf_, tool_frame_, tape_features_p_);
 
       // we aren't going to let controllers rotate at all when occluded;
       // vision vs. forward kinematics
@@ -436,6 +397,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
           v_fk_diff_.at(i).z = tape_features_.at(i).workspace.z - fkpp.z;
         }
       }
+
       return ret;
     }
 
@@ -638,7 +600,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       visual_servo::VisualServoTwist v_srv;
 
       // need this to mvoe the arm
-      v_srv.request.error = 1;
+      v_srv.request.error = -1;
       v_srv.request.arm = which_arm_;
       return v_client_.call(v_srv);
     }
@@ -683,6 +645,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
     image_transport::ImageTransport it_;
     sensor_msgs::CameraInfo cam_info_;
     shared_ptr<tf::TransformListener> tf_;
+    shared_ptr<tf::TransformBroadcaster> br_;
 
     // frames
     cv::Mat cur_color_frame_;
@@ -695,6 +658,10 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
     int num_downsamples_;
     std::string workspace_frame_;
     std::string optical_frame_;
+    std::string left_tool_frame_;
+    std::string right_tool_frame_;
+    std::string tool_frame_;
+    std::string task_frame_;
     bool camera_initialized_;
     bool desire_points_initialized_;
     std::string cam_info_topic_;
@@ -724,6 +691,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
     std::vector<VSXYZ> cur_goal_;
     std::vector<VSXYZ> goal_;
     PoseStamped goal_p_;
+    PoseStamped tcp_goal_p_;
     std::vector<VSXYZ> tape_features_;
     PoseStamped tape_features_p_;
     VSXYZ desired_;

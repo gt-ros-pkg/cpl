@@ -145,7 +145,9 @@ class PositionFeedbackPushNode:
         self.pressure_safety_limit = rospy.get_param('~pressure_limit',
                                                      2000)
         self.use_jinv = rospy.get_param('~use_jinv', True)
-        self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', False)
+        #self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', False)
+        self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
+
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'

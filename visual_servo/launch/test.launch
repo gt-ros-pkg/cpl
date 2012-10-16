@@ -1,6 +1,13 @@
 <launch>
   <!-- <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> -->
   <!-- <include file="$(find visual_servo)/launch/kinect_head.launch"/>  -->
+  <node name="arm_controller" pkg="visual_servo" output="screen" type="vs_controller.py">
+    <param name="vel_sat" value="0.75" type="double"/>
+    <param name="vel_scale_alpha" value="0.4" type="double"/>
+    <param name="vel_scale_beta" value="2.0" type="double"/>
+  </node>
+
+
   <node name="test_node" pkg="visual_servo" type="tester" respawn="false" output="screen">
 
     <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
@@ -8,7 +15,7 @@
     <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
     <param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/>
 
-    <param name="vs_err_term_thres" value="0.00015" type="double"/>
+    <param name="vs_err_term_thres" value="0.000075" type="double"/>
     <param name="jacobian_type" value="1" type="int"/>
     <param name="test_type" value="0" type="int"/>
 
@@ -21,8 +28,8 @@
     <param name="default_val_value" value="100" type="int"/>
 
     <!-- gripper_tape1_offset_[x,y,z]: offset from fingers -->
-    <param name="gripper_tape1_offset_x" value="-0.08" type="double"/>
-    <param name="gripper_tape1_offset_y" value="0.05" type="double"/>
+    <param name="gripper_tape1_offset_x" value="0.08" type="double"/>
+    <param name="gripper_tape1_offset_y" value="-0.05" type="double"/>
     <param name="gripper_tape1_offset_z" value="0.03" type="double"/>
 
     <param name="place_z_velocity" value="-0.025" type="double"/>
@@ -41,5 +48,7 @@
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="workspace_frame" value="/torso_lift_link" type="string"/>
     <param name="optical_frame" value="/head_mount_kinect_rgb_optical_frame" type="string"/>
-  </node>
+    <param name="tool_frame" value="/l_gripper_tool_frame" type="string"/>
+
+    </node>
 </launch>

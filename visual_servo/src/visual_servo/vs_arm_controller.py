@@ -111,27 +111,34 @@ class ArmController:
       if self.vel_sat > 0.08:
         self.vel_sat =  0.08
       try:
-        twist = TwistStamped()
-        twist.header.stamp = rospy.Time(0)
-        twist.header.frame_id = 'torso_lift_link'
+        # e < 0 == error or undefined
+        # set current joint angle to current joint angle
+        if e < 0 or (t.twist.linear.x == 0 and \
+           t.twist.linear.y == 0 and t.twist.linear.z == 0):
+          arm_pose = self.get_arm_joint_pose(which_arm)
+          self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+        else:
+          twist = TwistStamped()
+          twist.header.stamp = rospy.Time(0)
+          twist.header.frame_id = 'torso_lift_link'
 
-        # task specific gain control. we know that we are aligned in y... 
-        twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x)
-        twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y) 
-        twist.twist.linear.z  = self.adjust_velocity(t.twist.linear.z) 
-        twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
-        twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
-        twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-        if which_arm == 'l':
+          # task specific gain control. we know that we are aligned in y... 
+          twist.twist.linear.x  = self.adjust_velocity(t.twist.linear.x)
+          twist.twist.linear.y  = self.adjust_velocity(t.twist.linear.y) 
+          twist.twist.linear.z  = self.adjust_velocity(t.twist.linear.z) 
+          twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
+          twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
+          twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
+          if self.which_arm == 'l':
             vel_pub = self.pn.l_arm_cart_vel_pub
             posture_pub = self.pn.l_arm_vel_posture_pub
-            m = self.pn.get_desired_posture('l')
-        else:
+          else:
             vel_pub = self.pn.r_arm_cart_vel_pub
             posture_pub = self.pn.r_arm_vel_posture_pub
-            m = self.pn.get_desired_posture('r')
-        posture_pub.publish(m)
-        vel_pub.publish(twist)
+
+          m = self.pn.get_desired_posture('l')
+          posture_pub.publish(m)
+          vel_pub.publish(twist)
 
         # after(before) adjustment
         rospy.loginfo('[arm_controller] twist')

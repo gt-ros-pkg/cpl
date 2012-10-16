@@ -383,7 +383,8 @@ class VisualServo
       // pose error in degrees (need to scale it down...)
       for (int i = 0; i < error_rot.rows; i++)
         e += error_rot.at<float>(i)/50;
-      t.request.error = e; 
+      // t.request.error = e/error_pose.rows;
+      t.request.error = e;
       return t;
     }
 
@@ -702,7 +703,7 @@ class VisualServo
     cv::Point projectPointIntoImage(PointStamped cur_point,
         std::string target_frame, shared_ptr<tf::TransformListener> tf_)
     {
-      if (K.rows == 0 || K.cols == 0) {
+      if (K.rows == 0 || K.cols == 0 || K.at<float>(0,0) == 0) {
         // Camera intrinsic matrix
         K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
         K.convertTo(K, CV_32F);
@@ -713,6 +714,14 @@ class VisualServo
         // Transform point into the camera frame
         PointStamped image_frame_loc_m;
         tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
+        /*
+           ROS_INFO(">> %f, %f %f", 
+           K.at<float>(0,0),
+           K.at<float>(1,1),
+           K.at<float>(0,2)
+           );
+        //cur_point.point.x,cur_point.point.y,cur_point.point.z);
+         */
         // Project point onto the image
         img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
               K.at<float>(0,2)*image_frame_loc_m.point.z) /
@@ -723,7 +732,7 @@ class VisualServo
       }
       catch (tf::TransformException e)
       {
-        ROS_ERROR_STREAM(e.what());
+        ROS_ERROR("[vs]%s", e.what());
       }
       return img_loc;
     }
