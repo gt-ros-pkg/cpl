@@ -164,7 +164,7 @@ std::string default_task_frame = "/vs_goal_frame";
 
     // others
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
-    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.0015);
+    n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.00075);
     n_private_.param("pose_servo_z_offset", pose_servo_z_offset_, 0.045);
     n_private_.param("place_z_velocity", place_z_velocity_, -0.025);
     n_private_.param("gripper_tape1_offset_x", tape1_offset_x_, 0.02);
@@ -203,11 +203,8 @@ std::string default_task_frame = "/vs_goal_frame";
     {
       // goal pose given is the pose in tool frame
       tcp_goal_p_ = as_.acceptNewGoal()->pose;
-      updateGoalTransform(tcp_goal_p_);
-      goal_p_ = gripper_tape_.getTaskTape0Pose(tf_, task_frame_, workspace_frame_);
-
-      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f]", goal_p_.pose.position.x,goal_p_.pose.position.y, goal_p_.pose.position.z,
-goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.z
+      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f]", tcp_goal_p_.pose.position.x, tcp_goal_p_.pose.position.y, tcp_goal_p_.pose.position.z,
+tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose.orientation.z
       );
 
       // parameter resets
@@ -256,17 +253,10 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       // tape features are updated (can be interpolated too)
       int u = updateGripperFeatures();
 
-      // Draw Features
-      for (unsigned int i = 0; i < tape_features_.size(); i++)
-      {
-        cv::Point p = tape_features_.at(i).image;
-        cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
-      }
-      cv::imshow("in", cur_orig_color_frame_); 
-      cv::waitKey(5);
 
       // exit before computing bad vs values
       if (u == NO_TAPE)
+      {
         // if we couldn't find no tape for 60 frames (about 2 seconds)
         if (max_no_tape_++ > 40)
         {
@@ -274,6 +264,40 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
           as_.setAborted(result_, "no_tape");
         }
         return;
+      }
+
+      try
+      {
+        updateGoalTransform(tcp_goal_p_);
+        // goal_p_ = gripper_tape_.getTaskTape0Pose(tf_, task_frame_, workspace_frame_);
+        std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(gripper_tape_.getTaskTapePose(tf_, task_frame_, workspace_frame_), tf_);
+        cur_goal_ = desired_vsxyz;
+        goal_p_ = vs_->VSXYZToPoseStamped(desired_vsxyz.front());
+      }
+      catch (tf::TransformException ex)
+      {
+      }
+      /*
+      // Draw Features
+      for (unsigned int i = 0; i < tape_features_.size(); i++)
+      {
+        cv::Point p = tape_features_.at(i).image;
+        cv::circle(cur_orig_color_frame_, p, 2, cv::Scalar(100*i, 0, 110*(2-i)), 2);
+      }
+      for (unsigned int i = 0; i < cur_goal_.size(); i++)
+      {
+        cv::Point p = cur_goal_.at(i).image;
+        cv::putText(cur_orig_color_frame_, "x", p, 2, 0.75, cv::Scalar(100*i, 0, 110*(2-i), 1));
+      }
+      cv::imshow("in", cur_orig_color_frame_); 
+      cv::waitKey(5);
+      */
+
+      ROS_INFO("[vsaction][g:%.3f,%.3f,%.3f][t:%.3f,%.3f,%.3f]", goal_p_.pose.position.x,
+          goal_p_.pose.position.y,goal_p_.pose.position.z,
+          tape_features_p_.pose.position.x,
+          tape_features_p_.pose.position.y,
+          tape_features_p_.pose.position.z);
 
       // get the VS value 
       std::vector<PoseStamped> goals, feats;
@@ -282,6 +306,14 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
 
       // setting arm_controller values
       visual_servo::VisualServoTwist v_srv = vs_->getTwist(goals,feats);
+      // we can align x and y first then come down
+      v_srv.request.twist.twist.linear.z /= 2;
+      // zero angular velocity for now
+      v_srv.request.twist.twist.angular.x = 0;
+      v_srv.request.twist.twist.angular.y = 0;
+      v_srv.request.twist.twist.angular.z = 0;
+
+
       v_srv.request.arm = which_arm_;
       //float err = getError(goal_p_, tape_features_p_);
       //v_srv.request.error = err;
@@ -298,7 +330,7 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
       // termination condition
       if (v_srv.request.error < vs_err_term_threshold_)
       {
-        ROS_INFO("\e[1;31mSuccess!");
+        ROS_INFO("\e[1;31mSuccess! Error Estimated: %.7f", v_srv.request.error);
         as_.setSucceeded(result_);
       }
       else if (isExpired())
@@ -375,14 +407,23 @@ goal_p_.pose.orientation.x,goal_p_.pose.orientation.y, goal_p_.pose.orientation.
         tape_features_ = vs_->Point3DToVSXYZ(estimated_pose, tf_);
       }
       tape_features_p_ = vs_->VSXYZToPoseStamped(tape_features_.front());
-
-      // ORIENT
+      // use forward kinematics to get the orientation
       QuaternionStamped q;
       q.quaternion.w = 1;
       q.header.frame_id = tool_frame_;
       tf_->transformQuaternion(workspace_frame_, q, q);
       tape_features_p_.pose.orientation = q.quaternion;
-      gripper_tape_.setTapeLoc(tf_, tool_frame_, tape_features_p_);
+
+      pcl::PointXYZ tape0 = tape_features_.at(0).workspace;
+      pcl::PointXYZ tape1 = tape_features_.at(1).workspace;
+      pcl::PointXYZ tape2 = tape_features_.at(2).workspace;
+      // gripper_tape_.setTapeRelLoc(tape0, tape1, tape2);
+      std::vector<PoseStamped> tape_locs;
+      tape_locs.push_back(GripperTape::formPoseStamped(workspace_frame_, tape0, tape_features_p_.pose.orientation));
+      tape_locs.push_back(GripperTape::formPoseStamped(workspace_frame_, tape1, tape_features_p_.pose.orientation));
+      tape_locs.push_back(GripperTape::formPoseStamped(workspace_frame_, tape2, tape_features_p_.pose.orientation));
+      gripper_tape_.setTapeLoc(tf_, tool_frame_, tape_locs);
+
 
       // we aren't going to let controllers rotate at all when occluded;
       // vision vs. forward kinematics
@@ -707,8 +748,8 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "vsaction");
 
   log4cxx::LoggerPtr my_logger = log4cxx::Logger::getLogger(ROSCONSOLE_DEFAULT_NAME);
-  //my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Info]);
-  my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Debug]);
+  my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Info]);
+  //my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Debug]);
   ros::NodeHandle n;
   std::string which_arm = argv[1];
   VisualServoAction vsa(n, which_arm);

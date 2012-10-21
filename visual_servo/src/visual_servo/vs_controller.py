@@ -122,8 +122,8 @@ class VNode:
     def handle_twist_request(self, req):
       t = req.twist # service call
       e = req.error
-      self.vel_scale = (1/e/(1/e+ self.vel_scale_alpha)) * self.vel_scale_beta
-      #self.vel_scale = sqrt(e + self.vel_scale_alpha)
+      #self.vel_scale = (1/e/(1/e+ self.vel_scale_alpha)) * self.vel_scale_beta
+      self.vel_scale = sqrt(e + self.vel_scale_alpha)
       self.vel_sat = sqrt(e * self.vel_sat_param)
       if self.vel_sat > 0.070:
         self.vel_sat =  0.070

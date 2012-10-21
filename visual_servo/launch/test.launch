@@ -1,12 +1,13 @@
 <launch>
   <!-- <include file="$(find tabletop_pushing)/launch/kinect_head.launch"/> -->
   <!-- <include file="$(find visual_servo)/launch/kinect_head.launch"/>  -->
-  <node name="arm_controller" pkg="visual_servo" output="screen" type="vs_controller.py">
-    <param name="vel_sat" value="0.75" type="double"/>
-    <param name="vel_scale_alpha" value="0.4" type="double"/>
-    <param name="vel_scale_beta" value="2.0" type="double"/>
-  </node>
 
+  <!-- <node name="arm_controller" pkg="visual_servo" output="screen" type="vs_controller.py">
+    <param name="vel_sat" value="0.75" type="double"/>
+    <param name="vel_scale_alpha" value="0.40" type="double"/>
+    <param name="vel_scale_beta" value="1.0" type="double"/>
+  </node>
+  -->
 
   <node name="test_node" pkg="visual_servo" type="tester" respawn="false" output="screen">
 
@@ -18,6 +19,10 @@
     <param name="vs_err_term_thres" value="0.000075" type="double"/>
     <param name="jacobian_type" value="1" type="int"/>
     <param name="test_type" value="0" type="int"/>
+
+    <param name="vel_sat" value="0.75" type="double"/>
+    <param name="vel_scale_alpha" value="0.40" type="double"/>
+    <param name="vel_scale_beta" value="1.0" type="double"/>
 
     <param name="target_hue_value" value="350" type="int"/>
     <param name="target_hue_threshold" value="48" type="int"/>

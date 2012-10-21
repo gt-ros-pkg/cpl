@@ -32,8 +32,8 @@ rosbuild_add_boost_directories()
 #target_link_libraries(visual_servo_node tabletop_pushing)
 
 find_library(LOG4CXX_LIB log4cxx REQUIRED)
-#rosbuild_add_executable(tester src/vs_pose.cpp)
-rosbuild_add_executable(tester src/test.cpp)
+rosbuild_add_executable(tester src/vs_pose.cpp)
+#rosbuild_add_executable(tester src/test.cpp)
 rosbuild_link_boost(tester signals)
 target_link_libraries(tester ${LOG4CXX_LIB})
 

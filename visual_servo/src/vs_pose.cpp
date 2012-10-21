@@ -252,7 +252,7 @@ class VisualServoNode
               ROS_INFO("Waiting for Visual Servo action...");
             }
 
-            visual_servo::VisualServoPose p_srv = formPoseService(0.54, 0.13, 0.01);
+            visual_servo::VisualServoPose p_srv = formPoseService(0.48, 0.10, -0.10);
             p_srv.request.arm = "l";
             if (p_client_.call(p_srv))
             {
@@ -268,8 +268,8 @@ class VisualServoNode
             // send a goal to the action
             visual_servo::VisualServoGoal goal;
             PoseStamped p;
-            p.pose.position.x = 0.7;
-            p.pose.position.y = 0.08;
+            p.pose.position.x = 0.6;
+            p.pose.position.y = 0.00;
             p.pose.position.z = -.19;
             p.pose.orientation.x = -0.062;
             p.pose.orientation.y = 0.0291;

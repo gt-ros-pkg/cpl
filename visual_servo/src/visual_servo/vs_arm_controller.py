@@ -42,6 +42,7 @@ from visual_servo.srv import *
 import visual_servo.position_feedback_push_node as pn
 import sys
 import numpy as np
+import math
 from math import sqrt
 
 LEFT_ARM_READY_JOINTS = np.matrix([[0.62427649, 0.4556137,
@@ -68,8 +69,8 @@ class ArmController:
         self.pn.init_head_pose(self.pn.head_pose_cam_frame)
         self.pn.init_arms()
         # open both gripper for init
-        self.pn.gripper_open('l')
-        self.pn.gripper_open('r')
+        # self.pn.gripper_open('l')
+        # self.pn.gripper_open('r')
 
         # self.init_arm_servo()
         self.pn.switch_to_cart_controllers()
@@ -113,7 +114,7 @@ class ArmController:
       try:
         # e < 0 == error or undefined
         # set current joint angle to current joint angle
-        if e < 0 or (t.twist.linear.x == 0 and \
+        if e < 0 or math.isnan(e) or (t.twist.linear.x == 0 and \
            t.twist.linear.y == 0 and t.twist.linear.z == 0):
           arm_pose = self.get_arm_joint_pose(which_arm)
           self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
@@ -129,7 +130,7 @@ class ArmController:
           twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
           twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
           twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-          if self.which_arm == 'l':
+          if which_arm == 'l':
             vel_pub = self.pn.l_arm_cart_vel_pub
             posture_pub = self.pn.l_arm_vel_posture_pub
           else:
