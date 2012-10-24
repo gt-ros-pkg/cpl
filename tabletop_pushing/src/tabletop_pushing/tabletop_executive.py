@@ -51,10 +51,10 @@ from push_primitives import *
 
 _OFFLINE = False
 _USE_LEARN_IO = True
-_TEST_START_POSE = False
+_TEST_START_POSE = True
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
-_USE_CENTROID_CONTROLLER = True
+_USE_CENTROID_CONTROLLER = False
 _USE_FIXED_GOAL = False
 
 class TabletopExecutive:

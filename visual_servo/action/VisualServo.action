@@ -6,5 +6,7 @@ float32 error
 ---
 #feedback
 float32 error
+geometry_msgs/TwistStamped twist
+string which_arm
 # current end-effector pose
 geometry_msgs/PoseStamped ee

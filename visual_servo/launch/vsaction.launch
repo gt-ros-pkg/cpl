@@ -2,10 +2,12 @@
   <arg name="right_arm" default="true" />
   <arg name="left_arm" default="true" />
 
+  <!--
   <node name="arm_controller" pkg="visual_servo" output="screen" type="vs_arm_controller.py">
     <param name="which_arm" value="r" />
     <param name="vel_sat_param" value="0.20" />
   </node>
+  -->
 
   <!-- Launch the left/right action server nodes -->
   <group if="$(arg right_arm)" ns="r_vs_controller">
@@ -13,8 +15,8 @@
     <node name="visual_servo_action_node"  output="screen" pkg="visual_servo" type="vsaction"
     args="r" >
       <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
-      <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
-      <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
+      <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/> 
+      <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/> 
     </node>
   </group>
 
@@ -23,8 +25,8 @@
     <node name="visual_servo_action_node" output="screen"
           args="l" pkg="visual_servo" type="vsaction" >
       <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
-      <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> 
-      <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> 
+      <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/> 
+      <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/> 
     </node>
   </group>
 </launch>

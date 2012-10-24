@@ -136,7 +136,7 @@ class PositionFeedbackPushNode:
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
         self.controller_io = ControlAnalysisIO()
-        out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
+        out_file_name = '/u/swl33/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
         self.controller_io.open_out_file(out_file_name)
 
@@ -890,18 +890,17 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Done moving to lower start point')
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
-
+        start_pose_prime = start_pose
+        start_pose_prime.pose.position.z += 0.05
         # Move to start pose
+        raw_input('%s\nPose Done. Wait for input to start vsaction: '%str(start_pose_prime))
         self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
-        ## changes
+        ## === changes ===
         # hopefully this will make the gripper close enough
-        goal = visual_servo.msg.VisualServoGoal(pose = start_pose)
-        if which_arm == 'l':
-          vs_client = self.vs_action_l_client
-          vs_client.send_goal(goal)
-          vs_client.wait_for_result()
-          rospy.loginfo('Used actionlib')
+        self.vs_action_exec(start_pose, which_arm)
+        ###
         rospy.loginfo('Done moving to start point')
+
         if is_pull:
             rospy.loginfo('Moving forward to grasp pose')
             pose_err, err_dist = self.move_relative_gripper(
@@ -1676,6 +1675,29 @@ class PositionFeedbackPushNode:
         m = self.get_desired_posture(which_arm)
         posture_pub.publish(m)
         vel_pub.publish(forward_twist)
+
+    def vs_action_exec(self, pose, which_arm):
+      self.stop_moving_vel(which_arm)
+      try:
+        goal = visual_servo.msg.VisualServoGoal(pose = pose)
+        if which_arm == 'l':
+          vs_client = self.vs_action_l_client
+        else:
+          vs_client = self.vs_action_r_client
+
+        vs_client.send_goal(goal, feedback_cb = self.vs_action_feedback_cb)
+        vs_client.wait_for_result()
+        rospy.loginfo('Used actionlib')
+      except rospy.ServiceException, e:
+        rospy.logwarn("something is wrong:%s"%str(e))
+      self.stop_moving_vel(which_arm)
+
+    def vs_action_feedback_cb(self, feedback):
+      # visual_servo.msg.VisualServoFeedback 
+      twist = feedback.twist
+      which_arm = feedback.which_arm
+      self.update_vel(twist, which_arm)
+      # rospy.loginfo("%s"%str(feedback.twist.twist.linear))
 
     def update_vel(self, update_twist, which_arm):
         # Note: assumes velocity controller already running

@@ -65,9 +65,9 @@ class ArmController:
         self.r_cart_twist_pub = self.pn.r_arm_cart_vel_pub
         self.l_cart_pub = self.pn.l_arm_cart_pub
         self.r_cart_pub = self.pn.r_arm_cart_pub
-        self.pn.init_spine_pose()
-        self.pn.init_head_pose(self.pn.head_pose_cam_frame)
-        self.pn.init_arms()
+        # self.pn.init_spine_pose()
+        # self.pn.init_head_pose(self.pn.head_pose_cam_frame)
+        # self.pn.init_arms()
         # open both gripper for init
         # self.pn.gripper_open('l')
         # self.pn.gripper_open('r')
@@ -107,18 +107,34 @@ class ArmController:
       e = req.error
       which_arm = req.arm
 
-      self.vel_scale = sqrt(e + self.vel_scale_param)
-      self.vel_sat = sqrt(e * self.vel_sat_param)
-      if self.vel_sat > 0.08:
-        self.vel_sat =  0.08
+      if which_arm == 'l':
+        vel_pub = self.pn.l_arm_cart_vel_pub
+        posture_pub = self.pn.l_arm_vel_posture_pub
+        m = self.pn.get_desired_posture('l')
+      else:
+        vel_pub = self.pn.r_arm_cart_vel_pub
+        posture_pub = self.pn.r_arm_vel_posture_pub
+        m = self.pn.get_desired_posture('r')
+
       try:
         # e < 0 == error or undefined
         # set current joint angle to current joint angle
         if e < 0 or math.isnan(e) or (t.twist.linear.x == 0 and \
            t.twist.linear.y == 0 and t.twist.linear.z == 0):
-          arm_pose = self.get_arm_joint_pose(which_arm)
-          self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+          #arm_pose = self.get_arm_joint_pose(which_arm)
+          #self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+          twist = TwistStamped()
+          twist.header.stamp = rospy.Time(0)
+          twist.header.frame_id = 'torso_lift_link'
+
+
+          rospy.loginfo('[vac] sending zero velocities')
         else:
+          self.vel_scale = sqrt(e + self.vel_scale_param)
+          self.vel_sat = sqrt(e * self.vel_sat_param)
+          if self.vel_sat > 0.08:
+            self.vel_sat =  0.08
+
           twist = TwistStamped()
           twist.header.stamp = rospy.Time(0)
           twist.header.frame_id = 'torso_lift_link'
@@ -130,27 +146,20 @@ class ArmController:
           twist.twist.angular.x = self.adjust_velocity(t.twist.angular.x)
           twist.twist.angular.y = self.adjust_velocity(t.twist.angular.y)
           twist.twist.angular.z = self.adjust_velocity(t.twist.angular.z)
-          if which_arm == 'l':
-            vel_pub = self.pn.l_arm_cart_vel_pub
-            posture_pub = self.pn.l_arm_vel_posture_pub
-          else:
-            vel_pub = self.pn.r_arm_cart_vel_pub
-            posture_pub = self.pn.r_arm_vel_posture_pub
-
-          m = self.pn.get_desired_posture('l')
-          posture_pub.publish(m)
-          vel_pub.publish(twist)
-
         # after(before) adjustment
-        rospy.loginfo('[arm_controller] twist')
-        rospy.loginfo('[e=%.4f][sca=%.4f][sat=%.4f] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', e, self.vel_scale, self.vel_sat, \
-           twist.twist.linear.x, t.twist.linear.x, \
-           twist.twist.linear.y, t.twist.linear.y, \
-           twist.twist.linear.z, t.twist.linear.z)
-        rospy.loginfo('[angular] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', \
-           twist.twist.angular.x, t.twist.angular.x, \
-           twist.twist.angular.y, t.twist.angular.y, \
-           twist.twist.angular.z, t.twist.angular.z)
+        # rospy.loginfo('[arm_controller] twist')
+          rospy.loginfo('[vac][e=%.4f][sca=%.4f][sat=%.4f] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', e, self.vel_scale, self.vel_sat, \
+              twist.twist.linear.x, t.twist.linear.x, \
+              twist.twist.linear.y, t.twist.linear.y, \
+              twist.twist.linear.z, t.twist.linear.z)
+        #rospy.loginfo('[angular] x:%+.3f(%+.3f) y:%+.3f(%+.3f) z:%+.3f(%+.3f)', \
+        #   twist.twist.angular.x, t.twist.angular.x, \
+        #   twist.twist.angular.y, t.twist.angular.y, \
+        #   twist.twist.angular.z, t.twist.angular.z) 
+
+        posture_pub.publish(m)
+        vel_pub.publish(twist)
+
       except rospy.ServiceException, e:
         if which_arm == 'l':
           self.pn.stop_moving_vel('l')

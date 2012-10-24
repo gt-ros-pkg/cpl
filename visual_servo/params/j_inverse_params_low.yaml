@@ -21,7 +21,7 @@ r_cart_jinv_push:
     r_wrist_flex_joint:     {p: 300.0,  d: 4.0,  ff: 0.0727,  p_clamp: 0.087}
     r_wrist_roll_joint:     {p: 300.0,  d: 4.0,  ff: 0.0727,  p_clamp: 0.087}
   vel_saturation_trans: 0.50
-  vel_saturation_rot: -0.5
+  vel_saturation_rot: -0.1
 
 l_cart_jinv_push:
   type: pr2_manipulation_controllers/JinvTeleopController7
@@ -46,4 +46,4 @@ l_cart_jinv_push:
     l_wrist_flex_joint:     {p: 300.0,  d: 4.0,  ff: 0.0727,  p_clamp: 0.087}
     l_wrist_roll_joint:     {p: 300.0,  d: 4.0,  ff: 0.0727,  p_clamp: 0.087}
   vel_saturation_trans: 0.50
-  vel_saturation_rot: -0.5
+  vel_saturation_rot: -0.1

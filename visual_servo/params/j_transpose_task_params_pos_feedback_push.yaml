@@ -2,7 +2,7 @@ r_cart_transpose_push:
   type: pr2_manipulation_controllers/JTTaskController
   root_name: torso_lift_link
   tip_name: r_gripper_tool_frame
-  k_posture: 25.0
+  k_posture: 15.0
   jacobian_inverse_damping: 0.01
   pose_command_filter: 0.01
   cart_gains:
@@ -29,8 +29,8 @@ r_cart_transpose_push:
     r_wrist_flex_joint: 5.568
     r_wrist_roll_joint: 5.568
 
-  vel_saturation_trans: 2.0
-  vel_saturation_rot: 4.0
+  vel_saturation_trans: 0.5
+  vel_saturation_rot: 0.3
 
   use_tip_frame: true
 

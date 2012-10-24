@@ -247,13 +247,16 @@ class VisualServoNode
 
         case VS_CONTR_1:
           {
-            l_vs_client_ = new VisualServoClient(n_, "l_vs_controller/vsaction");
+            // l_vs_client_ = new VisualServoClient(n_, "l_vs_controller/vsaction");
+            l_vs_client_ = new VisualServoClient(n_, "r_vs_controller/vsaction");
             while(!l_vs_client_->waitForServer(ros::Duration(5.0))){
               ROS_INFO("Waiting for Visual Servo action...");
             }
 
-            visual_servo::VisualServoPose p_srv = formPoseService(0.48, 0.10, -0.10);
-            p_srv.request.arm = "l";
+            // visual_servo::VisualServoPose p_srv = formPoseService(0.48, 0.10, -0.10);
+            visual_servo::VisualServoPose p_srv = formPoseService(0.48, -0.10, -0.10);
+            //p_srv.request.arm = "l";
+            p_srv.request.arm = "r";
             if (p_client_.call(p_srv))
             {
               PHASE = VS_CONTR_1;
@@ -263,7 +266,7 @@ class VisualServoNode
               ROS_WARN("Failed to put the hand in initial configuration");
             }
 
-            sleep(3);
+            sleep(0.5);
 
             // send a goal to the action
             visual_servo::VisualServoGoal goal;
@@ -289,6 +292,7 @@ class VisualServoNode
               actionlib::SimpleClientGoalState state = l_vs_client_->getState();
               ROS_INFO("Action finished: %s",state.toString().c_str());
             }
+            sleep(1.5);
           }
           break;
 

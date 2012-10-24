@@ -373,7 +373,10 @@ class VisualServo
       cv::Mat velrot = -gain_rot_*error_rot;
       visual_servo::VisualServoTwist t = VisualServoMsg::createTwistMsg(velpos, velrot);
 
-      cv::pow(error_pose,2,error_pose); 
+      t.request.twist.header.frame_id = workspace_frame_;
+
+
+      cv::pow(error_pose,2,error_pose);
       cv::pow(error_rot,2,error_rot);
       float e = 0;
 

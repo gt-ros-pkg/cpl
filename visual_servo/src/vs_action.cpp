@@ -258,7 +258,7 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
       if (u == NO_TAPE)
       {
         // if we couldn't find no tape for 60 frames (about 2 seconds)
-        if (max_no_tape_++ > 40)
+        if (max_no_tape_++ > 10)
         {
           ROS_WARN("Cannot find the end-effector. Aborting");
           as_.setAborted(result_, "no_tape");
@@ -306,12 +306,21 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
 
       // setting arm_controller values
       visual_servo::VisualServoTwist v_srv = vs_->getTwist(goals,feats);
+
+
+      if  (isnan(v_srv.request.twist.twist.linear.z) || isnan(v_srv.request.twist.twist.linear.x))
+      {
+        v_srv.request.twist.twist.linear.x = 0;
+        v_srv.request.twist.twist.linear.y = 0;
+        v_srv.request.twist.twist.linear.z = 0;
+      }
       // we can align x and y first then come down
       v_srv.request.twist.twist.linear.z /= 2;
       // zero angular velocity for now
       v_srv.request.twist.twist.angular.x = 0;
       v_srv.request.twist.twist.angular.y = 0;
       v_srv.request.twist.twist.angular.z = 0;
+      v_srv.request.twist.header.frame_id = workspace_frame_;
 
 
       v_srv.request.arm = which_arm_;
@@ -322,6 +331,8 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
       // setting action values
       feedback_.error = err;
       feedback_.ee = tape_features_p_;
+      feedback_.twist = v_srv.request.twist;
+      feedback_.which_arm = which_arm_;
       result_.error = err;
 
       if (v_client_.call(v_srv)){}
@@ -332,6 +343,7 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
       {
         ROS_INFO("\e[1;31mSuccess! Error Estimated: %.7f", v_srv.request.error);
         as_.setSucceeded(result_);
+        sendZeroVelocity();
       }
       else if (isExpired())
       {
