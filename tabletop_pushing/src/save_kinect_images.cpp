@@ -169,14 +169,11 @@ class DataCollectNode
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
-      // ROS_INFO_STREAM("Cam info: " << cam_info_);
+      pcl_segmenter_->cam_info_ = cam_info_;
     }
     // Convert images to OpenCV format
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-
-    // Swap kinect color channel order
-    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
@@ -211,23 +208,16 @@ class DataCollectNode
 
     XYZPointCloud object_cloud;
     cv::Mat object_img;
+    ProtoObjects objs;
     if (cluster_)
     {
       // Compute tabletop object segmentation
       cur_camera_header_ = img_msg->header;
       pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
-      ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud, object_cloud, false);
-      ROS_INFO_STREAM("Found " << objs.size() << " objects");
-      ROS_INFO_STREAM("Object_cloud  has " << object_cloud.size() << " points");
-      for (int i = 0; i < objs.size(); ++i)
-      {
-        ROS_INFO_STREAM("Object " << i << " has " << objs[i].cloud.size() << " points");
-        ROS_INFO_STREAM("Object " << i << " has frame " << objs[i].cloud.header.frame_id);
-      }
+      objs = pcl_segmenter_->findTabletopObjects(cloud, object_cloud, false);
       object_img = pcl_segmenter_->projectProtoObjectsIntoImage(
           objs, color_frame.size(), cur_camera_header_.frame_id);
       pcl_segmenter_->displayObjectImage(object_img, "Objects", true);
-
     }
 
     char c = cv::waitKey(display_wait_ms_);
@@ -263,6 +253,13 @@ class DataCollectNode
       {
         cv::imwrite(object_img_out.str(), object_img);
         pcl16::io::savePCDFile(object_cloud_out.str(), object_cloud);
+        for (unsigned int i = 0; i < objs.size(); ++i)
+        {
+          std::stringstream cluster_cloud_out;
+          cluster_cloud_out << base_output_path_ << "/object_" << i << "_cloud" <<
+              save_count_ << ".pcd";
+          pcl16::io::savePCDFile(cluster_cloud_out.str(), object_cloud);
+        }
       }
 
       // Save transform
