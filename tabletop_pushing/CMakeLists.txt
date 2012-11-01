@@ -43,3 +43,8 @@ rosbuild_add_executable(object_singulation_node src/object_singulation_node.cpp)
 target_link_libraries(object_singulation_node point_cloud_segmentation)
 target_link_libraries(object_singulation_node ${OpenCV_LIBRARIES})
 rosbuild_link_boost(object_singulation_node signals)
+
+rosbuild_add_executable(save_kinect_data src/save_kinect_images.cpp)
+target_link_libraries(save_kinect_data point_cloud_segmentation)
+target_link_libraries(save_kinect_data ${OpenCV_LIBRARIES})
+rosbuild_link_boost(save_kinect_data signals)

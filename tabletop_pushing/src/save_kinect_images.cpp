@@ -48,20 +48,20 @@
 #include <tf/transform_listener.h>
 
 // PCL
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/common/common.h>
-#include <pcl/common/eigen.h>
-#include <pcl/common/centroid.h>
-#include <pcl/io/io.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl_ros/transforms.h>
-#include <pcl/ros/conversions.h>
-#include <pcl/ModelCoefficients.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/filters/extract_indices.h>
+#include <pcl16/point_cloud.h>
+#include <pcl16/point_types.h>
+#include <pcl16/common/common.h>
+#include <pcl16/common/eigen.h>
+#include <pcl16/common/centroid.h>
+#include <pcl16/io/io.h>
+#include <pcl16/io/pcd_io.h>
+#include <pcl16_ros/transforms.h>
+#include <pcl16/ros/conversions.h>
+#include <pcl16/ModelCoefficients.h>
+#include <pcl16/sample_consensus/method_types.h>
+#include <pcl16/sample_consensus/model_types.h>
+#include <pcl16/segmentation/sac_segmentation.h>
+#include <pcl16/filters/extract_indices.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -84,7 +84,7 @@
 #include <cstdlib> // for MAX_RAND
 
 using boost::shared_ptr;
-typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
+typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
@@ -154,25 +154,51 @@ class DataCollectNode
     }
 
     // color_frame, depth_frame
-    std::stringstream color_out;
-    std::stringstream depth_out;
-    color_out << base_output_path_ << "/color" << save_count_ << ".png";
-    depth_out << base_output_path_ << "/depth" << save_count_ << ".png";
     cv::Mat depth_save_img(depth_frame.size(), CV_16UC1);
     depth_frame.convertTo(depth_save_img, CV_16UC1, 65535/max_depth_);
     cv::imshow("color", color_frame);
     cv::imshow("depth", depth_save_img);
     char c = cv::waitKey(display_wait_ms_);
 
+    // Transform point cloud into the correct frame and convert to PCL struct
+    XYZPointCloud cloud;
+    pcl16::fromROSMsg(*cloud_msg, cloud);
+    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
+                          cloud.header.stamp, ros::Duration(0.5));
+    pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+    // Compute transform
+    tf::StampedTransform transform;
+    tf_->lookupTransform(workspace_frame_, cloud.header.frame_id, ros::Time(0), transform);
+
+    // TODO: Compute tabletop object segmentation
+
     ROS_INFO_STREAM("Writting image number " << save_count_);
     if (c == 's' || save_all_)
     {
+      std::stringstream color_out;
+      std::stringstream depth_out;
+      std::stringstream cloud_out;
+      std::stringstream object_cloud_out;
+      std::stringstream transform_out;
+      color_out << base_output_path_ << "/color" << save_count_ << ".png";
+      depth_out << base_output_path_ << "/depth" << save_count_ << ".png";
+      transform_out << base_output_path_ << "/transform" << save_count_ << ".txt";
+      cloud_out << base_output_path_ << "/cloud" << save_count_ << ".pcd";
+      object_cloud_out << base_output_path_ << "/object_cloud" << save_count_ << ".txt";
+
       cv::imwrite(color_out.str(), color_frame);
       cv::imwrite(depth_out.str(), depth_save_img);
+
       // save point cloud to disk
-      std::stringstream cloud_out;
-      cloud_out << base_output_path_ << "/cloud" << save_count_ << ".pcd";
-      pcl::io::savePCDFile(cloud_out.str(), *cloud_msg);
+      pcl16::io::savePCDFile(cloud_out.str(), *cloud_msg);
+
+      // TODO: Save tabletop object cloud to disk
+      // pcl16::io::savePCDFile(object_cloud_out.str(), *obj_cloud);
+
+      // TODO: Save transform
+      std::ofstream transform_file(transform_out.str().c_str());
+      transform_file << transform.getRotation() << "\n";
+      transform_file << transform.getOrigin() << "\n";
       save_count_++;
     }
   }
