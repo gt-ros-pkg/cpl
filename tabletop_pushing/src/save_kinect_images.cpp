@@ -127,15 +127,6 @@ class DataCollectNode
                      0.01);
     n_private_.param("table_ransac_angle_thresh",
                      pcl_segmenter_->table_ransac_angle_thresh_, 30.0);
-    n_private_.param("cylinder_ransac_thresh",
-                     pcl_segmenter_->cylinder_ransac_thresh_, 0.03);
-    n_private_.param("cylinder_ransac_angle_thresh",
-                     pcl_segmenter_->cylinder_ransac_angle_thresh_, 1.5);
-    n_private_.param("optimize_cylinder_coefficients",
-                     pcl_segmenter_->optimize_cylinder_coefficients_,
-                     false);
-    n_private_.param("sphere_ransac_thresh",
-                     pcl_segmenter_->sphere_ransac_thresh_, 0.01);
     n_private_.param("pcl_cluster_tolerance", pcl_segmenter_->cluster_tolerance_,
                      0.25);
     n_private_.param("pcl_difference_thresh", pcl_segmenter_->cloud_diff_thresh_,
@@ -206,12 +197,7 @@ class DataCollectNode
     depth_frame.convertTo(depth_save_img, CV_16UC1, 65535/max_depth_);
     cv::imshow("color", color_frame);
     cv::imshow("depth", depth_save_img);
-    char c = cv::waitKey(display_wait_ms_);
 
-    if (c == 't')
-    {
-      cluster_ = !cluster_;
-    }
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
     pcl16::fromROSMsg(*cloud_msg, cloud);
@@ -220,21 +206,34 @@ class DataCollectNode
 
     // Compute transform
     tf::StampedTransform transform;
-    // ROS_INFO_STREAM("workspace_frame_ : " << workspace_frame_);
-    // ROS_INFO_STREAM("cloud.header.frame_id_ : " << cloud.header.frame_id);
     tf_->lookupTransform(workspace_frame_, cloud.header.frame_id, ros::Time(0), transform);
-
     pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
 
     XYZPointCloud object_cloud;
+    cv::Mat object_img;
     if (cluster_)
     {
-      ROS_INFO_STREAM("Cloud has : " << cloud.size() << " points");
-
-      // TODO: Compute tabletop object segmentation
+      // Compute tabletop object segmentation
       cur_camera_header_ = img_msg->header;
       pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
       ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud, object_cloud, false);
+      ROS_INFO_STREAM("Found " << objs.size() << " objects");
+      ROS_INFO_STREAM("Object_cloud  has " << object_cloud.size() << " points");
+      for (int i = 0; i < objs.size(); ++i)
+      {
+        ROS_INFO_STREAM("Object " << i << " has " << objs[i].cloud.size() << " points");
+        ROS_INFO_STREAM("Object " << i << " has frame " << objs[i].cloud.header.frame_id);
+      }
+      object_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+          objs, color_frame.size(), cur_camera_header_.frame_id);
+      pcl_segmenter_->displayObjectImage(object_img, "Objects", true);
+
+    }
+
+    char c = cv::waitKey(display_wait_ms_);
+    if (c == 'c')
+    {
+      cluster_ = !cluster_;
     }
 
     if (c == 's' || save_all_)
@@ -243,13 +242,15 @@ class DataCollectNode
       std::stringstream color_out;
       std::stringstream depth_out;
       std::stringstream cloud_out;
+      std::stringstream object_img_out;
       std::stringstream object_cloud_out;
       std::stringstream transform_out;
       color_out << base_output_path_ << "/color" << save_count_ << ".png";
       depth_out << base_output_path_ << "/depth" << save_count_ << ".png";
       transform_out << base_output_path_ << "/transform" << save_count_ << ".txt";
       cloud_out << base_output_path_ << "/cloud" << save_count_ << ".pcd";
-      object_cloud_out << base_output_path_ << "/object_cloud" << save_count_ << ".txt";
+      object_cloud_out << base_output_path_ << "/object_cloud" << save_count_ << ".pcd";
+      object_img_out << base_output_path_ << "/object_img" << save_count_ << ".png";
 
       cv::imwrite(color_out.str(), color_frame);
       cv::imwrite(depth_out.str(), depth_save_img);
@@ -260,6 +261,7 @@ class DataCollectNode
       // TODO: Save tabletop object cloud to disk
       if (cluster_ && object_cloud.size() > 0)
       {
+        cv::imwrite(object_img_out.str(), object_img);
         pcl16::io::savePCDFile(object_cloud_out.str(), object_cloud);
       }
 
