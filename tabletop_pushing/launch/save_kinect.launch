@@ -1,9 +1,9 @@
 <launch>
   <include file="/etc/ros/fuerte/openni_head.launch"/>
   <node name="data_collection_code" pkg="tabletop_pushing" type="save_kinect_data" respawn="false" output="screen">
-    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
-    <remap from="depth_image_topic" to="/kinect_head/depth/image"/>
-    <remap from="point_cloud_topic" to="/kinect_head/depth/points"/>
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_rect_color"/>
+    <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
+    <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>
 
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="workspace_frame" value="/torso_lift_link" type="string"/>
