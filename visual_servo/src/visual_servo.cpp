@@ -200,7 +200,7 @@ class VisualServo
 
     // others
     n_private_.param("gain_vel", gain_vel_, 1.0);
-    n_private_.param("gain_rot", gain_rot_, 0.1);
+    n_private_.param("gain_rot", gain_rot_, 1.0);
     // n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
 
     try
@@ -440,7 +440,7 @@ class VisualServo
       */
       // idk why but this fixes the problem... 
       // this or the problem is at diffAngle with large +ve and -ve angles
-      ang_diff.at<float>(2) = ang_diff.at<float>(2); 
+      ang_diff.at<float>(2) = -ang_diff.at<float>(2); 
       return PBVSTwist(mcpos - mgpos, ang_diff);
 
       /** this is for another approach of PBVS

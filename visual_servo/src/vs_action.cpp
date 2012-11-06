@@ -165,11 +165,10 @@ std::string default_task_frame = "/vs_goal_frame";
     // others
     n_private_.param("jacobian_type", jacobian_type_, JACOBIAN_TYPE_INV);
     n_private_.param("vs_err_term_thres", vs_err_term_threshold_, 0.00075);
-    n_private_.param("pose_servo_z_offset", pose_servo_z_offset_, 0.045);
-    n_private_.param("place_z_velocity", place_z_velocity_, -0.025);
-    n_private_.param("gripper_tape1_offset_x", tape1_offset_x_, 0.02);
-    n_private_.param("gripper_tape1_offset_y", tape1_offset_y_, -0.025);
-    n_private_.param("gripper_tape1_offset_z", tape1_offset_z_, 0.07);
+    n_private_.param("linear_vel_thresh", linear_vel_thresh_, 0.07);
+    n_private_.param("angular_vel_thresh", angular_vel_thresh_, 0.550);
+    n_private_.param("linear_p", linear_p_, 0.10);
+    n_private_.param("angular_p", angular_p_, 0.75);
 
     n_private_.param("max_exec_time", max_exec_time_, 20.0);
 
@@ -203,8 +202,8 @@ std::string default_task_frame = "/vs_goal_frame";
     {
       // goal pose given is the pose in tool frame
       tcp_goal_p_ = as_.acceptNewGoal()->pose;
-      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f]", tcp_goal_p_.pose.position.x, tcp_goal_p_.pose.position.y, tcp_goal_p_.pose.position.z,
-tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose.orientation.z
+      ROS_INFO("[vsaction] \e[1;34mGoal Accepted: p[%.3f %.3f %.3f]a[%.3f %.3f %.3f,%.3f]", tcp_goal_p_.pose.position.x, tcp_goal_p_.pose.position.y, tcp_goal_p_.pose.position.z,
+tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose.orientation.z, tcp_goal_p_.pose.orientation.w
       );
 
       // parameter resets
@@ -214,6 +213,7 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
       return;
     }
 
+  private:
     /**
      * Called when Kinect information is avaiable. Refresh rate of about 30Hz 
      */
@@ -231,6 +231,8 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
 
       if (!as_.isActive())
         return;
+
+      updateGoalTransform(tcp_goal_p_);
 
       cv::Mat color_frame, depth_frame;
       cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
@@ -265,18 +267,19 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
         }
         return;
       }
-
       try
       {
-        updateGoalTransform(tcp_goal_p_);
         // goal_p_ = gripper_tape_.getTaskTape0Pose(tf_, task_frame_, workspace_frame_);
-        std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(gripper_tape_.getTaskTapePose(tf_, task_frame_, workspace_frame_), tf_);
-        cur_goal_ = desired_vsxyz;
-        goal_p_ = vs_->VSXYZToPoseStamped(desired_vsxyz.front());
+        std::vector<PoseStamped> pss = gripper_tape_.getTaskTapePoseStamped(tf_, task_frame_, workspace_frame_);
+        goal_p_ = pss.front();
+        //std::vector<VSXYZ> desired_vsxyz = vs_->Point3DToVSXYZ(goal_p_, tf_);
+        // cur_goal_ = desired_vsxyz;
+        // goal_p_ = vs_->VSXYZToPoseStamped(desired_vsxyz.front());
       }
       catch (tf::TransformException ex)
       {
       }
+
       /*
       // Draw Features
       for (unsigned int i = 0; i < tape_features_.size(); i++)
@@ -290,15 +293,20 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
         cv::putText(cur_orig_color_frame_, "x", p, 2, 0.75, cv::Scalar(100*i, 0, 110*(2-i), 1));
       }
       cv::imshow("in", cur_orig_color_frame_); 
-      cv::waitKey(5);
+      cv::waitKey(3);
       */
 
-      ROS_INFO("[vsaction][g:%.3f,%.3f,%.3f][t:%.3f,%.3f,%.3f]", goal_p_.pose.position.x,
+      ROS_INFO("[vsaction][g: %.3f,%.3f,%.3f][t: %.3f,%.3f,%.3f]", goal_p_.pose.position.x,
           goal_p_.pose.position.y,goal_p_.pose.position.z,
           tape_features_p_.pose.position.x,
           tape_features_p_.pose.position.y,
           tape_features_p_.pose.position.z);
-
+      ROS_INFO("[vsaction][ga:%.3f,%.3f,%.3f,%.3f][ta:%.3f,%.3f,%.3f,%.3f]", goal_p_.pose.orientation.x,
+          goal_p_.pose.orientation.y,goal_p_.pose.orientation.z,goal_p_.pose.orientation.w,
+          tape_features_p_.pose.orientation.x,
+          tape_features_p_.pose.orientation.y,
+          tape_features_p_.pose.orientation.z,
+          tape_features_p_.pose.orientation.w);
       // get the VS value 
       std::vector<PoseStamped> goals, feats;
       goals.push_back(goal_p_);
@@ -306,50 +314,86 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
 
       // setting arm_controller values
       visual_servo::VisualServoTwist v_srv = vs_->getTwist(goals,feats);
-
-
-      if  (isnan(v_srv.request.twist.twist.linear.z) || isnan(v_srv.request.twist.twist.linear.x))
-      {
-        v_srv.request.twist.twist.linear.x = 0;
-        v_srv.request.twist.twist.linear.y = 0;
-        v_srv.request.twist.twist.linear.z = 0;
-      }
-      // we can align x and y first then come down
-      v_srv.request.twist.twist.linear.z /= 2;
-      // zero angular velocity for now
-      v_srv.request.twist.twist.angular.x = 0;
-      v_srv.request.twist.twist.angular.y = 0;
-      v_srv.request.twist.twist.angular.z = 0;
-      v_srv.request.twist.header.frame_id = workspace_frame_;
-
-
       v_srv.request.arm = which_arm_;
+      v_srv.request.twist.header.frame_id = workspace_frame_;
+      v_srv.request.twist.header.stamp = ros::Time::now();
+
+      // ROS_INFO("=== Before ===");
+      // printTwistStamped(v_srv.request.twist);
+      processTwist(&v_srv);
+      // ROS_INFO("=== After ===");
+      // printTwistStamped(v_srv.request.twist);
+
       //float err = getError(goal_p_, tape_features_p_);
       //v_srv.request.error = err;
       float err = v_srv.request.error;
-
-      // setting action values
-      feedback_.error = err;
-      feedback_.ee = tape_features_p_;
-      feedback_.twist = v_srv.request.twist;
-      feedback_.which_arm = which_arm_;
       result_.error = err;
 
-      if (v_client_.call(v_srv)){}
-      as_.publishFeedback(feedback_);
-
+      // setting action values
+      feedback_.error = v_srv.request.error;
+      feedback_.ee = tape_features_p_;
+      feedback_.which_arm = v_srv.request.arm;
+      feedback_.twist = zeroTwistStamp(v_srv.request.twist);
+      // if (v_client_.call(v_srv)){}
       // termination condition
       if (v_srv.request.error < vs_err_term_threshold_)
       {
         ROS_INFO("\e[1;31mSuccess! Error Estimated: %.7f", v_srv.request.error);
         as_.setSucceeded(result_);
-        sendZeroVelocity();
       }
       else if (isExpired())
       {
         ROS_WARN("Failed to go to the goal in time given. Aborting");
         as_.setAborted(result_, "timeout");
       }
+      else
+        feedback_.twist = v_srv.request.twist;
+      as_.publishFeedback(feedback_);
+    }
+
+    void processTwist(visual_servo::VisualServoTwist *curtwist)
+    {
+      // was going to use PD control but see no merit in it actually
+      // we can do velocity clipping instead
+
+      TwistStamped t = curtwist->request.twist;
+
+      if  (isnan(t.twist.linear.z) || isnan(t.twist.linear.x)
+          || isnan(t.twist.linear.y) || isnan(t.twist.angular.x))
+      {
+        t.twist.linear.x = 0;
+        t.twist.linear.y = 0;
+        t.twist.linear.z = 0;
+
+        t.twist.angular.x = 0;
+        t.twist.angular.y = 0;
+        t.twist.angular.z = 0;
+      }
+      // we can align x and y first then come down
+      t.twist.linear.z /= 2;
+      // zero angular velocity for now
+
+      t.twist.linear.x*=linear_p_;
+      t.twist.linear.y*=linear_p_;
+      t.twist.linear.z*=linear_p_;
+      t.twist.angular.x*=angular_p_;
+      t.twist.angular.y*=angular_p_;
+      t.twist.angular.z*=angular_p_;
+
+      if (t.twist.linear.x > linear_vel_thresh_) t.twist.linear.x = linear_vel_thresh_;
+      else if (t.twist.linear.x < -linear_vel_thresh_) t.twist.linear.x = -linear_vel_thresh_;
+      if (t.twist.linear.y > linear_vel_thresh_) t.twist.linear.y = linear_vel_thresh_;
+      else if (t.twist.linear.y < -linear_vel_thresh_) t.twist.linear.y = -linear_vel_thresh_;
+      if (t.twist.linear.z > linear_vel_thresh_) t.twist.linear.z = linear_vel_thresh_;
+      else if (t.twist.linear.z < -linear_vel_thresh_) t.twist.linear.z = -linear_vel_thresh_;
+      if (t.twist.angular.x > angular_vel_thresh_) t.twist.angular.x = angular_vel_thresh_;
+      else if (t.twist.angular.x < -angular_vel_thresh_) t.twist.angular.x = -angular_vel_thresh_;
+      if (t.twist.angular.y > angular_vel_thresh_) t.twist.angular.y = angular_vel_thresh_;
+      else if (t.twist.angular.y < -angular_vel_thresh_) t.twist.angular.y = -angular_vel_thresh_;
+      if (t.twist.angular.z > angular_vel_thresh_) t.twist.angular.z = angular_vel_thresh_;
+      else if (t.twist.angular.z < -angular_vel_thresh_) t.twist.angular.z = -angular_vel_thresh_;
+      curtwist->request.twist = t;
+      return; 
     }
 
     void setTimer(float time)
@@ -366,7 +410,7 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
         setTimer(0);
         return true;
       }
-      return false; 
+      return false;
     }
 
     // Detect Tapes on Gripepr and update its position
@@ -386,6 +430,7 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
       // get all the blues 
       cv::Mat tape_mask = colorSegment(cur_color_frame_.clone(), gripper_tape_hue_value_, gripper_tape_hue_threshold_);
 
+
       // make it clearer with morphology
       cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
       cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
@@ -402,7 +447,7 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
       {
         if ((int)v_fk_diff_.size() != default_tape_num)
         {
-          ROS_WARN("[vsaction]Cannot find tape in image and do not have enough historical data to interpolate");
+          ROS_WARN_ONCE("[vsaction]Cannot find tape in image and do not have enough historical data to interpolate");
           tape_features_p_ = PoseStamped();
           return NO_TAPE;
         }
@@ -647,25 +692,28 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
      * HELPER METHODS
      **********************/
 
-    bool sendZeroVelocity()
+    TwistStamped zeroTwistStamp(TwistStamped t)
     {
-      // assume everything is init to zero
-      visual_servo::VisualServoTwist v_srv;
-
-      // need this to mvoe the arm
-      v_srv.request.error = -1;
-      v_srv.request.arm = which_arm_;
-      return v_client_.call(v_srv);
+      t.twist.linear.x = 0;
+      t.twist.linear.y = 0;
+      t.twist.linear.z = 0;
+      t.twist.angular.x = 0;
+      t.twist.angular.y = 0;
+      t.twist.angular.z = 0;
+      return t;
     }
 
-    visual_servo::VisualServoPose formPoseService(float px, float py, float pz)
+    void printTwistStamped(TwistStamped t)
     {
-
-      visual_servo::VisualServoPose p = VisualServoMsg::createPoseMsg(px, py, pz, -0.4582, 0, 0.8889, 0);
-      p.request.arm = which_arm_;
-      return p;
+      ROS_INFO("[lin]%+.5f,%+.5f,%+.5f [ang]%+.5f,%+.5f,%+.5f",
+       t.twist.linear.x,
+       t.twist.linear.y,
+       t.twist.linear.z,
+       t.twist.angular.x,
+       t.twist.angular.y,
+       t.twist.angular.z
+        );
     }
-
     void printMatrix(cv::Mat_<double> in)
     {
       for (int i = 0; i < in.rows; i++) {
@@ -732,12 +780,11 @@ tcp_goal_p_.pose.orientation.x, tcp_goal_p_.pose.orientation.y, tcp_goal_p_.pose
     // Other params
     int jacobian_type_;
     double vs_err_term_threshold_;
-    double pose_servo_z_offset_;
-    double place_z_velocity_;
-    double tape1_offset_x_;
-    double tape1_offset_y_;
-    double tape1_offset_z_;
     ros::ServiceClient v_client_;
+    double linear_vel_thresh_;
+    double angular_vel_thresh_;
+    double linear_p_;
+    double angular_p_;
 
     // desired location/current gripper location
     cv::Mat desired_jacobian_;

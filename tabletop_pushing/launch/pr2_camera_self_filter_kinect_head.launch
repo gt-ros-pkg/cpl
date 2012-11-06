@@ -1,6 +1,7 @@
 <launch>
+
   <include file="$(find pr2_machine)/pr2.machine" />
-  <node pkg="pr2_camera_self_filter" type="run_xinit.py"  name="run_xinit" output="screen" machine="c2" >
+  <node pkg="pr2_camera_self_filter" type="run_xinit.py"  name="run_xinit" output="screen" machine="c2">
     <env name="DISPLAY" value=":0.0" />
   </node>
 

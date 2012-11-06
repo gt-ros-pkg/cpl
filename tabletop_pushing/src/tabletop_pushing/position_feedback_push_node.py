@@ -299,9 +299,10 @@ class PositionFeedbackPushNode:
 
         ## TODO: change here
         self.vs_action_l_client = actionlib.SimpleActionClient('l_vs_controller/vsaction', visual_servo.msg.VisualServoAction)
-        self.vs_action_l_client.wait_for_server()
         self.vs_action_r_client = actionlib.SimpleActionClient('r_vs_controller/vsaction', visual_servo.msg.VisualServoAction)
-        self.vs_action_r_client.wait_for_server()
+        rospy.loginfo('Waiting for visual servo action servers')
+        #self.vs_action_l_client.wait_for_server()
+        # self.vs_action_r_client.wait_for_server()
     #
     # Initialization functions
     #
@@ -893,10 +894,13 @@ class PositionFeedbackPushNode:
         start_pose_prime = start_pose
         start_pose_prime.pose.position.z += 0.05
         # Move to start pose
-        raw_input('%s\nPose Done. Wait for input to start vsaction: '%str(start_pose_prime))
+        # raw_input('%s\nPose Done. Wait for input to start vsaction: '%str(start_pose_prime))
         self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+
+        rospy.loginfo('start pose is [%s]'%str(start_pose))
+        rospy.sleep(self.post_controller_switch_sleep)
         ## === changes ===
-        # hopefully this will make the gripper close enough
+        ## hopefully this will make the gripper close enough
         self.vs_action_exec(start_pose, which_arm)
         ###
         rospy.loginfo('Done moving to start point')
@@ -1386,6 +1390,8 @@ class PositionFeedbackPushNode:
         r = rospy.Rate(self.move_cart_check_hz)
         pl.rezero()
         pl.set_threshold(pressure)
+
+
         while arm_not_moving_count < done_moving_count_thresh:
             if not self.arm_moving_cart(which_arm):
                 arm_not_moving_count += 1
@@ -1697,10 +1703,13 @@ class PositionFeedbackPushNode:
       twist = feedback.twist
       which_arm = feedback.which_arm
       self.update_vel(twist, which_arm)
-      # rospy.loginfo("%s"%str(feedback.twist.twist.linear))
+
+      rospy.loginfo("[%f %f %f][%f %f %f]"%(feedback.twist.twist.linear.x,feedback.twist.twist.linear.y,feedback.twist.twist.linear.z ,feedback.twist.twist.angular.x,feedback.twist.twist.angular.y,feedback.twist.twist.angular.z))
+      #rospy.loginfo("%s"%str(feedback.twist.twist))
 
     def update_vel(self, update_twist, which_arm):
         # Note: assumes velocity controller already running
+        self.switch_to_vel_controllers()
         if which_arm == 'l':
             vel_pub = self.l_arm_cart_vel_pub
             posture_pub = self.l_arm_vel_posture_pub

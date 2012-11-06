@@ -17,6 +17,8 @@
       <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
       <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/> 
       <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/> 
+      <param name="angular_p" value="0.50" />
+      <param name="linear_p" value="0.20" />
     </node>
   </group>
 
@@ -27,6 +29,8 @@
       <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> 
       <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/> 
       <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/> 
+      <param name="angular_p" value="0.50" />
+      <param name="linear_p" value="0.20" />
     </node>
   </group>
 </launch>

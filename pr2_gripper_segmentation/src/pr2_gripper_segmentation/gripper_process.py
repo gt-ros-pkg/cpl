@@ -31,71 +31,46 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 
-import roslib; roslib.load_manifest('tabletop_pushing')
+import roslib; roslib.load_manifest('pr2_gripper_segmentation')
 import rospy
 from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
 import tf
-from visual_servo.srv import *
-# import tabletop_pushing.position_feedback_push_node as pn
-
-import tabletop_pushing.position_feedback_push_node as pn
+from pr2_gripper_segmentation.srv import *
 import sys
 import numpy as np
 import math
 from math import sqrt
+import cv2
+import cv2.cv as cv
 
-class ArmController:
 
-  def __init__(self):
+class DataProcess:
 
-    rospy.loginfo('Initializing Arm Controller')
-    self.pn = pn.PositionFeedbackPushNode()
-    self.pn.init_spine_pose()
-    self.pn.init_head_pose(self.pn.head_pose_cam_frame)
-    self.pn.init_arms()
+  def process(self, name):
+    file = open(name)
+    while 1:
+      line = file.readline()
+      if not line:
+        break
 
-    rospy.loginfo('Done moving to robot initial pose')
+      line_str = line.split(',')
 
-  def run(self):
-    rospy.loginfo("[vs_exec] === New Iter ===") # %s"%str(start_pose))
-    start_pose = PoseStamped()
-    start_pose.header.frame_id = 'torso_lift_link'
-    start_pose.pose.position.x = 0.4
-    start_pose.pose.position.y = 0.15
-    start_pose.pose.position.z = -0.20
-    start_pose.pose.orientation.x = 0
-    start_pose.pose.orientation.y = 0
-    start_pose.pose.orientation.z = 1
-    start_pose.pose.orientation.w = 0
-    which_arm = 'l'
+      fn = int(line_str[0])
+      im = cv2.imread('/u/swl33/data/'+self.getFileName(fn) +'l.jpg')
+      cv2.imshow('1', im)
 
-    self.pn.move_to_cart_pose(start_pose, which_arm)
-    r = rospy.Rate(0.5)
-    r.sleep()
-
-    vs_pose = PoseStamped()
-    vs_pose.header.frame_id = 'torso_lift_link'
-    vs_pose.pose.position.x = 0.48
-    vs_pose.pose.position.y = 0
-    vs_pose.pose.position.z = -0.25
-    vs_pose.pose.orientation.x = 0
-    vs_pose.pose.orientation.y = 0
-    vs_pose.pose.orientation.z = 0 
-    vs_pose.pose.orientation.w = 1
-    self.pn.vs_action_exec(vs_pose, which_arm)
-
-    r = rospy.Rate(1.0)
-    r.sleep()
-    raw_input('Wait for input for another iteration: ')
-
+  def getFileName(self, num):
+    if (num < 100):
+      if (num < 10):
+        return "00" + str(num)
+      else:
+        return "0" + str(num)
 
 if __name__ == '__main__':
   try:
-    node = ArmController()
-    while True:
-      node.run()
-    rospy.spin()
-  except rospy.ROSInterruptException: pass
+    node = DataProcess()
+    node.process('/u/swl33/data/myData.csv')
+    rospy.loginfo('Done...')
 
-  rospy.loginfo("Terminating")
+  except rospy.ROSInterruptException: pass

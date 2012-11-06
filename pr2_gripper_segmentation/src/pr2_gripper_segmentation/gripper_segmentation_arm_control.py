@@ -31,14 +31,12 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 
-import roslib; roslib.load_manifest('tabletop_pushing')
+import roslib; roslib.load_manifest('pr2_gripper_segmentation')
 import rospy
 from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
 import tf
-from visual_servo.srv import *
-# import tabletop_pushing.position_feedback_push_node as pn
-
+from pr2_gripper_segmentation.srv import *
 import tabletop_pushing.position_feedback_push_node as pn
 import sys
 import numpy as np
@@ -47,55 +45,40 @@ from math import sqrt
 
 class ArmController:
 
-  def __init__(self):
+    def __init__(self):
 
-    rospy.loginfo('Initializing Arm Controller')
-    self.pn = pn.PositionFeedbackPushNode()
-    self.pn.init_spine_pose()
-    self.pn.init_head_pose(self.pn.head_pose_cam_frame)
-    self.pn.init_arms()
+        rospy.loginfo('Initializing Arm Controller')
+        # Initialize vel controller
+        self.pn = pn.PositionFeedbackPushNode()
+        self.l_cart_pub = self.pn.l_arm_cart_pub
+        self.r_cart_pub = self.pn.r_arm_cart_pub
+        self.pn.init_spine_pose()
+        self.pn.init_head_pose(self.pn.head_pose_cam_frame)
+        self.pn.init_arms()
+        rospy.loginfo('Done moving to robot initial pose')
+# open both gripper for init
+# self.pn.gripper_open('l')
+# self.pn.gripper_open('r')
 
-    rospy.loginfo('Done moving to robot initial pose')
 
-  def run(self):
-    rospy.loginfo("[vs_exec] === New Iter ===") # %s"%str(start_pose))
-    start_pose = PoseStamped()
-    start_pose.header.frame_id = 'torso_lift_link'
-    start_pose.pose.position.x = 0.4
-    start_pose.pose.position.y = 0.15
-    start_pose.pose.position.z = -0.20
-    start_pose.pose.orientation.x = 0
-    start_pose.pose.orientation.y = 0
-    start_pose.pose.orientation.z = 1
-    start_pose.pose.orientation.w = 0
-    which_arm = 'l'
-
-    self.pn.move_to_cart_pose(start_pose, which_arm)
-    r = rospy.Rate(0.5)
-    r.sleep()
-
-    vs_pose = PoseStamped()
-    vs_pose.header.frame_id = 'torso_lift_link'
-    vs_pose.pose.position.x = 0.48
-    vs_pose.pose.position.y = 0
-    vs_pose.pose.position.z = -0.25
-    vs_pose.pose.orientation.x = 0
-    vs_pose.pose.orientation.y = 0
-    vs_pose.pose.orientation.z = 0 
-    vs_pose.pose.orientation.w = 1
-    self.pn.vs_action_exec(vs_pose, which_arm)
-
-    r = rospy.Rate(1.0)
-    r.sleep()
-    raw_input('Wait for input for another iteration: ')
-
+    def handle_pose_request(self, req):
+      print req.p
+      pose = req.p # PoseStamped
+      which_arm = req.arm
+      if which_arm == 'l':
+        self.pn.move_to_cart_pose(pose, 'l')
+      else:
+        self.pn.move_to_cart_pose(pose, 'r')
+      rospy.loginfo('[arm_controller] pose')
+      rospy.loginfo(pose)
+      return GripperPoseResponse()
 
 if __name__ == '__main__':
   try:
     node = ArmController()
-    while True:
-      node.run()
+    rospy.loginfo('Done initializing... Now advertise the Service')
+    rospy.Service('pgs_pose', GripperPose , node.handle_pose_request)
+    rospy.loginfo('Ready to move arm')
     rospy.spin()
-  except rospy.ROSInterruptException: pass
 
-  rospy.loginfo("Terminating")
+  except rospy.ROSInterruptException: pass
