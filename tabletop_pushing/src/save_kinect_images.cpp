@@ -166,6 +166,7 @@ class DataCollectNode
   {
     if (!camera_initialized_)
     {
+      ROS_INFO_STREAM("Initializing camera.");
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
