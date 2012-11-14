@@ -41,7 +41,8 @@ def six_axis_ctrls():
 
 class IMarkerController(object):
     def __init__(self):
-        self.arm = create_ep_arm('r', EPArmBase, base_link="base_link", end_link="r_ee_link")
+        self.arm = create_ep_arm('r', EPArmBase, base_link="base_link", end_link="r_ee_link",
+                                 timeout=0)
         self.js_pub = rospy.Publisher("/joint_states", JointState)
         rospy.sleep(1)
         self.pub_js([0.]*8)
@@ -61,39 +62,44 @@ class IMarkerController(object):
 
     def update_arm(self):
         pos_cur, quat_cur = PoseConv.to_pos_quat(self.arm.get_end_effector_pose())
-        if pos_cur is None:
-            return
-        if self.quat_last is None:
-            self.pos_last = np.array(pos_cur)
-            self.quat_last = np.array(quat_cur)
-        quat_diff = trans.quaternion_multiply(trans.quaternion_inverse(quat_cur), 
-                                              self.quat_goal)
-        euler_diff = np.array(trans.euler_from_quaternion(quat_diff))
-        #euler_diff *= 0.
-        pos_diff = np.array(self.pos_goal) - pos_cur
-        #pos_diff *= 0.
-        x_diff = np.mat([pos_diff[0], pos_diff[1], pos_diff[2], 
-                         euler_diff[0], euler_diff[1], euler_diff[2]]).T
-        xd = np.array(pos_cur) - self.pos_last
-        rd_diff = trans.quaternion_multiply(trans.quaternion_inverse(self.quat_last), 
-                                              quat_cur)
-        euler_rd = np.array(trans.euler_from_quaternion(quat_diff))
-        xd_diff = [xd[0], xd[1], xd[2], euler_rd[0], euler_rd[1], euler_rd[2]]
-        pP, pD = 0.02, 0.09
-        rP, rD = 0.0008, 0.09
-        tau = self.arm.jacobian().T * (np.mat(np.diag([pP]*3+[rP]*3)) * x_diff + 
-                                       np.mat(np.diag([rP]*3+[rD]*3)) * np.mat(xd_diff).T)
-        weights = [0.08, 0.08, 3, 3, 3, 1, 1, 1]
-        #weights = [1]*8
-        max_diff = 0.001
-        control = np.clip(np.array(weights) * tau.T.A[0], -max_diff, max_diff)
-        self.q_cur += control #np.where(np.fabs(control) < 0.000007, 0., control)
-        #print "%4f %4f %4f" % (np.linalg.norm(x_diff * P), np.linalg.norm(xd * D),
-        #                       np.linalg.norm(x_diff))
-        self.pos_last = pos_cur
-        self.quat_last = quat_cur
-        self.pub_js([0.]*8)
-        #self.pub_js(self.q_cur)
+        if False:
+            if pos_cur is None:
+                return
+            if self.quat_last is None:
+                self.pos_last = np.array(pos_cur)
+                self.quat_last = np.array(quat_cur)
+            quat_diff = trans.quaternion_multiply(trans.quaternion_inverse(quat_cur), 
+                                                  self.quat_goal)
+            euler_diff = np.array(trans.euler_from_quaternion(quat_diff))
+            #euler_diff *= 0.
+            pos_diff = np.array(self.pos_goal) - pos_cur
+            #pos_diff *= 0.
+            x_diff = np.mat([pos_diff[0], pos_diff[1], pos_diff[2], 
+                             euler_diff[0], euler_diff[1], euler_diff[2]]).T
+            xd = np.array(pos_cur) - self.pos_last
+            rd_diff = trans.quaternion_multiply(trans.quaternion_inverse(self.quat_last), 
+                                                  quat_cur)
+            euler_rd = np.array(trans.euler_from_quaternion(quat_diff))
+            xd_diff = [xd[0], xd[1], xd[2], euler_rd[0], euler_rd[1], euler_rd[2]]
+            pP, pD = 0.02, 0.09
+            rP, rD = 0.0008, 0.09
+            tau = self.arm.jacobian().T * (np.mat(np.diag([pP]*3+[rP]*3)) * x_diff + 
+                                           np.mat(np.diag([rP]*3+[rD]*3)) * np.mat(xd_diff).T)
+            weights = [0.08, 0.08, 3, 3, 3, 1, 1, 1]
+            #weights = [1]*8
+            max_diff = 0.001
+            control = np.clip(np.array(weights) * tau.T.A[0], -max_diff, max_diff)
+            self.q_cur += control #np.where(np.fabs(control) < 0.000007, 0., control)
+            #print "%4f %4f %4f" % (np.linalg.norm(x_diff * P), np.linalg.norm(xd * D),
+            #                       np.linalg.norm(x_diff))
+            self.pos_last = pos_cur
+            self.quat_last = quat_cur
+            self.pub_js([0.]*8)
+            #self.pub_js(self.q_cur)
+        if True:
+            q = self.arm.inverse(PoseConv.to_homo_mat(self.pos_goal, self.quat_goal))
+            if q is not None:
+                self.pub_js(q)
 
     def pub_js(self, q):
         if type(q) is np.array:

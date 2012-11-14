@@ -70,6 +70,7 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
   </link>
   
 <xacro:macro name="gantry_leg" params="leg_name leg_x leg_y">
+
   <link name="gantry_leg_${leg_name}">
     <visual>
       <geometry>
@@ -85,7 +86,7 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
       </geometry>
     </collision>
     <inertial>
-      <mass value="1000" />
+      <mass value="100" />
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
       <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     </inertial>
@@ -94,10 +95,12 @@ center_of_mass = [ [0, -0.02561, 0.00193], [0.2125, 0, 0.11336], [0.11993, 0.0, 
   <joint name="gantry_leg_${leg_name}_joint" type="fixed">
     <parent link = "gantry_frame_link" />
     <child link="gantry_leg_${leg_name}" />
-    <origin xyz="${leg_x} ${leg_y} ${-gantry_height}" rpy="0.0 0.0 0.0" />
+    <origin xyz="${leg_x} ${leg_y} ${-gantry_height/2}" rpy="0.0 0.0 0.0" />
     <axis xyz="0.0 0.0 1.0" />
   </joint>
+
 </xacro:macro>
+
 <xacro:gantry_leg leg_name="1" leg_x="${1.5/2.0}" leg_y="${1.5/2.0}" />
 <xacro:gantry_leg leg_name="2" leg_x="${-1.5/2.0}" leg_y="${1.5/2.0}" />
 <xacro:gantry_leg leg_name="3" leg_x="${-1.5/2.0}" leg_y="${-1.5/2.0}" />
