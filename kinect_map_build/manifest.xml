@@ -1,0 +1,18 @@
+<package>
+  <description brief="kinect_map_build">
+
+  </description>
+  <author>Kelsey Hawkins / kphawkins@gatech.edu</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/kinect_map_build</url>
+  <depend package="roscpp" />
+  <depend package="pcl" />
+  <depend package="geometry_msgs" />
+  <depend package="pcl_ros" />
+  <depend package="opencv2"/>
+  <depend package="cv_bridge"/>
+
+</package>
+
+
