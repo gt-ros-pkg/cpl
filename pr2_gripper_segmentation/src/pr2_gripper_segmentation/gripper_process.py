@@ -57,8 +57,39 @@ class DataProcess:
       line_str = line.split(',')
 
       fn = int(line_str[0])
+
+      print '/u/swl33/data/'+self.getFileName(fn) +'l.jpg'
       im = cv2.imread('/u/swl33/data/'+self.getFileName(fn) +'l.jpg')
-      cv2.imshow('1', im)
+      mask = 255 - cv2.imread('/u/swl33/data/'+self.getFileName(fn) +'lm.jpg', 0)
+
+      for i in range(0, len(mask)):
+        for j in range(0,len(mask[i])):
+          if (mask[i][j] < 200):
+            mask[i][j] = 0; 
+      # print [i for i,x in enumerate(mask) if x < 200]
+      pads = np.zeros((5,len(mask[0])), dtype=np.uint8)
+      mask2 = np.vstack((pads, mask))
+      mask2 = mask2[:480][:] 
+
+      imgg = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+
+      surf = cv2.SURF()
+      kp, descriptors = surf.detect(imgg, mask2, None, useProvidedKeypoints = False)
+
+      for i in range(0, len(kp)):
+        x,y = kp[i].pt
+        center = (int(x),int(y))
+        cv2.circle(im, center, 3, (255,0,0), -1)
+      cv2.imshow('img', im)
+      masked = cv2.bitwise_and(im, im, mask=mask2)
+      cv2.imshow('img_gry', masked)
+
+      # cv2.imshow('mask', mask)
+      # cv2.imshow('mask2', mask2)
+      cv2.waitKey(1000)
+
+
+      #raw_input("press enter to go to the next step")
 
   def getFileName(self, num):
     if (num < 100):

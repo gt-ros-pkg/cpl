@@ -70,6 +70,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/nonfree/features2d.hpp>
 
 // STL
 #include <vector>
@@ -95,10 +96,16 @@
 #include <pr2_controllers_msgs/JointTrajectoryControllerState.h>
 #include <pr2_gripper_segmentation/GripperPose.h>
 
+/*
+   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
+   sensor_msgs::Image,
+   sensor_msgs::Image,
+   sensor_msgs::PointCloud2> MySyncPolicy;
+ */
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
         sensor_msgs::Image,
-        sensor_msgs::Image,
         sensor_msgs::PointCloud2> MySyncPolicy;
+
 typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 
 using sensor_msgs::JointState;
@@ -109,6 +116,28 @@ using geometry_msgs::QuaternionStamped;
 using geometry_msgs::Point;
 using cpl_visual_features::downSample;
 
+
+void onMouse(int event, int x, int y, int flags, void* param)
+{
+  //std::map <std::vector<cv::Point>, void*> *user_data_n_ptr; 
+  //std::vector<cv::Point> points = reinterpret_cast<std::map< std::vector<cv::Point>, void*> *>(param);
+
+  switch(event)
+  {
+    case CV_EVENT_LBUTTONUP:
+      {
+        cv::Point *pt = static_cast<cv::Point *>(param);
+        ROS_INFO("PRESSED AT [%d, %d]", x,y);
+        *pt = cv::Point(x,y);
+      }
+      break;
+    default:
+      break;
+  }
+  return;
+}
+
+
 class GripperSegmentationCollector
 {
   public:
@@ -118,7 +147,8 @@ class GripperSegmentationCollector
       depth_sub_(n_, "depth_image_topic", 1),
       mask_sub_(n_, "mask_image_topic", 1),
       cloud_sub_(n_, "point_cloud_topic", 1),
-      sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
+      // sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
+      sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
       it_(n_), tf_(), camera_initialized_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -147,8 +177,10 @@ class GripperSegmentationCollector
     float bound = 0.3;
     x_= 0.4;
     y_= -bound;
-    z_= -bound;
+    z_= -bound + 0.1;
     which_arm_ = "l";
+    mode = 0;
+    ROS_INFO("[GripperSeg] Node Initialization Complete");
   }
 
     // destructor
@@ -161,21 +193,84 @@ class GripperSegmentationCollector
   private:
 
     void jointStateCallback(const sensor_msgs::JointState::ConstPtr& js)
-    //void jointStateCallback(boost::shared_ptr<sensor_msgs::JointState const> js)
+      //void jointStateCallback(boost::shared_ptr<sensor_msgs::JointState const> js)
     {
-      ROS_INFO("I am here");
       for (unsigned int i = 0; i < js->name.size(); i++)
       {
-        ROS_INFO("%s", js->name[i]);
+        ROS_INFO_STREAM("Joint Name" << js->name[i]);
       }
     }
     unsigned int counter;
     /**
      * Called when Kinect information is avaiable. Refresh rate of about 30Hz 
      */
+    /*
+       void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
+       const sensor_msgs::ImageConstPtr& depth_msg,
+       const sensor_msgs::ImageConstPtr& mask_msg,
+       const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
+     */
+
+    void process(cv::Point p)
+    {
+      if (p.x > 0 && p.y > 0)
+      {
+        if (mode == 0)
+        {
+          tooltip_ = p;
+          mode = 1;
+        }
+        else
+        {
+          for (unsigned int i = 0; i <  kps_.size(); i++)
+          {
+            if (abs(kps_.at(i).pt.x - p.x) < 5
+              && abs(kps_.at(i).pt.y - p.y) < 5)
+            {
+              kpsc_.push_back(kps_.at(i));
+              kps_.erase(kps_.begin() + i);
+              break;
+            }
+
+          }
+        }
+      }
+    }
+    void setDisplay(cv::Mat color_frame)
+    {
+      if (mode == 0)
+      {
+        cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 0, 255), 3);
+      }
+      else
+      {
+        cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 255, 0), 3);
+        cv::putText(color_frame, "x", tooltip_, 2, 0.5, cv::Scalar(0, 255, 0), 1);
+
+        pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y);
+        std::ostringstream os;
+        os << " [" << tcp.x << ", " << tcp.y << ", " << tcp.z << "]";
+        cv::putText(color_frame, os.str(), tooltip_, 2, 0.5, cv::Scalar(0, 255, 0), 1);
+      }
+
+      for (unsigned int i = 0 ; i < kps_.size(); i++)
+      {
+        cv::KeyPoint kp = kps_.at(i);
+        // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
+        cv::putText(color_frame, "+", cv::Point(kp.pt.x, kp.pt.y), 2, 0.5, cv::Scalar(255, 0, 255), 1);
+      }
+      for (unsigned int i = 0 ; i < kpsc_.size(); i++)
+      {
+        cv::KeyPoint kp = kpsc_.at(i);
+        cv::putText(color_frame, "+", cv::Point(kp.pt.x, kp.pt.y), 2, 0.5, cv::Scalar(0, 0, 255), 1);
+      }
+
+      cv::imshow("what", color_frame);
+    }
+
+
     void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
         const sensor_msgs::ImageConstPtr& depth_msg,
-        const sensor_msgs::ImageConstPtr& mask_msg,
         const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     {
       // Store camera information only once
@@ -190,43 +285,77 @@ class GripperSegmentationCollector
       cv::Mat color_frame, depth_frame, self_mask;
       cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
       cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
-      cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
 
       color_frame = color_cv_ptr->image;
       depth_frame = depth_cv_ptr->image;
-      self_mask = mask_cv_ptr->image;
 
-      // Downsample everything first
-      /*
-      cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
-      cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
-      cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
-       */
-
+      // cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
+      // self_mask = mask_cv_ptr->image;
       XYZPointCloud cloud;
       pcl::fromROSMsg(*cloud_msg, cloud);
       tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
           cloud.header.stamp, ros::Duration(0.9));
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
-      cur_color_frame_ = color_frame;
-      cur_depth_frame_ = depth_frame.clone();
-      cur_point_cloud_ = cloud;
+      cloud_ = cloud;
 
+      //cv::SurfFeatureDetector surf(400);
+      cv::SURF surf;
+      cv::Mat mask;
+      std::vector<cv::KeyPoint> keypoints;
+      surf(color_frame, mask, keypoints);
+      kps_ = keypoints;
+      //cv::imshow("Workit", color_frame);
 
+      cv::Point chosen;
+
+      cv::namedWindow("what", 0);
+      cv::setMouseCallback("what", onMouse, (void*) &chosen);
+
+      // back to selecting new tooltip mode
+      mode = 0;
+
+      setDisplay(color_frame.clone());
+      // in case of esc, abort
+      while (cv::waitKey(33) != 27)
+      {
+        // process the chosen
+        process(chosen);
+        setDisplay(color_frame.clone());
+      };
+
+      // surf.detect(color_frame, keypoints);
+
+      // Downsample everything first
+      /*
+         cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
+         cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
+         cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
+       */
+
+      /*
+         XYZPointCloud cloud;
+         pcl::fromROSMsg(*cloud_msg, cloud);
+         tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
+         cloud.header.stamp, ros::Duration(0.9));
+         pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+         cur_camera_header_ = img_msg->header;
+         cur_color_frame_ = color_frame;
+         cur_depth_frame_ = depth_frame.clone();
+         cur_point_cloud_ = cloud;
       // ====== L,R JOINT ANGLE ======
       double current_angles[14];
       get_current_joint_angles(current_angles);
       textFile << counter << ",";
       for (int i = 0; i < 14; i++)
       {
-        textFile << current_angles[i] << ",";
+      textFile << current_angles[i] << ",";
       }
       // ====== FOWARD KINEMATICS L,R TOOLTIP POSE ======
       get_fk_tooltip_pose(current_angles);
       for (int i = 0; i < 14; i++)
       {
-        textFile << current_angles[i] << ",";
+      textFile << current_angles[i] << ",";
       }
 
       textFile << "\n";
@@ -235,29 +364,30 @@ class GripperSegmentationCollector
       cv::imwrite(file1 + ".jpg", color_frame);
       cv::imwrite(file1 + "m.jpg", self_mask);
 
-      cv::imshow("show", color_frame);
-      cv::waitKey(3);
-      counter++;
+      //cv::imshow("show", color_frame);
+      //cv::waitKey(3);
+       */ 
       ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
 
-      z_+= 0.10;
-      if (z_ > 0.00)
+      counter++;
+      y_+= 0.10;
+      if (y_ > 0.3)
       {
-        z_ = -0.3;
-        y_+= 0.10;
-        if (y_ > 0.3)
+        y_ = -0.3;
+        x_ += 0.1;
+        if (x_ > 0.6)
         {
-          y_ = -0.3;
-          x_ += 0.1;
-          if (x_ > 0.6)
+          x_ = 0.4;
+          z_+= 0.10;
+          if (z_ > 0.00)
           {
-            if (which_arm_.compare("r") == 0)
-              ros::shutdown();
-            else
-              x_ = 0.4;
+            z_ = -0.2;
           }
+
         }
       }
+
+
       pr2_gripper_segmentation::GripperPose psrv;
       PoseStamped p;
       p.header.frame_id = workspace_frame_;
@@ -276,7 +406,7 @@ class GripperSegmentationCollector
 
     std::string getFileName(unsigned int counter, std::string which_arm)
     {
-      std::ostringstream os, os2;
+      std::ostringstream os;
       os << "/u/swl33/data/";
       if (counter / 100 == 0)
         os << "0";
@@ -343,12 +473,9 @@ class GripperSegmentationCollector
     shared_ptr<tf::TransformListener> tf_;
 
     // frames
-    cv::Mat cur_color_frame_;
-    cv::Mat cur_orig_color_frame_;
-    cv::Mat cur_depth_frame_;
     cv::Mat cur_workspace_mask_;
     std_msgs::Header cur_camera_header_;
-    XYZPointCloud cur_point_cloud_;
+    XYZPointCloud cloud_;
     int display_wait_ms_;
     int num_downsamples_;
     std::string workspace_frame_;
@@ -366,6 +493,10 @@ class GripperSegmentationCollector
 
     float x_, y_, z_;
     std::string which_arm_;
+    cv::Point tooltip_;
+    int mode;
+    std::vector<cv::KeyPoint> kps_;
+    std::vector<cv::KeyPoint> kpsc_;
 };
 
 int main(int argc, char** argv)
