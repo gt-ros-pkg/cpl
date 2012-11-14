@@ -229,6 +229,8 @@ class GripperSegmentationCollector
             {
               kpsc_.push_back(kps_.at(i));
               kps_.erase(kps_.begin() + i);
+
+              ROS_INFO("added new thing");
               break;
             }
 
@@ -238,6 +240,8 @@ class GripperSegmentationCollector
     }
     void setDisplay(cv::Mat color_frame)
     {
+      cv::putText(color_frame, "Press ESC for exit", cv::Point(5,15), 2, 0.5, cv::Scalar(255, 255, 255), 1);
+
       if (mode == 0)
       {
         cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 0, 255), 3);
@@ -317,11 +321,13 @@ class GripperSegmentationCollector
 
       setDisplay(color_frame.clone());
       // in case of esc, abort
-      while (cv::waitKey(33) != 27)
+      while (cv::waitKey(10) != 27)
       {
+        ROS_INFO("loop");
         // process the chosen
         process(chosen);
         setDisplay(color_frame.clone());
+        chosen = cv::Point(0,0);
       };
 
       // surf.detect(color_frame, keypoints);
@@ -367,7 +373,7 @@ class GripperSegmentationCollector
       //cv::imshow("show", color_frame);
       //cv::waitKey(3);
        */ 
-      ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
+      // ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
 
       counter++;
       y_+= 0.10;
