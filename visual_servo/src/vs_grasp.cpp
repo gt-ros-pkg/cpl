@@ -70,6 +70,8 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/nonfree/features2d.hpp>
 
 // STL
 #include <vector>
@@ -300,14 +302,83 @@ class VisualServoNode
       XYZPointCloud cloud; 
       pcl::fromROSMsg(*cloud_msg, cloud);
       tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-          cloud.header.stamp, ros::Duration(0.9));
-      pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+          cloud.header.stamp, ros::Duration(3.0));
+      // pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
+      prev_color_frame_ = cur_color_frame_.clone();
       cur_color_frame_ = color_frame;
       cur_orig_color_frame_ = color_frame.clone();
       cur_depth_frame_ = depth_frame.clone();
       cur_point_cloud_ = cloud;
 
+      try
+      {
+      //-- Step 1: Detect the keypoints using SURF Detector
+      int minHessian = 400;
+
+      cv::SurfFeatureDetector detector( minHessian );
+
+      std::vector<cv::KeyPoint> keypoints_1, keypoints_2;
+
+      cv::Mat img_1 = cur_color_frame_;
+      // cv::Mat img_2 = prev_color_frame_;
+      cv::Mat img_2 = cv::imread("/home/swl33/gripper.jpg");
+      detector.detect( img_1, keypoints_1 );
+      detector.detect( img_2, keypoints_2 );
+
+      //-- Step 2: Calculate descriptors (feature vectors)
+      cv::SurfDescriptorExtractor extractor;
+
+      cv::Mat descriptors_1, descriptors_2;
+
+      extractor.compute( img_1, keypoints_1, descriptors_1 );
+      extractor.compute( img_2, keypoints_2, descriptors_2 );
+
+      //-- Step 3: Matching descriptor vectors using FLANN matcher
+      cv::FlannBasedMatcher matcher;
+      std::vector< cv::DMatch > matches;
+      matcher.match( descriptors_1, descriptors_2, matches );
+
+      double max_dist = 0; double min_dist = 100;
+
+      //-- Quick calculation of max and min distances between keypoints
+      for( int i = 0; i < descriptors_1.rows; i++ )
+      { double dist = matches[i].distance;
+        if( dist < min_dist ) min_dist = dist;
+        if( dist > max_dist ) max_dist = dist;
+      }
+
+      printf("-- Max dist : %f \n", max_dist );
+      printf("-- Min dist : %f \n", min_dist );
+
+      //-- Draw only "good" matches (i.e. whose distance is less than 2*min_dist )
+      //-- PS.- radiusMatch can also be used here.
+      std::vector< cv::DMatch > good_matches;
+
+      for( int i = 0; i < descriptors_1.rows; i++ )
+      { if( matches[i].distance < 2*min_dist )
+        { good_matches.push_back( matches[i]); }
+      }
+
+      //-- Draw only "good" matches
+      cv::Mat img_matches;
+      cv::drawMatches( img_1, keypoints_1, img_2, keypoints_2,
+          good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
+          std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+
+      //-- Show detected matches
+      cv::imshow( "Good Matches", img_matches );
+      cv::waitKey(display_wait_ms_);
+
+      for( int i = 0; i < good_matches.size(); i++ )
+      { printf( "-- Good Match [%d] Keypoint 1: %d  -- Keypoint 2: %d  \n", i, good_matches[i].queryIdx, good_matches[i].trainIdx ); }
+
+      }
+      catch (cv::Exception e)
+      {
+        ROS_FATAL("%s", e.what());
+      }
+      /*
       // need to profile this
       gripper_pose_estimated_ = updateGripperFeatures();
       executeStatemachine();
@@ -317,7 +388,9 @@ class VisualServoNode
       // show a pretty imshow
       setDisplay();
 #endif
+       */
 #ifdef EXPERIMENT
+
       // for profiling purpose
       ros::Time end = ros::Time::now();
       std::stringstream ss;
@@ -1501,6 +1574,7 @@ class VisualServoNode
     shared_ptr<tf::TransformListener> tf_;
     cv::Mat cur_color_frame_;
     cv::Mat cur_orig_color_frame_;
+    cv::Mat prev_color_frame_;
     cv::Mat cur_depth_frame_;
     cv::Mat cur_workspace_mask_;
     std_msgs::Header cur_camera_header_;
