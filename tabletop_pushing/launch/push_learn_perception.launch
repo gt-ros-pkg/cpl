@@ -8,7 +8,7 @@
     <param name="use_displays" value="true" type="bool"/>
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
-    <param name="write_to_disk" value="true" type="bool"/>
+    <param name="write_to_disk" value="false" type="bool"/>
     <param name="write_input_to_disk" value="false" type="bool"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
@@ -24,7 +24,7 @@
     <param name="num_downsamples" value="1" type="int"/>
 
     <param name="pcl_cluster_tolerance" value="0.03" type="double"/>
-    <param name="pcl_min_cluster_size" value="200" type="int"/>
+    <param name="pcl_min_cluster_size" value="50" type="int"/>
     <param name="pcl_max_cluster_size" value="25000" type="int"/>
     <param name="pcl_voxel_downsample_res" value="0.005" type="double"/>
     <param name="pcl_cloud_intersect_thresh" value="0.0025" type="double"/>
@@ -32,12 +32,35 @@
     <param name="use_pcl_voxel_downsample" value="false" type="bool"/>
     <param name="table_ransac_thresh" value="0.015" type="double"/>
     <param name="table_ransac_angle_thresh" value="5.0" type="double"/>
+
+    <param name="cylinder_ransac_thresh" value="0.015" type="double"/>
+    <param name="cylinder_ransac_angle_thresh" value="5.0" type="double"/>
+    <param name="optimize_cylinder_coefficients" value="false" type="bool"/>
+
+    <param name="sphere_ransac_thresh" value="0.015" type="double"/>
+
     <param name="pcl_difference_thresh" value="0.0001" type="double"/>
+
+    <param name="mps_min_inliers" value="100" type="int"/>
+    <param name="mps_min_angle_thresh" value="20.0" type="double"/>
+    <param name="mps_min_dist_thresh" value="0.05" type="double"/>
+
+    <param name="use_mps_segmentation" value="false" type="bool"/>
 
     <param name="img_output_path" value="/u/thermans/data/new/" type="string"/>
 
-    <param name="push_tracker_dist_thresh" value="0.05" type="double"/>
+    <param name="push_tracker_dist_thresh" value="0.01" type="double"/>
     <param name="push_tracker_angle_thresh" value="0.1" type="double"/>
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
+    <param name="use_cv_ellipse" value="false" type="bool"/>
+    <param name="max_object_gripper_dist" value="0.25" type="double"/>
+    <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
+    <param name="object_not_moving_thresh" value="0.003" type="double"/>
+    <param name="gripper_not_moving_count_limit" value="50" type="int"/>
+    <param name="object_not_moving_count_limit" value="50" type="int"/>
+    <param name="object_not_detected_count_limit" value="5" type="int"/>
+    <param name="object_too_far_count_limit" value="2" type="int"/>
+    <param name="object_not_between_count_limit" value="2" type="int"/>
+    <param name="object_not_between_epsilon" value="0.02" type="double"/>
   </node>
 </launch>

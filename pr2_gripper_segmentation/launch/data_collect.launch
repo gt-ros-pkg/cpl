@@ -1,0 +1,19 @@
+<launch>
+  <!-- <include file="/etc/ros/fuerte/openni_head.launch"/> -->
+  <!-- <include file="$(find tabletop_pushing)/launch/pr2_camera_self_filter_kinect_head.launch" /> -->
+  <node name="test_node" pkg="pr2_gripper_segmentation" type="collector" respawn="false" output="screen">
+
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_rect_color"/>
+    <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
+    <remap from="mask_image_topic" to="/kinect_head/rgb/image_rect_color/self_mask"/>
+    <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>
+
+    <!-- <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/> -->
+    <!-- <remap from="depth_image_topic" to="/kinect_head/depth_r/image"/> -->
+    <!-- <remap from="point_cloud_topic" to="/kinect_head/depth_r/points"/> -->
+    <param name="cam_info_topic" value="/kinect_head/rgb/camera_info" type="string"/>
+    <param name="display_wait_ms" value="3" type="int"/>
+    <param name="workspace_frame" value="/torso_lift_link" type="string"/>
+    <param name="optical_frame" value="/head_mount_kinect_rgb_optical_frame" type="string"/>
+  </node>
+</launch>

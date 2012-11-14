@@ -12,8 +12,8 @@
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
   <depend package="geometry_msgs"/>
-  <depend package="pcl"/>
-  <depend package="pcl_ros"/>
+  <depend package="pcl16"/>
+  <depend package="pcl16_ros"/>
   <depend package="tf"/>
   <depend package="tf_conversions"/>
   <depend package="cpl_visual_features"/>
@@ -21,12 +21,14 @@
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
   <depend package="hrl_pr2_lib"/>
+  <depend package="pr2_manipulation_controllers"/>
   <depend package="actionlib"/>
   <depend package="actionlib_msgs"/>
   <depend package="pr2_controllers_msgs"/>
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
   <depend package="pr2_camera_self_filter"/>
+  <depend package="visual_servo"/>
   <export>
     <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lpoint_cloud_segmentation" />
   </export>

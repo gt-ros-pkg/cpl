@@ -31,161 +31,546 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
-from geometry_msgs.msg import Point
-from math import sin, cos, pi, sqrt, fabs
+from geometry_msgs.msg import Point, Pose2D
+from math import sin, cos, pi, sqrt, fabs, atan2, hypot
 import cv2
 import tf.transformations as tr
 import numpy as np
 import sys
 import rospy
+from push_primitives import *
 
-_HEADER_LINE = '# c_x c_y c_z theta push_opt arm c_x\' c_y\' c_z\' push_dist high_init push_time'
+_VERSION_LINE = '# v0.3'
+_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm precondition_method push_time'
+
+def get_attr(instance, attribute):
+    '''
+    A wrapper for the builtin python getattr which handles recursive attributes of attributes
+    '''
+    attr_list = attribute.split('.')
+    def get_nested_attr(instance, attr_list):
+        if len(attr_list) == 1:
+            return getattr(instance, attr_list[0])
+        return get_nested_attr(getattr(instance, attr_list[0]), attr_list[1:])
+    return get_nested_attr(instance, attr_list)
 
 class PushTrial:
     def __init__(self):
-        self.c_x = None
-        self.c_x_prime = None
-        self.push_angle = None
-        self.push_opt = None
-        self.arm = None
-        self.push_dist = None
-        self.high_init = 0
+        self.object_id = ''
+        self.controller = ''
+        self.behavior_primitive = ''
+        self.proxy = ''
+        self.which_arm = ''
+        self.precondition_method = ''
+        self.init_centroid = Point()
+        self.init_orientation = 0.0
+        self.final_centroid = Point()
+        self.final_orientation = 0.0
+        self.goal_pose = Pose2D()
         self.push_time = 0.0
-        self.score = None
+        # NOTE: Everything below not saved to disk, just computed for convenience
+        self.push_angle = 0.0
+        self.push_dist = 0.0
+        self.continuation = False
 
     def __str__(self):
-        return str((self.c_x, self.push_angle, self.push_opt, self.arm,
-                    self.c_x_prime, self.push_dist, self.high_init, self.push_time))
+        return (self.object_id +
+                ' (' + self.proxy + ', ' + self.controller + ', ' + self.behavior_primitive + ', ' +
+                self.which_arm + '_arm'+', ' +self.precondition_method+'):\n' +
+                'init_centroid:\n' + str(self.init_centroid) + '\n'+
+                'init_orientation: ' + str(self.init_orientation) +'\n'+
+                'final_centroid:\n' + str(self.final_centroid) + '\n'+
+                'final_orientation: ' + str(self.final_orientation) + '\n'+
+                'goal_pose:\n' + str(self.goal_pose) + '\n'+
+                'push_time: ' + str(self.push_time))
+
+def compare_pushes(a, b):
+    if a.score < b.score:
+        return -1
+    elif a.score > b.score:
+        return 1
+    else:
+        return 0
+
+def compare_counts(a, b):
+    if a.successful_count > b.successful_count:
+        return -1
+    elif a.successful_count < b.successful_count:
+        return 1
+    else:
+        return 0
+
+
+class PushLearningIO:
+    def __init__(self):
+        self.data_out = None
+        self.data_in = None
+
+    def write_line(self, init_centroid, init_orientation, final_centroid,
+                   final_orientation, goal_pose, behavior_primitive,
+                   controller, proxy, which_arm, push_time, object_id,
+                   precondition_method='centroid_push'):
+        if self.data_out is None:
+            rospy.logerr('Attempting to write to file that has not been opened.')
+            return
+        rospy.logdebug('Writing output line.\n')
+        data_line = object_id+' '+str(init_centroid.x)+' '+str(init_centroid.y)+' '+str(init_centroid.z)+' '+\
+            str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
+            str(final_centroid.z)+' '+str(final_orientation)+' '+\
+            str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
+        self.data_out.write(data_line)
+        self.data_out.flush()
+
+    def parse_line(self, line):
+        if line.startswith('#'):
+            return None
+        l  = line.split()
+        l.reverse()
+        num_objs = len(l)
+        push = PushTrial()
+        push.object_id = l.pop()
+        push.init_centroid.x = float(l.pop())
+        push.init_centroid.y = float(l.pop())
+        push.init_centroid.z = float(l.pop())
+        push.init_orientation = float(l.pop())
+        push.final_centroid.x = float(l.pop())
+        push.final_centroid.y = float(l.pop())
+        push.final_centroid.z = float(l.pop())
+        push.final_orientation = float(l.pop())
+        push.goal_pose.x = float(l.pop())
+        push.goal_pose.y = float(l.pop())
+        push.goal_pose.theta = float(l.pop())
+        push.behavior_primitive = l.pop()
+        push.controller = l.pop()
+        push.proxy = l.pop()
+        push.which_arm = l.pop()
+        push.push_time = float(l.pop())
+        if len(l) > 0:
+            push.precondition_method = l.pop()
+        else:
+            push.precondition_method = 'push_centroid'
+        push.push_angle = atan2(push.goal_pose.y-push.init_centroid.y,
+                                push.goal_pose.x-push.init_centroid.x)
+        push.push_dist = hypot(push.goal_pose.y-push.init_centroid.y,
+                               push.goal_pose.x-push.init_centroid.x)
+        if push.init_centroid.x > 1.0:
+            print 'Greater than 1.0 x: ', str(push)
+        return push
+
+    def read_in_data_file(self, file_name):
+        data_in = file(file_name, 'r')
+        x = [self.parse_line(l) for l in data_in.readlines()]
+        data_in.close()
+        x = filter(None, x)
+        return self.link_repeat_trials(x)
+
+    def link_repeat_trials(self, trials):
+        for i in range(1,len(trials)):
+            if (trials[i].goal_pose.y == trials[i-1].goal_pose.y and
+                trials[i].goal_pose.x == trials[i-1].goal_pose.x and
+                trials[i].behavior_primitive == trials[i-1].behavior_primitive and
+                trials[i].proxy == trials[i-1].proxy and
+                trials[i].controller == trials[i-1].controller):
+                if trials[i].which_arm == trials[i-1].which_arm:
+                    # print 'Continuation with different arm'
+                    pass
+                else:
+                    trials[i].continuation = True
+        return trials
+
+    def open_out_file(self, file_name):
+        self.data_out = file(file_name, 'a')
+        self.data_out.write(_VERSION_LINE+'\n')
+        self.data_out.write(_HEADER_LINE+'\n')
+        self.data_out.flush()
+
+    def close_out_file(self):
+        self.data_out.close()
 
 class PushLearningAnalysis:
 
     def __init__(self):
         self.raw_data = None
         self.io = PushLearningIO()
-        self.compute_push_score = self.compute_push_error_xy
-        # self.compute_push_score = self.compute_push_error_push_dist_diff
-        self.xy_hash_precision = 10.0 # bins/meter
+        self.xy_hash_precision = 20.0 # bins/meter
         self.num_angle_bins = 8
+    #
+    # Methods for computing marginals
+    #
+    def workspace_ranking(self):
+        # likelihood_arg=['behavior_primitive','proxy','controller','which_arm']
+        # likelihood_arg=['which_arm']
+        likelihood_arg=['behavior_primitive','proxy','controller']
+        score_fnc=self.compute_change_in_push_error_xy
+        score_fnc=self.compute_push_error_xy
+        workspace_ranks = self.rank_avg_pushes(trial_hash_fnc=self.hash_push_xy_angle,
+                                               likelihood_arg=likelihood_arg,
+                                               mean_push_fnc=self.get_mean_workspace_push,
+                                               score_fnc=score_fnc)
+        print "Workspace push rankings:"
+        for ranks in workspace_ranks:
+            self.output_push_ranks(ranks,
+                                   ['init_centroid.x','init_centroid.y','push_angle'],
+                                   likelihood_arg, n=3)
+        return workspace_ranks
 
-    def determine_best_pushes(self, file_name):
-        all_trials = self.read_in_push_trials(file_name)
-        loc_groups = self.group_trials(all_trials)
+    def object_ranking(self, use_raw=False, count_successes=True):
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of object_id
+        '''
+        cond_arg='object_id'
+        likelihood_arg=['behavior_primitive','proxy','controller']
+        # score_fnc=self.compute_normalized_push_time
+        score_fnc=self.compute_push_error_xy
+        # score_fnc=self.compute_change_in_push_error_xy
+        if use_raw:
+            rankings = self.rank_raw_pushes(trial_grouping_arg=cond_arg,
+                                            score_fnc=score_fnc)
+            print "\Raw object behavior rankings:"
+            for ranks in rankings:
+                self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=5)
+        elif count_successes:
+            rankings = self.count_successful_pushes(trial_grouping_arg=cond_arg,
+                                                    likelihood_arg=likelihood_arg,
+                                                    score_fnc=score_fnc)
+            print "\Successful counts for affordance-behaviors on different objects:"
+            total_good = 0
+            total_attempts = 0
+            for ranks in rankings:
+                num_good, num_attempts = self.output_push_counts(ranks, cond_arg, likelihood_arg, n=50)
+                total_good += num_good
+                total_attempts += num_attempts
+            print 'Total good', total_good
+            print 'Total attempts', total_attempts
+        else:
+            rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
+                                            likelihood_arg=likelihood_arg,
+                                            score_fnc=score_fnc)
+            print "\nObject behavior rankings:"
+            for ranks in rankings:
+                self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=1)
+        return rankings
 
-        # Group multiple trials of same push at a given location
-        groups = []
-        for i, group in enumerate(loc_groups):
-            push_opt_dict = {}
-            for j,t in enumerate(group):
-                opt_key = self.hash_push_opt(t)
-                try:
-                    push_opt_dict[opt_key].append(t)
-                except KeyError:
-                    push_opt_dict[opt_key] = [t]
+    def object_proxy_ranking(self):
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of object_id
+        '''
+        cond_arg='object_id'
+        likelihood_arg='proxy'
+        # score_fnc=self.compute_normalized_push_time
+        # score_fnc=self.compute_push_error_xy
+        score_fnc=self.compute_change_in_push_error_xy
+        rankings = self.rank_avg_pushes(trial_grouping_arg=cond_arg,
+                                        likelihood_arg=likelihood_arg,
+                                        score_fnc=score_fnc)
+        print "\nObject proxy rankings:"
+        for ranks in rankings:
+            self.output_push_ranks(ranks, cond_arg, likelihood_arg, n=3)
+        return rankings
+
+    def angle_ranking(self):
+        '''
+        Method to find the best performing (on average) behavior_primitive as a function of push_angle
+        '''
+        likelihood_arg=['behavior_primitive','proxy','controller']
+        angle_ranks = self.rank_avg_pushes(
+            trial_hash_fnc=self.hash_push_angle, likelihood_arg=likelihood_arg,
+            mean_push_fnc=self.get_mean_angle_push)
+        print "Angle push rankings:"
+        for rank in angle_ranks:
+            self.output_push_ranks(rank, 'push_angle', likelihood_arg, n=3)
+        return angle_ranks
+
+    def rank_avg_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                        likelihood_arg=None, mean_push_fnc=None,score_fnc=None):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
+
+        # Group multiple trials of same type
+        mean_groups = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            likelihood_arg_dict = self.group_trials(trial_group, likelihood_arg)
             # Average errors for each push key
             mean_group = []
-            for opt_key in push_opt_dict:
-                mean_score = 0
-                for push in push_opt_dict[opt_key]:
-                    mean_score += push.score
-                mean_score = mean_score / float(len(push_opt_dict[opt_key]))
-                # Make a fake mean push
-                mean_push = PushTrial()
-                mean_push.score = mean_score
-                mean_push.c_x = Point(0,0,0)
-                mean_push.c_x.x, mean_push.c_x.y = self.hash_xy(
-                    push_opt_dict[opt_key][0].c_x.x,
-                    push_opt_dict[opt_key][0].c_x.y)
-                mean_push.push_angle = self.hash_angle(
-                    push_opt_dict[opt_key][0].push_angle)
-                mean_push.arm, mean_push.push_opt = self.unhash_opt_key(opt_key)
+            for arg_key in likelihood_arg_dict:
+                if trial_grouping_arg is not None:
+                    mean_push = self.get_mean_push(likelihood_arg_dict[arg_key],
+                                                   trial_grouping_arg, likelihood_arg)
+                else:
+                    mean_push = mean_push_fnc(likelihood_arg_dict[arg_key])
                 mean_group.append(mean_push)
-            groups.append(mean_group)
+            mean_groups.append(mean_group)
 
-        # Choose best push for each (angle, centroid) group
-        best_pushes = []
-        for i, group in enumerate(groups):
-            min_score = 200.0 # Meters
-            min_score_push = None
-            for j, t in enumerate(group):
-                if t.score < min_score:
-                    min_score = t.score
-                    min_score_push = t
-            best_pushes.append(min_score_push)
-        return best_pushes
+        # Choose best push for each conditional group
+        ranked_pushes = []
+        for i, group in enumerate(mean_groups):
+            group.sort(compare_pushes)
+            ranked_pushes.append(group)
+        return ranked_pushes
 
-    def group_trials(self, all_trials):
-        # Get error scores for each push
+    def count_successful_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                                likelihood_arg=None, mean_push_fnc=None,score_fnc=None, score_thresh=0.02):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
+
+        # Group multiple trials of same type
+        count_groups = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            likelihood_arg_dict = self.group_trials(trial_group, likelihood_arg)
+            # Average errors for each push key
+            count_group = []
+            for arg_key in likelihood_arg_dict:
+                push_count = self.get_count_push(likelihood_arg_dict[arg_key],
+                                                 trial_grouping_arg, likelihood_arg, score_thresh)
+                count_group.append(push_count)
+            count_groups.append(count_group)
+
+        # Choose best push for each conditional group
+        ranked_pushes = []
+        for i, group in enumerate(count_groups):
+            group.sort(compare_counts)
+            ranked_pushes.append(group)
+        return ranked_pushes
+
+    def get_successful_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None,
+                              likelihood_arg=None, mean_push_fnc=None,score_fnc=None, score_thresh=0.02):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
+
+        # Group multiple trials of same type
+        count_groups = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            likelihood_arg_dict = self.group_trials(trial_group, likelihood_arg)
+            # Average errors for each push key
+            count_group = []
+            for arg_key in likelihood_arg_dict:
+                for push in likelihood_arg_dict[arg_key]:
+                    if push.score < score_thresh:
+                        count_group.append(push)
+            count_groups.append(count_group)
+        return count_groups
+
+    def rank_raw_pushes(self, trial_hash_fnc=None, trial_grouping_arg=None, score_fnc=None):
+        '''
+        '''
+        # Compute scores
+        if score_fnc is None:
+            score_fnc = self.compute_push_error_xy
+        for t in self.all_trials:
+            t.score = score_fnc(t)
+        # Group objects based on conditional variables
+        if trial_hash_fnc is not None:
+            trial_groups = self.group_trials(self.all_trials, hash_function=trial_hash_fnc)
+        else:
+            trial_groups = self.group_trials(self.all_trials, trial_grouping_arg)
+
+        # Group multiple trials of same type
+        ranked_pushes = []
+        for i, group_key in enumerate(trial_groups):
+            trial_group = trial_groups[group_key]
+            trial_group.sort(compare_pushes)
+            ranked_pushes.append(trial_group)
+        return ranked_pushes
+
+    def get_mean_push(self, arg_list, trial_grouping_arg, likelihood_arg):
+        mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
+        mean_push.score = mean_score
+        mean_push.var = score_var
+        if type(trial_grouping_arg) is not list:
+            trial_grouping_arg = [trial_grouping_arg]
+        if type(likelihood_arg) is not list:
+            likelihood_arg = [likelihood_arg]
+        for arg in trial_grouping_arg:
+            setattr(mean_push,arg, get_attr(arg_list[0],arg))
+        for arg in likelihood_arg:
+            setattr(mean_push,arg, get_attr(arg_list[0],arg))
+        return mean_push
+
+
+    def get_count_push(self, pushes, trial_grouping_arg, likelihood_arg, score_thresh):
+        count_push = PushTrial()
+        successful_count = 0
+        for push in pushes:
+            if push.score < score_thresh:
+                successful_count += 1
+        count_push.successful_count = successful_count
+        count_push.total_count = len(pushes)
+        if type(trial_grouping_arg) is not list:
+            trial_grouping_arg = [trial_grouping_arg]
+        if type(likelihood_arg) is not list:
+            likelihood_arg = [likelihood_arg]
+        for arg in trial_grouping_arg:
+            setattr(count_push,arg, get_attr(pushes[0],arg))
+        for arg in likelihood_arg:
+            setattr(count_push,arg, get_attr(pushes[0],arg))
+        return count_push
+
+    def get_mean_angle_push(self, arg_list):
+        mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
+        mean_push.score = mean_score
+        mean_push.var = score_var
+        mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
+        mean_push.behavior_primitive = arg_list[0].behavior_primitive
+        mean_push.controller = arg_list[0].controller
+        mean_push.proxy = arg_list[0].proxy
+        return mean_push
+
+    def get_mean_workspace_push(self, arg_list):
+        mean_push = PushTrial()
+        mean_score, score_var = self.mean_and_variance(arg_list)
+        mean_push.score = mean_score
+        mean_push.var = score_var
+        mean_push.init_centroid.x, mean_push.init_centroid.y = self.hash_xy(
+            arg_list[0].init_centroid.x, arg_list[0].init_centroid.y)
+        mean_push.push_angle = self.hash_angle(arg_list[0].push_angle)
+        mean_push.behavior_primitive = arg_list[0].behavior_primitive
+        mean_push.controller = arg_list[0].controller
+        mean_push.proxy = arg_list[0].proxy
+        mean_push.which_arm = arg_list[0].which_arm
+        return mean_push
+
+    def mean_and_variance(self, pushes):
+        n = len(pushes)
+        mean_score = 0
+        for push in pushes:
+            mean_score += push.score
+        mean_score = mean_score / n
+
+        if n <= 1:
+            return (mean_score, 0)
+
+        var_sum = 0
+        for push in pushes:
+            var_sum += push.score**2
+        score_var = (var_sum-n*mean_score**2)/(n-1)
+
+        return (mean_score, score_var)
+    #
+    # Grouping methods
+    #
+    def group_trials(self, all_trials, hash_attribute=None, hash_function=None):
+        group_dict = {}
         # Group scored pushes by push angle
-        angle_dict = {}
         for t in all_trials:
-            t.score = self.compute_push_score(t)
-            angle_key = self.hash_angle(t.push_angle)
+            if hash_function is not None:
+                group_key = hash_function(t)
+            elif type(hash_attribute) == list and len(hash_attribute) > 1:
+                group_key = []
+                for attr in hash_attribute:
+                    group_key.append(get_attr(t,attr))
+                group_key = tuple(group_key)
+            elif type(hash_attribute) == list:
+                group_key = get_attr(t, hash_attribute[0])
+            else:
+                group_key = get_attr(t, hash_attribute)
             try:
-                angle_dict[angle_key].append(t)
+                group_dict[group_key].append(t)
             except KeyError:
-                angle_dict[angle_key] = [t]
-        # Group different pushes by start centroid
-        groups = []
-        i = 0
-        for angle_key in angle_dict:
-            x_dict = {}
-            for t in angle_dict[angle_key]:
-                x_key, y_key = self.hash_xy(t.c_x.x, t.c_x.y)
-                # Check if x_key exists
-                try:
-                    cur_y_dict = x_dict[x_key]
-                    # Check if y_key exists
-                    try:
-                        x_dict[x_key][y_key].append(t)
-                    except KeyError:
-                        x_dict[x_key][y_key] = [t]
-                except KeyError:
-                    y_dict = {y_key:[t]}
-                    x_dict[x_key] = y_dict
-            # Flatten groups
-            for x_key in x_dict:
-                for y_key in x_dict[x_key]:
-                    groups.append(x_dict[x_key][y_key])
-                    i += 1
+                group_dict[group_key] = [t]
+        return group_dict
+
+    def group_trials_by_xy_and_push_angle(self, all_trials):
+        '''
+        Method to group all trials by initial table location and push angle
+        '''
+        groups = {}
+        # Group scored pushes by push angle
+        for t in all_trials:
+            angle_key = self.hash_angle(t.push_angle)
+            x_key, y_key = self.hash_xy(t.init_centroid.x, t.init_centroid.y)
+            group_key = (x_key, y_key, angle_key)
+            try:
+                groups[group_key].append(t)
+            except KeyError:
+                groups[group_key] = [t]
         return groups
 
-    def visualize_push_choices(self, choices):
+    def group_trials_by_push_angle(self, all_trials):
+        '''
+        Method to group all trials by initial table location and push angle
+        '''
+        return self.group_trials(all_trials, hash_function=self.hash_push_angle)
+
+    def group_trials_by_xy(self, all_trials):
+        '''
+        Method to group all trials by initial table location and push angle
+        '''
+        xy_dict = {}
+        for t in all_trials:
+            xy_key = self.hash_xy(t.init_centroid.x, t.init_centroid.y)
+            # Check if x_key exists
+            try:
+                xy_dict[xy_key].append(t)
+            except KeyError:
+                xy_dict[xy_key] = [t]
+        return xy_dict
+    #
+    # Visualization functions
+    #
+    def visualize_push_choices(self, ranks, score_threshold=None):
+        choices = []
+        for rank in ranks:
+            choices.append(rank[0])
         # load in image from dropbox folder
-        disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/test_disp.png')
-        world_min_x = 0.2
-        world_max_x = 1.0
-        world_min_y = -0.5
-        world_max_y = 0.5
-        world_x_dist = world_max_x - world_min_x
-        world_y_dist = world_max_y - world_min_y
-        world_x_bins = world_x_dist*self.xy_hash_precision
-        world_y_bins = world_y_dist*self.xy_hash_precision
-        for c in choices:
-            start_x, start_y = self.hash_xy(c.c_x.x, c.c_x.y)
-            push_angle = self.hash_angle(c.push_angle)
-            rospy.loginfo('Choice for (' + str(start_x) + ', ' + str(start_y) +
-                          ', ' + str(push_angle) + '): (' + str(c.arm) + ', ' +
-                          str(c.push_opt) + ') : ' + str(c.score))
-            disp_img = self.draw_push_choice_on_image(c, disp_img)
+        disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/use_for_display.png')
+
+        xy_groups = self.group_trials_by_xy(choices)
+
+        for group_key in xy_groups:
+            disp_img = self.draw_push_choices_on_image(xy_groups[group_key], disp_img,
+                                                       score_threshold=score_threshold)
         cv2.imshow('Chosen pushes', disp_img)
         cv2.imwrite('/u/thermans/Desktop/push_learn_out.png', disp_img)
         cv2.waitKey()
 
-    def draw_push_choice_on_image(self, c, img):
-        # TODO: Double check where the bin centroid is
-        # c.c_x.x -= 0.5/self.xy_hash_precision
-        # c.c_x.y -= 0.5/self.xy_hash_precision
-
+    def draw_push_choices_on_image(self, choices, img, score_threshold=None):
+        # TODO: Double check that this is all correct
         # TODO: load in transform and camera parameters from saved info file
         K = np.matrix([[525, 0, 319.5, 0.0],
                        [0, 525, 239.5, 0.0],
                        [0, 0, 1, 0.0]])
         tl = np.asarray([-0.0115423, 0.441939, 0.263569])
         q = np.asarray([0.693274, -0.685285, 0.157732, 0.157719])
-        num_downsamples = 1
-        # TODO: Save table height in trial data
+        num_downsamples = 0
         table_height = -0.3
-        P_w = np.matrix([[c.c_x.x], [c.c_x.y], [table_height], [1.0]])
+        P_w = np.matrix([[choices[0].init_centroid.x], [choices[0].init_centroid.y],
+                         [table_height], [1.0]])
         # Transform choice location into camera frame
         T = (np.matrix(tr.translation_matrix(tl)) *
              np.matrix(tr.quaternion_matrix(q)))
@@ -195,38 +580,182 @@ class PushLearningAnalysis:
         P_i = P_i / P_i[2]
         u = P_i[0]/pow(2,num_downsamples)
         v = P_i[1]/pow(2,num_downsamples)
-        # Choose color by push type
-        if c.arm == 'l':
-            if c.push_opt == 0: # Gripper push
-                color = [255.0, 0.0, 0.0] # Blue
-            elif c.push_opt == 1: # Sweep
-                color = [0.0, 255.0, 0.0] # Green
-            else: # Overhead push
-                color = [0.0, 0.0, 255.0] # Red
-        else:
-            if c.push_opt == 0:# Gripper push
-                color = [255.0, 0.0, 255.0] # Magenta
-            elif c.push_opt == 1: # Sweep
-                color = [0.0, 255.0, 255.0] # Yellow
-            else: # Overhead push
-                color = [255.0, 255.0, 0.0] # Cyan
 
-        # Draw line depicting the angle
-        radius = 7
-        end_point = (u+cos(c.push_angle)*radius, v+sin(c.push_angle)*radius)
-        cv2.line(img, (u,v), end_point, color)
-        cv2.circle(img, (u,v), radius, [0.0,0.0,0.0])
+        valid_choices = 0
+        for c in choices:
+            if score_threshold is None:
+                valid_choices += 1
+            elif c.score < score_threshold:
+                valid_choices += 1
+        if valid_choices == 0:
+            return img
+        # Draw circle for the location
+        radius = 13
+        cv2.circle(img, (u,v), 3, [0.0,0.0,0.0],3)
+        cv2.circle(img, (u,v), 3, [255.0,255.0,255.0], 1)
+        # Draw Shadows for all angles
+        for c in choices:
+            if score_threshold is None:
+                pass
+            elif c.score > score_threshold:
+                continue
+            end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
+            color = [0.0, 0.0, 0.0] # Black
+            cv2.line(img, (u,v), end_point, color,3)
+        for c in choices:
+            if score_threshold is None:
+                pass
+            elif c.score > score_threshold:
+                continue
+            # Choose color by push type
+            if True or c.which_arm == 'l':
+                if c.behavior_primitive == GRIPPER_PUSH:
+                    color = [255.0, 0.0, 0.0] # Blue
+                elif c.behavior_primitive == GRIPPER_SWEEP:
+                    color = [0.0, 255.0, 0.0] # Green
+                elif c.behavior_primitive == OVERHEAD_PUSH:
+                    color = [0.0, 0.0, 255.0] # Red
+                elif c.behavior_primitive == GRIPPER_PULL:
+                    color = [0.0, 255.0, 255.0] # Yellow
+                # color = [0.0, 255.0, 0.0] # Green
+            else:
+                if c.behavior_primitive == GRIPPER_PUSH:
+                    color = [128.0, 0.0, 128.0] # Magenta
+                elif c.behavior_primitive == GRIPPER_SWEEP:
+                    color = [0.0, 64.0, 129.0] # Brown
+                elif c.behavior_primitive == OVERHEAD_PUSH:
+                    color = [128.0, 128.0, 0.0] # Cyan
+                elif c.behavior_primitive == GRIPPER_PULL:
+                    color = [200.0, 200.0, 200.0] # White
+                # color = [0.0, 0.0, 255.0] # Red
+            # Draw line depicting the angle
+            end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
+            cv2.line(img, (u,v), end_point, color)
         return img
+
+    def visualize_angle_push_choices(self, ranks, score_threshold=None):
+        choices = []
+        for rank in ranks:
+            choices.append(rank[0])
+        # load in image from dropbox folder
+        disp_img = cv2.imread('/u/thermans/Dropbox/Data/choose_push/use_for_display.png')
+
+        # TODO: Create a single group and display for all (x,y) locs
+
+        for x in x_locs:
+            for y in y_locs:
+                for c in choices:
+                    c.init_centroid.x = x
+                    c.init_centroid.y = y
+                    disp_img = self.draw_push_choices_on_image(choices,
+                                                               disp_img,
+                                                               score_threshold=score_threshold)
+        cv2.imshow('Chosen pushes', disp_img)
+        cv2.imwrite('/u/thermans/Desktop/push_learn_angle_out.png', disp_img)
+        cv2.waitKey()
 
     #
     # IO Functions
     #
     def read_in_push_trials(self, file_name):
-        return self.io.read_in_data_file(file_name)
+        self.all_trials = self.io.read_in_data_file(file_name)
+
+    def output_push_choice(self, c, conditional_value, arg_value):
+        '''
+        Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
+        '''
+        if type(conditional_value) == list:
+            conditional_str = ''
+            for val in conditional_value:
+                conditional_str += str(get_attr(c,val))+', '
+            conditional_str = conditional_str[:-2]
+        else:
+            conditional_str = str(get_attr(c,conditional_value))
+        if type(arg_value) == list:
+            arg_str = ''
+            for val in arg_value:
+                arg_str += str(get_attr(c,val))+', '
+            arg_str = arg_str[:-2]
+        else:
+            arg_str = str(get_attr(c,arg_value))
+        print 'Choice for (' +  conditional_str + '): ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
+
+    def output_push_ranks(self, ranks, conditional_value, arg_value, n=3):
+        '''
+        Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
+        '''
+        if len(ranks) == 0:
+            return
+        if type(conditional_value) == list:
+            conditional_str = ''
+            for val in conditional_value:
+                conditional_str += str(get_attr(ranks[0], val))+', '
+            conditional_str = conditional_str[:-2]
+        else:
+            conditional_str = str(get_attr(ranks[0], conditional_value))
+        print 'Ranks for (' +  conditional_str + '):'
+        for i, c in enumerate(ranks):
+            if i >= n:
+                break
+            if type(arg_value) == list:
+                arg_str = ''
+                for val in arg_value:
+                    arg_str += str(get_attr(c,val))+', '
+                arg_str = arg_str[:-2]
+            else:
+                arg_str = str(get_attr(c,arg_value))
+            print '\t ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
+
+    def output_push_counts(self, ranks, conditional_value, arg_value, n=3):
+        '''
+        Method takes strings [or lists of strings] of what attributes of PushTrail instance c to display
+        '''
+        total_good = 0
+        total_attempts = 0
+        if len(ranks) == 0:
+            return
+        if type(conditional_value) == list:
+            conditional_str = ''
+            for val in conditional_value:
+                conditional_str += str(get_attr(ranks[0], val))+', '
+            conditional_str = conditional_str[:-2]
+        else:
+            conditional_str = str(get_attr(ranks[0], conditional_value))
+        print conditional_str + ''
+        for i, c in enumerate(ranks):
+            if i >= n:
+                break
+            if type(arg_value) == list:
+                arg_str = ''
+                for val in arg_value:
+                    arg_str += str(get_attr(c,val))+' & '
+                arg_str = arg_str[:-3]
+            else:
+                arg_str = str(get_attr(c,arg_value))
+            if c.successful_count > 0:
+                total_good += c.successful_count
+                total_attempts += c.total_count
+            #     print ' & '+ arg_str+ ' & & ' + str(c.successful_count) + ' & ' + str(c.total_count) + ' \\\\'
+        # print 'Total good: ', total_good
+        # print 'Total attempts: ', total_attempts
+        return total_good, total_attempts
+    def output_loc_push_choices(self, choices):
+        print "Loc push choices:"
+        for c in choices:
+            self.output_push_choice(c, ['init_centroid.x','init_centroid.y','push_angle'],
+                                    ['behavior_primitive','controller','proxy'])
 
     #
     # Hashing Functions
     #
+
+    def hash_push_angle(self, push):
+        return self.hash_angle(push.push_angle)
+
+    def hash_push_xy_angle(self, push):
+        x_prime, y_prime = self.hash_xy(push.init_centroid.x, push.init_centroid.y)
+        return (x_prime, y_prime, self.hash_angle(push.push_angle))
+
     def hash_angle(self, theta):
         # Group different pushes by push_angle
         bin = int((theta + pi)/(2.0*pi)*self.num_angle_bins)
@@ -235,91 +764,58 @@ class PushLearningAnalysis:
 
     def hash_xy(self, x,y):
         # Group different pushes by push_angle
-        x_prime = round(x*self.xy_hash_precision)/self.xy_hash_precision
-        y_prime = round(y*self.xy_hash_precision)/self.xy_hash_precision
+        x_prime = (round(x*self.xy_hash_precision)-1)/self.xy_hash_precision
+        y_prime = (round(y*self.xy_hash_precision)-1)/self.xy_hash_precision
         return (x_prime, y_prime)
-
-    def hash_push_opt(self, push):
-        return push.arm+str(push.push_opt)
-
-    def unhash_opt_key(self, opt_key):
-        return (opt_key[0], int(opt_key[1]))
 
     #
     # Scoring Functions
     #
+
     def compute_push_error_xy(self, push):
-        desired_x = push.c_x.x + cos(push.push_angle)*push.push_dist
-        desired_y = push.c_x.y + sin(push.push_angle)*push.push_dist
-        err_x = desired_x - push.c_x_prime.x
-        err_y = desired_y - push.c_x_prime.y
-        return err_x*err_x+err_y*err_y
+        err_x = push.goal_pose.x - push.final_centroid.x
+        err_y = push.goal_pose.y - push.final_centroid.y
+        return hypot(err_x,err_y)
+
+    def compute_change_in_push_error_xy(self, push):
+        init_x_error = push.goal_pose.x - push.init_centroid.x
+        init_y_error = push.goal_pose.y - push.init_centroid.y
+        final_x_error = push.goal_pose.x - push.final_centroid.x
+        final_y_error = push.goal_pose.y - push.final_centroid.y
+
+        if push.final_centroid == 0.0 and push.final_centroid.y == 0.0:
+            print 'Knocked off object'
+            return 100.0
+        init_error = hypot(init_x_error, init_y_error)
+        final_error = hypot(final_x_error, final_y_error)
+        return final_error / init_error
 
     def compute_push_error_push_dist_diff(self, push):
-        desired_x = push.c_x.x + cos(push.push_angle)*push.push_dist
-        desired_y = push.c_x.y + sin(push.push_angle)*push.push_dist
-        d_x = push.c_x_prime.x - push.c_x.x
-        d_y = push.c_x_prime.y - push.c_x.y
+        desired_x = push.init_centroid.x + cos(push.push_angle)*push.push_dist
+        desired_y = push.init_centroid.y + sin(push.push_angle)*push.push_dist
+        d_x = push.final_centroid.x - push.init_centroid.x
+        d_y = push.final_centroid.y - push.init_centroid.y
         actual_dist = sqrt(d_x*d_x + d_y*d_y)
         return fabs(actual_dist - push.push_dist)
 
-class PushLearningIO:
-    def __init__(self):
-        self.data_out = None
-        self.data_in = None
-
-    def write_line(self, c_x, push_angle, push_opt, arm, c_x_prime, push_dist,
-                   high_init=False, push_time=0.0):
-        if self.data_out is None:
-            rospy.logerr('Attempting to write to file that has not been opened.')
-            return
-        rospy.loginfo('Writing output line.\n')
-        # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
-        data_line = str(c_x.x)+' '+str(c_x.y)+' '+str(c_x.z)+' '+\
-            str(push_angle)+' '+str(push_opt)+' '+str(arm)+' '+\
-            str(c_x_prime.x)+' '+str(c_x_prime.y)+' '+str(c_x_prime.z)+' '+\
-            str(push_dist)+' '+str(int(high_init))+' '+str(push_time)+'\n'
-        self.data_out.write(data_line)
-        self.data_out.flush()
-
-    def parse_line(self, line):
-        if line.startswith('#'):
-            return None
-        l  = line.split()
-        # c_x c_y c_z theta push_opt arm c_x' c_y' c_z' push_dist
-        push = PushTrial()
-        push.c_x = Point(float(l[0]), float(l[1]), float(l[2]))
-        push.push_angle = float(l[3])
-        push.push_opt = int(l[4])
-        push.arm = l[5]
-        push.c_x_prime = Point(float(l[6]),float(l[7]),float(l[8]))
-        push.push_dist = float(l[9])
-        if len(l) > 10:
-            push.high_init = int(l[10])
-        if len(l) > 11:
-            push.push_time = float(l[11])
-        return push
-
-    def read_in_data_file(self, file_name):
-        data_in = file(file_name, 'r')
-        x = [self.parse_line(l) for l in data_in.readlines()]
-        data_in.close()
-        return filter(None, x)
-
-    def open_out_file(self, file_name):
-        self.data_out = file(file_name, 'a')
-        self.data_out.write(_HEADER_LINE+'\n')
-        self.data_out.flush()
-
-    def close_out_file(self):
-        self.data_out.close()
+    def compute_normalized_push_time(self, push):
+        return push.push_time / push.push_dist
 
 if __name__ == '__main__':
-    # TODO: Read command line arguments for data file and metric to use
-    pla = PushLearningAnalysis()
+    # TODO: Add more options to command line
     if len(sys.argv) > 1:
         data_path = str(sys.argv[1])
     else:
-        data_path = '/u/thermans/Dropbox/Data/choose_push/batch_out0.txt'
-    best_pushes = pla.determine_best_pushes(data_path)
-    pla.visualize_push_choices(best_pushes)
+        print 'Usage:',sys.argv[0],'input_file'
+        quit()
+
+    pla = PushLearningAnalysis()
+    pla.read_in_push_trials(data_path)
+
+    # TODO: Use command line arguments to choose these
+    # workspace_ranks = pla.workspace_ranking()
+    # pla.visualize_push_choices(workspace_ranks, 1.0)
+    # angle_ranks = pla.angle_ranking()
+    pla.object_ranking()
+    # pla.object_proxy_ranking()
+    print 'Num trials: ' + str(len(pla.all_trials))

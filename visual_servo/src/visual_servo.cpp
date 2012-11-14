@@ -371,7 +371,24 @@ class VisualServo
     {
       cv::Mat velpos = -gain_vel_*error_pose;
       cv::Mat velrot = -gain_rot_*error_rot;
-      return VisualServoMsg::createTwistMsg(velpos, velrot);
+      visual_servo::VisualServoTwist t = VisualServoMsg::createTwistMsg(velpos, velrot);
+
+      t.request.twist.header.frame_id = workspace_frame_;
+
+
+      cv::pow(error_pose,2,error_pose);
+      cv::pow(error_rot,2,error_rot);
+      float e = 0;
+
+      // pose error in meters
+      for (int i = 0; i < error_pose.rows; i++)
+        e += error_pose.at<float>(i);
+      // pose error in degrees (need to scale it down...)
+      for (int i = 0; i < error_rot.rows; i++)
+        e += error_rot.at<float>(i)/50;
+      // t.request.error = e/error_pose.rows;
+      t.request.error = e;
+      return t;
     }
 
     visual_servo::VisualServoTwist PBVSTwist(std::vector<PoseStamped> desired, std::vector<PoseStamped> pts)
@@ -413,7 +430,14 @@ class VisualServo
       // matrix-current rotation
       cv::Mat mcrot = cv::Mat(1, 3, CV_32F, tcquat).t();
       cv::Mat ang_diff = -1*MatDiffAngle(mcrot, mgrot); 
-
+      /*
+      printf("vs: ");
+      printf("%f %f %f %f\n", gquat.x, gquat.y, gquat.z, gquat.w);
+      printf("%f %f %f %f\n", cquat.x, cquat.y, cquat.z, cquat.w);
+      printMatrix(mcrot.t());
+      printMatrix(mgrot.t());
+      printMatrix(ang_diff.t());
+      */
       // idk why but this fixes the problem... 
       // this or the problem is at diffAngle with large +ve and -ve angles
       ang_diff.at<float>(2) = -ang_diff.at<float>(2); 
@@ -682,7 +706,7 @@ class VisualServo
     cv::Point projectPointIntoImage(PointStamped cur_point,
         std::string target_frame, shared_ptr<tf::TransformListener> tf_)
     {
-      if (K.rows == 0 || K.cols == 0) {
+      if (K.rows == 0 || K.cols == 0 || K.at<float>(0,0) == 0) {
         // Camera intrinsic matrix
         K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
         K.convertTo(K, CV_32F);
@@ -693,6 +717,14 @@ class VisualServo
         // Transform point into the camera frame
         PointStamped image_frame_loc_m;
         tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
+        /*
+           ROS_INFO(">> %f, %f %f", 
+           K.at<float>(0,0),
+           K.at<float>(1,1),
+           K.at<float>(0,2)
+           );
+        //cur_point.point.x,cur_point.point.y,cur_point.point.z);
+         */
         // Project point onto the image
         img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
               K.at<float>(0,2)*image_frame_loc_m.point.z) /
@@ -703,7 +735,7 @@ class VisualServo
       }
       catch (tf::TransformException e)
       {
-        ROS_ERROR_STREAM(e.what());
+        ROS_ERROR("[vs]%s", e.what());
       }
       return img_loc;
     }

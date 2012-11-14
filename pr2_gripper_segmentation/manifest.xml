@@ -1,13 +1,11 @@
 <package>
-  <description brief="visual_servo">
-
-     visual_servo
-
+  <description brief="pr2_gripper_segmentation">
+    Gripper Segmentation
   </description>
   <author>Stephan Lee</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
-  <url>http://ros.org/wiki/visual_servo</url>
+  <url>http://ros.org/wiki/gripper_segmentation</url>
   <depend package="roscpp"/>
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
@@ -16,17 +14,12 @@
   <depend package="pcl_ros"/>
   <depend package="tf"/>
   <depend package="tf_conversions"/>
-  <!-- <depend package="opencv2"/> -->
+  <depend package="cpl_visual_features"/>
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
-  <depend package="actionlib"/>
-  <depend package="actionlib_msgs"/> 
-  <!-- <depend package="hrl_pr2_arms"/> -->
+  <depend package="tabletop_pushing"/>
   <depend package="robot_mechanism_controllers"/>
-  <depend package="pr2_gripper_sensor_action"/>
-  <!-- <depend package="tabletop_pushing"/> -->
-  <!-- <depend package="hrl_pr2_lib"/> -->
-
+  <depend package="pr2_camera_self_filter"/>
   <rosdep name="opencv2"/>
 </package>
 

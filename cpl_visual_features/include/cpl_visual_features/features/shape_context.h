@@ -5,6 +5,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <vector>
+#include <string>
+
 namespace cpl_visual_features
 {
 typedef std::vector<float> ShapeDescriptor;
@@ -12,7 +14,9 @@ typedef std::vector<ShapeDescriptor> ShapeDescriptors;
 typedef std::vector<int> Path;
 typedef std::vector<cv::Point> Samples;
 
-double compareShapes(cv::Mat& imageA, cv::Mat& imageB, bool write_images=false);
+double compareShapes(cv::Mat& imageA, cv::Mat& imageB,
+                     float epsilonCost = 9e5, bool write_images=false,
+                     std::string filePath=".");
 std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
                                     float percentage = 0.3);
 ShapeDescriptors constructDescriptors(Samples& samples,
@@ -20,10 +24,13 @@ ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int theta_bins = 12);
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
-                          bool write_images=false);
+                          float epsilonCost = 9e5,
+                          bool write_images=false,
+                          std::string filePath=".");
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path);
 void displayMatch(cv::Mat& edge_imgA,
                   std::vector<cv::Point>& samplesA,
                   Samples& samplesB,
-                  Path& path, int max_displacement=30);
+                  Path& path, int max_displacement=30,
+                  std::string filePath=".");
 };

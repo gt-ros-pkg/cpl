@@ -32,15 +32,8 @@ rosbuild_add_boost_directories()
 #target_link_libraries(visual_servo_node tabletop_pushing)
 
 find_library(LOG4CXX_LIB log4cxx REQUIRED)
-rosbuild_add_executable(tester src/vs_pose.cpp)
+rosbuild_add_executable(collector src/gripper_segmentation_collect.cpp)
 #rosbuild_add_executable(tester src/test.cpp)
-rosbuild_link_boost(tester signals)
-target_link_libraries(tester ${LOG4CXX_LIB})
+rosbuild_link_boost(collector signals)
+target_link_libraries(collector ${LOG4CXX_LIB})
 
-rosbuild_add_executable(vsaction src/vs_action.cpp)
-rosbuild_link_boost(vsaction signals)
-target_link_libraries(vsaction ${LOG4CXX_LIB})
-
-#rosbuild_add_executable(visual_servo_node src/vs_grasp.cpp)
-#rosbuild_link_boost(visual_servo_node signals)
-#target_link_libraries(visual_servo_node ${LOG4CXX_LIB})
