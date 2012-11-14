@@ -117,22 +117,38 @@ using geometry_msgs::Point;
 using cpl_visual_features::downSample;
 
 
+struct mouseEvent {
+  cv::Point cursor;
+  int event;
+};
+
+
 void onMouse(int event, int x, int y, int flags, void* param)
 {
   //std::map <std::vector<cv::Point>, void*> *user_data_n_ptr; 
   //std::vector<cv::Point> points = reinterpret_cast<std::map< std::vector<cv::Point>, void*> *>(param);
 
+  mouseEvent *pt = static_cast<mouseEvent *>(param);
   switch(event)
   {
     case CV_EVENT_LBUTTONUP:
       {
-        cv::Point *pt = static_cast<cv::Point *>(param);
+        pt->cursor = cv::Point(x,y);
+        pt->event = event;
+
         ROS_INFO("PRESSED AT [%d, %d]", x,y);
-        *pt = cv::Point(x,y);
       }
       break;
-    default:
-      break;
+    case CV_EVENT_MOUSEMOVE:
+    {
+      // if previous event was mouse move too
+      if (pt->event == CV_EVENT_MOUSEMOVE)
+      {
+        pt->cursor = cv::Point(x,y);
+        pt->event = event;
+      }
+    }
+    break;
   }
   return;
 }
@@ -211,9 +227,10 @@ class GripperSegmentationCollector
        const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
      */
 
-    void process(cv::Point p)
+    void process(mouseEvent me)
     {
-      if (p.x > 0 && p.y > 0)
+      cv::Point p = me.cursor;
+      if (me.event == CV_EVENT_LBUTTONUP)
       {
         if (mode == 0)
         {
@@ -224,13 +241,12 @@ class GripperSegmentationCollector
         {
           for (unsigned int i = 0; i <  kps_.size(); i++)
           {
-            if (abs(kps_.at(i).pt.x - p.x) < 5
-              && abs(kps_.at(i).pt.y - p.y) < 5)
+            if (abs(kps_.at(i).pt.x - p.x) < 7
+              && abs(kps_.at(i).pt.y - p.y) < 7)
             {
+              ROS_INFO("[GripperSeg] Added at [%0.3f, %0.3f]", kps_.at(i).pt.x, kps_.at(i).pt.y);
               kpsc_.push_back(kps_.at(i));
               kps_.erase(kps_.begin() + i);
-
-              ROS_INFO("added new thing");
               break;
             }
 
@@ -238,19 +254,28 @@ class GripperSegmentationCollector
         }
       }
     }
-    void setDisplay(cv::Mat color_frame)
+    void setDisplay(cv::Mat color_frame, mouseEvent me)
     {
-      cv::putText(color_frame, "Press ESC for exit", cv::Point(5,15), 2, 0.5, cv::Scalar(255, 255, 255), 1);
+
+      if (me.event != CV_EVENT_LBUTTONUP)
+      {
+      cv::circle(color_frame, me.cursor, 4, cv::Scalar(255, 255, 255), 1);
+      }
+
+      cv::putText(color_frame, "Press ESC for next frame", cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
 
       if (mode == 0)
       {
+        // red box to indicate the first mode
         cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 0, 255), 3);
       }
       else
       {
+        // green to indicate the next step
         cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 255, 0), 3);
-        cv::putText(color_frame, "x", tooltip_, 2, 0.5, cv::Scalar(0, 255, 0), 1);
 
+        // show current TCP
+        cv::circle(color_frame, tooltip_, 4, cv::Scalar(0, 255, 0), 2);
         pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y);
         std::ostringstream os;
         os << " [" << tcp.x << ", " << tcp.y << ", " << tcp.z << "]";
@@ -261,12 +286,13 @@ class GripperSegmentationCollector
       {
         cv::KeyPoint kp = kps_.at(i);
         // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
-        cv::putText(color_frame, "+", cv::Point(kp.pt.x, kp.pt.y), 2, 0.5, cv::Scalar(255, 0, 255), 1);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(255, 0, 255), 0);
       }
       for (unsigned int i = 0 ; i < kpsc_.size(); i++)
       {
         cv::KeyPoint kp = kpsc_.at(i);
-        cv::putText(color_frame, "+", cv::Point(kp.pt.x, kp.pt.y), 2, 0.5, cv::Scalar(0, 0, 255), 1);
+        // cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 2, cv::Scalar(255, 255, 0), 0);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(255, 0, 0), 2);
       }
 
       cv::imshow("what", color_frame);
@@ -311,26 +337,37 @@ class GripperSegmentationCollector
       kps_ = keypoints;
       //cv::imshow("Workit", color_frame);
 
-      cv::Point chosen;
 
+      mouseEvent m;
       cv::namedWindow("what", 0);
-      cv::setMouseCallback("what", onMouse, (void*) &chosen);
+      cv::setMouseCallback("what", onMouse, (void*) &m);
 
       // back to selecting new tooltip mode
       mode = 0;
 
-      setDisplay(color_frame.clone());
+      setDisplay(color_frame.clone(), m);
       // in case of esc, abort
-      while (cv::waitKey(10) != 27)
+
+      int key = 0;
+      while (true)
       {
-        ROS_INFO("loop");
-        // process the chosen
-        process(chosen);
-        setDisplay(color_frame.clone());
-        chosen = cv::Point(0,0);
+        key = cv::waitKey(10);
+        if (key == 27)
+          break;
+        else if (key == 32)
+        {
+          if (kps_.size() > 0)
+          {
+            ROS_INFO("Reverting last insert");
+            kps_.pop_back();
+          }
+        }
+        process(m);
+        setDisplay(color_frame.clone(), m);
+        m.event = 0;
       };
 
-      // surf.detect(color_frame, keypoints);
+      kps_.clear();
 
       // Downsample everything first
       /*
@@ -340,15 +377,7 @@ class GripperSegmentationCollector
        */
 
       /*
-         XYZPointCloud cloud;
-         pcl::fromROSMsg(*cloud_msg, cloud);
-         tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-         cloud.header.stamp, ros::Duration(0.9));
-         pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
-         cur_camera_header_ = img_msg->header;
-         cur_color_frame_ = color_frame;
-         cur_depth_frame_ = depth_frame.clone();
-         cur_point_cloud_ = cloud;
+
       // ====== L,R JOINT ANGLE ======
       double current_angles[14];
       get_current_joint_angles(current_angles);
@@ -404,9 +433,10 @@ class GripperSegmentationCollector
 
       psrv.request.arm = which_arm_;
       psrv.request.p = p;
+      /*
       if (p_client_.call(psrv)){}
       else {ROS_WARN("Service Fail");}
-
+      */
 
     }
 
