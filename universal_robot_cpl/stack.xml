@@ -1,0 +1,17 @@
+<stack>
+    <description brief="Computational Perception Lab's implementation of controllers/descriptions of the Universal 10 robot">
+Computational Perception Lab's implementation of controllers/descriptions of the Universal 10 robot.
+  </description>
+  <author>Maintained by Kelsey Hawkins (kphawkins@gatech.edu)</author>
+  <license>BSD</license>  
+  <review status="Doc reviewed" notes="2009/6/10"/>
+  <url>http://ros.org/wiki/universal_robot_cpl</url>
+  <depend stack="pluginlib" /> <!-- pluginlib -->
+  <depend stack="ros" /> <!-- roslib -->
+  <depend stack="robot_model" /> 
+  <depend stack="actionlib" /> 
+  <depend stack="ros_comm" /> 
+  <depend stack="control" /> 
+  <depend stack="common_msgs" /> 
+
+</stack>
