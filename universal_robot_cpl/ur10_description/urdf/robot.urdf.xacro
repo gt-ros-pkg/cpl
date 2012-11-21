@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" 
+       name="ur10">
+
+  <include filename="$(find ur10_description)/urdf/gazebo.urdf.xacro" />
+
+  <include filename="$(find ur10_description)/urdf/model.urdf.xacro" />
+  <xacro:ur10_robot prefix="" />
+
+
+</robot>

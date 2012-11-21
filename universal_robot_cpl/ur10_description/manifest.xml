@@ -1,0 +1,15 @@
+<package>
+  <description brief="ur10_description">
+
+     Universal robot UR10 description
+
+  </description>
+  <author>wim, Kelsey Hawkins</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/ur10_description</url>
+  <depend package="urdf"/>
+
+</package>
+
+
