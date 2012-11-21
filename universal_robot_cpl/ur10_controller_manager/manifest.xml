@@ -1,0 +1,20 @@
+<package>
+  <description brief="ur10_controller_manager">
+
+     ur10_controller_manager
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/ur10_controller_manager</url>
+  <depend package="pr2_controller_manager"/>
+  <depend package="roscpp" />
+  <depend package="std_srvs"/>
+  <depend package="realtime_tools"/>
+  <depend package="diagnostic_msgs"/>
+  <depend package="diagnostic_updater"/>
+
+</package>
+
+
