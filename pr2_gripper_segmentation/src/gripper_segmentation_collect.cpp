@@ -117,22 +117,50 @@ using geometry_msgs::Point;
 using cpl_visual_features::downSample;
 
 
+struct Distance {
+  float x;
+  float y;
+  float z;
+};
+struct Data{
+  std::vector<cv::KeyPoint> kp;
+  std::vector<Distance> d;
+  // extracted
+  cv::Mat desc;
+};
+
+struct mouseEvent {
+  cv::Point cursor;
+  int event;
+};
+
+
 void onMouse(int event, int x, int y, int flags, void* param)
 {
   //std::map <std::vector<cv::Point>, void*> *user_data_n_ptr; 
   //std::vector<cv::Point> points = reinterpret_cast<std::map< std::vector<cv::Point>, void*> *>(param);
 
+  mouseEvent *pt = static_cast<mouseEvent *>(param);
   switch(event)
   {
     case CV_EVENT_LBUTTONUP:
       {
-        cv::Point *pt = static_cast<cv::Point *>(param);
+        pt->cursor = cv::Point(x,y);
+        pt->event = event;
+
         ROS_INFO("PRESSED AT [%d, %d]", x,y);
-        *pt = cv::Point(x,y);
       }
       break;
-    default:
-      break;
+    case CV_EVENT_MOUSEMOVE:
+    {
+      // if previous event was mouse move too
+      if (pt->event == CV_EVENT_MOUSEMOVE)
+      {
+        pt->cursor = cv::Point(x,y);
+        pt->event = event;
+      }
+    }
+    break;
   }
   return;
 }
@@ -175,9 +203,9 @@ class GripperSegmentationCollector
     textFile.open("/u/swl33/data/myData.csv");
 
     float bound = 0.3;
-    x_= 0.4;
+    x_= 0.5;
     y_= -bound;
-    z_= -bound + 0.1;
+    z_= -bound + 0.15;
     which_arm_ = "l";
     mode = 0;
     ROS_INFO("[GripperSeg] Node Initialization Complete");
@@ -211,9 +239,26 @@ class GripperSegmentationCollector
        const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
      */
 
-    void process(cv::Point p)
+    void move(cv::Point p, std::vector<cv::KeyPoint> *from, std::vector<cv::KeyPoint> *to)
     {
-      if (p.x > 0 && p.y > 0)
+      for (unsigned int i = 0; i <  from->size(); i++)
+      {
+        if (abs(from->at(i).pt.x - p.x) < 7
+            && abs(from->at(i).pt.y - p.y) < 7)
+        {
+          // ROS_INFO("[GripperSeg] Added at [%0.3f, %0.3f]", kps_.at(i).pt.x, kps_.at(i).pt.y);
+          to->push_back(from->at(i));
+          from->erase(from->begin() + i);
+          return;
+        }
+      }
+    }
+
+    void process(mouseEvent me)
+    {
+      cv::Point p = me.cursor;
+
+      if (me.event == CV_EVENT_LBUTTONUP)
       {
         if (mode == 0)
         {
@@ -222,51 +267,75 @@ class GripperSegmentationCollector
         }
         else
         {
+          pcl::PointXYZ td = cloud_.at(p.x, p.y);
+          // cannot add these
+          if (isnan(td.x) || isnan(td.y) || isnan(td.z))
+          {
+            move(p, &kps_, &kps_bad_);
+            return;
+          }
+          move(p, &kps_, &kpsc_);
+          /*
           for (unsigned int i = 0; i <  kps_.size(); i++)
           {
-            if (abs(kps_.at(i).pt.x - p.x) < 5
-              && abs(kps_.at(i).pt.y - p.y) < 5)
+            if (abs(kps_.at(i).pt.x - p.x) < 7
+              && abs(kps_.at(i).pt.y - p.y) < 7)
             {
+              ROS_INFO("[GripperSeg] Added at [%0.3f, %0.3f]", kps_.at(i).pt.x, kps_.at(i).pt.y);
               kpsc_.push_back(kps_.at(i));
               kps_.erase(kps_.begin() + i);
-
-              ROS_INFO("added new thing");
               break;
             }
-
           }
+          */
         }
       }
     }
-    void setDisplay(cv::Mat color_frame)
+    void setDisplay(cv::Mat color_frame, mouseEvent me)
     {
-      cv::putText(color_frame, "Press ESC for exit", cv::Point(5,15), 2, 0.5, cv::Scalar(255, 255, 255), 1);
+
+      if (me.event != CV_EVENT_LBUTTONUP)
+      {
+      cv::circle(color_frame, me.cursor, 4, cv::Scalar(255, 255, 255), 1);
+      }
+
+      cv::putText(color_frame, "Press ESC for next frame", cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
 
       if (mode == 0)
       {
+        // red box to indicate the first mode
         cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 0, 255), 3);
       }
       else
       {
+        // green to indicate the next step
         cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 255, 0), 3);
-        cv::putText(color_frame, "x", tooltip_, 2, 0.5, cv::Scalar(0, 255, 0), 1);
 
+        // show current TCP
+        cv::circle(color_frame, tooltip_, 4, cv::Scalar(0, 255, 0), 2);
         pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y);
         std::ostringstream os;
         os << " [" << tcp.x << ", " << tcp.y << ", " << tcp.z << "]";
         cv::putText(color_frame, os.str(), tooltip_, 2, 0.5, cv::Scalar(0, 255, 0), 1);
       }
 
+      for (unsigned int i = 0 ; i < kps_bad_.size(); i++)
+      {
+        cv::KeyPoint kp = kps_bad_.at(i);
+        // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(200, 255, 255), 0);
+      }
       for (unsigned int i = 0 ; i < kps_.size(); i++)
       {
         cv::KeyPoint kp = kps_.at(i);
         // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
-        cv::putText(color_frame, "+", cv::Point(kp.pt.x, kp.pt.y), 2, 0.5, cv::Scalar(255, 0, 255), 1);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(50, 255, 255), 0);
       }
       for (unsigned int i = 0 ; i < kpsc_.size(); i++)
       {
         cv::KeyPoint kp = kpsc_.at(i);
-        cv::putText(color_frame, "+", cv::Point(kp.pt.x, kp.pt.y), 2, 0.5, cv::Scalar(0, 0, 255), 1);
+        // cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 2, cv::Scalar(255, 255, 0), 0);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(255, 40, 30), 2);
       }
 
       cv::imshow("what", color_frame);
@@ -292,7 +361,8 @@ class GripperSegmentationCollector
 
       color_frame = color_cv_ptr->image;
       depth_frame = depth_cv_ptr->image;
-
+// #define ROSBAG 1
+#ifndef ROSBAG
       // cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
       // self_mask = mask_cv_ptr->image;
       XYZPointCloud cloud;
@@ -311,26 +381,79 @@ class GripperSegmentationCollector
       kps_ = keypoints;
       //cv::imshow("Workit", color_frame);
 
-      cv::Point chosen;
 
-      cv::namedWindow("what", 0);
-      cv::setMouseCallback("what", onMouse, (void*) &chosen);
-
-      // back to selecting new tooltip mode
-      mode = 0;
-
-      setDisplay(color_frame.clone());
-      // in case of esc, abort
-      while (cv::waitKey(10) != 27)
+      // do matching and all 
+      if (ds.kp.size() > 0)
       {
-        ROS_INFO("loop");
-        // process the chosen
-        process(chosen);
-        setDisplay(color_frame.clone());
-        chosen = cv::Point(0,0);
-      };
+        cv::SurfDescriptorExtractor surfDes;
+        cv::Mat descriptors2;
+        surfDes.compute(color_frame, kps_, descriptors2);
 
-      // surf.detect(color_frame, keypoints);
+        cv::FlannBasedMatcher matcher;
+        std::vector<cv::DMatch> matches;
+        matcher.match(ds.desc,descriptors2, matches);
+
+
+      }
+
+      // clear variables
+      mode = 0;
+      kpsc_.clear();
+      kps_bad_.clear();
+      int key = 0;
+
+      mouseEvent m;
+      cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
+      setDisplay(color_frame.clone(), m);
+      cv::waitKey(3);
+
+      // if image is just all black
+      if (cv::sum(color_frame) == cv::Scalar(0,0,0))
+        return;
+
+      cv::setMouseCallback("what", onMouse, (void*) &m);
+      while (true)
+      {
+        // [Esc] Exit
+        if (key == 27)
+          break;
+        // [Space] revert the last insert
+        else if (key == 32)
+        {
+          if (kpsc_.size() > 0)
+          {
+            cv::KeyPoint k = kpsc_.back();
+            ROS_INFO("Reverting last insert at [%.3f %.3f]", k.pt.x, k.pt.y);
+            kps_.push_back(k);
+            kpsc_.erase(kpsc_.end());
+          }
+        }
+        process(m);
+        setDisplay(color_frame.clone(), m);
+        m.event = 0;
+        key = cv::waitKey(10);
+      };
+      ROS_INFO("Iteration Done: Added %d", (int)kpsc_.size());
+
+
+      cv::SurfDescriptorExtractor surfDesc;
+      cv::Mat descriptors1;
+      surfDesc.compute(color_frame, kpsc_, descriptors1);
+
+      ds.kp = kpsc_;
+      ds.desc = descriptors1;
+      pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y); 
+
+      for (unsigned int i = 0; i < kpsc_.size(); i++)
+      {
+        Distance d;
+        pcl::PointXYZ cur = cloud_.at(kpsc_.at(i).pt.x, kpsc_.at(i).pt.y);
+        d.x = tcp.x - cur.x;
+        d.y = tcp.y - cur.y;
+        d.z = tcp.z - cur.z;
+
+        ds.d.push_back(d);
+      }
 
       // Downsample everything first
       /*
@@ -340,15 +463,7 @@ class GripperSegmentationCollector
        */
 
       /*
-         XYZPointCloud cloud;
-         pcl::fromROSMsg(*cloud_msg, cloud);
-         tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-         cloud.header.stamp, ros::Duration(0.9));
-         pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
-         cur_camera_header_ = img_msg->header;
-         cur_color_frame_ = color_frame;
-         cur_depth_frame_ = depth_frame.clone();
-         cur_point_cloud_ = cloud;
+
       // ====== L,R JOINT ANGLE ======
       double current_angles[14];
       get_current_joint_angles(current_angles);
@@ -374,7 +489,7 @@ class GripperSegmentationCollector
       //cv::waitKey(3);
        */ 
       // ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
-
+#else
       counter++;
       y_+= 0.10;
       if (y_ > 0.3)
@@ -393,7 +508,8 @@ class GripperSegmentationCollector
         }
       }
 
-
+      cv::imshow("color", color_frame);
+      cv::waitKey(10);
       pr2_gripper_segmentation::GripperPose psrv;
       PoseStamped p;
       p.header.frame_id = workspace_frame_;
@@ -406,8 +522,7 @@ class GripperSegmentationCollector
       psrv.request.p = p;
       if (p_client_.call(psrv)){}
       else {ROS_WARN("Service Fail");}
-
-
+#endif
     }
 
     std::string getFileName(unsigned int counter, std::string which_arm)
@@ -503,6 +618,11 @@ class GripperSegmentationCollector
     int mode;
     std::vector<cv::KeyPoint> kps_;
     std::vector<cv::KeyPoint> kpsc_;
+    std::vector<cv::KeyPoint> kps_bad_;
+
+    //std::vector<Descriptor>  ds;
+    Data ds;
+    cv::Point tooltip_star_;
 };
 
 int main(int argc, char** argv)
