@@ -41,7 +41,7 @@ import rospy
 from push_primitives import *
 
 _VERSION_LINE = '# v0.3'
-_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm precondition_method push_time'
+_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method '
 
 def get_attr(instance, attribute):
     '''
