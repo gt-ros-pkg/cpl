@@ -17,9 +17,9 @@
   <depend package="cpl_visual_features"/>
   <depend package="image_transport"/>
   <depend package="cv_bridge"/>
-  <depend package="tabletop_pushing"/>
+  <!-- <depend package="tabletop_pushing"/> -->
   <depend package="robot_mechanism_controllers"/>
-  <depend package="pr2_camera_self_filter"/>
+  <!-- <depend package="pr2_camera_self_filter"/>-->
   <rosdep name="opencv2"/>
 </package>
 

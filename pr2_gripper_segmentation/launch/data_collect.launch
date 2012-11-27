@@ -3,7 +3,8 @@
   <!-- <include file="$(find tabletop_pushing)/launch/pr2_camera_self_filter_kinect_head.launch" /> -->
   <node name="test_node" pkg="pr2_gripper_segmentation" type="collector" respawn="false" output="screen">
 
-    <remap from="color_image_topic" to="/kinect_head/rgb/image_rect_color"/>
+    <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
+    <!-- <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/> -->
     <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
     <remap from="mask_image_topic" to="/kinect_head/rgb/image_rect_color/self_mask"/>
     <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>

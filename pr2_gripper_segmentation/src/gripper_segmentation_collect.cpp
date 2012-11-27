@@ -111,17 +111,18 @@ typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
 using sensor_msgs::JointState;
 using boost::shared_ptr;
 using geometry_msgs::TwistStamped;
+using geometry_msgs::PointStamped;
 using geometry_msgs::PoseStamped;
 using geometry_msgs::QuaternionStamped;
 using geometry_msgs::Point;
 using cpl_visual_features::downSample;
-
 
 struct Distance {
   float x;
   float y;
   float z;
 };
+
 struct Data{
   std::vector<cv::KeyPoint> kp;
   std::vector<Distance> d;
@@ -148,7 +149,7 @@ void onMouse(int event, int x, int y, int flags, void* param)
         pt->cursor = cv::Point(x,y);
         pt->event = event;
 
-        ROS_INFO("PRESSED AT [%d, %d]", x,y);
+        ROS_DEBUG("PRESSED AT [%d, %d]", x,y);
       }
       break;
     case CV_EVENT_MOUSEMOVE:
@@ -262,6 +263,10 @@ class GripperSegmentationCollector
       {
         if (mode == 0)
         {
+          pcl::PointXYZ tcp = cloud_.at(p.x, p.y);
+
+          float rmse = pow(pow(tcp.x - tcp_e_.x, 2) + pow(tcp.y - tcp_e_.y, 2) + pow(tcp.z - tcp_e_.z, 2),0.5);
+          ROS_INFO("*** Tooltip added at [%.5f, %.5f, %.5f] RMSE: [%.7f]", tcp.x, tcp.y, tcp.z, rmse);
           tooltip_ = p;
           mode = 1;
         }
@@ -299,7 +304,7 @@ class GripperSegmentationCollector
       cv::circle(color_frame, me.cursor, 4, cv::Scalar(255, 255, 255), 1);
       }
 
-      cv::putText(color_frame, "Press ESC for next frame", cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
+      cv::putText(color_frame, "Press [N] to move to next frame", cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
 
       if (mode == 0)
       {
@@ -309,10 +314,10 @@ class GripperSegmentationCollector
       else
       {
         // green to indicate the next step
-        cv::rectangle(color_frame, cv::Point(2,2), cv::Point(637,477), cv::Scalar(0, 255, 0), 3);
+        cv::rectangle(color_frame, cv::Point(1,1), cv::Point(637,3), cv::Scalar(0, 255, 0), 2);
 
         // show current TCP
-        cv::circle(color_frame, tooltip_, 4, cv::Scalar(0, 255, 0), 2);
+        cv::circle(color_frame, tooltip_, 4, cv::Scalar(0, 255, 0), 4);
         pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y);
         std::ostringstream os;
         os << " [" << tcp.x << ", " << tcp.y << ", " << tcp.z << "]";
@@ -323,13 +328,13 @@ class GripperSegmentationCollector
       {
         cv::KeyPoint kp = kps_bad_.at(i);
         // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
-        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(200, 255, 255), 0);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(0, 0, 255), 2);
       }
       for (unsigned int i = 0 ; i < kps_.size(); i++)
       {
         cv::KeyPoint kp = kps_.at(i);
         // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
-        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(50, 255, 255), 0);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(50, 245, 170), 0);
       }
       for (unsigned int i = 0 ; i < kpsc_.size(); i++)
       {
@@ -338,6 +343,18 @@ class GripperSegmentationCollector
         cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(255, 40, 30), 2);
       }
 
+      if (good_matches_.size() > 0)
+      {
+        for (unsigned int i = 0; i < good_matches_.size(); i++)
+        {
+          cv::Point2f cp = kpso_[good_matches_[i].trainIdx].pt;
+          cv::circle(color_frame, cv::Point(cp.x, cp.y), 4, cv::Scalar(200, 70, 200), 2);
+        }
+        cv::Point p = projectPointIntoImage(tcp_e_, "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
+        cv::circle(color_frame, p, 4, cv::Scalar(50, 180, 50), 2);
+
+        // ROS_WARN(">>>>>> [%f, %f, %f] -> [%d,%d] ", tcp_e_.x, tcp_e_.y, tcp_e_.z, p.x, p.y);
+      }
       cv::imshow("what", color_frame);
     }
 
@@ -379,12 +396,15 @@ class GripperSegmentationCollector
       std::vector<cv::KeyPoint> keypoints;
       surf(color_frame, mask, keypoints);
       kps_ = keypoints;
+      kpso_ = keypoints;
       //cv::imshow("Workit", color_frame);
 
+      good_matches_.clear();
 
       // do matching and all 
       if (ds.kp.size() > 0)
       {
+
         cv::SurfDescriptorExtractor surfDes;
         cv::Mat descriptors2;
         surfDes.compute(color_frame, kps_, descriptors2);
@@ -393,8 +413,48 @@ class GripperSegmentationCollector
         std::vector<cv::DMatch> matches;
         matcher.match(ds.desc,descriptors2, matches);
 
+        double min_dist = 10000; double max_dist = 0;
+        for (unsigned int i = 0; i < matches.size(); i++)
+        {
+          double dist = matches[i].distance;
+          if (dist < min_dist) min_dist = dist;
+          if (dist < max_dist) max_dist = dist;
+        }
 
+        for (unsigned int i = 0; i < matches.size(); i++)
+        {
+          if (matches[i].distance < 2*min_dist)
+          {
+            good_matches_.push_back(matches[i]);
+            ROS_INFO("[Match %u: {%d}->{%d} %.4f]", i, matches[i].queryIdx, matches[i].trainIdx, matches[i].distance);
+          }
+        }
+
+        tcp_e_ = pcl::PointXYZ(0,0,0);
+        int num_good = 0;
+        for (unsigned int i = 0; i < good_matches_.size(); i++)
+        {
+          int pi = good_matches_[i].queryIdx;
+          int ci = good_matches_[i].trainIdx;
+          Distance d = ds.d[pi];
+          cv::Point2f cp = kps_[ci].pt;
+          pcl::PointXYZ c3d = cloud_.at(cp.x, cp.y);
+          if (!isnan(c3d.x)&&!isnan(c3d.y)&&!isnan(c3d.z))
+          {
+            ROS_INFO(">>> [%f, %f, %f] + [%f %f %f]", c3d.x, c3d.y, c3d.z, d.x, d.y, d.z);
+            tcp_e_.x += c3d.x + d.x;
+            tcp_e_.y += c3d.y + d.y;
+            tcp_e_.z += c3d.z + d.z;
+            num_good++;
+          }
+        }
+        tcp_e_.x /= num_good;
+        tcp_e_.y /= num_good;
+        tcp_e_.z /= num_good;
+        ROS_INFO("\n=============\n= Estimated TCP: [%.4f, %.4f %.4f] =\n===========", tcp_e_.x, tcp_e_.y, tcp_e_.z);
       }
+
+
 
       // clear variables
       mode = 0;
@@ -414,11 +474,11 @@ class GripperSegmentationCollector
       cv::setMouseCallback("what", onMouse, (void*) &m);
       while (true)
       {
-        // [Esc] Exit
-        if (key == 27)
+        // [n], [N] Next
+        if (key == 110 || key == 78)
           break;
         // [Space] revert the last insert
-        else if (key == 32)
+        else if (key == 32 || key == 122 || key == 90)
         {
           if (kpsc_.size() > 0)
           {
@@ -427,6 +487,12 @@ class GripperSegmentationCollector
             kps_.push_back(k);
             kpsc_.erase(kpsc_.end());
           }
+        }
+        // [Esc], [Q], [q] Exit
+        else if (key == 27 || key == 113 || key == 81)
+        {
+          ros::shutdown();
+          return;
         }
         process(m);
         setDisplay(color_frame.clone(), m);
@@ -580,6 +646,53 @@ class GripperSegmentationCollector
       }
     }
 
+    cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
+        std::string point_frame, std::string target_frame, shared_ptr<tf::TransformListener> tf_)
+    {
+      PointStamped cur_point;
+      cur_point.header.frame_id = point_frame;
+      cur_point.point.x = cur_point_pcl.x;
+      cur_point.point.y = cur_point_pcl.y;
+      cur_point.point.z = cur_point_pcl.z;
+      return projectPointIntoImage(cur_point, target_frame, tf_);
+    }
+    cv::Point projectPointIntoImage(PointStamped cur_point,
+        std::string target_frame, shared_ptr<tf::TransformListener> tf_)
+    {
+      if (K.rows == 0 || K.cols == 0 || K.at<float>(0,0) == 0) {
+        // Camera intrinsic matrix
+        K  = cv::Mat(cv::Size(3,3), CV_64F, &(cam_info_.K));
+        K.convertTo(K, CV_32F);
+      }
+      cv::Point img_loc;
+      try
+      {
+        // Transform point into the camera frame
+        PointStamped image_frame_loc_m;
+        tf_->transformPoint(target_frame, cur_point, image_frame_loc_m);
+        /*
+           ROS_INFO(">> %f, %f %f", 
+           K.at<float>(0,0),
+           K.at<float>(1,1),
+           K.at<float>(0,2)
+           );
+        //cur_point.point.x,cur_point.point.y,cur_point.point.z);
+         */
+        // Project point onto the image
+        img_loc.x = static_cast<int>((K.at<float>(0,0)*image_frame_loc_m.point.x +
+              K.at<float>(0,2)*image_frame_loc_m.point.z) /
+            image_frame_loc_m.point.z);
+        img_loc.y = static_cast<int>((K.at<float>(1,1)*image_frame_loc_m.point.y +
+              K.at<float>(1,2)*image_frame_loc_m.point.z) /
+            image_frame_loc_m.point.z);
+      }
+      catch (tf::TransformException e)
+      {
+        ROS_ERROR("[vs]%s", e.what());
+      }
+      return img_loc;
+    }
+
 
   protected:
     ros::NodeHandle n_;
@@ -608,6 +721,7 @@ class GripperSegmentationCollector
     bool camera_initialized_;
     bool desire_points_initialized_;
     std::string cam_info_topic_;
+    cv::Mat K;
 
     std::ofstream textFile;
     ros::ServiceClient p_client_;
@@ -616,10 +730,12 @@ class GripperSegmentationCollector
     std::string which_arm_;
     cv::Point tooltip_;
     int mode;
+    std::vector<cv::KeyPoint> kpso_;
     std::vector<cv::KeyPoint> kps_;
     std::vector<cv::KeyPoint> kpsc_;
     std::vector<cv::KeyPoint> kps_bad_;
-
+    pcl::PointXYZ tcp_e_;
+    std::vector< cv::DMatch> good_matches_;
     //std::vector<Descriptor>  ds;
     Data ds;
     cv::Point tooltip_star_;
