@@ -188,6 +188,35 @@ class PushLearningIO:
     def close_out_file(self):
         self.data_out.close()
 
+class BruteForceKNN:
+    def __init__(self, data):
+        self.raw_data = data
+
+    def find_k_neighbors(self, element, k=3, comp_func=None):
+        if comp_func is None:
+            comp_func = self.xy_dist
+        k_closest = []
+        k_dists = []
+        for d in self.raw_data:
+            comp_dist = comp_func(element, d)
+            inserted = False
+            for i, close in enumerate(k_closest):
+                if comp_dist < close:
+                    k_closest.insert(d, i)
+                    k_dists.insert(comp_dist,i)
+                    inserted = True
+            if not inserted and len(k_closest) < k:
+                k_closest.append(d)
+                k_dists.append(comp_dist)
+            elif len(k_closest) > k:
+                k_closest = k_closest[:k]
+                k_dists = k_dists[:k]
+        return (k_closest, k_dists)
+
+    def xy_dist(self, a, b):
+        return hypot(a.init_centroid.x - b.init_centroid.x,
+                     a.init_centroid.y - b.init_centroid.y)
+
 class PushLearningAnalysis:
 
     def __init__(self):
@@ -195,6 +224,12 @@ class PushLearningAnalysis:
         self.io = PushLearningIO()
         self.xy_hash_precision = 20.0 # bins/meter
         self.num_angle_bins = 8
+
+    def workspace_hypothesis(self, push):
+        knn = BruteForceKNN(self.all_trials)
+        neighbors, dists = knn.find_k_neighbors(push)
+        # TODO: What are the best performing neighbors?
+
     #
     # Methods for computing marginals
     #
