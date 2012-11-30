@@ -190,14 +190,14 @@ class PushLearningIO:
 
 class BruteForceKNN:
     def __init__(self, data):
-        self.raw_data = data
+        self.data = data
 
     def find_k_neighbors(self, element, k=3, comp_func=None):
         if comp_func is None:
             comp_func = self.xy_dist
         k_closest = []
         k_dists = []
-        for d in self.raw_data:
+        for d in self.data:
             comp_dist = comp_func(element, d)
             inserted = False
             for i, close in enumerate(k_closest):
@@ -225,7 +225,13 @@ class PushLearningAnalysis:
         self.xy_hash_precision = 20.0 # bins/meter
         self.num_angle_bins = 8
 
-    def workspace_hypothesis(self, push):
+    def workspace_span(self, push):
+        # score_fnc=self.compute_normalized_push_time
+        score_fnc = self.compute_push_error_xy
+        # score_fnc = self.compute_change_in_push_error_xy
+        # Evaluate all push trials
+        for t in self.all_trials:
+            t.score = score_fnc(t)
         knn = BruteForceKNN(self.all_trials)
         neighbors, dists = knn.find_k_neighbors(push)
         # TODO: What are the best performing neighbors?
@@ -851,6 +857,6 @@ if __name__ == '__main__':
     # workspace_ranks = pla.workspace_ranking()
     # pla.visualize_push_choices(workspace_ranks, 1.0)
     # angle_ranks = pla.angle_ranking()
-    pla.object_ranking()
+    # pla.object_ranking()
     # pla.object_proxy_ranking()
     print 'Num trials: ' + str(len(pla.all_trials))
