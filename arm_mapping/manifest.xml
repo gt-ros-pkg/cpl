@@ -1,0 +1,18 @@
+<package>
+  <description brief="arm_mapping">
+
+     arm_mapping
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/arm_mapping</url>
+
+  <depend package="roscpp" />
+  <depend package="pcl" />
+  <depend package="cv_bridge" />
+
+</package>
+
+
