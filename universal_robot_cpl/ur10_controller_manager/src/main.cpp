@@ -62,7 +62,7 @@
 using namespace boost::accumulators;
 using namespace std;
 
-static const std::string name = "pr2_etherCAT";
+static const std::string name = "ur10_realtime";
 
 
 static struct
@@ -312,7 +312,7 @@ void *controlLoop(void *)
   // Initialize the hardware interface
   //EthercatHardware ec(name);
   //ec.init(g_options.interface_, g_options.allow_unprogrammed_);
-  UniversalHardware ur(name);
+  ur10_controller_manager::UniversalHardware ur(name);
   ur.init();
 
   // Create controller manager
@@ -398,14 +398,14 @@ void *controlLoop(void *)
     double start = now();
     if (g_reset_motors)
     {
-      ur.update(true, g_halt_motors);
+      ur.updateState(true, g_halt_motors);
       g_reset_motors = false;
       // Also, clear error flags when motor reset is requested
       g_stats.rt_loop_not_making_timing = false;
     }
     else
     {
-      ur.update(false, g_halt_motors);
+      ur.updateState(false, g_halt_motors);
     }
     if (g_publish_trace_requested)
     {
@@ -414,8 +414,10 @@ void *controlLoop(void *)
     }
     g_halt_motors = false;
     double after_ec = now();
-    cm.update();
+    cm.update(); // update the controllers
     double end = now();
+
+    ur.updateActuators(); // actually command the arm
 
     g_stats.ec_acc(after_ec - start);
     g_stats.cm_acc(end - after_ec);
@@ -522,7 +524,7 @@ void *controlLoop(void *)
     it->second->command_.effort_ = 0;
   }
   */
-  ur.update(false, true);
+  //ur.update(false, true);
 
   //pthread_join(diagnosticThread, 0);  
 
