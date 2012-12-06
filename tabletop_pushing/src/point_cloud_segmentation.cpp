@@ -278,7 +278,6 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   ProtoObjects objs;
   for (size_t i = 0; i < regions.size (); i++)
   {
-    // TODO: Convert into torso frame
     ProtoObject po;
     po.push_history.clear();
     po.boundary_angle_dist.clear();
