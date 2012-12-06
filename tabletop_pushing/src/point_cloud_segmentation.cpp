@@ -232,7 +232,6 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
                                                             XYZPointCloud& objs_cloud,
                                                             XYZPointCloud& plane_cloud)
 {
-  ROS_WARN_STREAM("Finding tabletop objects MPS!");
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
   ne.setMaxDepthChangeFactor(0.03f);
