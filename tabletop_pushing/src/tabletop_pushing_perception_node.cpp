@@ -171,19 +171,28 @@ class ObjectTracker25D
     if (objs.size() == 1)
     {
     }
-    else if (init || frame_count_ == 0)
+    else if (true || init || frame_count_ == 0)
     {
       // Assume we care about the biggest currently
-      unsigned int max_size = 0;
+      // unsigned int max_size = 0;
+      // for (unsigned int i = 0; i < objs.size(); ++i)
+      // {
+      //   if (objs[i].cloud.size() > max_size)
+      //   {
+      //     max_size = objs[i].cloud.size();
+      //     chosen_idx = i;
+      //   }
+      // }
+      // Assume we care about the highest currently
+      float max_height = -1000.0;
       for (unsigned int i = 0; i < objs.size(); ++i)
       {
-        if (objs[i].cloud.size() > max_size)
+        if (objs[i].centroid[2] > max_height)
         {
-          max_size = objs[i].cloud.size();
+          max_height = objs[i].centroid[2];
           chosen_idx = i;
         }
       }
-
       // TODO: Extract color histogram
     }
     else // Find closest object to last time

@@ -271,25 +271,19 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   point_indices.clear();
   label_indices.clear();
   boundary_indices.clear();
-  ROS_WARN_STREAM("Segmenting and refining!");
   mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
-  ROS_WARN_STREAM("Segmented and refined!");
   // TODO: Get table plane
   // TODO: Create objects and their clouds
   // TODO: Filter out arm
   ProtoObjects objs;
-  ROS_WARN_STREAM("Iterating through " << regions.size() << " regions!");
   for (size_t i = 0; i < regions.size (); i++)
   {
-    ROS_INFO_STREAM("Creating ProtoObject.");
+    // TODO: Convert into torso frame
     ProtoObject po;
     po.push_history.clear();
     po.boundary_angle_dist.clear();
     po.id = i;
-    // TODO: Get object point cloud
-    ROS_INFO_STREAM("Copying point cloud.");
     pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
-    ROS_INFO_STREAM("Object has " << po.cloud.size() << " points");
     po.centroid[0] = regions[i].getCentroid()[0];
     po.centroid[1] = regions[i].getCentroid()[1];
     po.centroid[2] = regions[i].getCentroid()[2];
@@ -300,16 +294,11 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     objs.push_back(po);
     Eigen::Vector4f model = regions[i].getCoefficients();
     // TODO: Save object counter
-    XYZPointCloud boundary_cloud;
-    boundary_cloud.points = regions[i].getContour();
-    boundary_cloud.header.frame_id = input_cloud.header.frame_id;
-    boundary_cloud.header.stamp = ros::Time(0);
-    ROS_INFO_STREAM("Boundary cloud header: " << boundary_cloud.header.frame_id);
-    ROS_INFO_STREAM("Boundary cloud has " << boundary_cloud.size() << " points.");
-    printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
-            po.centroid[0], po.centroid[1], po.centroid[2],
-            model[0], model[1], model[2], model[3],
-            boundary_cloud.points.size ());
+    // ROS_INFO_STREAM("Centroid: (" << po.centroid[0] << ", " << po.centroid[1] <<
+    //                 ", " << po.centroid[2] << ")\n Coefficients: (" <<
+    //                 model[0] << ", " << model[1] << ", " <<  model[2] << ", " <<
+    //                 model[3]  << ")\n Inliers: " << po.cloud.points.size() <<
+    //                 "\n Frame_id: " << po.cloud.header.frame_id << "\n");
   }
   return objs;
 }
