@@ -41,11 +41,10 @@
 
     <param name="pcl_difference_thresh" value="0.0001" type="double"/>
 
-    <param name="mps_min_inliers" value="100" type="int"/>
+    <param name="use_mps_segmentation" value="true" type="bool"/>
+    <param name="mps_min_inliers" value="50" type="int"/>
     <param name="mps_min_angle_thresh" value="20.0" type="double"/>
     <param name="mps_min_dist_thresh" value="0.05" type="double"/>
-
-    <param name="use_mps_segmentation" value="false" type="bool"/>
 
     <param name="img_output_path" value="/u/thermans/data/new/" type="string"/>
 
