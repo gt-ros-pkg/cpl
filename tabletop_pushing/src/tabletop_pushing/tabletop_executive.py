@@ -548,8 +548,8 @@ class TabletopExecutive:
         push_vector_req.proxy_name = proxy_name
         push_vector_req.action_primitive = action_primitive
         push_vector_req.get_pose_only = get_pose_only
-        rospy.loginfo("Calling feedback push start service")
         try:
+            rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
             return push_vector_res
         except rospy.ServiceException, e:

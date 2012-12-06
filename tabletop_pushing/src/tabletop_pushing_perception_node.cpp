@@ -263,14 +263,21 @@ class ObjectTracker25D
       pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
       cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
       cv::Mat disp_img(in_frame.size(), CV_8UC3, cv::Scalar(0,0,0));
-      pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
-      lbl_img*=255;
-      pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
-      cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
-      const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-          centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
-      cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
-      cv::imshow("sphere",disp_img);
+      if (sphere_cloud.size() < 1)
+      {
+        ROS_INFO_STREAM("Sphere has 0 points");
+      }
+      else
+      {
+        pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
+        lbl_img*=255;
+        pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
+        cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
+        const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+            centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
+        cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
+        cv::imshow("sphere",disp_img);
+      }
       state.x.x = sphere.values[0];
       state.x.y = sphere.values[1];
       state.z = sphere.values[2];
@@ -1079,7 +1086,7 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayRobotGripperPoses(cur_color_frame_);
+      // displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
 
@@ -1105,7 +1112,7 @@ class TabletopPushingPerceptionNode
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayRobotGripperPoses(cur_color_frame_);
+      // displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
     }
