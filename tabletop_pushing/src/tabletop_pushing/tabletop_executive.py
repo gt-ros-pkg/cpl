@@ -498,6 +498,8 @@ class TabletopExecutive:
             return ('aborted', result)
 
         rospy.loginfo('Done performing push behavior.')
+        if _OFFLINE:
+            code_in = raw_input("Press <Enter> to try another push: ")
         return ('done', result)
 
     def analyze_push(self, action_primitive, controller_name, proxy_name,
