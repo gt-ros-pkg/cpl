@@ -19,12 +19,6 @@ int powerup_robot(int max_attempts, int retries);
 int initialize_joints(double delta_move);
 
 const double zero_vector[6] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-double q_act[6];
-double qd_act[6];
-double i_act[6];
-double q_des[6];
-double qd_des[6];
-double qdd_des[6];
 
 UniversalJoint::UniversalJoint(std::string s) : pr2_hardware_interface::Actuator(s)
 {
@@ -36,10 +30,11 @@ UniversalJoint::~UniversalJoint()
 
 UniversalHardware::UniversalHardware(const std::string& name) :
   hw_(0), 
-  node_(ros::NodeHandle(name)), 
+  //node_(ros::NodeHandle(name)), 
   is_halted_(true),
   halt_motors_(true),
-  rt_periods_passed_(0)
+  rt_periods_passed_(0),
+  loop_iter(0)
 {
   printf("Loading robot configuration...");
   if(!configuration_load()) {
@@ -47,6 +42,13 @@ UniversalHardware::UniversalHardware(const std::string& name) :
     exit(EXIT_FAILURE);
   }
   printf("success!");
+
+  for(int i=0;i<6;i++) {
+    actuator_names[i] = ACTUATOR_NAMES[i];
+    q_des[i] = 0.0;
+    qd_des[i] = 0.0;
+    qdd_des[i] = 0.0;
+  }
 }
 
 UniversalHardware::~UniversalHardware()
@@ -57,19 +59,31 @@ UniversalHardware::~UniversalHardware()
 void UniversalHardware::updateState(bool reset, bool halt)
 {
   static uint32_t i;
-  rt_periods_passed_ = (rt_periods_passed_+1) % RT_PERIODS_PER_STATE;
-  if(!rt_periods_passed_) {
+  //rt_periods_passed_ = (rt_periods_passed_+1) % RT_PERIODS_PER_STATE;
+  if(true || !rt_periods_passed_) {
     // We should expect a new state to be available from the controller
     robotinterface_read_state_blocking(); // this shouldn't block for longer than 0.001s
 
     // Record feedback
     robotinterface_get_actual(q_act, qd_act);
     robotinterface_get_actual_current(i_act);
+    if(loop_iter == 0)
+      for(i = 0; i < 6; i++)
+        q_act_first[i] = q_act[i];
+
+    if(robotinterface_get_robot_mode() == ROBOT_RUNNING_MODE)
+      robotinterface_set_robot_freedrive_mode();
+    //robotinterface_command_empty_command();
+    robotinterface_command_position_velocity_acceleration(q_act_first, zero_vector, zero_vector);
+    robotinterface_send();
+
     for(i = 0; i < 6; i++) {
       actuators[i]->state_.position_ = q_act[i];
       actuators[i]->state_.velocity_ = qd_act[i];
       actuators[i]->state_.last_measured_current_ = i_act[i];
     }
+
+
     /* TODO IMPLEMENT THESE FEEDBACKS
     void robotinterface_get_actual_accelerometers(double *ax, double *ay,
         double *az);
@@ -85,6 +99,7 @@ void UniversalHardware::updateState(bool reset, bool halt)
     is_halted_ = true;
   if(reset)
     is_halted_ = false;
+  loop_iter++;
 }
 
 void UniversalHardware::updateActuators()
@@ -106,13 +121,6 @@ void UniversalHardware::updateActuators()
   }
 }
 
-const char* actuator_names[6] = { "shoulder_pan_motor",
-                                  "shoulder_lift_motor",
-                                  "elbow_motor",
-                                  "wrist_1_motor",
-                                  "wrist_2_motor",
-                                  "wrist_3_motor"};
-
 void UniversalHardware::init()
 {
   hw_ = new pr2_hardware_interface::HardwareInterface();
@@ -124,6 +132,10 @@ void UniversalHardware::init()
     hw_->addActuator((pr2_hardware_interface::Actuator*) actuator);
     actuators.push_back(actuator);
   }
+}
+
+void UniversalHardware::startRobot()
+{
 
   // UR10 Interface setup
 
@@ -170,6 +182,17 @@ void UniversalHardware::init()
   printf("success!\n");
 }
 
+void UniversalHardware::initializeJoints(double joint_delta)
+{
+  printf("Initializing robot\n");
+  if(initialize_joints(joint_delta)) {
+      robotinterface_close();
+      printf("Unable to initialize robot\n");
+      exit(EXIT_FAILURE);
+  }
+  printf("Robot initialized\n\n\n\n");
+}
+
 void stall_robot(int cycles)
 {
   while(cycles-- > 0) {
@@ -184,6 +207,8 @@ int open_interface(int retries)
   if(!robotinterface_open(0))
     return -1;
   while(retries-- > 0 && !robotinterface_is_robot_connected()) {
+    //if(!ros::ok())
+    //  return -2;
     robotinterface_read_state_blocking();
     robotinterface_command_velocity(zero_vector);
     robotinterface_send();
@@ -198,6 +223,8 @@ int wait_robot_mode(int mode, int retries)
   while(retries-- > 0) {
     if(robotinterface_get_robot_mode() == mode)
       break;
+    //if(!ros::ok())
+    //  return -2;
     robotinterface_read_state_blocking();
     robotinterface_command_velocity(zero_vector);
     robotinterface_send();
@@ -210,6 +237,8 @@ int powerup_robot(int max_attempts, int retries)
   while(max_attempts-- > 0) {
     robotinterface_power_on_robot();
     while(retries-- > 0) {
+      //if(!ros::ok())
+      //  return -2;
       robotinterface_read_state_blocking();
       robotinterface_command_velocity(zero_vector);
       robotinterface_send();

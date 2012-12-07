@@ -371,10 +371,14 @@ void *controlLoop(void *)
   */
   
   // Set to realtime scheduler for this thread
+  /*
   struct sched_param thread_param;
   policy = SCHED_FIFO;
   thread_param.sched_priority = sched_get_priority_max(policy);
   pthread_setschedparam(pthread_self(), policy, &thread_param);
+  */
+
+  ur.startRobot();
 
   struct timespec tick;
   clock_gettime(CLOCK_REALTIME, &tick);
@@ -474,12 +478,12 @@ void *controlLoop(void *)
 
       // initialize overruns
       if (g_stats.overruns == 0){
-	g_stats.last_overrun = 1000;
-	g_stats.last_severe_overrun = 1000;
+        g_stats.last_overrun = 1000;
+        g_stats.last_severe_overrun = 1000;
       }
       // check for overruns
       if (g_stats.recent_overruns > 10)
-	g_stats.last_severe_overrun = 0;
+	      g_stats.last_severe_overrun = 0;
       g_stats.last_overrun = 0;
 
       g_stats.overruns++;
