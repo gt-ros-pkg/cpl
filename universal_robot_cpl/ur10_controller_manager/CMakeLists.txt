@@ -16,3 +16,7 @@ rosbuild_link_boost (ur10_ctrl_manager thread system)
 target_link_libraries (ur10_ctrl_manager rt)
 target_link_libraries (ur10_ctrl_manager ur10_cm_base)
 target_link_libraries (ur10_cm_base ${UR10_LIBS})
+
+
+rosbuild_add_executable(collect_data src/collect_data.cpp)
+target_link_libraries (collect_data ur10_cm_base)
