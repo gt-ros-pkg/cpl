@@ -56,49 +56,56 @@ UniversalHardware::~UniversalHardware()
   delete hw_;
 }
 
-void UniversalHardware::updateState(bool reset, bool halt)
+void UniversalHardware::freedriveMode()
 {
   static uint32_t i;
-  //rt_periods_passed_ = (rt_periods_passed_+1) % RT_PERIODS_PER_STATE;
-  if(true || !rt_periods_passed_) {
-    // We should expect a new state to be available from the controller
-    robotinterface_read_state_blocking(); // this shouldn't block for longer than 0.001s
+  robotinterface_read_state_blocking(); 
 
-    // Record feedback
-    robotinterface_get_actual(q_act, qd_act);
-    robotinterface_get_actual_current(i_act);
-    if(loop_iter == 0)
-      for(i = 0; i < 6; i++)
-        q_act_first[i] = q_act[i];
+  // Record feedback
+  robotinterface_get_actual(q_act, qd_act);
+  robotinterface_get_actual_current(i_act);
+  if(loop_iter == 0)
+    for(i=0;i<6;i++)
+      q_act_first[i] = q_act[i];
 
-    if(robotinterface_get_robot_mode() == ROBOT_RUNNING_MODE)
-      robotinterface_set_robot_freedrive_mode();
-    //robotinterface_command_empty_command();
-    robotinterface_command_position_velocity_acceleration(q_act_first, zero_vector, zero_vector);
-    robotinterface_send();
+  if(robotinterface_get_robot_mode() == ROBOT_RUNNING_MODE)
+    robotinterface_set_robot_freedrive_mode();
+  //robotinterface_command_empty_command();
+  robotinterface_command_position_velocity_acceleration(q_act_first, zero_vector, zero_vector);
+  robotinterface_send();
 
-    for(i = 0; i < 6; i++) {
-      actuators[i]->state_.position_ = q_act[i];
-      actuators[i]->state_.velocity_ = qd_act[i];
-      actuators[i]->state_.last_measured_current_ = i_act[i];
-    }
-
-
-    /* TODO IMPLEMENT THESE FEEDBACKS
-    void robotinterface_get_actual_accelerometers(double *ax, double *ay,
-        double *az);
-    double robotinterface_get_tcp_force_scalar();
-    void robotinterface_get_tcp_force(double *F);
-    void robotinterface_get_tcp_speed(double *V);
-    double robotinterface_get_tcp_power();
-    double robotinterface_get_power();
-    */
+  for(i = 0; i < 6; i++) {
+    actuators[i]->state_.position_ = q_act[i];
+    actuators[i]->state_.velocity_ = qd_act[i];
+    actuators[i]->state_.last_measured_current_ = i_act[i];
   }
 
-  if(halt)
-    is_halted_ = true;
-  if(reset)
-    is_halted_ = false;
+
+  /* TODO IMPLEMENT THESE FEEDBACKS
+  void robotinterface_get_actual_accelerometers(double *ax, double *ay,
+      double *az);
+  double robotinterface_get_tcp_force_scalar();
+  void robotinterface_get_tcp_force(double *F);
+  void robotinterface_get_tcp_speed(double *V);
+  double robotinterface_get_tcp_power();
+  double robotinterface_get_power();
+  */
+  loop_iter++;
+}
+
+void UniversalHardware::testMode()
+{
+  static uint32_t i;
+  robotinterface_read_state_blocking(); 
+
+  // Record feedback
+  robotinterface_get_actual(q_act, qd_act);
+  robotinterface_get_actual_current(i_act);
+
+  robotinterface_command_velocity(qd_des);
+  robotinterface_send();
+
+end:
   loop_iter++;
 }
 

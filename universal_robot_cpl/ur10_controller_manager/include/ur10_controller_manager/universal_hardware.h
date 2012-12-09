@@ -36,7 +36,8 @@ class UniversalHardware
     
     ~UniversalHardware();
 
-    void updateState(bool reset, bool halt);
+    void freedriveMode();
+    void testMode();
     void updateActuators();
 
     void init();

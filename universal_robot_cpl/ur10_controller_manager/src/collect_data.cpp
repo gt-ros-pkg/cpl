@@ -6,6 +6,7 @@
 #include <realtime_tools/realtime_publisher.h>
 #include <sensor_msgs/JointState.h>
 #include <std_msgs/Float64MultiArray.h>
+#include <std_msgs/Float64.h>
 #include <pr2_mechanism_model/joint.h>
 #include <pr2_controller_manager/controller_manager.h>
 
@@ -17,25 +18,28 @@ using namespace std;
 class CollectData
 {
   public:
-    CollectData(string _name, ros::NodeHandle* nh, UniversalHardware* ur, 
-                TiXmlElement *root);
+    CollectData(string _name, ros::NodeHandle* nh, UniversalHardware* ur);
     string name;
     ros::NodeHandle* nh;
     UniversalHardware* ur;
     uint64_t loop_iter;
     pr2_controller_manager::ControllerManager* cm; 
     realtime_tools::RealtimePublisher<sensor_msgs::JointState> js_pub;
+    ros::Subscriber cmd_sub;
+    double cmd;
+
     void controlLoop();
     void publishJointState();
+    void cmdCallback(const std_msgs::Float64::ConstPtr& msg);
 };
 
-CollectData::CollectData(string _name, ros::NodeHandle* _nh, UniversalHardware *_ur, 
-                         TiXmlElement *root) : 
+CollectData::CollectData(string _name, ros::NodeHandle* _nh, UniversalHardware *_ur) : 
   name(_name), 
   nh(_nh),
   ur(_ur),
   loop_iter(0),
-  js_pub(*_nh, "/joint_states", 1)
+  js_pub(*_nh, "/joint_states", 1),
+  cmd(0.0)
 {
 
   js_pub.msg_.name.resize(6);
@@ -43,6 +47,7 @@ CollectData::CollectData(string _name, ros::NodeHandle* _nh, UniversalHardware *
   js_pub.msg_.velocity.resize(6);
   js_pub.msg_.effort.resize(6);
 
+  cmd_sub = _nh->subscribe<std_msgs::Float64>("/test", 1, &CollectData::cmdCallback, this);
   //cm = new pr2_controller_manager::ControllerManager (ur->hw_, *nh);
   
   /*
@@ -61,10 +66,12 @@ CollectData::CollectData(string _name, ros::NodeHandle* _nh, UniversalHardware *
 void CollectData::controlLoop()
 {
   while(ros::ok()) {
-    ur->updateState(true,false);
+    //ur->freedriveMode();
+    ur->testMode();
     //ur->updateActuators();
     publishJointState();
     ros::spinOnce();
+    ur->qd_des[4] = cmd;
     loop_iter++;
   }
 }
@@ -94,6 +101,11 @@ void CollectData::publishJointState()
   }
 }
 
+void CollectData::cmdCallback(const std_msgs::Float64::ConstPtr& msg)
+{
+  cmd = msg->data;
+}
+
 int main(int argc, char* argv[])
 {
   string name = "collect_data";
@@ -116,34 +128,12 @@ int main(int argc, char* argv[])
   ros::init(argc, argv, name);
   ros::NodeHandle nh(name);
 
-  /*
-  // Load robot description
-  TiXmlDocument xml;
-  TiXmlElement *root;
-  TiXmlElement *root_element;
-  std::string g_robot_desc;
-  if (nh.getParam("/robot_description", g_robot_desc))
-    xml.Parse(g_robot_desc.c_str());
-  else
-  {
-    ROS_FATAL("Could not load the xml from parameter server");
-    return -1;
-  }
-  root_element = xml.RootElement();
-  root = xml.FirstChildElement("robot");
-  if (!root || !root_element)
-  {
-      ROS_FATAL("Could not parse the xml");
-      return -1;
-  }
-  */
-
   UniversalHardware ur(name);
   ur.init();
 
   ur.startRobot();
   double joint_delta = atof(argv[1]);
   ur.initializeJoints(joint_delta);
-  CollectData cd(name, &nh, &ur, root);
+  CollectData cd(name, &nh, &ur);
   return 0;
 }

@@ -11,10 +11,10 @@ set(UR10_LIBS configuration robotcomm rt kinematics collision math m)
 rosbuild_add_library(ur10_cm_base
     src/universal_hardware.cpp)
 rosbuild_add_boost_directories()
-rosbuild_add_executable(ur10_ctrl_manager src/main.cpp)
-rosbuild_link_boost (ur10_ctrl_manager thread system)
-target_link_libraries (ur10_ctrl_manager rt)
-target_link_libraries (ur10_ctrl_manager ur10_cm_base)
+#rosbuild_add_executable(ur10_ctrl_manager src/main.cpp)
+#rosbuild_link_boost (ur10_ctrl_manager thread system)
+#target_link_libraries (ur10_ctrl_manager rt)
+#target_link_libraries (ur10_ctrl_manager ur10_cm_base)
 target_link_libraries (ur10_cm_base ${UR10_LIBS})
 
 
