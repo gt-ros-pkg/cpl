@@ -89,7 +89,7 @@ void extractFromIndices(const PCRGB& in, pcl::PointIndices::Ptr& inds, PCRGB& ou
 }
 
 /*
-void bagProblem(char* filename, FAMProblem& fam)
+void bagProblem(char* filename, KAMProblem& fam)
 {
   rosbag::Bag bag_out(filename, rosbag::bagmode::Write);
   pcl::toROSMsg<PRGB>(pc, pc_msg);
@@ -122,7 +122,7 @@ int main(int argc, char* argv[])
   int num_poses;
   nh_priv.param<int>("num_poses", num_poses, -1);
 
-  FAMProblem prob;
+  KAMProblem prob;
   vector<Mat> imgs;
   vector<PCRGB::Ptr> pcs;
   readImgPCPoseBag(argv[1], imgs, pcs, prob.base_Ts_ee, num_poses);
@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
   }
 
 	std::cout << "Computing Matches...";
-	gtsam::Pose3 solution = solveProblemOffsetPose(prob);
+	gtsam::Pose3 solution = solveKAMProblem(prob);
 	
 	std::cout << "Computed Matches\n";
 	std::cout << "Solution: \n";

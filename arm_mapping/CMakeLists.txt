@@ -43,7 +43,7 @@ rosbuild_add_library(${PROJECT_NAME} src/factor_arm_mapping.cpp)
 target_link_libraries(${PROJECT_NAME} gtsam-static)
 
 #set(executables test_file andrew_test test_factor_arm_mapping fam_1)
-set(executables final_fam_mapping final2_fam_mapping test_factor_arm_mapping pub_pc)
+set(executables final2_fam_mapping test_factor_arm_mapping pub_pc factor_arm_calib test_cb_calib)
 
 foreach(exec ${executables})
     rosbuild_add_executable(${exec} src/${exec}.cpp)

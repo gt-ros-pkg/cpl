@@ -5,6 +5,19 @@ using namespace gtsam;
 
 namespace arm_mapping {
 
+void randomPoses(int num_poses, vector<Pose3>& poses, double radius=1.0)
+{
+  boost::mt19937 rng;
+  boost::uniform_real<> pt_range(-radius, radius);
+  boost::uniform_real<> angle_range(0, M_PI);
+  for(int i=0;i<num_poses;i++) {
+    poses.push_back(Pose3(Rot3::ypr(angle_range(rng),angle_range(rng),angle_range(rng)),
+                          Point3(pt_range(rng),pt_range(rng),pt_range(rng))));
+  }
+}
+
+//////////////////////// Kinect Arm Mapping Problem //////////////////////////
+
 class OffsetFrameFactor : public NoiseModelFactor1<Pose3>
 {
   public:
@@ -47,19 +60,8 @@ class OffsetFrameFactor : public NoiseModelFactor1<Pose3>
     }
 };
 
-void randomPose(int num_poses, vector<Pose3>& poses)
-{
-  boost::mt19937 rng;
-  boost::uniform_real<> pt_range(-1, 1);
-  boost::uniform_real<> angle_range(0, M_PI);
-  for(int i=0;i<num_poses;i++) {
-    poses.push_back(Pose3(Rot3::ypr(angle_range(rng),angle_range(rng),angle_range(rng)),
-                          Point3(pt_range(rng),pt_range(rng),pt_range(rng))));
-  }
-}
-
-void generateRandomProblem(int num_cameras, int num_points, int cameras_per_point, 
-                           FAMProblem& prob, FAMSolution& sol)
+void generateKAMProblem(int num_cameras, int num_points, int cameras_per_point, 
+                           KAMProblem& prob, KAMSolution& sol)
 {
   boost::mt19937 rng;
   boost::uniform_real<> pt_dist(-0.7, 0.7);
@@ -70,7 +72,7 @@ void generateRandomProblem(int num_cameras, int num_points, int cameras_per_poin
 
   sol.ee_T_cam = Pose3(gtsam::Rot3::ypr(angle_range(rng), angle_range(rng), angle_range(rng)), 
                    gtsam::Point3(ee_dist(rng), ee_dist(rng), ee_dist(rng)));
-  randomPose(num_cameras, sol.base_Ts_cam);
+  randomPoses(num_cameras, sol.base_Ts_cam);
   prob.points_cameras.resize(num_cameras);
   for(int i=0;i<num_cameras;i++)
     prob.base_Ts_ee.push_back(sol.base_Ts_cam[i] * sol.ee_T_cam.inverse());
@@ -94,7 +96,7 @@ void generateRandomProblem(int num_cameras, int num_points, int cameras_per_poin
   sol.solution.insert(Symbol('k',0), sol.ee_T_cam.inverse());
 }
 
-Pose3 solveProblemOffsetPose(const FAMProblem& prob)
+Pose3 solveKAMProblem(const KAMProblem& prob)
 {
   // noise terms
   noiseModel::Isotropic::shared_ptr ee_fact_noise = noiseModel::Isotropic::Sigma(3, 0.02);
@@ -116,6 +118,103 @@ Pose3 solveProblemOffsetPose(const FAMProblem& prob)
   Values result = DoglegOptimizer(graph, init_estimate).optimize();
   return result.at<Pose3>(Symbol('k',0));
 }
+
+//////////////////////////////////////////////////////////////////////////////
+
+////////////////// Multi Kinect Checkerboard Calib Problem ///////////////////
+
+void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol)
+{
+  size_t num_kinects = prob.kinect_p_points.size();
+  size_t num_ees = prob.kinect_p_points[0].size();
+  size_t num_cb_points = prob.cb_p_points.size();
+  randomPoses(num_kinects, sol.kinect_T_base_poses, 10);
+  vector<Pose3> offset_pose_;
+  randomPoses(1, offset_pose_, 0.4);
+  sol.cb_T_ee_pose = offset_pose_[0];
+  randomPoses(num_ees, prob.base_T_ee_poses, 1.5);
+
+  for(size_t j=0;j<num_kinects;j++)
+    for(size_t i=0;i<num_ees;i++)
+      for(size_t l=0;l<num_cb_points;l++)
+        prob.kinect_p_points[j][i].push_back(
+            sol.kinect_T_base_poses[j] * prob.base_T_ee_poses[i] * 
+            sol.cb_T_ee_pose.inverse() * prob.cb_p_points[l]);
+}
+
+class CheckerboardArmFactor : public NoiseModelFactor2<Pose3, Pose3>
+{
+  public:
+    Point3 cb_p_point, kinect_p_point;
+    Pose3 base_T_ee;
+    CheckerboardArmFactor(const gtsam::SharedNoiseModel& noiseModel, 
+                          Key j1, Key j2, Point3 _cb_p_point, Point3 _kinect_p_point, 
+                          Pose3 _base_T_ee) :
+      NoiseModelFactor2<Pose3, Pose3>(noiseModel, j1, j2), 
+        cb_p_point(_cb_p_point), kinect_p_point(_kinect_p_point), base_T_ee(_base_T_ee) {}
+
+    gtsam::Vector evaluateError(const gtsam::Pose3& cb_T_ee,
+                                const gtsam::Pose3& kinect_T_base,
+                                boost::optional<Matrix&> H_1 = boost::none,
+                                boost::optional<Matrix&> H_2 = boost::none) const
+    {
+      if(H_1) {
+        (*H_1) = gtsam::Matrix_(3, 6);
+        Point3 pt = cb_T_ee.inverse() * cb_p_point;
+        Matrix cross = Matrix_(3,3,
+                               0.0,-pt.z(),pt.y(),
+                               pt.z(),0.0,-pt.x(),
+                               -pt.y(),pt.x(),0.0);
+        (*H_1).block<3,3>(0,0) = base_T_ee.rotation().matrix() * cross;
+        (*H_1).block<3,3>(0,3) = -base_T_ee.rotation().matrix();
+      }
+      if(H_2) {
+        (*H_2) = gtsam::Matrix_(3, 6);
+        Point3 pt = kinect_T_base.inverse() * kinect_p_point;
+        Matrix cross = Matrix_(3,3,
+                               0.0,-pt.z(),pt.y(),
+                               pt.z(),0.0,-pt.x(),
+                               -pt.y(),pt.x(),0.0);
+        (*H_2).block<3,3>(0,0) = -cross;
+        (*H_2).block<3,3>(0,3) = gtsam::Rot3::yaw(0).matrix();
+      }
+      return (base_T_ee * cb_T_ee.inverse() * cb_p_point - 
+              kinect_T_base.inverse() * kinect_p_point).vector();
+    }
+};
+
+void solveCBCalibProblem(const CBCalibProblem& prob, CBCalibSolution& sol)
+{
+  size_t num_kinects = prob.kinect_p_points.size();
+  size_t num_ees = prob.kinect_p_points[0].size();
+  size_t num_cb_points = prob.cb_p_points.size();
+  // noise terms
+  noiseModel::Isotropic::shared_ptr ee_fact_noise = noiseModel::Isotropic::Sigma(3, 0.02);
+
+  gtsam::NonlinearFactorGraph graph;
+  Values init_estimate;
+  init_estimate.insert(Symbol('o',0), Pose3());
+
+  for(size_t j=0;j<num_kinects;j++) {
+    init_estimate.insert(Symbol('k',j), Pose3());
+    for(size_t i=0;i<num_ees;i++) {
+      for(size_t l=0;l<num_cb_points;l++) {
+        graph.add(boost::make_shared<CheckerboardArmFactor>(
+              ee_fact_noise, Symbol('o',0), Symbol('k',j), 
+              prob.cb_p_points[l], prob.kinect_p_points[j][i][l], prob.base_T_ee_poses[i]));
+      }
+    }
+  }
+  printf("start error: %f\n", graph.error(init_estimate));
+  Values result = DoglegOptimizer(graph, init_estimate).optimize();
+  result.print();
+  printf("end error: %f\n", graph.error(result));
+  sol.cb_T_ee_pose = result.at<Pose3>(Symbol('o',0));
+  for(size_t j=0;j<num_kinects;j++) 
+    sol.kinect_T_base_poses.push_back(result.at<Pose3>(Symbol('k',j)));
+}
+
+//////////////////////////////////////////////////////////////////////////////
 
 geometry_msgs::Pose gtsamPose3ToGeomPose(const gtsam::Pose3& pose_in)
 {

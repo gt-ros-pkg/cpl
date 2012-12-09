@@ -36,14 +36,14 @@ struct Correspondence {
     cam1(_cam1), cam2(_cam2), ind1(_ind1), ind2(_ind2) {}
 };
 
-struct FAMProblem
+struct KAMProblem
 {
   vector<Pose3> base_Ts_ee;
   vector<vector<Point3> > points_cameras;
   vector<Correspondence> correspondences;
 };
 
-struct FAMSolution
+struct KAMSolution
 {
   vector<Pose3> base_Ts_cam;
   vector<Point3> points_base;
@@ -51,9 +51,31 @@ struct FAMSolution
   Values solution;
 };
 
-void generateRandomProblem(int num_cameras, int num_points, int cameras_per_point, 
-                           FAMProblem& prob, FAMSolution& sol);
-Pose3 solveProblemOffsetPose(const FAMProblem& prob);
+void generateKAMProblem(int num_cameras, int num_points, int cameras_per_point, 
+                           KAMProblem& prob, KAMSolution& sol);
+Pose3 solveKAMProblem(const KAMProblem& prob);
+
+struct CBCalibProblem
+{
+  vector<Pose3> base_T_ee_poses;
+  vector<Point3> cb_p_points;
+  vector<vector<vector<Point3> > > kinect_p_points;
+  CBCalibProblem(int num_kinects, int num_ees, double cb_width, int num_cb_width, int num_cb_height) :
+    kinect_p_points(num_kinects, vector<vector<Point3> >(num_ees)) {
+    for(int i=0;i<num_cb_width;i++)
+      for(int j=0;j<num_cb_height;j++)
+        cb_p_points.push_back(Point3(i*cb_width,j*cb_width,0));
+  }
+};
+
+struct CBCalibSolution
+{
+  Pose3 cb_T_ee_pose;
+  vector<Pose3> kinect_T_base_poses;
+};
+
+void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol);
+void solveCBCalibProblem(const CBCalibProblem& prob, CBCalibSolution& sol);
 
 geometry_msgs::Pose gtsamPose3ToGeomPose(const gtsam::Pose3& pose_in);
 gtsam::Pose3 geomPoseToGtsamPose3(const geometry_msgs::Pose& pose_in);
