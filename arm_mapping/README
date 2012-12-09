@@ -1,0 +1,12 @@
+
+src/final2_fam_mapping.cpp
+ - Code for running full project.
+
+src/corresp_pc_utils.cpp
+ - Utilities for vision part of project.
+
+src/factor_arm_mapping.cpp
+ - Factor graph code
+
+src/test_factor_arm_mapping.cpp
+ - Test factor graph example

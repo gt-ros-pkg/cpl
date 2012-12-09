@@ -11,7 +11,10 @@
 
   <depend package="roscpp" />
   <depend package="pcl" />
+  <depend package="pcl_ros" />
   <depend package="cv_bridge" />
+  <depend package="tf" />
+  <depend package="opencv2" />
 
 </package>
 
