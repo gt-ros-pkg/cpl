@@ -202,7 +202,7 @@ void URController::controlLoop()
     robotinterface_read_state_blocking();
     getRobotJointStates();
     pubRobotJointStates();
-    robotinterface_command_empty_command();
+    robotinterface_command_velocity(zero_vector);
     robotinterface_send();
   }
 }
