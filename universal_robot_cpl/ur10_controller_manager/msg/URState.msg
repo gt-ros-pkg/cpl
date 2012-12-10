@@ -1,0 +1,17 @@
+Header header
+string[6] acutator_names
+float64[6] q_act
+float64[6] qd_act
+float64[6] i_act
+float64[20] acc_x
+float64[20] acc_y
+float64[20] acc_z
+float64 tcp_force_scalar
+float64[6] tcp_force
+float64[6] tcp_speed
+float64 power
+float64[6] q_des
+float64[6] qd_des
+float64[6] qdd_des
+float64[6] i_des
+float64[20] moment_des
