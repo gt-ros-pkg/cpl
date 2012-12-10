@@ -9,16 +9,55 @@
 #include "ur10_ctrl_iface/microprocessor_definitions.h"
 #include "ur10_controller_manager/URJointStates.h"
 #include "ur10_controller_manager/URModeStates.h"
+#include "ur10_controller_manager/URJointCommand.h"
 #include <math.h>
 
 using namespace std;
 
-const char* ACTUATOR_NAMES[6] = { "shoulder_pan_joint",
-                                  "shoulder_lift_joint",
-                                  "elbow_joint",
-                                  "wrist_1_joint",
-                                  "wrist_2_joint",
-                                  "wrist_3_joint"};
+#define CMD_TIMEOUT 3
+#define CONTROL_RATE 125
+
+const char* ACTUATOR_NAMES[6] = { 
+  "shoulder_pan_joint",
+  "shoulder_lift_joint",
+  "elbow_joint",
+  "wrist_1_joint",
+  "wrist_2_joint",
+  "wrist_3_joint"};
+
+const char* ROBOT_MODES[11] = {
+  "ROBOT_RUNNING_MODE",
+  "ROBOT_FREEDRIVE_MODE",
+  "ROBOT_READY_MODE",
+  "ROBOT_INITIALIZING_MODE",
+  "ROBOT_SECURITY_STOPPED_MODE",
+  "ROBOT_EMERGENCY_STOPPED_MODE",
+  "ROBOT_FATAL_ERROR_MODE",
+  "ROBOT_NO_POWER_MODE",
+  "ROBOT_NOT_CONNECTED_MODE",
+  "ROBOT_SHUTDOWN_MODE",
+  "ROBOT_SAFEGUARD_STOP_MODE"};
+
+const char* JOINT_MODES[19] = {
+  "JOINT_PART_D_CALIBRATION_MODE",
+  "JOINT_BACKDRIVE_MODE",
+  "JOINT_POWER_OFF_MODE",
+  "JOINT_EMERGENCY_STOPPED_MODE",
+  "JOINT_CALVAL_INITIALIZATION_MODE",
+  "JOINT_ERROR_MODE",
+  "JOINT_FREEDRIVE_MODE",
+  "JOINT_SIMULATED_MODE 244 /* Probably not used besides inside P",
+  "JOINT_NOT_RESPONDING_MODE",
+  "JOINT_MOTOR_INITIALISATION_MODE",
+  "JOINT_BOOTING_MODE",
+  "JOINT_PART_D_CALIBRATION_ERROR_MODE",
+  "JOINT_BOOTLOADER_MODE",
+  "JOINT_CALIBRATION_MODE",
+  "JOINT_SECURITY_STOPPED_MODE",
+  "JOINT_FAULT_MODE",
+  "JOINT_RUNNING_MODE",
+  "JOINT_INITIALISATION_MODE",
+  "JOINT_IDLE_MODE"};
 
 namespace ur10_controller_manager
 {
@@ -43,7 +82,10 @@ class URController
     realtime_tools::RealtimePublisher<sensor_msgs::JointState> js_pub;
     realtime_tools::RealtimePublisher<ur10_controller_manager::URJointStates> state_pub;
     realtime_tools::RealtimePublisher<ur10_controller_manager::URModeStates> mode_pub;
-    uint32_t loop_counter;
+    ros::Subscriber cmd_sub;
+    int64_t loop_counter;
+    int64_t latest_cmd_loop;
+    bool was_emergency_stopped;
 
     /////////////////////////// Robot Joint States ////////////////////////////
     double q_act[6];
@@ -65,12 +107,21 @@ class URController
     ///////////////////////////////////////////////////////////////////////////
 
     //////////////////////////// Robot Mode States ////////////////////////////
+    uint8_t robot_mode_id;
     bool is_power_on_robot;
     bool is_security_stopped;
     bool is_emergency_stopped;
     bool is_extra_button_pressed; /* The button on the back side of the screen */
     bool is_power_button_pressed;  /* The big green button on the controller box */
     bool is_safety_signal_such_that_we_should_stop; /* This is from the safety stop interface */
+    uint8_t joint_mode_ids[6];
+    ///////////////////////////////////////////////////////////////////////////
+
+    /////////////////////////// Robot Joint Commands //////////////////////////
+    uint8_t cmd_mode;
+    double q_cmd[6];
+    double qd_cmd[6];
+    double qdd_cmd[6];
     ///////////////////////////////////////////////////////////////////////////
 
   public:
@@ -79,7 +130,9 @@ class URController
     void pubRobotStates();
     void getRobotModeStates();
     void pubRobotModeStates();
+    void commandJoints();
     void initializeJoints(double joint_delta);
+    void cmdCallback(const URJointCommand::ConstPtr& cmd);
     void startRobot();
     void controlLoop();
 };
@@ -89,12 +142,18 @@ URController::URController(ros::NodeHandle* _nh) :
   js_pub(*_nh, "/joint_states", 1),
   state_pub(*_nh, "/ur_joint_states", 1),
   mode_pub(*_nh, "/ur_mode_states", 1),
-  loop_counter(0)
+  loop_counter(0),
+  latest_cmd_loop(-10000),
+  was_emergency_stopped(false)
 {
   js_pub.msg_.name.resize(6);
   js_pub.msg_.position.resize(6,-9999.0);
   js_pub.msg_.velocity.resize(6,-9999.0);
   js_pub.msg_.effort.resize(6,-9999.0);
+
+  cmd_sub = _nh->subscribe<URJointCommand>("/ur_joint_command", 1, 
+                                           &URController::cmdCallback, this);
+  cmd_mode = 20;
 
   printf("Loading robot configuration...");
   if(!configuration_load()) {
@@ -106,6 +165,8 @@ URController::URController(ros::NodeHandle* _nh) :
 
 void URController::getRobotStates()
 {
+  static int i;
+
   // joint states
   robotinterface_get_actual(q_act, qd_act);
   robotinterface_get_actual_current(i_act);
@@ -120,6 +181,7 @@ void URController::getRobotStates()
   robotinterface_get_target_moment(moment_des);
 
   // mode states
+  robot_mode_id = robotinterface_get_robot_mode();
   is_power_on_robot = robotinterface_is_power_on_robot();
   is_security_stopped = robotinterface_is_security_stopped();
   is_emergency_stopped = robotinterface_is_emergency_stopped();
@@ -127,8 +189,11 @@ void URController::getRobotStates()
   /* The button on the back side of the screen */
   is_power_button_pressed = robotinterface_is_power_button_pressed();  
   /* The big green button on the controller box */
-  is_safety_signal_such_that_we_should_stop = robotinterface_is_safety_signal_such_that_we_should_stop(); 
+  is_safety_signal_such_that_we_should_stop = 
+    robotinterface_is_safety_signal_such_that_we_should_stop(); 
   /* This is from the safety stop interface */
+  for(i=0;i<6;i++)
+    joint_mode_ids[i] = robotinterface_get_joint_mode(i);
 }
 
 void URController::pubRobotStates()
@@ -175,12 +240,18 @@ void URController::pubRobotStates()
   }
 
   if(mode_pub.trylock()) {
+    mode_pub.msg_.robot_mode = ROBOT_MODES[robot_mode_id];
+    mode_pub.msg_.robot_mode_id = robot_mode_id;
     mode_pub.msg_.is_power_on_robot = is_power_on_robot;
     mode_pub.msg_.is_security_stopped = is_security_stopped;
     mode_pub.msg_.is_emergency_stopped = is_emergency_stopped;
     mode_pub.msg_.is_extra_button_pressed = is_extra_button_pressed;
     mode_pub.msg_.is_power_button_pressed = is_power_button_pressed;
     mode_pub.msg_.is_safety_signal_such_that_we_should_stop = is_safety_signal_such_that_we_should_stop;
+    for(i=0;i<6;i++) {
+      mode_pub.msg_.joint_mode_ids[i] = joint_mode_ids[i];
+      mode_pub.msg_.joint_modes[i] = JOINT_MODES[joint_mode_ids[i]-JOINT_MODE_BAR];
+    }
     mode_pub.msg_.header.stamp = now;
     mode_pub.msg_.header.seq = loop_counter;
     mode_pub.unlockAndPublish();
@@ -234,14 +305,60 @@ void URController::startRobot()
   printf("success!\n");
 }
 
+void URController::commandJoints()
+{
+  if(loop_counter - latest_cmd_loop >= CMD_TIMEOUT) {
+    robotinterface_command_velocity(zero_vector);
+    if(loop_counter % CONTROL_RATE*10 == 0)
+      printf("No command, loop_counter: %d, latest_cmd_loop: %d\n", loop_counter, latest_cmd_loop);
+    return;
+  }
+
+  if(cmd_mode == URJointCommand::CMD_EMPTY)
+    robotinterface_command_empty_command();
+  else if(cmd_mode == URJointCommand::CMD_VELOCITY)
+    robotinterface_command_velocity(qd_cmd);
+  else if(cmd_mode == URJointCommand::CMD_POS_VEL_ACC)
+    robotinterface_command_position_velocity_acceleration(q_cmd, qd_cmd, qdd_cmd);
+  else {
+    robotinterface_command_empty_command();
+    if(loop_counter % CONTROL_RATE*1 == 0)
+      printf("Bad cmd_mode: %d\n", cmd_mode);
+  }
+}
+
+void URController::cmdCallback(const URJointCommand::ConstPtr& cmd)
+{
+  static int i;
+  cmd_mode = cmd->mode;
+  for(i=0;i<6;i++) {
+    q_cmd[i] = cmd->q_des[i];
+    qd_cmd[i] = cmd->qd_des[i];
+    qdd_cmd[i] = cmd->qdd_des[i];
+  }
+  latest_cmd_loop = loop_counter;
+}
+
 void URController::controlLoop()
 {
   while(ros::ok()) {
+    // If we have retriggered the emergency stop, reboot it
+    if(is_emergency_stopped)
+      was_emergency_stopped = true;
+    else
+      if(was_emergency_stopped && robot_mode_id == ROBOT_INITIALIZING_MODE) {
+        robotinterface_power_on_robot();
+        was_emergency_stopped = false;
+        latest_cmd_loop = -10000;
+      }
+
     robotinterface_read_state_blocking();
     getRobotStates();
     pubRobotStates();
-    robotinterface_command_velocity(zero_vector);
+    ros::spinOnce();
+    commandJoints();
     robotinterface_send();
+    loop_counter++;
   }
 }
 
@@ -311,11 +428,14 @@ int initialize_joints(double delta_move)
   int i=0,j;
   double speed_vector[6];
   do {
+    if(!ros::ok())
+      return -3;
     robotinterface_read_state_blocking();
     for (j=0; j<6; ++j) {
       //speed_vector[j] = 0.25 * sin(((double)i) / 80.0);
       speed_vector[j] = (robotinterface_get_joint_mode(j) == 
-          JOINT_INITIALISATION_MODE) ? delta_move : 0.0;
+          JOINT_INITIALISATION_MODE || robotinterface_get_joint_mode(j) ==
+          JOINT_IDLE_MODE) ? delta_move : 0.0;
     }
     i++;
     robotinterface_command_velocity(speed_vector);
