@@ -7,7 +7,8 @@
 #include "ur10_ctrl_iface/Configuration.h"
 #include "ur10_ctrl_iface/microprocessor_commands.h"
 #include "ur10_ctrl_iface/microprocessor_definitions.h"
-#include "ur10_controller_manager/URState.h"
+#include "ur10_controller_manager/URJointStates.h"
+#include "ur10_controller_manager/URModeStates.h"
 #include <math.h>
 
 using namespace std;
@@ -40,7 +41,8 @@ class URController
   private:
     ros::NodeHandle* nh;
     realtime_tools::RealtimePublisher<sensor_msgs::JointState> js_pub;
-    realtime_tools::RealtimePublisher<ur10_controller_manager::URState> state_pub;
+    realtime_tools::RealtimePublisher<ur10_controller_manager::URJointStates> state_pub;
+    realtime_tools::RealtimePublisher<ur10_controller_manager::URModeStates> mode_pub;
     uint32_t loop_counter;
 
     /////////////////////////// Robot Joint States ////////////////////////////
@@ -62,10 +64,21 @@ class URController
     double moment_des[20];
     ///////////////////////////////////////////////////////////////////////////
 
+    //////////////////////////// Robot Mode States ////////////////////////////
+    bool is_power_on_robot;
+    bool is_security_stopped;
+    bool is_emergency_stopped;
+    bool is_extra_button_pressed; /* The button on the back side of the screen */
+    bool is_power_button_pressed;  /* The big green button on the controller box */
+    bool is_safety_signal_such_that_we_should_stop; /* This is from the safety stop interface */
+    ///////////////////////////////////////////////////////////////////////////
+
   public:
     URController(ros::NodeHandle* _nh);
-    void getRobotJointStates();
-    void pubRobotJointStates();
+    void getRobotStates();
+    void pubRobotStates();
+    void getRobotModeStates();
+    void pubRobotModeStates();
     void initializeJoints(double joint_delta);
     void startRobot();
     void controlLoop();
@@ -75,6 +88,7 @@ URController::URController(ros::NodeHandle* _nh) :
   nh(_nh),
   js_pub(*_nh, "/joint_states", 1),
   state_pub(*_nh, "/ur_joint_states", 1),
+  mode_pub(*_nh, "/ur_mode_states", 1),
   loop_counter(0)
 {
   js_pub.msg_.name.resize(6);
@@ -90,8 +104,9 @@ URController::URController(ros::NodeHandle* _nh) :
   printf("success!");
 }
 
-void URController::getRobotJointStates()
+void URController::getRobotStates()
 {
+  // joint states
   robotinterface_get_actual(q_act, qd_act);
   robotinterface_get_actual_current(i_act);
   robotinterface_get_actual_accelerometers(acc_x, acc_y, acc_z);
@@ -103,9 +118,20 @@ void URController::getRobotJointStates()
   robotinterface_get_target(q_des, qd_des, qdd_des);
   robotinterface_get_target_current(i_des);
   robotinterface_get_target_moment(moment_des);
+
+  // mode states
+  is_power_on_robot = robotinterface_is_power_on_robot();
+  is_security_stopped = robotinterface_is_security_stopped();
+  is_emergency_stopped = robotinterface_is_emergency_stopped();
+  is_extra_button_pressed = robotinterface_is_extra_button_pressed(); 
+  /* The button on the back side of the screen */
+  is_power_button_pressed = robotinterface_is_power_button_pressed();  
+  /* The big green button on the controller box */
+  is_safety_signal_such_that_we_should_stop = robotinterface_is_safety_signal_such_that_we_should_stop(); 
+  /* This is from the safety stop interface */
 }
 
-void URController::pubRobotJointStates()
+void URController::pubRobotStates()
 {
   static int i;
   ros::Time now = ros::Time::now();
@@ -146,6 +172,18 @@ void URController::pubRobotJointStates()
     state_pub.msg_.header.stamp = now;
     state_pub.msg_.header.seq = loop_counter;
     state_pub.unlockAndPublish();
+  }
+
+  if(mode_pub.trylock()) {
+    mode_pub.msg_.is_power_on_robot = is_power_on_robot;
+    mode_pub.msg_.is_security_stopped = is_security_stopped;
+    mode_pub.msg_.is_emergency_stopped = is_emergency_stopped;
+    mode_pub.msg_.is_extra_button_pressed = is_extra_button_pressed;
+    mode_pub.msg_.is_power_button_pressed = is_power_button_pressed;
+    mode_pub.msg_.is_safety_signal_such_that_we_should_stop = is_safety_signal_such_that_we_should_stop;
+    mode_pub.msg_.header.stamp = now;
+    mode_pub.msg_.header.seq = loop_counter;
+    mode_pub.unlockAndPublish();
   }
 }
 
@@ -200,8 +238,8 @@ void URController::controlLoop()
 {
   while(ros::ok()) {
     robotinterface_read_state_blocking();
-    getRobotJointStates();
-    pubRobotJointStates();
+    getRobotStates();
+    pubRobotStates();
     robotinterface_command_velocity(zero_vector);
     robotinterface_send();
   }

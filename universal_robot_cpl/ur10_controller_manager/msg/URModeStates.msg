@@ -1,0 +1,7 @@
+Header header
+bool is_power_on_robot 
+bool is_security_stopped 
+bool is_emergency_stopped 
+bool is_extra_button_pressed 
+bool is_power_button_pressed 
+bool is_safety_signal_such_that_we_should_stop 
