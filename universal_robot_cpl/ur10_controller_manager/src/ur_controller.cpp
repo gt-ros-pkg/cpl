@@ -81,6 +81,13 @@ URController::URController(ros::NodeHandle* _nh) :
   js_pub.msg_.position.resize(6,-9999.0);
   js_pub.msg_.velocity.resize(6,-9999.0);
   js_pub.msg_.effort.resize(6,-9999.0);
+
+  printf("Loading robot configuration...");
+  if(!configuration_load()) {
+    printf("\nLoading configuration failed (.urcontrol dir should be in ~/).\n");
+    exit(EXIT_FAILURE);
+  }
+  printf("success!");
 }
 
 void URController::getRobotJointStates()
