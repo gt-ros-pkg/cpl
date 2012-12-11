@@ -476,6 +476,9 @@ class PositionFeedbackPushNode:
         elif feedback.controller_name == CENTROID_CONTROLLER:
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
                                                               cur_pose)
+        elif feedback.controller_name == TOOL_CENTROID_CONTROLLER:
+            update_twist = self.toolCentroidCompensationController(feedback, self.desired_pose,
+                                                              cur_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
@@ -584,6 +587,44 @@ class PositionFeedbackPushNode:
         if self.feedback_count % 5 == 0:
             rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
             rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
+                          str(contact_pt_y_dot) + ')')
+        return u
+
+    def toolCentroidCompensationController(self, cur_state, desired_state, tool_pose):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # Push centroid towards the desired goal
+        centroid = cur_state.x
+        tool = tool_pose.pose.position
+        x_error = desired_state.x - centroid.x
+        y_error = desired_state.y - centroid.y
+        goal_x_dot = self.k_contact_g*x_error
+        goal_y_dot = self.k_contact_g*y_error
+
+        # Add in direction to corect for not pushing through the centroid
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        m = (((tool.x - centroid.x)*x_error + (tool.y - centroid.y)*y_error) /
+             sqrt(x_error*x_error + y_error*y_error))
+        tan_pt_x = centroid.x + m*x_error
+        tan_pt_y = centroid.y + m*y_error
+        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - tool.x)
+        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - tool.y)
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
+        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
+            rospy.loginfo('tool: (' + str(tool.x) + ', ' + str(tool.y) + ')')
             rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
                           str(goal_y_dot) + ')')
             rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +

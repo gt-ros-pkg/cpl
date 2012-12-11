@@ -55,7 +55,7 @@ _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
 _USE_CENTROID_CONTROLLER = True
-_USE_FIXED_GOAL = False
+_USE_FIXED_GOAL = True
 
 class TabletopExecutive:
 
@@ -312,7 +312,7 @@ class TabletopExecutive:
         for controller in CONTROLLERS:
             for action_primitive in ACTION_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
-                    for arm in ['r', 'l']:
+                    for arm in ROBOT_ARMS:
                         precondition_method = PRECONDITION_METHODS[action_primitive]
                         res = self.explore_push(action_primitive, controller, proxy, object_id,
                                                 precondition_method, arm)
@@ -773,6 +773,66 @@ class TabletopExecutive:
         post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
         return push_res
 
+    def feedback_tool_sweep_object(self, which_arm, push_vector, goal_pose, controller_name,
+                              proxy_name, action_primitive, high_init=True, open_gripper=False):
+        # Convert pose response to correct push request format
+        push_req = FeedbackPushRequest()
+        push_req.start_point.header = push_vector.header
+        push_req.start_point.point = push_vector.start_point
+        push_req.open_gripper = open_gripper
+        push_req.goal_pose = goal_pose
+
+        # if push_req.left_arm:
+        if push_vector.push_angle > 0:
+            y_offset_dir = -1
+            wrist_yaw = push_vector.push_angle - pi/2.0
+        else:
+            y_offset_dir = +1
+            wrist_yaw = push_vector.push_angle + pi/2.0
+        if abs(push_vector.push_angle) > pi/2:
+            x_offset_dir = +1
+        else:
+            x_offset_dir = -1
+
+        # Set offset in x y, based on distance
+        push_req.wrist_yaw = wrist_yaw
+        face_x_offset = self.sweep_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
+        face_y_offset = y_offset_dir*self.sweep_face_offset_dist*cos(wrist_yaw)
+        wrist_x_offset = self.sweep_wrist_offset_dist*cos(wrist_yaw)
+        wrist_y_offset = self.sweep_wrist_offset_dist*sin(wrist_yaw)
+        rospy.loginfo('wrist_yaw: ' + str(wrist_yaw))
+        rospy.loginfo('Face offset: (' + str(face_x_offset) + ', ' + str(face_y_offset) +')')
+        rospy.loginfo('Wrist offset: (' + str(wrist_x_offset) + ', ' + str(wrist_y_offset) +')')
+
+        push_req.start_point.point.x += face_x_offset + wrist_x_offset
+        push_req.start_point.point.y += face_y_offset + wrist_y_offset
+        push_req.start_point.point.z = self.sweep_start_z
+        push_req.left_arm = (which_arm == 'l')
+        push_req.right_arm = not push_req.left_arm
+        push_req.high_arm_init = high_init
+        push_req.controller_name = controller_name
+        push_req.proxy_name = proxy_name
+        push_req.action_primitive = action_primitive
+
+        rospy.loginfo('Gripper sweep augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
+
+        rospy.loginfo("Calling feedback pre sweep service")
+        pre_push_res = self.gripper_feedback_pre_sweep_proxy(push_req)
+        rospy.loginfo("Calling feedback sweep service")
+
+        if _TEST_START_POSE:
+            raw_input('waiting for input to recall arm: ')
+            push_res = FeedbackPushResponse()
+        else:
+            push_res = self.gripper_feedback_sweep_proxy(push_req)
+        rospy.loginfo("Calling feedback post sweep service")
+        post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
+        return push_res
+
+
     def gripper_push_object(self, push_dist, which_arm, pose_res, high_init):
         # Convert pose response to correct push request format
         push_req = GripperPushRequest()
@@ -881,7 +941,7 @@ class TabletopExecutive:
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
             goal_pose.x = 0.55
-            goal_pose.y = 0.0
+            goal_pose.y = -0.1
             goal_pose.theta = 3.01697971833
             return goal_pose
         min_x = self.min_workspace_x
