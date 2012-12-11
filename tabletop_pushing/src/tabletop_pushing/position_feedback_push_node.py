@@ -182,6 +182,8 @@ class PositionFeedbackPushNode:
 
         self.k_contact_g = rospy.get_param('~push_control_contact_goal_gain', 0.05)
         self.k_contact_d = rospy.get_param('~push_control_contact_gain', 0.05)
+        self.k_tool_contact_g = rospy.get_param('~tool_control_contact_goal_gain', 0.05)
+        self.k_tool_contact_d = rospy.get_param('~tool_control_contact_gain', 0.05)
 
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
@@ -615,8 +617,8 @@ class PositionFeedbackPushNode:
         tool = tool_pose.pose.position
         x_error = desired_state.x - centroid.x
         y_error = desired_state.y - centroid.y
-        goal_x_dot = self.k_contact_g*x_error
-        goal_y_dot = self.k_contact_g*y_error
+        goal_x_dot = self.k_tool_contact_g*x_error
+        goal_y_dot = self.k_tool_contact_g*y_error
 
         # Add in direction to corect for not pushing through the centroid
         goal_angle = atan2(goal_y_dot, goal_x_dot)
@@ -625,8 +627,8 @@ class PositionFeedbackPushNode:
              sqrt(x_error*x_error + y_error*y_error))
         tan_pt_x = centroid.x + m*x_error
         tan_pt_y = centroid.y + m*y_error
-        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - tool.x)
-        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - tool.y)
+        contact_pt_x_dot = self.k_tool_contact_d*(tan_pt_x - tool.x)
+        contact_pt_y_dot = self.k_tool_contact_d*(tan_pt_y - tool.y)
         # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot + contact_pt_x_dot
         u.twist.linear.y = goal_y_dot + contact_pt_y_dot

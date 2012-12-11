@@ -945,6 +945,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_mps_segmentation", use_mps_segmentation_, false);
 
     n_private_.param("max_object_gripper_dist", max_object_gripper_dist_, 0.10);
+    n_private_.param("max_object_tool_dist", max_object_tool_dist_, 0.10);
     n_private_.param("gripper_not_moving_thresh", gripper_not_moving_thresh_, 0.005);
     n_private_.param("object_not_moving_thresh", object_not_moving_thresh_, 0.005);
     n_private_.param("gripper_not_moving_count_limit", gripper_not_moving_count_limit_, 100);
@@ -953,6 +954,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_too_far_count_limit", object_too_far_count_limit_, 5);
     n_private_.param("object_not_between_count_limit", object_not_between_count_limit_, 5);
     n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
+    n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1220,16 +1222,28 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object disappeared");
     }
-    // TODO: Fix this for tool use
-    else if (objectTooFarFromGripper(tracker_state.x))
+    else if (controller_name_ != "tool_centroid_controller")
     {
-      abortPushingGoal("Object is too far from gripper.");
+      if (objectTooFarFromGripper(tracker_state.x))
+      {
+        abortPushingGoal("Object is too far from gripper.");
+      }
+      else if (action_primitive_ != "gripper_pull" &&
+               objectNotBetweenGoalAndGripper(tracker_state.x))
+      {
+        abortPushingGoal("Object is not between gripper and goal.");
+      }
     }
-    // TODO: Fix this for tool use
-    else if (action_primitive_ != "gripper_pull" &&
-             objectNotBetweenGoalAndGripper(tracker_state.x))
+    else  // TODO: Fix this for tool use
     {
-      abortPushingGoal("Object is not between gripper and goal.");
+      if (objectTooFarFromTool(tracker_state.x))
+      {
+        abortPushingGoal("Object is too far from tool.");
+      }
+      else if (objectNotBetweenGoalAndTool(tracker_state.x))
+      {
+        abortPushingGoal("Object is not between tool and goal.");
+      }
     }
   }
 
@@ -1737,6 +1751,36 @@ class TabletopPushingPerceptionNode
     return object_not_between_count_ >= object_not_between_count_limit_;
   }
 
+  bool objectNotBetweenGoalAndTool(Pose2D& obj_state)
+  {
+    // TODO: Replace arm pose with tool proxy pose
+    if (pushing_arm_ == "l")
+    {
+      if( pointIsBetweenOthers(l_arm_pose_.pose.position, obj_state, tracker_goal_pose_,
+                               object_not_between_tool_epsilon_))
+      {
+        ++object_not_between_count_;
+      }
+      else
+      {
+        object_not_between_count_ = 0;
+      }
+    }
+    else if (pushing_arm_ == "r")
+    {
+      if( pointIsBetweenOthers(r_arm_pose_.pose.position, obj_state, tracker_goal_pose_,
+                               object_not_between_tool_epsilon_))
+      {
+        ++object_not_between_count_;
+      }
+      else
+      {
+        object_not_between_count_ = 0;
+      }
+    }
+    return object_not_between_count_ >= object_not_between_count_limit_;
+  }
+
   // TODO: Make this threshold the initial distance when pushing +- some epsilon
   bool objectTooFarFromGripper(Pose2D& obj_state)
   {
@@ -1751,6 +1795,30 @@ class TabletopPushingPerceptionNode
     }
     float gripper_dist = hypot(gripper_pt.x-obj_state.x,gripper_pt.y-obj_state.y);
     if (gripper_dist  > max_object_gripper_dist_)
+    {
+      ++object_too_far_count_;
+    }
+    else
+    {
+      object_too_far_count_ = 0;
+    }
+    return object_too_far_count_ >= object_too_far_count_limit_;
+  }
+
+  bool objectTooFarFromTool(Pose2D& obj_state)
+  {
+    // TODO: Get tool proxy point instead of gripper_pt
+    geometry_msgs::Point tool_pt;
+    if (pushing_arm_ == "l")
+    {
+      tool_pt = l_arm_pose_.pose.position;
+    }
+    else
+    {
+      tool_pt = r_arm_pose_.pose.position;
+    }
+    float tool_dist = hypot(tool_pt.x-obj_state.x, tool_pt.y-obj_state.y);
+    if (tool_dist  > max_object_tool_dist_)
     {
       ++object_too_far_count_;
     }
@@ -2024,6 +2092,7 @@ class TabletopPushingPerceptionNode
   Twist r_arm_vel_;
   bool use_mps_segmentation_;
   double max_object_gripper_dist_;
+  double max_object_tool_dist_;
   double object_not_moving_thresh_;
   int object_not_moving_count_;
   int object_not_moving_count_limit_;
@@ -2037,6 +2106,7 @@ class TabletopPushingPerceptionNode
   int object_not_between_count_;
   int object_not_between_count_limit_;
   double object_not_between_epsilon_;
+  double object_not_between_tool_epsilon_;
 };
 
 int main(int argc, char ** argv)
