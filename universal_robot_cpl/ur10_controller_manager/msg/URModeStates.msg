@@ -1,7 +1,11 @@
 Header header
+string robot_mode
+uint8 robot_mode_id
 bool is_power_on_robot 
 bool is_security_stopped 
 bool is_emergency_stopped 
 bool is_extra_button_pressed 
 bool is_power_button_pressed 
 bool is_safety_signal_such_that_we_should_stop 
+string[6] joint_modes
+uint8[6] joint_mode_ids
