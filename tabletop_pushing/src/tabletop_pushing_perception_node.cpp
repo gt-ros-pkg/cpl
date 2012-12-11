@@ -1220,10 +1220,12 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object disappeared");
     }
+    // TODO: Fix this for tool use
     else if (objectTooFarFromGripper(tracker_state.x))
     {
       abortPushingGoal("Object is too far from gripper.");
     }
+    // TODO: Fix this for tool use
     else if (action_primitive_ != "gripper_pull" &&
              objectNotBetweenGoalAndGripper(tracker_state.x))
     {

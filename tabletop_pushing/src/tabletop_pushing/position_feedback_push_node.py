@@ -477,8 +477,16 @@ class PositionFeedbackPushNode:
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
                                                               cur_pose)
         elif feedback.controller_name == TOOL_CENTROID_CONTROLLER:
+            # HACK: Need to replace this with the appropriately computed tool_proxy
+            tool_pose = PoseStamped()
+            tool_length = 0.16
+            wrist_yaw = tf.transformations.euler_from_quaternion(
+                [cur_pose.pose.orientation.x, cur_pose.pose.orientation.y,
+                 cur_pose.pose.orientation.z, cur_pose.pose.orientation.w])[2]
+            tool_pose.pose.position.x = cur_pose.pose.position.x + cos(wrist_yaw)*tool_length
+            tool_pose.pose.position.y = cur_pose.pose.position.y + sin(wrist_yaw)*tool_length
             update_twist = self.toolCentroidCompensationController(feedback, self.desired_pose,
-                                                              cur_pose)
+                                                                   tool_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
@@ -950,12 +958,20 @@ class PositionFeedbackPushNode:
                 ready_joints = LEFT_ARM_HIGH_SWEEP_READY_JOINTS
             which_arm = 'l'
             wrist_roll = -pi
+            robot_gripper = self.robot.left_gripper
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_HIGH_SWEEP_READY_JOINTS
             which_arm = 'r'
             wrist_roll = 0.0
+            robot_gripper = self.robot.right_gripper
+
+        if request.open_gripper:
+            res = robot_gripper.open(block=True, position=0.9)
+            raw_input('waiting for input to close gripper: ')
+            print '\n'
+            res = robot_gripper.close(block=True, effort=self.max_close_effort)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header

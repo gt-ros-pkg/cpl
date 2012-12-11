@@ -488,6 +488,10 @@ class TabletopExecutive:
                 result = self.gripper_feedback_push_object(which_arm,
                                                            push_vector_res.push, goal_pose,
                                                            controller_name, proxy_name, action_primitive)
+            if action_primitive == TOOL_SWEEP:
+                result = self.feedback_tool_sweep_object(which_arm, push_vector_res.push,
+                                                    goal_pose, controller_name, proxy_name, action_primitive)
+
         else:
             result = FeedbackPushResponse()
 
@@ -774,12 +778,13 @@ class TabletopExecutive:
         return push_res
 
     def feedback_tool_sweep_object(self, which_arm, push_vector, goal_pose, controller_name,
-                              proxy_name, action_primitive, high_init=True, open_gripper=False):
+                              proxy_name, action_primitive, high_init=True, open_gripper=True):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
-        push_req.open_gripper = open_gripper
+        # TODO: Note, curently a hack
+        push_req.open_gripper = False
         push_req.goal_pose = goal_pose
 
         # if push_req.left_arm:
@@ -795,11 +800,15 @@ class TabletopExecutive:
             x_offset_dir = -1
 
         # Set offset in x y, based on distance
+        # TODO: Add in tool offset distance here
         push_req.wrist_yaw = wrist_yaw
-        face_x_offset = self.sweep_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
-        face_y_offset = y_offset_dir*self.sweep_face_offset_dist*cos(wrist_yaw)
-        wrist_x_offset = self.sweep_wrist_offset_dist*cos(wrist_yaw)
-        wrist_y_offset = self.sweep_wrist_offset_dist*sin(wrist_yaw)
+        # TODO: Have tool proxy here, transform to hand frame and get diff?
+        tool_face_offset_dist = 0.07
+        tool_sweep_wrist_offset_dist = -0.16
+        face_x_offset = tool_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
+        face_y_offset = y_offset_dir*tool_face_offset_dist*cos(wrist_yaw)
+        wrist_x_offset = tool_sweep_wrist_offset_dist*cos(wrist_yaw)
+        wrist_y_offset = tool_sweep_wrist_offset_dist*sin(wrist_yaw)
         rospy.loginfo('wrist_yaw: ' + str(wrist_yaw))
         rospy.loginfo('Face offset: (' + str(face_x_offset) + ', ' + str(face_y_offset) +')')
         rospy.loginfo('Wrist offset: (' + str(wrist_x_offset) + ', ' + str(wrist_y_offset) +')')
