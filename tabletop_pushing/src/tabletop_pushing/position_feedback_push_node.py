@@ -478,14 +478,7 @@ class PositionFeedbackPushNode:
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
                                                               cur_pose)
         elif feedback.controller_name == TOOL_CENTROID_CONTROLLER:
-            # HACK: Need to replace this with the appropriately computed tool_proxy
-            tool_pose = PoseStamped()
-            tool_length = 0.16
-            wrist_yaw = tf.transformations.euler_from_quaternion(
-                [cur_pose.pose.orientation.x, cur_pose.pose.orientation.y,
-                 cur_pose.pose.orientation.z, cur_pose.pose.orientation.w])[2]
-            tool_pose.pose.position.x = cur_pose.pose.position.x + cos(wrist_yaw)*tool_length
-            tool_pose.pose.position.y = cur_pose.pose.position.y + sin(wrist_yaw)*tool_length
+            tool_pose = feedback.tool_x
             update_twist = self.toolCentroidCompensationController(feedback, self.desired_pose,
                                                                    tool_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:

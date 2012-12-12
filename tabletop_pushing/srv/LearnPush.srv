@@ -5,6 +5,7 @@ bool get_pose_only
 string controller_name
 string proxy_name
 string behavior_primitive
+string tool_proxy_name
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid

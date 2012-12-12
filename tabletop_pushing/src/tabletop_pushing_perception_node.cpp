@@ -527,7 +527,7 @@ class ObjectTracker25D
   }
 
   PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                                std::string proxy_name)
+                                std::string proxy_name, PoseStamped& arm_pose)
   {
     if (!initialized_)
     {
@@ -572,6 +572,22 @@ class ObjectTracker25D
       state.x_dot.y = delta_y/delta_t;
       state.x_dot.theta = delta_theta/delta_t;
 
+      // TODO: Put in tool proxy stuff here
+      // HACK: Need to replace this with the appropriately computed tool_proxy
+      PoseStamped tool_pose;
+      float tool_length = 0.16;
+      tf::Quaternion q;
+      double wrist_roll, wrist_pitch, wrist_yaw;
+      // TODO: Fix this hack with the correct stuff once have arm pose
+      arm_pose.pose.orientation.w = 1.0;
+      // ROS_INFO_STREAM("arm quaternion: " << arm_pose.pose.orientation);
+      tf::quaternionMsgToTF(arm_pose.pose.orientation, q);
+      tf::Matrix3x3(q).getRPY(wrist_roll, wrist_pitch, wrist_yaw);
+      // ROS_INFO_STREAM("Wrist yaw: " << wrist_yaw);
+      tool_pose.pose.position.x = arm_pose.pose.position.x + cos(wrist_yaw)*tool_length;
+      tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
+      tool_pose.header.frame_id = arm_pose.header.frame_id;
+      state.tool_x = tool_pose;
       ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
                        state.x.theta << ")");
       ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
@@ -1079,8 +1095,17 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
+      PoseStamped arm_pose;
+      if (pushing_arm_ == "l")
+      {
+        arm_pose = l_arm_pose_;
+      }
+      else
+      {
+        arm_pose = r_arm_pose_;
+      }
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_);
+          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_, arm_pose);
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;

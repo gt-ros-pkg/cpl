@@ -494,7 +494,7 @@ class TabletopExecutive:
                                                            controller_name, proxy_name, behavior_primitive)
             elif behavior_primitive == TOOL_SWEEP:
                 result = self.feedback_tool_sweep_object(which_arm, push_vector_res.push,
-                                                    goal_pose, controller_name, proxy_name, behavior_primitive)
+                                                         goal_pose, controller_name, proxy_name, behavior_primitive)
             else:
                 rospy.logwarn('Unknown behavior_primitive: ' + str(behavior_primitive))
                 result = None
@@ -785,7 +785,7 @@ class TabletopExecutive:
         return push_res
 
     def feedback_tool_sweep_object(self, which_arm, push_vector, goal_pose, controller_name,
-                              proxy_name, behavior_primitive, high_init=True, open_gripper=True):
+                                   proxy_name, behavior_primitive, high_init=True, open_gripper=True):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
         push_req.start_point.header = push_vector.header
@@ -809,7 +809,7 @@ class TabletopExecutive:
 
         # Set offset in x y, based on distance
         push_req.wrist_yaw = wrist_yaw
-        # TODO: Have tool proxy here, transform to hand frame and get diff?
+        # TODO: Have tool proxy in hand frame. Use x and y values as the offset distance
         tool_face_offset_dist = 0.07
         tool_sweep_wrist_offset_dist = -0.16
         face_x_offset = tool_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
