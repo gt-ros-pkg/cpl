@@ -1234,13 +1234,24 @@ class TabletopPushingPerceptionNode
         abortPushingGoal("Object is not between gripper and goal.");
       }
     }
-    else  // TODO: Fix this for tool use
+    else
     {
-      if (objectTooFarFromTool(tracker_state.x))
+      // TODO: Fix this to be based on the tool_proxy being used
+      PoseStamped tool_state;
+      if (pushing_arm_ == "l")
+      {
+        tool_state = l_arm_pose_;
+      }
+      else
+      {
+        tool_state = r_arm_pose_;
+      }
+
+      if (objectTooFarFromTool(tracker_state.x, tool_state))
       {
         abortPushingGoal("Object is too far from tool.");
       }
-      else if (objectNotBetweenGoalAndTool(tracker_state.x))
+      else if (objectNotBetweenGoalAndTool(tracker_state.x, tool_state))
       {
         abortPushingGoal("Object is not between tool and goal.");
       }
@@ -1751,37 +1762,21 @@ class TabletopPushingPerceptionNode
     return object_not_between_count_ >= object_not_between_count_limit_;
   }
 
-  bool objectNotBetweenGoalAndTool(Pose2D& obj_state)
+  bool objectNotBetweenGoalAndTool(Pose2D& obj_state, PoseStamped& tool_state)
   {
-    // TODO: Replace arm pose with tool proxy pose
-    if (pushing_arm_ == "l")
+    if( pointIsBetweenOthers(tool_state.pose.position, obj_state, tracker_goal_pose_,
+                             object_not_between_tool_epsilon_))
     {
-      if( pointIsBetweenOthers(l_arm_pose_.pose.position, obj_state, tracker_goal_pose_,
-                               object_not_between_tool_epsilon_))
-      {
-        ++object_not_between_count_;
-      }
-      else
-      {
-        object_not_between_count_ = 0;
-      }
+      ++object_not_between_count_;
     }
-    else if (pushing_arm_ == "r")
+    else
     {
-      if( pointIsBetweenOthers(r_arm_pose_.pose.position, obj_state, tracker_goal_pose_,
-                               object_not_between_tool_epsilon_))
-      {
-        ++object_not_between_count_;
-      }
-      else
-      {
-        object_not_between_count_ = 0;
-      }
+      object_not_between_count_ = 0;
     }
     return object_not_between_count_ >= object_not_between_count_limit_;
   }
 
-  // TODO: Make this threshold the initial distance when pushing +- some epsilon
+  // TODO: Make this threshold the initial distance when pushing + some epsilon
   bool objectTooFarFromGripper(Pose2D& obj_state)
   {
     geometry_msgs::Point gripper_pt;
@@ -1805,18 +1800,10 @@ class TabletopPushingPerceptionNode
     return object_too_far_count_ >= object_too_far_count_limit_;
   }
 
-  bool objectTooFarFromTool(Pose2D& obj_state)
+  bool objectTooFarFromTool(Pose2D& obj_state, PoseStamped& tool_state)
   {
-    // TODO: Get tool proxy point instead of gripper_pt
     geometry_msgs::Point tool_pt;
-    if (pushing_arm_ == "l")
-    {
-      tool_pt = l_arm_pose_.pose.position;
-    }
-    else
-    {
-      tool_pt = r_arm_pose_.pose.position;
-    }
+    tool_pt = tool_state.pose.position;
     float tool_dist = hypot(tool_pt.x-obj_state.x, tool_pt.y-obj_state.y);
     if (tool_dist  > max_object_tool_dist_)
     {
