@@ -9,6 +9,7 @@ string tool_proxy_name
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid
+geometry_msgs/PoseStamped tool_x
 float64 theta
 bool no_push
 bool no_objects

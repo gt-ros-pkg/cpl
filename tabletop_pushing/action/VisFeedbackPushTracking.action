@@ -11,6 +11,7 @@ string tool_proxy_name
 std_msgs/Header header
 geometry_msgs/Pose2D x
 geometry_msgs/Pose2D x_error
+geometry_msgs/PoseStamped tool_x
 bool aborted
 ---
 # Feedback Definition
