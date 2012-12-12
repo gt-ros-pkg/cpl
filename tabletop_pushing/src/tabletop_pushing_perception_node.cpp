@@ -1402,6 +1402,7 @@ class TabletopPushingPerceptionNode
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
     res.theta = cur_state.x.theta;
+    res.tool_x = cur_state.tool_x;
 
     // Set basic push information
     PushVector p;
