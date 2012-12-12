@@ -1083,7 +1083,7 @@ class TabletopPushingPerceptionNode
           cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_);
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
-      tracker_state.action_primitive = action_primitive_;
+      tracker_state.behavior_primitive = behavior_primitive_;
 
       PointStamped start_point;
       PointStamped end_point;
@@ -1228,7 +1228,7 @@ class TabletopPushingPerceptionNode
       {
         abortPushingGoal("Object is too far from gripper.");
       }
-      else if (action_primitive_ != "gripper_pull" &&
+      else if (behavior_primitive_ != "gripper_pull" &&
                objectNotBetweenGoalAndGripper(tracker_state.x))
       {
         abortPushingGoal("Object is not between gripper and goal.");
@@ -1280,9 +1280,13 @@ class TabletopPushingPerceptionNode
   {
     if ( have_depth_data_ )
     {
-      controller_name_ = req.controller_name;
-      proxy_name_ = req.proxy_name;
-      action_primitive_ = req.action_primitive;
+      if (!req.analyze_previous)
+      {
+        controller_name_ = req.controller_name;
+        proxy_name_ = req.proxy_name;
+        behavior_primitive_ = req.behavior_primitive;
+      }
+
       if (req.initialize)
       {
         ROS_INFO_STREAM("Initializing");
@@ -1339,7 +1343,7 @@ class TabletopPushingPerceptionNode
     {
       cur_state = startTracking();
     }
-    bool pull_start = (req.action_primitive == "gripper_pull");
+    bool pull_start = (req.behavior_primitive == "gripper_pull");
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
@@ -1657,7 +1661,7 @@ class TabletopPushingPerceptionNode
     pushing_arm_ = tracker_goal->which_arm;
     controller_name_ = tracker_goal->controller_name;
     proxy_name_ = tracker_goal->proxy_name;
-    action_primitive_ = tracker_goal->action_primitive;
+    behavior_primitive_ = tracker_goal->behavior_primitive;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
@@ -2067,7 +2071,7 @@ class TabletopPushingPerceptionNode
   std::string pushing_arm_;
   std::string proxy_name_;
   std::string controller_name_;
-  std::string action_primitive_;
+  std::string behavior_primitive_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
   bool just_spun_;

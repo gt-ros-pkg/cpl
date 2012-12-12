@@ -4,7 +4,7 @@ geometry_msgs/Pose2D goal_pose
 bool get_pose_only
 string controller_name
 string proxy_name
-string action_primitive
+string behavior_primitive
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid

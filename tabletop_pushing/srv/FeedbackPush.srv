@@ -3,7 +3,7 @@ float64 wrist_yaw
 geometry_msgs/Pose2D goal_pose
 string controller_name
 string proxy_name
-string action_primitive
+string behavior_primitive
 bool left_arm
 bool right_arm
 bool high_arm_init

@@ -433,7 +433,7 @@ class PositionFeedbackPushNode:
         self.desired_pose = request.goal_pose
         goal.controller_name = request.controller_name
         goal.proxy_name = request.proxy_name
-        goal.action_primitive = request.action_primitive
+        goal.behavior_primitive = request.behavior_primitive
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -754,7 +754,7 @@ class PositionFeedbackPushNode:
         response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        is_pull = request.action_primitive == GRIPPER_PULL
+        is_pull = request.behavior_primitive == GRIPPER_PULL
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -890,7 +890,7 @@ class PositionFeedbackPushNode:
         response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        is_pull = request.action_primitive == GRIPPER_PULL
+        is_pull = request.behavior_primitive == GRIPPER_PULL
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
