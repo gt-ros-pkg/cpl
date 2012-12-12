@@ -197,6 +197,14 @@ class GripperSegmentationCollector
     std::string default_right_tool_frame = "/r_gripper_tool_frame";
     n_private_.param("r_tool_frame", right_tool_frame_, default_right_tool_frame);
 
+    n_private_.param("target_hue_value", target_hue_value_, 350);
+    n_private_.param("target_hue_threshold", target_hue_threshold_, 48);
+    n_private_.param("default_sat_bot_value", default_sat_bot_value_, 20);
+    n_private_.param("default_sat_top_value", default_sat_top_value_, 100);
+    n_private_.param("default_val_value", default_val_value_, 100);
+    n_private_.param("min_contour_size", min_contour_size_, 10.0);
+
+ 
     // Setup ros node connections
     sync_.registerCallback(&GripperSegmentationCollector::sensorCallback, this);
     // n_.subscribe("/joint_states", 1, &GripperSegmentationCollector::jointStateCallback, this);
@@ -209,6 +217,8 @@ class GripperSegmentationCollector
     z_= -bound + 0.15;
     which_arm_ = "l";
     mode = 0;
+    counter_ = 0;
+    cloud_acc_ = XYZPointCloud();
     ROS_INFO("[GripperSeg] Node Initialization Complete");
   }
 
@@ -301,7 +311,7 @@ class GripperSegmentationCollector
 
       if (me.event != CV_EVENT_LBUTTONUP)
       {
-      cv::circle(color_frame, me.cursor, 4, cv::Scalar(255, 255, 255), 1);
+        cv::circle(color_frame, me.cursor, 4, cv::Scalar(255, 255, 255), 1);
       }
 
       cv::putText(color_frame, "Press [N] to move to next frame", cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
@@ -352,12 +362,27 @@ class GripperSegmentationCollector
         }
         cv::Point p = projectPointIntoImage(tcp_e_, "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
         cv::circle(color_frame, p, 4, cv::Scalar(50, 180, 50), 2);
-
-        // ROS_WARN(">>>>>> [%f, %f, %f] -> [%d,%d] ", tcp_e_.x, tcp_e_.y, tcp_e_.z, p.x, p.y);
       }
       cv::imshow("what", color_frame);
     }
 
+    XYZPointCloud averagePC(XYZPointCloud cloud1, XYZPointCloud cloud2)
+    {
+      float alpha = 0.4;
+      for (int i = 0; i < 640; i++)
+      {
+        for (int j = 0; j < 480; j++)
+        {
+          pcl::PointXYZ p1 = cloud1.at(i,j);
+          pcl::PointXYZ p2 = cloud2.at(i,j);
+          p2.x = isnan(p1.x) ? p2.x : isnan(p2.x) ? p1.x : alpha*p1.x + (1-alpha)*p2.x;
+          p2.y = isnan(p1.y) ? p2.y : isnan(p2.y) ? p1.y : alpha*p1.y + (1-alpha)*p2.y;
+          p2.z = isnan(p1.z) ? p2.z : isnan(p2.z) ? p1.z : alpha*p1.z + (1-alpha)*p2.z;
+          cloud2.at(i,j) = p2;
+        }
+      }
+      return cloud2;
+    }
 
     void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
         const sensor_msgs::ImageConstPtr& depth_msg,
@@ -370,6 +395,7 @@ class GripperSegmentationCollector
         camera_initialized_ = true;
         counter = 0;
         ROS_INFO("[GripperCollector]Initialization: Camera Info Done");
+
       }
 
       cv::Mat color_frame, depth_frame, self_mask;
@@ -388,16 +414,62 @@ class GripperSegmentationCollector
           cloud.header.stamp, ros::Duration(0.9));
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
-      cloud_ = cloud;
+      if (cloud_acc_.size() == 0)
+        cloud_acc_ = cloud;
+      else
+        cloud_acc_ = averagePC(cloud_acc_, cloud);
 
-      //cv::SurfFeatureDetector surf(400);
+      ROS_INFO("%s, %s, %d", cloud_acc_.isOrganized()? "acc:true": "acc:false",cloud.isOrganized()?"cloud:true":"cloud:false", (int)cloud.size());
+
+      //////////////////////
+      // Hand 
+      // get all the blues 
+      cv::Mat tape_mask = colorSegment(color_frame.clone(), target_hue_value_, target_hue_threshold_);
+
+      // make it clearer with morphology
+      cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+      cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
+
+      // find the three largest blues
+      std::vector<cv::Moments> ms = findMoments(tape_mask, color_frame, 1); 
+      cv::Moments m0 = ms.at(0);
+      double x0, y0;
+      x0 = m0.m10/m0.m00;
+      y0 = m0.m01/m0.m00;
+
+      cv::circle(color_frame, cv::Point(x0, y0), 4, cv::Scalar(0, 255, 0), 4);
+
+
+      double gripper_pose[14];
+      get_fk_tooltip_pose(gripper_pose);
+      // 0, 1, 2
+      ROS_INFO("l:[%f, %f, %f]\tr:[%f, %f, %f]",
+          gripper_pose[0],gripper_pose[1],gripper_pose[2],
+          gripper_pose[7],gripper_pose[8],gripper_pose[9]
+        );
+
+      mouseEvent m;
+      cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
+      std::ostringstream os;
+      os << " [" << ++counter_ << "]";
+      cv::putText(color_frame, os.str(), cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
+      cv::imshow("what", color_frame);
+      int key = 0;
+      key = cv::waitKey(30);
+      // terminate if no key is pressed
+      if (key < 32)
+        return;
+
+      // current point cloud is unorganized (because of + operation)
+      // organize pc
+
+      /*========== End of Accumulation. Now GUI =========*/
       cv::SURF surf;
       cv::Mat mask;
       std::vector<cv::KeyPoint> keypoints;
       surf(color_frame, mask, keypoints);
       kps_ = keypoints;
       kpso_ = keypoints;
-      //cv::imshow("Workit", color_frame);
 
       good_matches_.clear();
 
@@ -460,18 +532,10 @@ class GripperSegmentationCollector
       mode = 0;
       kpsc_.clear();
       kps_bad_.clear();
-      int key = 0;
 
-      mouseEvent m;
-      cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
       setDisplay(color_frame.clone(), m);
-      cv::waitKey(3);
-
-      // if image is just all black
-      if (cv::sum(color_frame) == cv::Scalar(0,0,0))
-        return;
-
       cv::setMouseCallback("what", onMouse, (void*) &m);
+
       while (true)
       {
         // [n], [N] Next
@@ -501,7 +565,12 @@ class GripperSegmentationCollector
       };
       ROS_INFO("Iteration Done: Added %d", (int)kpsc_.size());
 
+      /* ========== RESET VALUES BEFORE ACCUMULATION ========= */
+      cloud_acc_ = cloud;
+      counter_ = 0;
 
+
+      /* ========== FEATURE STORAGE ===========*/
       cv::SurfDescriptorExtractor surfDesc;
       cv::Mat descriptors1;
       surfDesc.compute(color_frame, kpsc_, descriptors1);
@@ -520,6 +589,7 @@ class GripperSegmentationCollector
 
         ds.d.push_back(d);
       }
+
 
       // Downsample everything first
       /*
@@ -590,6 +660,166 @@ class GripperSegmentationCollector
       else {ROS_WARN("Service Fail");}
 #endif
     }
+
+
+    /**
+     * 
+     * @param in  single channel image input
+     * @param color_frame  need the original image for debugging and imshow
+     * 
+     * @return    returns ALL moment of specific color in the image
+     **/
+    std::vector<cv::Moments> findMoments(cv::Mat in, cv::Mat &color_frame, unsigned int max_num = 3) 
+    {
+      cv::Mat temp = in.clone();
+      std::vector<std::vector<cv::Point> > contours; contours.clear();
+      cv::findContours(temp, contours, cv::RETR_CCOMP,CV_CHAIN_APPROX_NONE);
+      std::vector<cv::Moments> moments; moments.clear();
+
+      for (unsigned int i = 0; i < contours.size(); i++) {
+        cv::Moments m = cv::moments(contours[i]);
+        if (m.m00 > min_contour_size_) {
+          // first add the forth element
+          moments.push_back(m);
+          // find the smallest element of 4 and remove that
+          if (moments.size() > max_num) {
+            double small(moments.at(0).m00);
+            unsigned int smallInd(0);
+            for (unsigned int j = 1; j < moments.size(); j++){
+              if (moments.at(j).m00 < small) {
+                small = moments.at(j).m00;
+                smallInd = j;
+              }
+            }
+            moments.erase(moments.begin() + smallInd);
+          }
+        }
+      }
+      return moments;
+    }
+
+    cv::Mat colorSegment(cv::Mat color_frame, int hue, int threshold)
+    {
+      /*
+       * Often value = 0 or 255 are very useless. 
+       * The distance at those end points get very close and it is not useful
+       * Same with saturation 0. Low saturation makes everything more gray scaled
+       * So the default setting are below 
+       */
+      return colorSegment(color_frame, hue - threshold, hue + threshold,
+          default_sat_bot_value_, default_sat_top_value_, 40, default_val_value_);
+    }
+
+    /** 
+     * Very Basic Color Segmentation done in HSV space
+     * Takes in Hue value and threshold as input to compute the distance in color space
+     *
+     * @param color_frame   color input from image
+     *
+     * @return  mask from the color segmentation 
+     */
+    cv::Mat colorSegment(cv::Mat color_frame, int _hue_n, int _hue_p, int _sat_n, int _sat_p, int _value_n,  int _value_p)
+    {
+      cv::Mat temp (color_frame.clone());
+      cv::cvtColor(temp, temp, CV_BGR2HSV);
+      std::vector<cv::Mat> hsv;
+      cv::split(temp, hsv);
+
+      // so it can support hue near 0 & 360
+      _hue_n = (_hue_n + 360);
+      _hue_p = (_hue_p + 360);
+
+      // masking out values that do not fall between the condition 
+      cv::Mat wm(color_frame.rows, color_frame.cols, CV_8UC1, cv::Scalar(0));
+      for (int r = 0; r < temp.rows; r++)
+      {
+        uchar* workspace_row = wm.ptr<uchar>(r);
+        for (int c = 0; c < temp.cols; c++)
+        {
+          int hue     = 2*(int)hsv[0].at<uchar>(r, c) + 360;
+          float sat   = 0.392*(int)hsv[1].at<uchar>(r, c); // 0.392 = 100/255
+          float value = 0.392*(int)hsv[2].at<uchar>(r, c);
+
+          if (_hue_n < hue && hue < _hue_p)
+            if (_sat_n < sat && sat < _sat_p)
+              if (_value_n < value && value < _value_p)
+                workspace_row[c] = 255;
+        }
+      }
+
+      return wm;
+    }
+
+    std::vector<cv::Point> getMomentCoordinates(std::vector<cv::Moments> ms)
+    {
+      std::vector<cv::Point> ret;
+      ret.clear();
+      if (ms.size() == 3) { 
+        double centroids[3][2];
+        for (int i = 0; i < 3; i++) {
+          cv::Moments m0 = ms.at(i);
+          double x0, y0;
+          x0 = m0.m10/m0.m00;
+          y0 = m0.m01/m0.m00;
+          centroids[i][0] = x0;
+          centroids[i][1] = y0;
+        }
+
+        // find the top left corner using distance scheme
+        cv::Mat vect = cv::Mat::zeros(3,2, CV_32F);
+        vect.at<float>(0,0) = centroids[0][0] - centroids[1][0];
+        vect.at<float>(0,1) = centroids[0][1] - centroids[1][1];
+        vect.at<float>(1,0) = centroids[0][0] - centroids[2][0];
+        vect.at<float>(1,1) = centroids[0][1] - centroids[2][1];
+        vect.at<float>(2,0) = centroids[1][0] - centroids[2][0];
+        vect.at<float>(2,1) = centroids[1][1] - centroids[2][1];
+
+        double angle[3];
+        angle[0] = abs(vect.row(0).dot(vect.row(1)));
+        angle[1] = abs(vect.row(0).dot(vect.row(2)));
+        angle[2] = abs(vect.row(1).dot(vect.row(2)));
+
+        // printMatrix(vect); 
+        double min = angle[0]; 
+        int one = 0;
+        for (int i = 0; i < 3; i++)
+        {
+          // printf("[%d, %f]\n", i, angle[i]);
+          if (angle[i] < min)
+          {
+            min = angle[i];
+            one = i;
+          }
+        }
+
+        // index of others depending on the index of the origin
+        int a = one == 0 ? 1 : 0;
+        int b = one == 2 ? 1 : 2; 
+        // vectors of origin to a point
+        double vX0, vY0, vX1, vY1, result;
+        vX0 = centroids[a][0] - centroids[one][0];
+        vY0 = centroids[a][1] - centroids[one][1];
+        vX1 = centroids[b][0] - centroids[one][0];
+        vY1 = centroids[b][1] - centroids[one][1];
+        cv::Point pto(centroids[one][0], centroids[one][1]);
+        cv::Point pta(centroids[a][0], centroids[a][1]);
+        cv::Point ptb(centroids[b][0], centroids[b][1]);
+
+        // cross-product: simplified assuming that z = 0 for both
+        result = vX1*vY0 - vX0*vY1;
+        ret.push_back(pto);
+        if (result >= 0) {
+          ret.push_back(ptb);
+          ret.push_back(pta);
+        }
+        else {
+          ret.push_back(pta);
+          ret.push_back(ptb);
+        }
+      }
+      return ret;
+    } 
+
 
     std::string getFileName(unsigned int counter, std::string which_arm)
     {
@@ -710,6 +940,7 @@ class GripperSegmentationCollector
     cv::Mat cur_workspace_mask_;
     std_msgs::Header cur_camera_header_;
     XYZPointCloud cloud_;
+    XYZPointCloud cloud_acc_;
     int display_wait_ms_;
     int num_downsamples_;
     std::string workspace_frame_;
@@ -726,10 +957,20 @@ class GripperSegmentationCollector
     std::ofstream textFile;
     ros::ServiceClient p_client_;
 
+    // segmenting
+    int target_hue_value_;
+    int target_hue_threshold_;
+    int default_sat_bot_value_;
+    int default_sat_top_value_;
+    int default_val_value_;
+    double min_contour_size_;
+
+
     float x_, y_, z_;
     std::string which_arm_;
     cv::Point tooltip_;
     int mode;
+    uint counter_;
     std::vector<cv::KeyPoint> kpso_;
     std::vector<cv::KeyPoint> kps_;
     std::vector<cv::KeyPoint> kpsc_;
