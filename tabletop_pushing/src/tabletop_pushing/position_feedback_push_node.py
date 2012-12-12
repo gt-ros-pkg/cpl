@@ -444,7 +444,6 @@ class PositionFeedbackPushNode:
         self.stop_moving_vel(which_arm)
         result = ac.get_result()
         response.action_aborted = result.aborted
-        # TODO: send back more information?
         return response
 
     def tracker_feedback_push(self, feedback):
@@ -657,7 +656,6 @@ class PositionFeedbackPushNode:
         goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
         goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
 
-        # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot
         u.twist.linear.y = goal_y_dot
         if self.feedback_count % 5 == 0:
@@ -683,7 +681,6 @@ class PositionFeedbackPushNode:
         goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
         goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
 
-        # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot
         u.twist.linear.y = goal_y_dot
         if self.feedback_count % 5 == 0:
