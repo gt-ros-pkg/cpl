@@ -201,37 +201,13 @@ class TabletopExecutive:
             rospy.loginfo('Push angle: ' + str(pose_res.push_angle))
             rospy.loginfo('Push dist: ' + str(pose_res.push_dist))
 
-            # TODO: Make this a function
-            # Choose push behavior
-            if fabs(pose_res.push_angle) > self.use_pull_angle_thresh:
-                behavior_primitive = OVERHEAD_PUSH
-            elif pose_res.start_point.x < self.use_overhead_x_thresh:
-                behavior_primitive = OVERHEAD_PUSH
-            elif fabs(pose_res.push_angle) > self.use_sweep_angle_thresh:
-                behavior_primitive = GRIPPER_SWEEP
-            else:
-                behavior_primitive = GRIPPER_PUSH
-
+            behavior_primitive = self.choose_singulation_primitive(pose_res)
             # behavior_primitive = GRIPPER_PUSH
             # behavior_primitive = OVERHEAD_PUSH
             # behavior_primitive = GRIPPER_SWEEP
-            # TODO: Make this a function
-            # Choose arm
-            if (fabs(pose_res.start_point.y) > self.use_same_side_y_thresh or
-                pose_res.start_point.x > self.use_same_side_x_thresh):
-                if (pose_res.start_point.y < 0):
-                    which_arm = 'r'
-                    rospy.loginfo('Setting arm to right because of limits')
-                else:
-                    which_arm = 'l'
-                    rospy.loginfo('Setting arm to left because of limits')
-            elif pose_res.push_angle > 0:
-                which_arm = 'r'
-                rospy.loginfo('Setting arm to right because of angle')
-            else:
-                which_arm = 'l'
-                rospy.loginfo('Setting arm to left because of angle')
 
+            # Choose arm
+            which_arm = self.choose_singulation_arm(pose_res)
             push_dist = pose_res.push_dist
             push_dist = max(min(push_dist, self.max_push_dist),
                             self.min_push_dist)
@@ -459,6 +435,35 @@ class TabletopExecutive:
 
         return which_arm
 
+    def choose_singulation_primitive(self, pose_res):
+        # Choose push behavior
+        if fabs(pose_res.push_angle) > self.use_pull_angle_thresh:
+            behavior_primitive = OVERHEAD_PUSH
+        elif pose_res.start_point.x < self.use_overhead_x_thresh:
+            behavior_primitive = OVERHEAD_PUSH
+        elif fabs(pose_res.push_angle) > self.use_sweep_angle_thresh:
+            behavior_primitive = GRIPPER_SWEEP
+        else:
+            behavior_primitive = GRIPPER_PUSH
+        return behavior_primitive
+
+    def choose_singulation_arm(self, pose_res):
+        if (fabs(pose_res.start_point.y) > self.use_same_side_y_thresh or
+            pose_res.start_point.x > self.use_same_side_x_thresh):
+            if (pose_res.start_point.y < 0):
+                which_arm = 'r'
+                rospy.loginfo('Setting arm to right because of limits')
+            else:
+                which_arm = 'l'
+                rospy.loginfo('Setting arm to left because of limits')
+        elif pose_res.push_angle > 0:
+            which_arm = 'r'
+            rospy.loginfo('Setting arm to right because of angle')
+        else:
+            which_arm = 'l'
+            rospy.loginfo('Setting arm to left because of angle')
+        return which_arm
+
     def perform_push(self, which_arm, behavior_primitive, push_vector_res, goal_pose,
                      controller_name, proxy_name, high_init = True):
         push_angle = push_vector_res.push.push_angle
@@ -496,8 +501,7 @@ class TabletopExecutive:
         else:
             result = FeedbackPushResponse()
 
-        # TODO: Make this more robust to other use cases
-        # If the call aborted, recall with the same settings
+        # NOTE: If the call aborted, recall with the same settings
         if result.action_aborted:
             rospy.logwarn('Push was aborted. Calling push behavior again.')
             return ('aborted', result)
@@ -625,8 +629,6 @@ class TabletopExecutive:
             raise_req.table_centroid = table_res.table_centroid
         else:
             raise_req.have_table_centroid = False
-
-        # TODO: Make sure this requested table_centroid is valid
 
         rospy.loginfo("Raising spine");
         raise_req.point_head_only = False
@@ -806,7 +808,6 @@ class TabletopExecutive:
             x_offset_dir = -1
 
         # Set offset in x y, based on distance
-        # TODO: Add in tool offset distance here
         push_req.wrist_yaw = wrist_yaw
         # TODO: Have tool proxy here, transform to hand frame and get diff?
         tool_face_offset_dist = 0.07
