@@ -379,6 +379,7 @@ class ObjectTracker25D
     }
 
     // TODO: Put in more tool proxy stuff here
+    // TODO: Put tool proxy in "/?_gripper_tool_frame"
     if (tool_proxy_name == HACK_TOOL_PROXY)
     {
       // HACK: Need to replace this with the appropriately computed tool_proxy
