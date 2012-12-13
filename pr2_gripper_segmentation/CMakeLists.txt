@@ -7,7 +7,8 @@ include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 #  Release        : w/o debug symbols, w/ optimization
 #  RelWithDebInfo : w/ debug symbols, w/ optimization
 #  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
-set(ROS_BUILD_TYPE RelWithDebInfo)
+# set(ROS_BUILD_TYPE RelWithDebInfo)
+set(ROS_BUILD_TYPE Release)
 # set(ROS_BUILD_TYPE Debug)
 
 # Build actions
@@ -27,10 +28,6 @@ rosbuild_gensrv()
 
 find_package(OpenCV REQUIRED)
 rosbuild_add_boost_directories()
-# rosbuild_add_executable(visual_servo_node src/visual_servo.cpp)
-#rosbuild_add_executable(visual_servo_node src/vs_line.cpp)
-#target_link_libraries(visual_servo_node tabletop_pushing)
-
 find_library(LOG4CXX_LIB log4cxx REQUIRED)
 rosbuild_add_executable(collector src/gripper_segmentation_collect.cpp)
 #rosbuild_add_executable(tester src/test.cpp)

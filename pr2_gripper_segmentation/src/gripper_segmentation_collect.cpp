@@ -154,15 +154,15 @@ void onMouse(int event, int x, int y, int flags, void* param)
       }
       break;
     case CV_EVENT_MOUSEMOVE:
-    {
-      // if previous event was mouse move too
-      if (pt->event == CV_EVENT_MOUSEMOVE)
       {
-        pt->cursor = cv::Point(x,y);
-        pt->event = event;
+        // if previous event was mouse move too
+        if (pt->event == CV_EVENT_MOUSEMOVE)
+        {
+          pt->cursor = cv::Point(x,y);
+          pt->event = event;
+        }
       }
-    }
-    break;
+      break;
   }
   return;
 }
@@ -205,7 +205,7 @@ class GripperSegmentationCollector
     n_private_.param("default_val_value", default_val_value_, 100);
     n_private_.param("min_contour_size", min_contour_size_, 10.0);
 
- 
+
     // Setup ros node connections
     sync_.registerCallback(&GripperSegmentationCollector::sensorCallback, this);
     // n_.subscribe("/joint_states", 1, &GripperSegmentationCollector::jointStateCallback, this);
@@ -273,7 +273,11 @@ class GripperSegmentationCollector
         if (mode == 0)
         {
           pcl::PointXYZ tcp = cloud_.at(p.x, p.y);
-
+          if (isnan(tcp.x)||isnan(tcp.y)||isnan(tcp.z))
+          {
+            ROS_WARN("Invalid Point. Try again");
+            return;
+          }
           float rmse = pow(pow(tcp.x - tcp_e_.x, 2) + pow(tcp.y - tcp_e_.y, 2) + pow(tcp.z - tcp_e_.z, 2),0.5);
           ROS_INFO("*** Tooltip added at [%.5f, %.5f, %.5f] RMSE: [%.7f]", tcp.x, tcp.y, tcp.z, rmse);
           tooltip_ = p;
@@ -290,18 +294,18 @@ class GripperSegmentationCollector
           }
           move(p, &kps_, &kpsc_);
           /*
-          for (unsigned int i = 0; i <  kps_.size(); i++)
-          {
-            if (abs(kps_.at(i).pt.x - p.x) < 7
-              && abs(kps_.at(i).pt.y - p.y) < 7)
-            {
-              ROS_INFO("[GripperSeg] Added at [%0.3f, %0.3f]", kps_.at(i).pt.x, kps_.at(i).pt.y);
-              kpsc_.push_back(kps_.at(i));
-              kps_.erase(kps_.begin() + i);
-              break;
-            }
-          }
-          */
+             for (unsigned int i = 0; i <  kps_.size(); i++)
+             {
+             if (abs(kps_.at(i).pt.x - p.x) < 7
+             && abs(kps_.at(i).pt.y - p.y) < 7)
+             {
+             ROS_INFO("[GripperSeg] Added at [%0.3f, %0.3f]", kps_.at(i).pt.x, kps_.at(i).pt.y);
+             kpsc_.push_back(kps_.at(i));
+             kps_.erase(kps_.begin() + i);
+             break;
+             }
+             }
+           */
         }
       }
     }
@@ -337,19 +341,19 @@ class GripperSegmentationCollector
       {
         cv::KeyPoint kp = kps_bad_.at(i);
         // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
-        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(0, 0, 255), 2);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
       }
       for (unsigned int i = 0 ; i < kps_.size(); i++)
       {
         cv::KeyPoint kp = kps_.at(i);
         // cv::circle(color_frame, (int)(kp.pt.x), (int)(kp.pt.y), 2, cv::Scalar(0, 0, 255), 2);
-        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(50, 245, 170), 0);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 2, cv::Scalar(50, 245, 170), 2);
       }
       for (unsigned int i = 0 ; i < kpsc_.size(); i++)
       {
         cv::KeyPoint kp = kpsc_.at(i);
         // cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 2, cv::Scalar(255, 255, 0), 0);
-        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 3, cv::Scalar(255, 40, 30), 2);
+        cv::circle(color_frame, cv::Point(kp.pt.x, kp.pt.y), 2, cv::Scalar(255, 40, 30), 2);
       }
 
       if (good_matches_.size() > 0)
@@ -357,7 +361,7 @@ class GripperSegmentationCollector
         for (unsigned int i = 0; i < good_matches_.size(); i++)
         {
           cv::Point2f cp = kpso_[good_matches_[i].trainIdx].pt;
-          cv::circle(color_frame, cv::Point(cp.x, cp.y), 4, cv::Scalar(200, 70, 200), 2);
+          cv::circle(color_frame, cv::Point(cp.x, cp.y), 5, cv::Scalar(200, 70, 200), 0);
         }
         cv::Point p = projectPointIntoImage(tcp_e_, "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
         cv::circle(color_frame, p, 4, cv::Scalar(50, 180, 50), 2);
@@ -403,8 +407,8 @@ class GripperSegmentationCollector
 
       color_frame = color_cv_ptr->image;
       depth_frame = depth_cv_ptr->image;
-// #define ROSBAG 1
-// #ifndef ROSBAG
+      // #define ROSBAG 1
+      // #ifndef ROSBAG
       // cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
       // self_mask = mask_cv_ptr->image;
       XYZPointCloud cloud;
@@ -430,37 +434,39 @@ class GripperSegmentationCollector
       if (p_client_.call(psrv)){}
       else {ROS_WARN("Service Fail");}
 
-      //////////////////////
-      // Hand 
-      // get all the blues 
       cv::Mat tape_mask = colorSegment(color_frame.clone(), target_hue_value_, target_hue_threshold_);
-
-      // make it clearer with morphology
       cv::Mat element_b = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
       cv::morphologyEx(tape_mask, tape_mask, cv::MORPH_OPEN, element_b);
-
-      // find the three largest blues
       std::vector<cv::Moments> ms = findMoments(tape_mask, color_frame, 1); 
-      cv::Moments m0 = ms.at(0);
-      double x0, y0;
-      x0 = m0.m10/m0.m00;
-      y0 = m0.m01/m0.m00;
 
+      if (ms.size() > 0)
+      {
+        cv::Moments m0 = ms.at(0);
+        double x0, y0;
+        x0 = m0.m10/m0.m00;
+        y0 = m0.m01/m0.m00;
 
-      double gripper_pose[14];
-      get_fk_tooltip_pose(gripper_pose);
-      // 0, 1, 2
-      ROS_INFO("l: [%f, %f, %f]\tr :[%f, %f, %f]",
-          gripper_pose[0],gripper_pose[1],gripper_pose[2],
-          gripper_pose[7],gripper_pose[8],gripper_pose[9]
-        );
-      ROS_INFO("le:[%f, %f, %f]", cloud_.at(x0, y0).x, cloud_.at(x0, y0).y, cloud_.at(x0, y0).z);
+        cv::circle(color_frame, cv::Point(x0, y0), 4, cv::Scalar(50, 255, 50), 3);
+        ROS_INFO("le:[%f, %f, %f]", cloud_.at(x0, y0).x, cloud_.at(x0, y0).y, cloud_.at(x0, y0).z);
+      }
+      try
+      {
+        double gripper_pose[14];
+        get_fk_tooltip_pose(gripper_pose);
+        // 0, 1, 2
+        ROS_INFO("l: [%f, %f, %f]\tr :[%f, %f, %f]",
+            gripper_pose[0],gripper_pose[1],gripper_pose[2],
+            gripper_pose[7],gripper_pose[8],gripper_pose[9]
+            );
 
-      cv::Point lgp = projectPointIntoImage(pcl::PointXYZ(gripper_pose[0], gripper_pose[1], gripper_pose[2]), "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
- 
-      cv::circle(color_frame, lgp, 4, cv::Scalar(255, 50, 50), 3);
-      cv::circle(color_frame, cv::Point(x0, y0), 4, cv::Scalar(50, 255, 50), 3);
+        cv::Point lgp = projectPointIntoImage(pcl::PointXYZ(gripper_pose[0], gripper_pose[1], gripper_pose[2]), "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
 
+        cv::circle(color_frame, lgp, 4, cv::Scalar(255, 50, 50), 3);
+      }
+      catch (tf::TransformException e)
+      {
+        ROS_ERROR("[vs]%s", e.what());
+      }
       mouseEvent m;
       cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
       std::ostringstream os;
@@ -469,6 +475,7 @@ class GripperSegmentationCollector
       cv::imshow("what", color_frame);
       int key = 0;
       key = cv::waitKey(15);
+
 
       // terminate if no key is pressed
       if (key < 32)
@@ -489,6 +496,7 @@ class GripperSegmentationCollector
       // do matching and all 
       if (ds.kp.size() > 0)
       {
+        ROS_DEBUG("Hello");
         good_matches_ = matchAndQuery(ds, kps_, color_frame);
       }
 
@@ -496,7 +504,6 @@ class GripperSegmentationCollector
       mode = 0;
       kpsc_.clear();
       kps_bad_.clear();
-
       setDisplay(color_frame.clone(), m);
       cv::setMouseCallback("what", onMouse, (void*) &m);
 
@@ -589,7 +596,7 @@ class GripperSegmentationCollector
       //cv::waitKey(3);
        */ 
       // ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
-//#else
+      //#else
       counter++;
       y_+= 0.10;
       if (y_ > 0.35)
@@ -610,7 +617,7 @@ class GripperSegmentationCollector
 
       //cv::imshow("color", color_frame);
       //cv::waitKey(10);
-//#endif
+      //#endif
     }
 
 
@@ -840,7 +847,6 @@ class GripperSegmentationCollector
           ROS_INFO("[Match %u: {%d}->{%d} %.4f]", i, matches[i].queryIdx, matches[i].trainIdx, matches[i].distance);
         }
       }
-
       tcp_e_ = pcl::PointXYZ(0,0,0);
       if (good_matches.size() >= 3)
       {
@@ -894,6 +900,7 @@ class GripperSegmentationCollector
         if (temp[0] != 0 && temp[1] != 0 && temp[2] != 0)
         {
           int nm = numConsensus(ds, m, kp, temp);
+          //ROS_INFO("| %d |Temp: [%f, %f, %f], Res: [%f, %f, %f]", nm, temp[0], temp[1], temp[2], result[0], result[1], result[2]);
           if (nm > numBestMatch)
           {
             // copying
@@ -901,33 +908,30 @@ class GripperSegmentationCollector
             result[1] = temp[1];
             result[2] = temp[2];
             numBestMatch = nm;
+
           }
         }
         std::random_shuffle( gm.begin(), gm.end() );
       }
+      ROS_INFO("| %d | Res: [%f, %f, %f]", numBestMatch, result[0], result[1], result[2]);
     }
 
     int numConsensus(Data ds, std::vector<cv::DMatch> matches, std::vector<cv::KeyPoint> kps, double estimate[3])
     {
-      int count;
-      double thresh = 0.03; // 3 cm threshold
+      int count = 0;
+      double thresh = 0.58; // 3 cm threshold
       for (unsigned int i = 0; i < matches.size(); i++)
-       {
-         int p = matches[i].queryIdx;
-         int c = matches[i].trainIdx;
-         pcl::PointXYZ pp = cloud_.at(kps[c].pt.x, kps[c].pt.y);
-         double distance = fabs(ds.dist[p] - pow(pow(pp.x - estimate[0],2)+pow(pp.y - estimate[1],2)+pow(pp.z - estimate[2],2), 0.5));
-         if (distance < thresh)
-           count++;
-       }
-       return count;
-    }
+      {
+        int p = matches[i].queryIdx;
+        int c = matches[i].trainIdx;
+        pcl::PointXYZ pp = cloud_.at(kps[c].pt.x, kps[c].pt.y);
+        double distance = fabs(ds.dist[p] - pow(pow(pp.x - estimate[0],2)+pow(pp.y - estimate[1],2)+pow(pp.z - estimate[2],2), 0.5));
 
-    void x3Sphere(std::vector<pcl::PointXYZ> X, std::vector<double> r, double result[3])
-    {
-      if (X.size() >= 3 && r.size() >= 3)
-        x3Sphere(X[0], X[1], X[2], r[0], r[1], r[2], result);
-      return;
+        //ROS_WARN("Dist @ %d: %f", i, distance);
+        if (distance < thresh)
+          count++;
+      }
+      return count;
     }
 
     void x3Sphere(pcl::PointXYZ X1,pcl::PointXYZ X2,pcl::PointXYZ X3,double r1, double r2, double r3, double result[3])
@@ -938,6 +942,15 @@ class GripperSegmentationCollector
       x1 = X1.x; y1 = X1.y; z1 = X1.z;
       x2 = X2.x; y2 = X2.y; z2 = X2.z;
       x3 = X3.x; y3 = X3.y; z3 = X3.z;
+
+      if(isnan(x1) || isnan(x2) || isnan(x3))
+        return;
+      if(isnan(y1) || isnan(y2) || isnan(y3))
+        return;
+      if(isnan(z1) || isnan(z2) || isnan(z3))
+        return;
+      if(isnan(r1) || isnan(r2) || isnan(r3))
+        return;
 
       ROS_WARN("-------------------- ");
       ROS_WARN("||| %f %f %f ||| ", x1, y1, z1);
