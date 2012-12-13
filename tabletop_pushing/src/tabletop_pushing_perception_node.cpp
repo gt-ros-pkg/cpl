@@ -174,26 +174,26 @@ class ObjectTracker25D
     }
     else if (true || init || frame_count_ == 0)
     {
-      // Assume we care about the biggest currently
-      // unsigned int max_size = 0;
-      // for (unsigned int i = 0; i < objs.size(); ++i)
-      // {
-      //   if (objs[i].cloud.size() > max_size)
-      //   {
-      //     max_size = objs[i].cloud.size();
-      //     chosen_idx = i;
-      //   }
-      // }
-      // Assume we care about the highest currently
-      float max_height = -1000.0;
+      // NOTE: Assume we care about the biggest currently
+      unsigned int max_size = 0;
       for (unsigned int i = 0; i < objs.size(); ++i)
       {
-        if (objs[i].centroid[2] > max_height)
+        if (objs[i].cloud.size() > max_size)
         {
-          max_height = objs[i].centroid[2];
+          max_size = objs[i].cloud.size();
           chosen_idx = i;
         }
       }
+      // // Assume we care about the highest currently
+      // float max_height = -1000.0;
+      // for (unsigned int i = 0; i < objs.size(); ++i)
+      // {
+      //   if (objs[i].centroid[2] > max_height)
+      //   {
+      //     max_height = objs[i].centroid[2];
+      //     chosen_idx = i;
+      //   }
+      // }
       // TODO: Extract color histogram
     }
     else // Find closest object to last time
@@ -379,7 +379,6 @@ class ObjectTracker25D
     }
 
     // TODO: Put in more tool proxy stuff here
-    // TODO: Put tool proxy in "/?_gripper_tool_frame"
     if (tool_proxy_name == HACK_TOOL_PROXY)
     {
       // HACK: Need to replace this with the appropriately computed tool_proxy
@@ -387,12 +386,11 @@ class ObjectTracker25D
       float tool_length = 0.16;
       tf::Quaternion q;
       double wrist_roll, wrist_pitch, wrist_yaw;
-      // TODO: Fix this hack with the correct stuff once have arm pose
-      arm_pose.pose.orientation.w = 1.0;
       // ROS_INFO_STREAM("arm quaternion: " << arm_pose.pose.orientation);
       tf::quaternionMsgToTF(arm_pose.pose.orientation, q);
       tf::Matrix3x3(q).getRPY(wrist_roll, wrist_pitch, wrist_yaw);
       // ROS_INFO_STREAM("Wrist yaw: " << wrist_yaw);
+      // TODO: Put tool proxy in "/?_gripper_tool_frame"
       tool_pose.pose.position.x = arm_pose.pose.position.x + cos(wrist_yaw)*tool_length;
       tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
       tool_pose.header.frame_id = arm_pose.header.frame_id;

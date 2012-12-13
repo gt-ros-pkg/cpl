@@ -50,12 +50,12 @@ import random
 from push_primitives import *
 
 _OFFLINE = False
-_USE_LEARN_IO = True
+_USE_LEARN_IO = False
 _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
 _USE_CENTROID_CONTROLLER = True
-_USE_FIXED_GOAL = True
+_USE_FIXED_GOAL = False
 
 class TabletopExecutive:
 
@@ -381,8 +381,10 @@ class TabletopExecutive:
             controller_name = CENTROID_CONTROLLER
             proxy_name = ELLIPSE_PROXY
             behavior_primitive = OVERHEAD_PUSH
+            tool_proxy_name = HACK_TOOL_PROXY
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
                                                                  proxy_name, behavior_primitive,
+                                                                 tool_proxy_name,
                                                                  get_pose_only=True)
 
             if push_vec_res is None:
@@ -662,6 +664,7 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
+        push_req.tool_proxy_name = HACK_TOOL_PROXY
 
         rospy.loginfo('Overhead push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -710,6 +713,7 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
+        push_req.tool_proxy_name = HACK_TOOL_PROXY
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -769,6 +773,7 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
+        push_req.tool_proxy_name = HACK_TOOL_PROXY
 
         rospy.loginfo('Gripper sweep augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +

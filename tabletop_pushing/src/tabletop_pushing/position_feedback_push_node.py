@@ -52,6 +52,8 @@ import sys
 
 from push_primitives import *
 
+_USE_CONTROLLER_IO = False
+
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
                                     -0.34601608409943324,
@@ -136,7 +138,8 @@ class PositionFeedbackPushNode:
         self.controller_io = ControlAnalysisIO()
         out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
-        self.controller_io.open_out_file(out_file_name)
+        if _USE_CONTROLLER_IO:
+            self.controller_io.open_out_file(out_file_name)
 
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
@@ -434,6 +437,7 @@ class PositionFeedbackPushNode:
         goal.controller_name = request.controller_name
         goal.proxy_name = request.proxy_name
         goal.behavior_primitive = request.behavior_primitive
+        goal.tool_proxy_name = request.tool_proxy_name
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -493,9 +497,10 @@ class PositionFeedbackPushNode:
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
 
-        self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                      update_twist.twist, update_twist.header.stamp.to_sec(),
-                                      cur_pose.pose)
+        if _USE_CONTROLLER_IO:
+            self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                          update_twist.twist, update_twist.header.stamp.to_sec(),
+                                          cur_pose.pose)
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
@@ -1850,7 +1855,8 @@ class PositionFeedbackPushNode:
 
     def shutdown_hook(self):
         rospy.loginfo('Cleaning up node on shutdown')
-        self.controller_io.close_out_file()
+        if _USE_CONTROLLER_IO:
+            self.controller_io.close_out_file()
         # TODO: stop moving the arms on shutdown
 
     #
