@@ -92,6 +92,8 @@ class TabletopExecutive:
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
         self.min_workspace_y = -self.max_workspace_y
 
+        self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
+
         # Setup service proxies
         if not _OFFLINE:
             if use_singulation:
@@ -319,6 +321,9 @@ class TabletopExecutive:
         continuing = False
         done_with_push = False
         # NOTE: Get initial object pose here to make sure goal pose is far enough away
+        if self.servo_head_during_pushing:
+            self.raise_and_look(point_head_only=True)
+
         init_pose = self.get_feedback_push_initial_obj_pose()
         while not _OFFLINE and self.out_of_workspace(init_pose):
             rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
@@ -360,6 +365,8 @@ class TabletopExecutive:
             if res == 'quit':
                 return res
             elif res == 'aborted':
+                if self.servo_head_during_pushing:
+                    self.raise_and_look(point_head_only=True)
                 continuing = True
                 restart_count += 1
                 if restart_count <= self.max_restart_limit:
@@ -608,7 +615,7 @@ class TabletopExecutive:
             return False
         return True
 
-    def raise_and_look(self, request_table=True, init_arms=False):
+    def raise_and_look(self, request_table=True, init_arms=False, point_head_only=False):
         if request_table:
             table_req = LocateTableRequest()
             table_req.recalculate = True
@@ -619,8 +626,10 @@ class TabletopExecutive:
         # the table centroid
         # Also make sure the arms are out of the way
         raise_req.init_arms = True
-        rospy.loginfo("Moving head and arms")
+        rospy.loginfo("Moving head")
         raise_res = self.raise_and_look_proxy(raise_req)
+        if point_head_only:
+            return
         if request_table:
             raise_req.have_table_centroid = True
             try:

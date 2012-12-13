@@ -196,6 +196,9 @@ class PositionFeedbackPushNode:
 
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
+
+        self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
+
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
@@ -369,7 +372,7 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Point head at ' + str(look_pt))
         head_res = self.robot.head.look_at(look_pt,
                                            'torso_lift_link',
-                                           camera_frame)
+                                           camera_frame, wait=True)
         if head_res:
             rospy.loginfo('Succeeded in pointing head')
             return True
@@ -501,6 +504,13 @@ class PositionFeedbackPushNode:
             self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                           update_twist.twist, update_twist.header.stamp.to_sec(),
                                           cur_pose.pose)
+        if self.servo_head_during_pushing:
+            look_pt = np.asmatrix([feedback.x.x,
+                                   feedback.x.y,
+                                   feedback.z])
+            head_res = self.robot.head.look_at(look_pt, feedback.header.frame_id,
+                                               self.head_pose_cam_frame)
+
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
