@@ -138,6 +138,7 @@ const std::string SPHERE_PROXY = "sphere";
 const std::string CYLINDER_PROXY = "cylinder";
 const std::string BOUNDING_BOX_XY_PROXY = "bounding_box_xy";
 const std::string HACK_TOOL_PROXY = "hack";
+const std::string EE_TOOL_PROXY = "end_effector_tool";
 
 class ObjectTracker25D
 {
@@ -395,6 +396,9 @@ class ObjectTracker25D
       tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
       tool_pose.header.frame_id = arm_pose.header.frame_id;
       state.tool_x = tool_pose;
+    }
+    else if(tool_proxy_name == EE_TOOL_PROXY)
+    {
     }
     else
     {

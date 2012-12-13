@@ -284,8 +284,7 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_push_exploration(self, object_id):
-        tool_proxy_name = HACK_TOOL_PROXY
+    def run_push_exploration(self, object_id, tool_proxy_name=EE_TOOL_PROXY):
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
@@ -299,7 +298,7 @@ class TabletopExecutive:
         return True
 
     def explore_push(self, behavior_primitive, controller_name, proxy_name, object_id,
-                     precondition_method='centroid_push', input_arm=None, tool_proxy_name=HACK_TOOL_PROXY):
+                     precondition_method='centroid_push', input_arm=None, tool_proxy_name=EE_TOOL_PROXY):
         if input_arm is not None:
             rospy.loginfo('Exploring push behavior: (' + behavior_primitive + ', '
                           + controller_name + ', ' + proxy_name + ', ' + input_arm + ')')
@@ -381,7 +380,7 @@ class TabletopExecutive:
             controller_name = CENTROID_CONTROLLER
             proxy_name = ELLIPSE_PROXY
             behavior_primitive = OVERHEAD_PUSH
-            tool_proxy_name = HACK_TOOL_PROXY
+            tool_proxy_name = EE_TOOL_PROXY
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
                                                                  proxy_name, behavior_primitive,
                                                                  tool_proxy_name,
@@ -468,7 +467,7 @@ class TabletopExecutive:
         return which_arm
 
     def perform_push(self, which_arm, behavior_primitive, push_vector_res, goal_pose,
-                     controller_name, proxy_name, tool_proxy_name=HACK_TOOL_PROXY, high_init = True):
+                     controller_name, proxy_name, tool_proxy_name=EE_TOOL_PROXY, high_init = True):
         push_angle = push_vector_res.push.push_angle
         # NOTE: Use commanded push distance not visually decided minimal distance
         if push_vector_res is None:
@@ -559,7 +558,7 @@ class TabletopExecutive:
             return None
 
     def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
-                                         behavior_primitive, tool_proxy_name=HACK_TOOL_PROXY, get_pose_only=False):
+                                         behavior_primitive, tool_proxy_name=EE_TOOL_PROXY, get_pose_only=False):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -664,7 +663,7 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = HACK_TOOL_PROXY
+        push_req.tool_proxy_name = EE_TOOL_PROXY
 
         rospy.loginfo('Overhead push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -713,7 +712,7 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = HACK_TOOL_PROXY
+        push_req.tool_proxy_name = EE_TOOL_PROXY
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -773,7 +772,7 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = HACK_TOOL_PROXY
+        push_req.tool_proxy_name = EE_TOOL_PROXY
 
         rospy.loginfo('Gripper sweep augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -1007,6 +1006,8 @@ if __name__ == '__main__':
     use_guided = True
     max_pushes = 50
     behavior_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
+    # tool_proxy_name = EE_TOOL_PROXY
+    # tool_proxy_name = HACK_TOOL_PROXY
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
