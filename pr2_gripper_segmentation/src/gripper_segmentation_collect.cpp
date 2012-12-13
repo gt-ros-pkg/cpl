@@ -126,6 +126,7 @@ struct Distance {
 struct Data{
   std::vector<cv::KeyPoint> kp;
   std::vector<Distance> d;
+  std::vector<float> dist;
   // extracted
   cv::Mat desc;
 };
@@ -211,14 +212,12 @@ class GripperSegmentationCollector
     p_client_ = n.serviceClient<pr2_gripper_segmentation::GripperPose>("pgs_pose");
     textFile.open("/u/swl33/data/myData.csv");
 
-    float bound = 0.3;
-    x_= 0.5;
-    y_= -bound;
-    z_= -bound + 0.15;
+    x_= 0.55;
+    y_= 0.09;
+    z_= -0.15;
     which_arm_ = "l";
     mode = 0;
     counter_ = 0;
-    cloud_acc_ = XYZPointCloud();
     ROS_INFO("[GripperSeg] Node Initialization Complete");
   }
 
@@ -368,7 +367,7 @@ class GripperSegmentationCollector
 
     XYZPointCloud averagePC(XYZPointCloud cloud1, XYZPointCloud cloud2)
     {
-      float alpha = 0.4;
+      float alpha = 0.6;
       for (int i = 0; i < 640; i++)
       {
         for (int j = 0; j < 480; j++)
@@ -405,7 +404,7 @@ class GripperSegmentationCollector
       color_frame = color_cv_ptr->image;
       depth_frame = depth_cv_ptr->image;
 // #define ROSBAG 1
-#ifndef ROSBAG
+// #ifndef ROSBAG
       // cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
       // self_mask = mask_cv_ptr->image;
       XYZPointCloud cloud;
@@ -414,12 +413,22 @@ class GripperSegmentationCollector
           cloud.header.stamp, ros::Duration(0.9));
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
-      if (cloud_acc_.size() == 0)
-        cloud_acc_ = cloud;
+      if (cloud_.size() == 0)
+        cloud_ = cloud;
       else
-        cloud_acc_ = averagePC(cloud_acc_, cloud);
+        cloud_ = averagePC(cloud_, cloud);
 
-      ROS_INFO("%s, %s, %d", cloud_acc_.isOrganized()? "acc:true": "acc:false",cloud.isOrganized()?"cloud:true":"cloud:false", (int)cloud.size());
+      pr2_gripper_segmentation::GripperPose psrv;
+      PoseStamped p;
+      p.header.frame_id = workspace_frame_;
+      p.pose.position.x = x_;
+      p.pose.position.y = y_;
+      p.pose.position.z = z_;
+      p.pose.orientation.w = 1;
+      psrv.request.arm = which_arm_;
+      psrv.request.p = p;
+      if (p_client_.call(psrv)){}
+      else {ROS_WARN("Service Fail");}
 
       //////////////////////
       // Hand 
@@ -437,16 +446,20 @@ class GripperSegmentationCollector
       x0 = m0.m10/m0.m00;
       y0 = m0.m01/m0.m00;
 
-      cv::circle(color_frame, cv::Point(x0, y0), 4, cv::Scalar(0, 255, 0), 4);
-
 
       double gripper_pose[14];
       get_fk_tooltip_pose(gripper_pose);
       // 0, 1, 2
-      ROS_INFO("l:[%f, %f, %f]\tr:[%f, %f, %f]",
+      ROS_INFO("l: [%f, %f, %f]\tr :[%f, %f, %f]",
           gripper_pose[0],gripper_pose[1],gripper_pose[2],
           gripper_pose[7],gripper_pose[8],gripper_pose[9]
         );
+      ROS_INFO("le:[%f, %f, %f]", cloud_.at(x0, y0).x, cloud_.at(x0, y0).y, cloud_.at(x0, y0).z);
+
+      cv::Point lgp = projectPointIntoImage(pcl::PointXYZ(gripper_pose[0], gripper_pose[1], gripper_pose[2]), "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
+ 
+      cv::circle(color_frame, lgp, 4, cv::Scalar(255, 50, 50), 3);
+      cv::circle(color_frame, cv::Point(x0, y0), 4, cv::Scalar(50, 255, 50), 3);
 
       mouseEvent m;
       cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
@@ -455,7 +468,8 @@ class GripperSegmentationCollector
       cv::putText(color_frame, os.str(), cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
       cv::imshow("what", color_frame);
       int key = 0;
-      key = cv::waitKey(30);
+      key = cv::waitKey(15);
+
       // terminate if no key is pressed
       if (key < 32)
         return;
@@ -471,62 +485,12 @@ class GripperSegmentationCollector
       kps_ = keypoints;
       kpso_ = keypoints;
 
-      good_matches_.clear();
 
       // do matching and all 
       if (ds.kp.size() > 0)
       {
-
-        cv::SurfDescriptorExtractor surfDes;
-        cv::Mat descriptors2;
-        surfDes.compute(color_frame, kps_, descriptors2);
-
-        cv::FlannBasedMatcher matcher;
-        std::vector<cv::DMatch> matches;
-        matcher.match(ds.desc,descriptors2, matches);
-
-        double min_dist = 10000; double max_dist = 0;
-        for (unsigned int i = 0; i < matches.size(); i++)
-        {
-          double dist = matches[i].distance;
-          if (dist < min_dist) min_dist = dist;
-          if (dist < max_dist) max_dist = dist;
-        }
-
-        for (unsigned int i = 0; i < matches.size(); i++)
-        {
-          if (matches[i].distance < 2*min_dist)
-          {
-            good_matches_.push_back(matches[i]);
-            ROS_INFO("[Match %u: {%d}->{%d} %.4f]", i, matches[i].queryIdx, matches[i].trainIdx, matches[i].distance);
-          }
-        }
-
-        tcp_e_ = pcl::PointXYZ(0,0,0);
-        int num_good = 0;
-        for (unsigned int i = 0; i < good_matches_.size(); i++)
-        {
-          int pi = good_matches_[i].queryIdx;
-          int ci = good_matches_[i].trainIdx;
-          Distance d = ds.d[pi];
-          cv::Point2f cp = kps_[ci].pt;
-          pcl::PointXYZ c3d = cloud_.at(cp.x, cp.y);
-          if (!isnan(c3d.x)&&!isnan(c3d.y)&&!isnan(c3d.z))
-          {
-            ROS_INFO(">>> [%f, %f, %f] + [%f %f %f]", c3d.x, c3d.y, c3d.z, d.x, d.y, d.z);
-            tcp_e_.x += c3d.x + d.x;
-            tcp_e_.y += c3d.y + d.y;
-            tcp_e_.z += c3d.z + d.z;
-            num_good++;
-          }
-        }
-        tcp_e_.x /= num_good;
-        tcp_e_.y /= num_good;
-        tcp_e_.z /= num_good;
-        ROS_INFO("\n=============\n= Estimated TCP: [%.4f, %.4f %.4f] =\n===========", tcp_e_.x, tcp_e_.y, tcp_e_.z);
+        good_matches_ = matchAndQuery(ds, kps_, color_frame);
       }
-
-
 
       // clear variables
       mode = 0;
@@ -566,7 +530,7 @@ class GripperSegmentationCollector
       ROS_INFO("Iteration Done: Added %d", (int)kpsc_.size());
 
       /* ========== RESET VALUES BEFORE ACCUMULATION ========= */
-      cloud_acc_ = cloud;
+      cloud_ = cloud;
       counter_ = 0;
 
 
@@ -586,7 +550,7 @@ class GripperSegmentationCollector
         d.x = tcp.x - cur.x;
         d.y = tcp.y - cur.y;
         d.z = tcp.z - cur.z;
-
+        ds.dist.push_back(pow(pow(tcp.x-cur.x,2)+pow(tcp.y-cur.y,2)+pow(tcp.z-cur.z,2),0.5));
         ds.d.push_back(d);
       }
 
@@ -625,10 +589,10 @@ class GripperSegmentationCollector
       //cv::waitKey(3);
        */ 
       // ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
-#else
+//#else
       counter++;
       y_+= 0.10;
-      if (y_ > 0.3)
+      if (y_ > 0.35)
       {
         y_ = -0.3;
         x_ += 0.1;
@@ -644,21 +608,9 @@ class GripperSegmentationCollector
         }
       }
 
-      cv::imshow("color", color_frame);
-      cv::waitKey(10);
-      pr2_gripper_segmentation::GripperPose psrv;
-      PoseStamped p;
-      p.header.frame_id = workspace_frame_;
-      p.pose.position.x = x_;
-      p.pose.position.y = y_;
-      p.pose.position.z = z_;
-      p.pose.orientation.w = 1;
-
-      psrv.request.arm = which_arm_;
-      psrv.request.p = p;
-      if (p_client_.call(psrv)){}
-      else {ROS_WARN("Service Fail");}
-#endif
+      //cv::imshow("color", color_frame);
+      //cv::waitKey(10);
+//#endif
     }
 
 
@@ -860,6 +812,169 @@ class GripperSegmentationCollector
       cur[13]=pr.pose.orientation.w;
     }
 
+    std::vector<cv::DMatch> matchAndQuery(Data ds, std::vector<cv::KeyPoint> kps, cv::Mat color_frame)
+    {
+      cv::SurfDescriptorExtractor surfDes;
+      cv::Mat descriptors2;
+      surfDes.compute(color_frame, kps, descriptors2);
+
+      cv::FlannBasedMatcher matcher;
+      std::vector<cv::DMatch> matches;
+      matcher.match(ds.desc, descriptors2, matches);
+      std::vector< cv::DMatch> good_matches;
+      good_matches.clear();
+
+      double min_dist = 10000; double max_dist = 0;
+      for (unsigned int i = 0; i < matches.size(); i++)
+      {
+        double dist = matches[i].distance;
+        if (dist < min_dist) min_dist = dist;
+        if (dist < max_dist) max_dist = dist;
+      }
+
+      for (unsigned int i = 0; i < matches.size(); i++)
+      {
+        if (matches[i].distance < 10 * min_dist)
+        {
+          good_matches.push_back(matches[i]);
+          ROS_INFO("[Match %u: {%d}->{%d} %.4f]", i, matches[i].queryIdx, matches[i].trainIdx, matches[i].distance);
+        }
+      }
+
+      tcp_e_ = pcl::PointXYZ(0,0,0);
+      if (good_matches.size() >= 3)
+      {
+        for (unsigned int i = 0; i < 3; i++)
+        {
+          int pi = good_matches[i].queryIdx;
+          int ci = good_matches[i].trainIdx;
+          Distance d = ds.d[pi];
+          cv::Point2f cp = kps_[ci].pt;
+          pcl::PointXYZ c3d = cloud_.at(cp.x, cp.y);
+          if (!isnan(c3d.x)&&!isnan(c3d.y)&&!isnan(c3d.z))
+          {
+            ROS_INFO(">>> [%f, %f, %f] + [%f %f %f]", c3d.x, c3d.y, c3d.z, d.x, d.y, d.z);
+            tcp_e_.x += c3d.x + d.x;
+            tcp_e_.y += c3d.y + d.y;
+            tcp_e_.z += c3d.z + d.z;
+          }
+        }
+        double tcp_e2[3];
+        RANSAC(ds, matches, good_matches, kps, tcp_e2);
+        tcp_e_.x /= 3;
+        tcp_e_.y /= 3;
+        tcp_e_.z /= 3;
+        ROS_INFO("\n=============\n= Estimated TCP: **[%.4f, %.4f, %.4f]** [%.4f, %.4f %.4f] =\n===========", tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
+      }
+      return good_matches;
+    }
+
+    void RANSAC(Data ds, std::vector<cv::DMatch> m, std::vector<cv::DMatch> gm, std::vector<cv::KeyPoint> kp, double result[3])
+    {
+      result[0] = 0.0;
+      result[1] = 0.0;
+      result[2] = 0.0;
+      if (gm.size() < 3)
+        return;
+      int numBestMatch = 0;
+      double temp[3];
+      for (unsigned int i = 0; i < gm.size()-2; i++)
+      {
+        int p0 = gm[0].queryIdx;
+        int c0 = gm[0].trainIdx;
+        int p1 = gm[1].queryIdx;
+        int c1 = gm[1].trainIdx;
+        int p2 = gm[2].queryIdx;
+        int c2 = gm[2].trainIdx;
+        x3Sphere(
+            cloud_.at(kp[c0].pt.x,kp[c0].pt.y),
+            cloud_.at(kp[c1].pt.x,kp[c1].pt.y),
+            cloud_.at(kp[c2].pt.x,kp[c2].pt.y),
+            ds.dist[p0],ds.dist[p1],ds.dist[p2], temp);
+        if (temp[0] != 0 && temp[1] != 0 && temp[2] != 0)
+        {
+          int nm = numConsensus(ds, m, kp, temp);
+          if (nm > numBestMatch)
+          {
+            // copying
+            result[0] = temp[0];
+            result[1] = temp[1];
+            result[2] = temp[2];
+            numBestMatch = nm;
+          }
+        }
+        std::random_shuffle( gm.begin(), gm.end() );
+      }
+    }
+
+    int numConsensus(Data ds, std::vector<cv::DMatch> matches, std::vector<cv::KeyPoint> kps, double estimate[3])
+    {
+      int count;
+      double thresh = 0.03; // 3 cm threshold
+      for (unsigned int i = 0; i < matches.size(); i++)
+       {
+         int p = matches[i].queryIdx;
+         int c = matches[i].trainIdx;
+         pcl::PointXYZ pp = cloud_.at(kps[c].pt.x, kps[c].pt.y);
+         double distance = fabs(ds.dist[p] - pow(pow(pp.x - estimate[0],2)+pow(pp.y - estimate[1],2)+pow(pp.z - estimate[2],2), 0.5));
+         if (distance < thresh)
+           count++;
+       }
+       return count;
+    }
+
+    void x3Sphere(std::vector<pcl::PointXYZ> X, std::vector<double> r, double result[3])
+    {
+      if (X.size() >= 3 && r.size() >= 3)
+        x3Sphere(X[0], X[1], X[2], r[0], r[1], r[2], result);
+      return;
+    }
+
+    void x3Sphere(pcl::PointXYZ X1,pcl::PointXYZ X2,pcl::PointXYZ X3,double r1, double r2, double r3, double result[3])
+    {
+      double x1, y1, z1;
+      double x2, y2, z2;
+      double x3, y3, z3;
+      x1 = X1.x; y1 = X1.y; z1 = X1.z;
+      x2 = X2.x; y2 = X2.y; z2 = X2.z;
+      x3 = X3.x; y3 = X3.y; z3 = X3.z;
+
+      ROS_WARN("-------------------- ");
+      ROS_WARN("||| %f %f %f ||| ", x1, y1, z1);
+      ROS_WARN("||| %f %f %f ||| ", x2, y2, z2);
+      ROS_WARN("||| %f %f %f ||| ", x3, y3, z3);
+      ROS_WARN("||| %f %f %f ||| ", r1, r2, r3);
+      ROS_WARN("-------------------- ");
+
+      x2=x2-x1; y2=y2-y1; z2=z2-z1;
+      x3=x3-x1; y3=y3-y1; z3=z3-z1;
+
+      double a=(16*pow(y2,2)*z3*pow(y3,2)*z2*x3*pow(r1,2)*x2-4*pow(y2,3)*z3*y3*z2*x3*pow(r1,2)*x2+4*pow(y2,3)*z3*y3*z2*x3*x2*pow(r3,2)-4*y2*pow(y3,3)*z2*x2*z3*pow(r1,2)*x3+4*y2*pow(y3,3)*z2*x2*z3*pow(r2,2)*x3+16*z2*pow(x3,2)*pow(x2,2)*pow(r1,2)*y3*y2*z3-4*z2*pow(x3,3)*x2*pow(r1,2)*y3*y2*z3+4*z2*pow(x3,3)*x2*y2*z3*pow(r2,2)*y3-4*pow(x2,3)*z3*x3*y2*pow(r1,2)*z2*y3+4*pow(x2,3)*z3*x3*y2*pow(r3,2)*z2*y3-4*y2*z3*pow(z2,3)*y3*x3*pow(r1,2)*x2+4*y2*z3*pow(z2,3)*y3*x3*x2*pow(r3,2)+8*y2*pow(z3,2)*pow(z2,2)*y3*x2*pow(r1,2)*x3-4*y2*pow(z3,2)*pow(z2,2)*y3*x2*pow(r2,2)*x3+4*pow(x2,2)*pow(y3,2)*z2*pow(y2,2)*z3*pow(x3,2)-4*pow(x2,4)*pow(z3,2)*pow(x3,2)*y3*y2-2*pow(z2,2)*pow(x2,4)*pow(x2,2)*pow(y2,2)+2*pow(z2,2)*pow(x3,3)*pow(y2,2)*pow(r1,2)*x2-2*pow(z2,2)*pow(x3,3)*pow(y2,2)*x2*pow(r3,2)+2*pow(z2,2)*pow(x3,5)*x2*y2*y3+2*pow(x2,5)*pow(z3,2)*x3*y3*y2+2*pow(z2,3)*pow(y3,2)*pow(y2,2)*z3*pow(x3,2)+2*pow(z2,3)*pow(y3,2)*pow(x2,2)*z3*pow(x3,2)+2*pow(z2,3)*pow(y3,2)*pow(x2,2)*z3*pow(r1,2)-2*pow(z2,3)*pow(y3,2)*pow(x2,2)*z3*pow(r3,2)+2*pow(x2,2)*pow(y3,4)*z2*pow(y2,2)*z3-4*pow(x2,2)*pow(y3,2)*pow(z2,2)*pow(x3,2)*pow(y2,2)+2*pow(x2,4)*pow(y3,2)*z2*z3*pow(x3,2)-2*pow(x2,2)*pow(y3,3)*pow(z2,2)*y2*pow(x3,2)+2*pow(x2,2)*pow(y3,3)*pow(z2,2)*y2*pow(z3,2)+2*pow(x2,3)*pow(y3,2)*pow(z2,2)*x3*pow(z3,2)+2*pow(x2,2)*pow(y3,2)*z2*pow(y2,2)*pow(z3,3)+2*pow(x2,2)*pow(y3,3)*pow(z2,2)*y2*pow(r1,2)+2*pow(x2,2)*pow(y3,2)*pow(z2,2)*pow(x3,2)*pow(r2,2)+2*pow(x2,4)*pow(y3,2)*z2*z3*pow(r1,2)-2*pow(x2,4)*pow(y3,2)*z2*z3*pow(r3,2)-2*pow(x2,2)*pow(y3,3)*pow(z2,2)*y2*pow(r3,2)+2*pow(x2,3)*pow(y3,2)*pow(z2,2)*x3*pow(r1,2)-2*pow(x2,3)*pow(y3,2)*pow(z2,2)*x3*pow(r3,2)+2*pow(y2,4)*z3*pow(x3,2)*pow(y3,2)*z2+2*pow(y2,2)*z3*pow(x2,4)*z2*pow(x2,2)-4*pow(y2,2)*pow(z3,2)*pow(x3,2)*pow(x2,2)*pow(y3,2)+2*pow(y2,3)*pow(z3,2)*pow(x3,2)*pow(z2,2)*y3+2*pow(y2,2)*pow(z3,2)*pow(x3,3)*x2*pow(z2,2)-2*pow(y2,3)*pow(z3,2)*pow(x3,2)*pow(x2,2)*y3+2*pow(y2,3)*pow(z3,2)*pow(x3,2)*pow(r1,2)*y3+2*pow(y2,2)*z3*pow(x2,4)*z2*pow(r1,2)-2*pow(y2,2)*z3*pow(x2,4)*z2*pow(r2,2)+2*pow(y2,2)*pow(z3,2)*pow(x3,2)*pow(x2,2)*pow(r3,2)-2*pow(y2,3)*pow(z3,2)*pow(x3,2)*pow(r2,2)*y3+2*pow(y2,2)*pow(z3,2)*pow(x3,3)*x2*pow(r1,2)-2*pow(y2,2)*pow(z3,2)*pow(x3,3)*x2*pow(r2,2)-2*pow(y2,2)*pow(z3,2)*pow(y3,2)*pow(x2,3)*x3-4*pow(y2,4)*pow(z3,2)*pow(y3,2)*x2*x3+2*pow(y2,2)*pow(z3,2)*pow(y3,2)*pow(x2,2)*pow(r3,2)+4*pow(y2,3)*pow(z3,2)*y3*pow(x2,3)*x3+2*pow(y2,5)*pow(z3,2)*y3*x2*x3+4*y2*pow(y3,3)*pow(z2,2)*pow(x3,3)*x2+2*y2*pow(y3,6)*pow(z2,2)*x3*x2-2*pow(y2,2)*pow(y3,2)*pow(z2,2)*pow(x3,3)*x2-4*pow(y2,2)*pow(y3,4)*pow(z2,2)*x3*x2+2*pow(y2,2)*pow(y3,2)*pow(z2,2)*pow(x3,2)*pow(r2,2)-4*pow(z2,2)*pow(x2,4)*pow(x2,2)*y2*y3+2*z2*pow(x3,2)*pow(x2,2)*pow(y2,2)*pow(z3,3)+2*z2*pow(x3,2)*pow(y2,4)*z3*pow(r1,2)+2*pow(z2,2)*pow(x3,2)*pow(y2,3)*pow(r1,2)*y3-2*z2*pow(x3,2)*pow(y2,4)*z3*pow(r3,2)-2*pow(z2,2)*pow(x3,2)*pow(y2,3)*pow(r3,2)*y3-pow(z2,4)*pow(y3,2)*pow(x3,2)*pow(x2,2)-pow(z2,4)*pow(y3,2)*pow(x3,2)*pow(y2,2)+2*pow(z2,3)*pow(y3,4)*pow(x2,2)*z3+2*pow(z2,3)*pow(y3,2)*pow(x2,2)*pow(z3,3)+2*pow(x2,2)*pow(y3,6)*pow(z2,2)*y2-2*pow(x2,2)*pow(y3,4)*pow(z2,2)*pow(y2,2)-2*pow(x2,4)*pow(y3,2)*pow(z2,2)*pow(x3,2)+2*pow(x2,3)*pow(y3,2)*pow(z2,2)*pow(x3,3)+2*pow(x2,4)*pow(y3,4)*z2*z3+2*pow(x2,3)*pow(y3,4)*pow(z2,2)*x3+2*pow(x2,2)*pow(y3,4)*pow(z2,2)*pow(r2,2)-2*pow(y2,4)*pow(z3,2)*pow(x3,2)*pow(y3,2)+2*pow(y2,5)*pow(z3,2)*pow(x3,2)*y3+2*pow(y2,4)*z3*pow(x2,4)*z2+2*pow(y2,2)*pow(z3,2)*pow(x3,3)*pow(x2,3)-2*pow(y2,2)*pow(z3,2)*pow(x2,4)*pow(x2,2)+2*pow(y2,4)*pow(z3,2)*pow(x3,3)*x2+2*pow(y2,2)*z3*pow(x2,4)*pow(z2,3)-pow(y2,2)*pow(z3,4)*pow(x3,2)*pow(x2,2)+2*pow(y2,4)*pow(z3,2)*pow(x3,2)*pow(r3,2)-2*pow(y2,2)*pow(z3,2)*pow(y3,4)*pow(x2,2)+2*pow(y2,3)*pow(z3,2)*pow(y3,3)*pow(x2,2)-pow(y2,2)*pow(z3,4)*pow(y3,2)*pow(x2,2)-pow(y2,4)*pow(z3,2)*pow(y3,2)*pow(x2,2)+2*pow(y2,3)*pow(y3,3)*pow(z2,2)*pow(x3,2)-pow(y2,2)*pow(y3,4)*pow(z2,2)*pow(x3,2)-2*pow(y2,4)*pow(y3,2)*pow(z2,2)*pow(x3,2)-pow(z2,4)*pow(y3,4)*pow(x2,2)-2*pow(x2,4)*pow(y3,4)*pow(z2,2)-2*pow(y2,4)*pow(z3,2)*pow(x2,4)-pow(y2,4)*pow(z3,4)*pow(x3,2)-2*pow(z2,2)*pow(x2,4)*pow(y2,4)-pow(z2,4)*pow(x2,4)*pow(y2,2)-2*pow(x2,4)*pow(z3,2)*pow(y3,4)-pow(x2,4)*pow(z3,4)*pow(y3,2)-pow(z3,2)*pow(y2,6)*pow(x3,2)-pow(x3,6)*pow(z2,2)*pow(y2,2)-pow(z3,2)*pow(x2,6)*pow(y3,2)-2*pow(y2,4)*pow(x2,4)*pow(y3,2)+2*pow(y2,4)*pow(x2,4)*pow(r3,2)+2*pow(y2,5)*pow(x2,4)*y3-pow(y2,4)*pow(x3,2)*pow(r1,4)-pow(y2,4)*pow(x3,2)*pow(y3,4)+2*pow(y2,5)*pow(x3,2)*pow(y3,3)-pow(y2,4)*pow(x3,2)*pow(r3,4)-pow(y2,6)*pow(x3,2)*pow(y3,2)-pow(y2,2)*pow(x2,4)*pow(r1,4)-pow(y2,2)*pow(x2,4)*pow(x2,4)+2*pow(y2,2)*pow(x3,5)*pow(x2,3)-pow(y2,2)*pow(x2,4)*pow(r2,4)-pow(y2,2)*pow(x3,6)*pow(x2,2)-2*pow(y2,4)*pow(x2,4)*pow(x2,2)+2*pow(y2,4)*pow(x2,4)*pow(r2,2)+2*pow(y2,4)*pow(x3,5)*x2+2*pow(x2,4)*pow(y3,6)*y2-2*pow(x2,4)*pow(y3,4)*pow(y2,2)+2*pow(x2,4)*pow(y3,4)*pow(r2,2)-pow(x2,2)*pow(y3,4)*pow(r1,4)-pow(x2,2)*pow(y3,6)*pow(y2,2)+2*pow(x2,2)*pow(y3,6)*pow(y2,3)-pow(x2,2)*pow(y3,4)*pow(y2,4)-pow(x2,2)*pow(y3,4)*pow(r2,4)-pow(x2,4)*pow(y3,2)*pow(r1,4)-pow(x2,6)*pow(y3,2)*pow(x3,2)+2*pow(x2,5)*pow(y3,2)*pow(x3,3)-pow(x2,4)*pow(y3,2)*pow(x2,4)-pow(x2,4)*pow(y3,2)*pow(r3,4)+2*pow(x2,5)*pow(y3,4)*x3-2*pow(x2,4)*pow(y3,4)*pow(x3,2)+2*pow(x2,4)*pow(y3,4)*pow(r3,2)-pow(y3,6)*pow(z2,2)*pow(x2,2)-pow(y2,4)*pow(x3,6)-pow(y2,6)*pow(x2,4)-pow(x2,6)*pow(y3,4)-pow(x2,4)*pow(y3,6)-2*z2*pow(x3,2)*pow(r1,2)*pow(y2,2)*z3*pow(r3,2)-2*z2*pow(y3,2)*pow(r2,2)*pow(x2,2)*z3*pow(r1,2)+2*z2*pow(y3,2)*pow(r2,2)*pow(x2,2)*z3*pow(r3,2)+2*pow(x2,4)*pow(y3,2)*z2*pow(z3,3)+2*y2*pow(r1,4)*pow(z2,2)*y3*x3*x2+2*pow(x2,2)*pow(y3,2)*z2*pow(y2,2)*z3*pow(r1,2)-8*pow(x2,2)*pow(y3,3)*z2*pow(r1,2)*y2*z3-2*pow(x2,2)*pow(y3,2)*z2*pow(y2,2)*z3*pow(r3,2)-8*pow(x2,3)*pow(y3,2)*z2*z3*pow(r1,2)*x3+2*pow(y2,2)*z3*pow(x3,2)*pow(r1,2)*pow(y3,2)*z2-8*pow(y2,3)*z3*pow(x3,2)*pow(r1,2)*z2*y3-2*pow(y2,2)*z3*pow(x3,2)*z2*pow(y3,2)*pow(r2,2)-8*pow(y2,2)*z3*pow(x3,3)*z2*pow(r1,2)*x2-4*pow(y2,2)*pow(z3,2)*pow(y3,2)*x2*pow(z2,2)*x3-4*pow(y2,2)*pow(z3,2)*pow(y3,2)*x2*pow(r1,2)*x3+4*pow(y2,2)*pow(z3,2)*pow(y3,2)*x2*pow(r2,2)*x3-4*pow(y2,3)*z3*y3*z2*pow(x3,3)*x2-4*pow(y2,3)*z3*pow(y3,3)*z2*x3*x2-4*pow(y2,3)*pow(z3,3)*y3*z2*x3*x2+4*pow(y2,3)*pow(z3,2)*y3*x2*pow(z2,2)*x3-4*pow(y2,3)*pow(z3,2)*y3*x2*pow(r2,2)*x3-4*y2*pow(y3,3)*z2*pow(x2,3)*z3*x3+4*y2*pow(y3,3)*pow(z2,2)*x3*x2*pow(z3,2)-4*y2*pow(y3,3)*pow(z2,3)*x2*z3*x3-4*y2*pow(y3,3)*pow(z2,2)*x3*x2*pow(r3,2)-4*pow(y2,2)*pow(y3,2)*pow(z2,2)*x3*pow(r1,2)*x2+4*pow(y2,2)*pow(y3,2)*pow(z2,2)*x3*x2*pow(r3,2)-4*pow(z2,2)*pow(x3,2)*pow(x2,2)*y2*pow(z3,2)*y3+2*z2*pow(x3,2)*pow(x2,2)*pow(y2,2)*z3*pow(r1,2)-4*pow(z2,2)*pow(x3,2)*pow(x2,2)*y2*pow(r1,2)*y3-2*z2*pow(x3,2)*pow(x2,2)*pow(y2,2)*z3*pow(r3,2)+4*pow(z2,2)*pow(x3,2)*pow(x2,2)*y2*pow(r3,2)*y3-4*pow(z2,3)*pow(x3,3)*x2*y2*z3*y3+4*pow(z2,2)*pow(x3,3)*x2*y2*pow(z3,2)*y3-4*z2*pow(x3,3)*pow(x2,3)*y3*y2*z3-4*pow(z2,2)*pow(x3,3)*x2*y2*pow(r3,2)*y3+4*pow(x2,3)*pow(z3,2)*x3*y2*pow(z2,2)*y3-4*pow(x2,3)*pow(z3,3)*x3*y2*z2*y3-4*pow(x2,3)*pow(z3,2)*x3*y2*pow(r2,2)*y3+2*pow(x2,2)*z3*pow(x3,2)*pow(r1,2)*pow(y3,2)*z2-4*pow(x2,2)*pow(z3,2)*pow(x3,2)*pow(r1,2)*y3*y2-2*pow(x2,2)*z3*pow(x3,2)*z2*pow(y3,2)*pow(r2,2)+4*pow(x2,2)*pow(z3,2)*pow(x3,2)*y2*pow(r2,2)*y3-4*y2*pow(z3,3)*pow(z2,3)*y3*x3*x2+2*y2*pow(z3,2)*pow(z2,4)*y3*x2*x3+2*y2*pow(z3,4)*pow(z2,2)*y3*x3*x2-2*pow(r1,2)*pow(y3,2)*z2*pow(x2,2)*z3*pow(r3,2)-2*pow(y2,2)*z3*pow(r1,2)*z2*pow(x3,2)*pow(r2,2)+2*pow(r1,4)*y3*y2*pow(z3,2)*x2*x3+2*pow(z2,2)*pow(x3,5)*pow(y2,2)*x2+2*pow(z2,2)*pow(x2,4)*pow(y2,3)*y3+2*z2*pow(x3,2)*pow(y2,4)*pow(z3,3)+2*pow(z2,2)*pow(x2,4)*pow(y2,2)*pow(r2,2)-pow(z2,2)*pow(x2,4)*pow(x2,2)*pow(y3,2)+2*pow(x2,5)*pow(z3,2)*x3*pow(y3,2)-pow(x2,4)*pow(z3,2)*pow(x3,2)*pow(y2,2)-2*pow(x2,4)*pow(z3,2)*pow(x3,2)*pow(y3,2)+2*pow(x2,4)*pow(z3,2)*pow(y3,3)*y2+2*pow(x2,4)*pow(z3,2)*pow(y3,2)*pow(r3,2)-2*pow(y2,2)*pow(x2,4)*pow(z2,2)*pow(y3,2)-2*pow(z2,2)*pow(x3,2)*pow(x2,2)*pow(y3,4)-2*pow(x2,2)*pow(z3,2)*pow(y2,4)*pow(x3,2)-2*pow(x2,4)*pow(y3,2)*pow(y2,2)*pow(z3,2)+2*pow(y2,2)*pow(z3,3)*pow(z2,3)*pow(x3,2)-pow(z3,2)*pow(y2,2)*pow(r1,4)*pow(x3,2)-pow(z3,2)*pow(y2,2)*pow(z2,4)*pow(x3,2)-pow(z3,2)*pow(y2,2)*pow(r2,4)*pow(x3,2)-2*pow(z3,2)*pow(y2,4)*pow(x3,2)*pow(z2,2)+2*pow(z3,2)*pow(y2,4)*pow(x3,2)*pow(r2,2)-2*pow(x2,4)*pow(z2,2)*pow(y2,2)*pow(z3,2)+2*pow(x2,4)*pow(z2,2)*pow(y2,2)*pow(r3,2)-pow(x3,2)*pow(z2,2)*pow(y2,2)*pow(r1,4)-pow(x3,2)*pow(z2,2)*pow(y2,2)*pow(z3,4)-pow(x3,2)*pow(z2,2)*pow(y2,2)*pow(r3,4)-2*pow(z3,2)*pow(x2,4)*pow(y3,2)*pow(z2,2)+2*pow(z3,2)*pow(x2,4)*pow(y3,2)*pow(r2,2)-pow(z3,2)*pow(x2,2)*pow(r1,4)*pow(y3,2)-pow(z3,2)*pow(x2,2)*pow(z2,4)*pow(y3,2)-pow(z3,2)*pow(x2,2)*pow(r2,4)*pow(y3,2)+2*pow(y2,3)*pow(x2,4)*pow(r1,2)*y3-2*pow(y2,3)*pow(x2,4)*pow(x2,2)*y3-2*pow(y2,3)*pow(x2,4)*pow(r2,2)*y3+2*pow(y2,4)*pow(x3,3)*pow(r1,2)*x2-2*pow(y2,4)*pow(x3,3)*x2*pow(y3,2)-2*pow(z2,2)*pow(x3,2)*pow(x2,2)*pow(y3,2)*pow(z3,2)+2*pow(z2,2)*pow(x3,2)*pow(x2,2)*pow(y3,2)*pow(r3,2)-2*pow(x2,2)*pow(z3,2)*pow(y2,2)*pow(x3,2)*pow(z2,2)+2*pow(x2,2)*pow(z3,2)*pow(y2,2)*pow(x3,2)*pow(r2,2)+2*pow(x2,2)*pow(y3,2)*pow(y2,2)*pow(z3,2)*pow(r2,2)+2*pow(y2,2)*pow(z3,3)*z2*pow(x3,2)*pow(r1,2)-2*pow(y2,2)*pow(z3,3)*z2*pow(x3,2)*pow(r2,2)+2*pow(z2,3)*pow(x3,2)*pow(y2,2)*z3*pow(r1,2)-2*pow(z2,3)*pow(x3,2)*pow(y2,2)*z3*pow(r3,2)+2*pow(x2,2)*pow(z3,3)*pow(r1,2)*pow(y3,2)*z2-2*pow(x2,2)*pow(z3,3)*z2*pow(y3,2)*pow(r2,2)+2*pow(r1,4)*pow(y3,2)*z2*pow(x2,2)*z3+2*pow(y2,2)*z3*pow(r1,4)*z2*pow(x3,2)+2*pow(x2,2)*z3*pow(y3,4)*pow(r1,2)*z2+2*pow(x2,2)*pow(z3,2)*pow(y3,3)*pow(r1,2)*y2-2*pow(x2,2)*z3*pow(y3,4)*z2*pow(r2,2)-2*pow(x2,2)*pow(z3,2)*pow(y3,3)*y2*pow(r2,2)+2*pow(x2,3)*pow(z3,2)*pow(y3,2)*pow(r1,2)*x3-2*pow(x2,3)*pow(z3,2)*pow(y3,2)*pow(r2,2)*x3-2*pow(y2,2)*pow(z3,2)*pow(z2,2)*pow(y3,2)*pow(x2,2)-2*pow(y2,2)*pow(x3,2)*pow(z2,2)*pow(y3,2)*pow(z3,2)+2*pow(y2,2)*pow(x3,2)*pow(z2,2)*pow(y3,2)*pow(r3,2)-4*y2*pow(z3,2)*pow(z2,2)*y3*x3*x2*pow(r3,2)-4*y2*pow(z3,3)*z2*y3*x2*pow(r1,2)*x3+4*y2*pow(z3,3)*z2*y3*x2*pow(r2,2)*x3-4*pow(r1,4)*y3*y2*z3*z2*x3*x2-4*pow(r1,2)*y3*y2*pow(z3,2)*x2*pow(r2,2)*x3-4*y2*pow(r1,2)*pow(z2,2)*y3*x3*x2*pow(r3,2)+4*pow(r1,2)*y3*y2*z3*z2*x3*x2*pow(r3,2)+4*y2*pow(r1,2)*z2*y3*x2*z3*pow(r2,2)*x3+2*z2*pow(x3,2)*pow(r2,2)*pow(y2,2)*z3*pow(r3,2)+2*y2*pow(z3,2)*pow(r2,4)*y3*x2*x3+2*y2*pow(r3,4)*pow(z2,2)*y3*x3*x2+4*pow(y2,2)*x3*x2*pow(y3,2)*pow(r1,2)*pow(r3,2)+4*pow(y2,2)*x3*x2*pow(y3,2)*pow(r1,2)*pow(r2,2)-4*pow(y2,2)*x3*x2*pow(y3,2)*pow(r3,2)*pow(r2,2)+4*y2*pow(x3,2)*pow(x2,2)*y3*pow(r1,2)*pow(r2,2)+4*y2*pow(x3,2)*pow(x2,2)*y3*pow(r1,2)*pow(r3,2)-4*y2*pow(x3,2)*pow(x2,2)*y3*pow(r2,2)*pow(r3,2)-4*pow(y2,3)*x3*x2*y3*pow(z3,2)*pow(r3,2)-4*y2*x3*x2*pow(y3,3)*pow(r1,2)*pow(r2,2)-4*pow(y2,3)*x3*x2*y3*pow(r1,2)*pow(r3,2)-4*y2*x3*x2*pow(y3,3)*pow(z2,2)*pow(r2,2)-4*y2*x3*pow(x2,3)*y3*pow(r1,2)*pow(r3,2)-4*y2*pow(x3,3)*x2*y3*pow(r1,2)*pow(r2,2)-4*y2*pow(x3,3)*x2*y3*pow(z2,2)*pow(r2,2)-4*y2*x3*pow(x2,3)*y3*pow(z3,2)*pow(r3,2)-4*pow(z3,2)*pow(y2,2)*pow(r1,2)*pow(x3,2)*pow(z2,2)+2*pow(z3,2)*pow(y2,2)*pow(r1,2)*pow(x3,2)*pow(r2,2)+2*pow(z3,2)*pow(y2,2)*pow(z2,2)*pow(x3,2)*pow(r2,2)+2*pow(x3,2)*pow(z2,2)*pow(y2,2)*pow(z3,2)*pow(r3,2)+2*pow(x3,2)*pow(z2,2)*pow(y2,2)*pow(r1,2)*pow(r3,2)-4*pow(z3,2)*pow(x2,2)*pow(r1,2)*pow(y3,2)*pow(z2,2)+2*pow(z3,2)*pow(x2,2)*pow(r1,2)*pow(y3,2)*pow(r2,2)+2*pow(z3,2)*pow(x2,2)*pow(z2,2)*pow(y3,2)*pow(r2,2)-2*pow(y2,3)*pow(x3,2)*pow(r1,2)*y3*pow(r3,2)-2*pow(y2,3)*pow(x3,2)*pow(x2,2)*y3*pow(r1,2)+2*pow(y2,3)*pow(x3,2)*pow(x2,2)*y3*pow(r3,2)-2*pow(y2,3)*pow(x3,2)*pow(r1,2)*pow(r2,2)*y3+2*pow(y2,3)*pow(x3,2)*pow(r3,2)*pow(r2,2)*y3-2*pow(y2,2)*pow(x3,3)*pow(r1,2)*x2*pow(r2,2)-2*pow(y2,2)*pow(x3,3)*pow(r1,2)*x2*pow(y3,2)-2*pow(y2,2)*pow(x3,3)*pow(r1,2)*x2*pow(r3,2)+2*pow(y2,2)*pow(x3,3)*pow(r2,2)*x2*pow(y3,2)+2*pow(y2,2)*pow(x3,3)*pow(r2,2)*x2*pow(r3,2)+2*pow(y2,2)*pow(x3,2)*pow(r1,2)*pow(y3,2)*pow(r2,2)+4*pow(y2,2)*pow(x3,2)*pow(x2,2)*pow(y3,2)*pow(r2,2)+2*pow(y2,2)*pow(x3,2)*pow(r1,2)*pow(x2,2)*pow(r3,2)+4*pow(y2,2)*pow(x3,2)*pow(x2,2)*pow(y3,2)*pow(r3,2)-8*pow(y2,3)*pow(x3,3)*pow(r1,2)*x2*y3-2*pow(x2,2)*pow(y3,3)*pow(r1,2)*y2*pow(x3,2)-2*pow(x2,2)*pow(y3,3)*pow(r1,2)*y2*pow(r3,2)-2*pow(x2,2)*pow(y3,3)*y2*pow(r1,2)*pow(r2,2)+2*pow(x2,2)*pow(y3,3)*y2*pow(x3,2)*pow(r2,2)+2*pow(x2,2)*pow(y3,3)*y2*pow(r3,2)*pow(r2,2)-2*pow(x2,3)*pow(y3,2)*pow(r1,2)*pow(y2,2)*x3-2*pow(x2,3)*pow(y3,2)*pow(r1,2)*pow(r2,2)*x3-2*pow(x2,3)*pow(y3,2)*pow(r1,2)*x3*pow(r3,2)+2*pow(x2,3)*pow(y3,2)*pow(y2,2)*x3*pow(r3,2)+2*pow(x2,3)*pow(y3,2)*pow(r2,2)*x3*pow(r3,2)+2*pow(x2,2)*pow(y3,2)*pow(y2,2)*pow(r1,2)*pow(r3,2)-4*y2*z3*pow(r2,2)*y3*z2*x3*x2*pow(r3,2)-4*pow(x2,4)*pow(y3,2)*pow(r1,2)*pow(x3,2)+2*pow(x2,4)*pow(y3,2)*pow(r1,2)*pow(r3,2)+2*pow(x2,3)*pow(y3,2)*pow(r1,2)*pow(x3,3)+2*pow(x2,4)*pow(y3,2)*pow(x3,2)*pow(r2,2)-2*pow(x2,5)*pow(y3,2)*x3*pow(r3,2)-2*pow(x2,3)*pow(y3,2)*pow(r2,2)*pow(x3,3)+2*pow(x2,4)*pow(y3,2)*pow(x3,2)*pow(r3,2)-pow(y3,2)*pow(z2,2)*pow(r1,4)*pow(x2,2)-pow(y3,2)*pow(z2,2)*pow(x2,2)*pow(z3,4)-pow(y3,2)*pow(z2,2)*pow(x2,2)*pow(r3,4)-2*pow(y3,4)*pow(z2,2)*pow(x2,2)*pow(z3,2)+2*pow(y3,4)*pow(z2,2)*pow(x2,2)*pow(r3,2)+4*pow(y2,3)*x3*pow(x2,3)*pow(y3,3)+4*pow(y2,3)*pow(x3,3)*x2*pow(y3,3)+2*y2*x3*pow(x2,5)*pow(y3,3)+2*pow(y2,3)*pow(x3,5)*x2*y3+2*pow(y2,3)*x3*x2*pow(y3,6)-4*pow(y2,4)*x3*x2*pow(y3,4)+2*pow(y2,5)*x3*x2*pow(y3,3)+2*y2*pow(x3,3)*pow(x2,5)*y3-4*y2*pow(x2,4)*pow(x2,4)*y3+2*pow(y2,5)*pow(x3,3)*x2*y3+2*y2*pow(x3,5)*pow(x2,3)*y3+2*y2*x3*pow(x2,3)*pow(y3,6)+4*pow(y2,3)*pow(x3,3)*pow(x2,3)*y3+4*y2*pow(x3,3)*pow(x2,3)*pow(y3,3)-2*pow(y2,4)*pow(x3,3)*x2*pow(r3,2)-2*pow(y2,5)*pow(x3,2)*pow(r3,2)*y3+2*pow(y2,4)*pow(x3,2)*pow(y3,2)*pow(r2,2)+2*pow(y2,3)*pow(x3,2)*pow(r1,2)*pow(y3,3)+2*pow(y2,3)*pow(x3,2)*pow(r1,4)*y3-4*pow(y2,4)*pow(x3,2)*pow(r1,2)*pow(y3,2)-3*pow(y2,4)*pow(x3,2)*pow(x2,2)*pow(y3,2)+2*pow(y2,4)*pow(x3,2)*pow(r1,2)*pow(r3,2)+2*pow(y2,5)*pow(x3,2)*pow(r1,2)*y3+2*pow(y2,4)*pow(x3,2)*pow(y3,2)*pow(r3,2)-2*pow(y2,3)*pow(x3,2)*pow(y3,3)*pow(r2,2)-pow(y2,2)*pow(x3,2)*pow(r1,4)*pow(y3,2)-3*pow(y2,2)*pow(x3,2)*pow(x2,4)*pow(y3,2)-pow(y2,2)*pow(x3,2)*pow(r2,4)*pow(y3,2)-pow(y2,2)*pow(x3,2)*pow(r1,4)*pow(x2,2)-3*pow(y2,2)*pow(x3,2)*pow(x2,2)*pow(y3,4)-pow(y2,2)*pow(x3,2)*pow(x2,2)*pow(r3,4)+2*pow(y2,2)*pow(x3,3)*pow(r1,4)*x2+2*pow(y2,2)*pow(x3,3)*pow(r1,2)*pow(x2,3)-4*pow(y2,2)*pow(x2,4)*pow(r1,2)*pow(x2,2)+2*pow(y2,2)*pow(x2,4)*pow(r1,2)*pow(r2,2)+2*pow(y2,2)*pow(x3,5)*pow(r1,2)*x2+2*pow(y2,2)*pow(x2,4)*pow(x2,2)*pow(r2,2)-2*pow(y2,2)*pow(x3,3)*pow(x2,3)*pow(r3,2)-2*pow(y2,2)*pow(x3,5)*pow(r2,2)*x2-3*pow(y2,2)*pow(x2,4)*pow(x2,2)*pow(y3,2)+2*pow(y2,2)*pow(x2,4)*pow(x2,2)*pow(r3,2)+2*pow(x2,4)*pow(y3,3)*y2*pow(r1,2)-2*pow(x2,4)*pow(y3,3)*y2*pow(x3,2)-2*pow(x2,4)*pow(y3,3)*y2*pow(r3,2)+2*pow(x2,3)*pow(y3,4)*pow(r1,2)*x3-2*pow(x2,3)*pow(y3,4)*pow(y2,2)*x3-2*pow(x2,3)*pow(y3,4)*pow(r2,2)*x3-2*pow(x2,2)*pow(y3,3)*pow(y2,3)*pow(r3,2)+2*pow(x2,2)*pow(y3,4)*pow(y2,2)*pow(r2,2)+2*pow(x2,2)*pow(y3,6)*pow(r1,2)*y2+2*pow(x2,2)*pow(y3,3)*pow(r1,4)*y2-4*pow(x2,2)*pow(y3,4)*pow(r1,2)*pow(y2,2)+2*pow(x2,2)*pow(y3,4)*pow(r1,2)*pow(r2,2)+2*pow(x2,2)*pow(y3,3)*pow(y2,3)*pow(r1,2)+2*pow(x2,2)*pow(y3,4)*pow(y2,2)*pow(r3,2)-2*pow(x2,2)*pow(y3,6)*y2*pow(r2,2)-pow(x2,2)*pow(y3,2)*pow(y2,2)*pow(r1,4)-pow(x2,2)*pow(y3,2)*pow(y2,2)*pow(r3,4)-pow(x2,2)*pow(y3,2)*pow(r1,4)*pow(x3,2)-pow(x2,2)*pow(y3,2)*pow(r2,4)*pow(x3,2)+2*pow(x2,3)*pow(y3,2)*pow(r1,4)*x3+2*pow(x2,5)*pow(y3,2)*pow(r1,2)*x3+2*pow(x2,2)*pow(y3,2)*pow(r1,2)*pow(x3,2)*pow(r2,2)-8*pow(x2,3)*pow(y3,3)*pow(r1,2)*y2*x3+2*pow(y3,2)*pow(z2,2)*pow(r1,2)*pow(x2,2)*pow(r3,2)+2*pow(y3,2)*pow(z2,2)*pow(x2,2)*pow(z3,2)*pow(r3,2)+4*pow(y2,4)*x3*x2*pow(y3,2)*pow(r3,2)+4*pow(y2,3)*x3*x2*pow(y3,3)*pow(z2,2)-4*pow(y2,3)*x3*x2*pow(y3,3)*pow(r2,2)-4*pow(y2,2)*x3*x2*pow(y3,4)*pow(r1,2)-4*pow(y2,2)*x3*x2*pow(y3,2)*pow(r1,4)+8*pow(y2,3)*x3*x2*pow(y3,3)*pow(r1,2)+4*y2*x3*pow(x2,3)*pow(y3,3)*pow(z2,2)-4*y2*x3*pow(x2,3)*pow(y3,3)*pow(r2,2)-4*pow(y2,4)*x3*x2*pow(y3,2)*pow(r1,2)+4*pow(y2,3)*pow(x3,3)*x2*y3*pow(z3,2)-4*pow(y2,3)*pow(x3,3)*x2*y3*pow(r3,2)+4*pow(y2,3)*x3*x2*pow(y3,3)*pow(z3,2)-4*pow(y2,3)*x3*x2*pow(y3,3)*pow(r3,2)+4*pow(y2,2)*x3*x2*pow(y3,4)*pow(r2,2)+2*y2*x3*x2*pow(y3,3)*pow(r1,4)+2*pow(y2,3)*x3*x2*y3*pow(r1,4)+2*pow(y2,3)*x3*x2*y3*pow(z3,4)+2*pow(y2,3)*x3*x2*y3*pow(r3,4)+2*y2*x3*x2*pow(y3,3)*pow(z2,4)+2*y2*x3*x2*pow(y3,3)*pow(r2,4)+2*y2*x3*pow(x2,3)*y3*pow(r1,4)+2*y2*pow(x3,3)*x2*y3*pow(r1,4)+2*y2*pow(x3,3)*x2*y3*pow(z2,4)+2*y2*pow(x3,3)*x2*y3*pow(r2,4)+2*y2*x3*pow(x2,3)*y3*pow(z3,4)+2*y2*x3*pow(x2,3)*y3*pow(r3,4)-4*y2*pow(x3,2)*pow(x2,2)*y3*pow(r1,4)-4*y2*pow(x3,2)*pow(x2,4)*y3*pow(r1,2)+8*y2*pow(x3,3)*pow(x2,3)*y3*pow(r1,2)-4*y2*pow(x2,4)*pow(x2,2)*y3*pow(r1,2)+4*y2*pow(x3,3)*pow(x2,3)*y3*pow(z2,2)-4*y2*pow(x3,3)*pow(x2,3)*y3*pow(r2,2)+4*y2*pow(x3,2)*pow(x2,4)*y3*pow(r3,2)+4*pow(y2,3)*pow(x3,3)*x2*y3*pow(z2,2)-4*pow(y2,3)*pow(x3,3)*x2*y3*pow(r2,2)+4*y2*pow(x2,4)*pow(x2,2)*y3*pow(r2,2)+4*y2*pow(x3,3)*pow(x2,3)*y3*pow(z3,2)-4*y2*pow(x3,3)*pow(x2,3)*y3*pow(r3,2)+4*y2*x3*pow(x2,3)*pow(y3,3)*pow(z3,2)-4*y2*x3*pow(x2,3)*pow(y3,3)*pow(r3,2)+16*pow(y2,2)*pow(x3,2)*pow(x2,2)*pow(y3,2)*pow(r1,2));
+      double b=(-pow(z2,3)*pow(y3,2)-pow(x2,2)*pow(y3,2)*z2-pow(y2,2)*z3*pow(x3,2)-pow(y2,2)*z3*pow(y3,2)+pow(y2,3)*z3*y3+y2*pow(y3,3)*z2-pow(y2,2)*pow(y3,2)*z2-z2*pow(x3,2)*pow(x2,2)-z2*pow(x3,2)*pow(y2,2)+z2*pow(x3,3)*x2+pow(x2,3)*z3*x3-pow(x2,2)*z3*pow(x3,2)-pow(x2,2)*z3*pow(y3,2)+y2*z3*pow(z2,2)*y3+y2*pow(x3,2)*z2*y3+y2*pow(z3,2)*z2*y3+z2*x3*x2*pow(y3,2)+z2*x3*x2*pow(z3,2)+x2*z3*pow(y2,2)*x3+x2*z3*pow(z2,2)*x3+pow(x2,2)*y3*y2*z3-pow(y2,2)*pow(z3,3)-pow(z2,3)*pow(x3,2)-pow(x2,2)*pow(z3,3)-pow(r1,2)*pow(y3,2)*z2-pow(y2,2)*z3*pow(r1,2)+pow(r1,2)*y3*y2*z3+y2*pow(r1,2)*z2*y3+z2*pow(y3,2)*pow(r2,2)-z2*pow(x3,2)*pow(r1,2)+z2*pow(x3,2)*pow(r2,2)-pow(x2,2)*z3*pow(r1,2)+pow(x2,2)*z3*pow(r3,2)+pow(y2,2)*z3*pow(r3,2)-y2*z3*pow(r2,2)*y3-y2*pow(r3,2)*z2*y3+z2*x3*pow(r1,2)*x2-z2*x3*x2*pow(r3,2)+x2*z3*pow(r1,2)*x3-x2*z3*pow(r2,2)*x3);
+      double c=(-2*y2*z3*z2*y3-2*z2*x3*x2*z3+pow(z3,2)*pow(y2,2)+pow(x3,2)*pow(z2,2)+pow(z3,2)*pow(x2,2)+pow(y2,2)*pow(x3,2)+pow(x2,2)*pow(y3,2)+pow(y3,2)*pow(z2,2)-2*y2*x3*x2*y3);
+
+      double x,y,z,za,zb;
+      if(a<0||c==0) 
+        return;
+      za=-1/2*(b-pow(a,(1/2)))/c;
+      zb=-1/2*(b+pow(a,(1/2)))/c;
+      if(za>zb)
+        z=zb;
+      else
+        z=za;
+      a=(2*z*z2*x3-2*x2*z*z3+pow(r1,2)*x2-pow(r1,2)*x3-pow(x2,2)*x3-pow(y2,2)*x3-pow(z2,2)*x3+pow(r2,2)*x3+x2*pow(x3,2)+x2*pow(y3,2)+x2*pow(z3,2)-x2*pow(r3,2));
+      b=(-2*y2*x3+2*x2*y3);
+      y=a/b;
+      x = 1/2*(pow(r1,2)+pow(x2,2)-2*y*y2+pow(y2,2)-2*z*z2+pow(z2,2)-pow(r2,2))/x2;
+
+      result[0] = x1 + x;
+      result[1] = y1 + y;
+      result[2] = z1 + z;
+
+      ROS_WARN("||| %f %f %f ||| ", result[0], result[1], result[2]);
+      return;
+    }
+
     //figure out where the arm is now  
     void get_current_joint_angles(double current_angles[14]){
       int i;
@@ -940,7 +1055,6 @@ class GripperSegmentationCollector
     cv::Mat cur_workspace_mask_;
     std_msgs::Header cur_camera_header_;
     XYZPointCloud cloud_;
-    XYZPointCloud cloud_acc_;
     int display_wait_ms_;
     int num_downsamples_;
     std::string workspace_frame_;
@@ -976,8 +1090,9 @@ class GripperSegmentationCollector
     std::vector<cv::KeyPoint> kpsc_;
     std::vector<cv::KeyPoint> kps_bad_;
     pcl::PointXYZ tcp_e_;
-    std::vector< cv::DMatch> good_matches_;
     //std::vector<Descriptor>  ds;
+    std::vector<cv::DMatch> good_matches_;
+
     Data ds;
     cv::Point tooltip_star_;
 };
