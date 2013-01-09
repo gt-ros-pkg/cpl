@@ -884,16 +884,32 @@ class GripperSegmentationCollector
             tcp_e_.z += c3d.z + d.z;
           }
         }
+
+        // RANSAC1
         double tcp_e2[3];
         RANSAC(ds, matches, good_matches, kps, tcp_e2);
         tcp_e_.x /= 3;
         tcp_e_.y /= 3;
         tcp_e_.z /= 3;
-        ROS_INFO("\n=============\n= Estimated TCP: **[%.4f, %.4f, %.4f]** [%.4f, %.4f %.4f] =\n===========", tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
 
+        // RANSAC 2
+        double fkpose[14];
+        get_fk_tooltip_pose(fkpose);
+        double tcp_e3[3];
+        for (int j = 0; j < 3; j++)
+          tcp_e3[j] = fkpose[j];
+        RANSAC2(ds, matches, good_matches, kps, tcp_e3);
+
+        // print 
+        ROS_INFO("\n=============\n= Est TCP: **[%.4f, %.4f, %.4f] ** [%.4f, %.4f, %.4f] ** [%.4f, %.4f %.4f] =\n===========", tcp_e3[0], tcp_e3[1], tcp_e3[2], tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
+        /*
         out.x = tcp_e2[0];
         out.y = tcp_e2[1];
         out.z = tcp_e2[2];
+        */
+        out.x = tcp_e3[0];
+        out.y = tcp_e3[1];
+        out.z = tcp_e3[2];
       }
       return good_matches;
     }
