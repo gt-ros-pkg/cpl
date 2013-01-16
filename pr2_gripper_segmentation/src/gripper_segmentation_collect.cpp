@@ -1,4 +1,4 @@
-/*********************************************************************
+/*
  *
  *  Copyright (c) 2012, Georgia Institute of Technology
  *  All rights reserved.
@@ -65,6 +65,7 @@
 
 // Boost
 #include <boost/shared_ptr.hpp>
+#include <boost/progress.hpp>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -212,7 +213,7 @@ class GripperSegmentationCollector
     textFile.open("/u/swl33/data/myData.csv");
 
     x_= 0.55;
-    y_= -0.11;
+    y_= 0.0;
     z_= -0.15;
     which_arm_ = "l";
     mode = 0;
@@ -329,11 +330,13 @@ class GripperSegmentationCollector
         cv::rectangle(color_frame, cv::Point(1,1), cv::Point(637,3), cv::Scalar(0, 255, 0), 2);
 
         // show current TCP
+        /*
         cv::circle(color_frame, tooltip_, 4, cv::Scalar(0, 255, 0), 4);
         pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y);
         std::ostringstream os;
         os << " [" << tcp.x << ", " << tcp.y << ", " << tcp.z << "]";
         cv::putText(color_frame, os.str(), tooltip_, 2, 0.5, cv::Scalar(0, 255, 0), 1);
+        */
       }
 
       for (unsigned int i = 0 ; i < kps_bad_.size(); i++)
@@ -363,15 +366,15 @@ class GripperSegmentationCollector
           cv::circle(color_frame, cv::Point(cp.x, cp.y), 5, cv::Scalar(200, 70, 200), 0);
         }
         cv::Point p = projectPointIntoImage(tcp_e_, "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
-        cv::circle(color_frame, p, 2, cv::Scalar(10, 10, 255), 2);
-        cv::circle(color_frame, p, 5, cv::Scalar(10, 10, 255), 1);
+        cv::circle(color_frame, p, 3, cv::Scalar(0, 0, 255), 3);
+        cv::circle(color_frame, p, 5, cv::Scalar(0, 0, 255), 3);
       }
       cv::imshow("what", color_frame);
     }
 
     XYZPointCloud averagePC(XYZPointCloud cloud1, XYZPointCloud cloud2)
     {
-      float alpha = 0.6;
+      float alpha = 0.0;
       for (int i = 0; i < 640; i++)
       {
         for (int j = 0; j < 480; j++)
@@ -437,24 +440,46 @@ class GripperSegmentationCollector
       pcl::PointXYZ est1 = printValue1(color_frame);
       pcl::PointXYZ est2 = printValue2(color_frame); 
 
-
+      int key = 0;
       mouseEvent m;
       cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
       std::ostringstream os;
       os << " [" << ++counter_ << "]";
       cv::putText(color_frame, os.str(), cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
-      cv::imshow("what", color_frame);
-      int key = 0;
-      key = cv::waitKey(15);
+      cv::SURF surf;
+      cv::Mat mask;
+      std::vector<cv::KeyPoint> keypoints;
+      surf(color_frame, mask, keypoints);
+      kps_ = keypoints;
+      kpso_ = keypoints;
 
-            // terminate if no key is pressed
+      // do matching and all 
+      if (ds.kp.size() > 0)
+      {
+        pcl::PointXYZ est3;
+        good_matches_ = matchAndQuery(ds, kps_, color_frame, &est3);
+        ROS_INFO("EST-Color[%f][%f %f %f]", pow(pow(est3.x-est1.x,2)+pow(est3.y-est1.y,2)+pow(est3.z-est1.z,2), 0.5) ,est3.x-est1.x,est3.y-est1.y,est3.z-est1.z);
+
+        ROS_DEBUG("E3-E1[%f][%f %f %f]", pow(pow(est3.x-est1.x,2)+pow(est3.y-est1.y,2)+pow(est3.z-est1.z,2), 0.5) ,est3.x-est1.x,est3.y-est1.y,est3.z-est1.z);
+        ROS_DEBUG("E3-E2[%f][%f %f %f]", pow(pow(est3.x-est2.x,2)+pow(est3.y-est2.y,2)+pow(est3.z-est2.z,2), 0.5) ,est3.x-est2.x,est3.y-est2.y,est3.z-est2.z);
+      }
+
+      // clear variables
+      setDisplay(color_frame.clone(), m);
+      cv::setMouseCallback("what", onMouse, (void*) &m);
+      key = cv::waitKey(5);
+
+      kpsc_.clear();
+      kps_bad_.clear();
+/*
+      // terminate if no key is pressed
       if (key < 32)
-        return;
+      return;
 
       // current point cloud is unorganized (because of + operation)
       // organize pc
 
-      /*========== End of Accumulation. Now GUI =========*/
+      // ========== End of Accumulation. Now GUI =========
       cv::SURF surf;
       cv::Mat mask;
       std::vector<cv::KeyPoint> keypoints;
@@ -471,7 +496,7 @@ class GripperSegmentationCollector
 
         ROS_INFO("E3-E1[%f][%f %f %f]", pow(pow(est3.x-est1.x,2)+pow(est3.y-est1.y,2)+pow(est3.z-est1.z,2), 0.5) ,est3.x-est1.x,est3.y-est1.y,est3.z-est1.z);
         ROS_INFO("E3-E2[%f][%f %f %f]", pow(pow(est3.x-est2.x,2)+pow(est3.y-est2.y,2)+pow(est3.z-est2.z,2), 0.5) ,est3.x-est2.x,est3.y-est2.y,est3.z-est2.z);
-      }
+        }
 
       // clear variables
       mode = 0;
@@ -479,63 +504,71 @@ class GripperSegmentationCollector
       kps_bad_.clear();
       setDisplay(color_frame.clone(), m);
       cv::setMouseCallback("what", onMouse, (void*) &m);
-
-      while (true)
+ */
+      if (counter_ < 5)
       {
-        // [n], [N] Next
-        if (key == 110 || key == 78)
-          break;
-        // [Space] revert the last insert
-        else if (key == 32 || key == 122 || key == 90)
-        {
-          if (kpsc_.size() > 0)
-          {
-            cv::KeyPoint k = kpsc_.back();
-            ROS_INFO("Reverting last insert at [%.3f %.3f]", k.pt.x, k.pt.y);
-            kps_.push_back(k);
-            kpsc_.erase(kpsc_.end());
-          }
-        }
-        // [Esc], [Q], [q] Exit
-        else if (key == 27 || key == 113 || key == 81)
-        {
-          ros::shutdown();
-          return;
-        }
-        process(m);
-        setDisplay(color_frame.clone(), m);
-        m.event = 0;
-        key = cv::waitKey(10);
-      };
-      ROS_INFO("Iteration Done: Added %d", (int)kpsc_.size());
-
-      /* ========== RESET VALUES BEFORE ACCUMULATION ========= */
-      cloud_ = cloud;
+        return;
+      }
       counter_ = 0;
 
-
-      /* ========== FEATURE STORAGE ===========*/
-      cv::SurfDescriptorExtractor surfDesc;
-      cv::Mat descriptors1;
-      surfDesc.compute(color_frame, kpsc_, descriptors1);
-
-      ds.kp = kpsc_;
-      ds.desc = descriptors1;
-      pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y); 
-
-      for (unsigned int i = 0; i < kpsc_.size(); i++)
+      if (mode == 0 )
       {
-        Distance d;
-        pcl::PointXYZ cur = cloud_.at(kpsc_.at(i).pt.x, kpsc_.at(i).pt.y);
-        d.x = tcp.x - cur.x;
-        d.y = tcp.y - cur.y;
-        d.z = tcp.z - cur.z;
-        //ds.dist.push_back(pow(pow(tcp.x-cur.x,2)+pow(tcp.y-cur.y,2)+pow(tcp.z-cur.z,2),0.5));
-        ds.dist.push_back(distance(tcp, cur));
-        ds.d.push_back(d);
+        while (true)
+        {
+          // [n], [N] Next
+          if (key == 110 || key == 78)
+            break;
+          // [Space] revert the last insert
+          else if (key == 32 || key == 122 || key == 90)
+          {
+            if (kpsc_.size() > 0)
+            {
+              cv::KeyPoint k = kpsc_.back();
+              ROS_INFO("Reverting last insert at [%.3f %.3f]", k.pt.x, k.pt.y);
+              kps_.push_back(k);
+              kpsc_.erase(kpsc_.end());
+            }
+          }
+          // [Esc], [Q], [q] Exit
+          else if (key == 27 || key == 113 || key == 81)
+          {
+            ros::shutdown();
+            return;
+          }
+          process(m);
+          setDisplay(color_frame.clone(), m);
+          m.event = 0;
+          key = cv::waitKey(2);
+        };
+        ROS_INFO("Iteration Done: Added %d", (int)kpsc_.size());
+
+        /* ========== RESET VALUES BEFORE ACCUMULATION ========= */
+        cloud_ = cloud;
+        // counter_ = 0;
+
+
+        /* ========== FEATURE STORAGE ===========*/
+        cv::SurfDescriptorExtractor surfDesc;
+        cv::Mat descriptors1;
+        surfDesc.compute(color_frame, kpsc_, descriptors1);
+
+        ds.kp = kpsc_;
+        ds.desc = descriptors1;
+        pcl::PointXYZ tcp = cloud_.at(tooltip_.x, tooltip_.y); 
+
+        for (unsigned int i = 0; i < kpsc_.size(); i++)
+        {
+          Distance d;
+          pcl::PointXYZ cur = cloud_.at(kpsc_.at(i).pt.x, kpsc_.at(i).pt.y);
+          d.x = tcp.x - cur.x;
+          d.y = tcp.y - cur.y;
+          d.z = tcp.z - cur.z;
+          //ds.dist.push_back(pow(pow(tcp.x-cur.x,2)+pow(tcp.y-cur.y,2)+pow(tcp.z-cur.z,2),0.5));
+          ds.dist.push_back(distance(tcp, cur));
+          ds.d.push_back(d);
+        }
+
       }
-
-
       // Downsample everything first
       /*
          cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
@@ -572,7 +605,7 @@ class GripperSegmentationCollector
       // ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
       //#else
       counter++;
-      y_+= 0.10;
+      y_+= 0.025;
       if (y_ > 0.35)
       {
         y_ = -0.2;
@@ -808,7 +841,7 @@ class GripperSegmentationCollector
         y0 = m0.m01/m0.m00;
 
         cv::circle(color_frame, cv::Point(x0, y0), 4, cv::Scalar(50, 255, 50), 3);
-        ROS_DEBUG("Tape >> [%f, %f, %f]", cloud_.at(x0, y0).x, cloud_.at(x0, y0).y, cloud_.at(x0, y0).z);
+        ROS_INFO("Tape >> [%f, %f, %f]", cloud_.at(x0, y0).x, cloud_.at(x0, y0).y, cloud_.at(x0, y0).z);
         return cloud_.at(x0,y0);
       }
       return pcl::PointXYZ();
@@ -821,7 +854,7 @@ class GripperSegmentationCollector
         double gripper_pose[14];
         get_fk_tooltip_pose(gripper_pose);
         // 0, 1, 2
-        ROS_DEBUG("FK   >> l:[%f, %f, %f]\tr:[%f, %f, %f]",
+        ROS_INFO("FK   >> l:[%f, %f, %f]\tr:[%f, %f, %f]",
             gripper_pose[0],gripper_pose[1],gripper_pose[2],
             gripper_pose[7],gripper_pose[8],gripper_pose[9]
             );
@@ -839,8 +872,9 @@ class GripperSegmentationCollector
       return pcl::PointXYZ();
     }
 
-    std::vector<cv::DMatch> matchAndQuery(Data ds, std::vector<cv::KeyPoint> kps, cv::Mat color_frame, pcl::PointXYZ out)
+    std::vector<cv::DMatch> matchAndQuery(Data ds, std::vector<cv::KeyPoint> kps, cv::Mat color_frame, pcl::PointXYZ *out)
     {
+      boost::progress_timer t;
       cv::SurfDescriptorExtractor surfDes;
       cv::Mat descriptors2;
       surfDes.compute(color_frame, kps, descriptors2);
@@ -903,15 +937,15 @@ class GripperSegmentationCollector
 
 
         // print 
-        ROS_INFO("\n=============\n= Est TCP: **[%.4f, %.4f, %.4f] ** [%.4f, %.4f, %.4f] ** [%.4f, %.4f %.4f] =\n===========", tcp_e3[0], tcp_e3[1], tcp_e3[2], tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
+        ROS_INFO("Est TCP: **[%f, %f, %f] ** [%.4f, %.4f, %.4f] ** [%.4f, %.4f %.4f]", tcp_e3[0], tcp_e3[1], tcp_e3[2], tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
         /*
         out.x = tcp_e2[0];
         out.y = tcp_e2[1];
         out.z = tcp_e2[2];
         */
-        out.x = tcp_e3[0];
-        out.y = tcp_e3[1];
-        out.z = tcp_e3[2];
+        out->x = tcp_e3[0];
+        out->y = tcp_e3[1];
+        out->z = tcp_e3[2];
       }
       return good_matches;
     }
@@ -927,8 +961,11 @@ class GripperSegmentationCollector
         ROS_WARN("Too little features on the target. Abort");
         return -1;
       }
+
       int nbar = 0;
       double dssbar =1e6;
+      std::vector<int> indbar; indbar.clear();
+
       for (int rep = 0; rep < 15; rep++)
       {
         double ybart[3];
@@ -937,9 +974,12 @@ class GripperSegmentationCollector
           ybart[i] = yo[i];
         int n = 0;
         double dss = 0;
-        // updates ybar
-        gradDescent(ds, ybart, kp, gm);
 
+        // updates ybar
+        std::vector<cv::DMatch> gm2(gm.begin(), gm.begin()+2);
+        gradDescent(ds, ybart, kp, gm2);
+
+        std::vector<int> inds; inds.clear();
         // find the consensus set
         for (unsigned int i = 0; i < gm.size(); i++)
         {
@@ -948,11 +988,12 @@ class GripperSegmentationCollector
             pcl::PointXYZ xi_pc = cloud_.at(kp[ci].pt.x, kp[ci].pt.y);
             double xi[3] = {xi_pc.x, xi_pc.y, xi_pc.z};
             double cur_dist = distance(ybart, xi);
-            if (fabs(cur_dist - ds.dist[pi]) < fabs(ds.dist[pi])*0.5)
+            if (!isnan(cur_dist) && fabs(cur_dist - ds.dist[pi]) < ds.dist[pi]*0.5)
             {
               // ROS_DEBUG("RANSAC2 >> curdist[%f] dsdist[%f]", cur_dist, ds.dist[pi]);
               dss += fabs(cur_dist - ds.dist[pi]);
               n++;
+              inds.push_back(i);
             }
         }
 
@@ -960,12 +1001,22 @@ class GripperSegmentationCollector
         if ((n > nbar) || (n == nbar && (dss < dssbar)))
         {
           nbar = n;
-          ybar = ybart;
+          for (int i = 0; i < 3; i++)
+            ybar[i] = ybart[i];
           dssbar = dss;
+          indbar = inds;
         }
         std::random_shuffle( gm.begin(), gm.end() );
       }
-      ROS_DEBUG("RANSAC2 [N=%2d] [%f, %f, %f]", nbar, ybar[0], ybar[1], ybar[2]); 
+      /*
+      std::vector<cv::DMatch> gmbar; gmbar.clear();
+      for (unsigned int i = 0; i < indbar.size(); i++)
+      {
+        gmbar.push_back(gm[indbar[i]]);
+      }
+      gradDescent(ds, ybar, kp, gmbar);
+      */ 
+      ROS_DEBUG("RANSAC2 [N=%2d] [%f, %f, %f]", nbar, ybar[0], ybar[1], ybar[2]);
       return 0;
     }
 
@@ -1007,7 +1058,7 @@ class GripperSegmentationCollector
         }
         std::random_shuffle( gm.begin(), gm.end() );
       }
-      ROS_INFO("RANSAC1 | %d | Res: [%f, %f, %f]", numBestMatch, result[0], result[1], result[2]);
+      ROS_DEBUG("RANSAC1 | %d | Res: [%f, %f, %f]", numBestMatch, result[0], result[1], result[2]);
     }
 
     int numConsensus(Data ds, std::vector<cv::DMatch> matches, std::vector<cv::KeyPoint> kps, double estimate[3])
@@ -1033,8 +1084,9 @@ class GripperSegmentationCollector
       for (int trial = 0; trial < 100; trial++)
       {
         double grad[3] = {0, 0, 0};
+
         // gm is shuffled need only two
-        for (int i = 0; i < 2; i++)
+        for (unsigned int i = 0; i < gm.size(); i++)
         {
           int pi = gm[i].queryIdx;
           int ci = gm[i].trainIdx;
@@ -1048,10 +1100,10 @@ class GripperSegmentationCollector
         bool exit = false;
         for (int i = 0; i < 3; i++)
         {
-          int param = 10;
+          int param = 40/gm.size();
           // updating estimate using gradient
-          est[i] -= grad[i]/param;
-          if (grad[i] > 1e-15)
+          est[i] -= (grad[i]*param);
+          if (grad[i] > 1e-5)
             exit = false;
         }
         if (exit)
@@ -1257,8 +1309,8 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "gripper_seg");
 
   log4cxx::LoggerPtr my_logger = log4cxx::Logger::getLogger(ROSCONSOLE_DEFAULT_NAME);
-  // my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Info]);
-  my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Debug]);
+  my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Info]);
+  //my_logger->setLevel(ros::console::g_level_lookup[ros::console::levels::Debug]);
   ros::NodeHandle n;
   GripperSegmentationCollector vsa(n);
   ros::spin();
