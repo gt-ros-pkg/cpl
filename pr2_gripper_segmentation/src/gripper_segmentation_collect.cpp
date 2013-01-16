@@ -65,7 +65,6 @@
 
 // Boost
 #include <boost/shared_ptr.hpp>
-#include <boost/progress.hpp>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -88,6 +87,7 @@
 #include <time.h> // for srand(time(NULL))
 #include <cstdlib> // for MAX_RAND
 #include <sstream>
+#include <sys/time.h>
 
 // cpl_visual_features
 #include <cpl_visual_features/helpers.h>
@@ -403,6 +403,9 @@ class GripperSegmentationCollector
         ROS_INFO("[GripperCollector]Initialization: Camera Info Done");
 
       }
+      timespec t1, t2;
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
+
 
       cv::Mat color_frame, depth_frame, self_mask;
       cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
@@ -417,14 +420,19 @@ class GripperSegmentationCollector
       XYZPointCloud cloud;
       pcl::fromROSMsg(*cloud_msg, cloud);
       tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-          cloud.header.stamp, ros::Duration(0.9));
+          cloud.header.stamp, ros::Duration(0.3));
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
       cur_camera_header_ = img_msg->header;
       if (cloud_.size() == 0)
         cloud_ = cloud;
-      else
-        cloud_ = averagePC(cloud_, cloud);
+      //else
+      //  cloud_ = averagePC(cloud_, cloud);
 
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+      printf("SCB: "); printTime(t1, t2);
+
+
+      /*
       pr2_gripper_segmentation::GripperPose psrv;
       PoseStamped p;
       p.header.frame_id = workspace_frame_;
@@ -439,6 +447,7 @@ class GripperSegmentationCollector
 
       pcl::PointXYZ est1 = printValue1(color_frame);
       pcl::PointXYZ est2 = printValue2(color_frame); 
+
 
       int key = 0;
       mouseEvent m;
@@ -471,7 +480,8 @@ class GripperSegmentationCollector
 
       kpsc_.clear();
       kps_bad_.clear();
-/*
+      */
+/*==================
       // terminate if no key is pressed
       if (key < 32)
       return;
@@ -504,7 +514,9 @@ class GripperSegmentationCollector
       kps_bad_.clear();
       setDisplay(color_frame.clone(), m);
       cv::setMouseCallback("what", onMouse, (void*) &m);
- */
+================= */
+
+/*
       if (counter_ < 5)
       {
         return;
@@ -542,12 +554,12 @@ class GripperSegmentationCollector
         };
         ROS_INFO("Iteration Done: Added %d", (int)kpsc_.size());
 
-        /* ========== RESET VALUES BEFORE ACCUMULATION ========= */
+        // ========== RESET VALUES BEFORE ACCUMULATION ========= /
         cloud_ = cloud;
         // counter_ = 0;
 
 
-        /* ========== FEATURE STORAGE ===========*/
+        // ========== FEATURE STORAGE ===========/
         cv::SurfDescriptorExtractor surfDesc;
         cv::Mat descriptors1;
         surfDesc.compute(color_frame, kpsc_, descriptors1);
@@ -569,6 +581,10 @@ class GripperSegmentationCollector
         }
 
       }
+      */
+
+
+
       // Downsample everything first
       /*
          cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
@@ -874,10 +890,17 @@ class GripperSegmentationCollector
 
     std::vector<cv::DMatch> matchAndQuery(Data ds, std::vector<cv::KeyPoint> kps, cv::Mat color_frame, pcl::PointXYZ *out)
     {
-      boost::progress_timer t;
+      // profile
+      timespec t1, t2;
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
+
       cv::SurfDescriptorExtractor surfDes;
       cv::Mat descriptors2;
       surfDes.compute(color_frame, kps, descriptors2);
+
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+      printf("M&Q: "); printTime(t1, t2);
+
 
       cv::FlannBasedMatcher matcher;
       std::vector<cv::DMatch> matches;
@@ -898,12 +921,13 @@ class GripperSegmentationCollector
         if (matches[i].distance < 10 * min_dist)
         {
           good_matches.push_back(matches[i]);
-          // ROS_INFO("[Match %u: {%d}->{%d} %.4f]", i, matches[i].queryIdx, matches[i].trainIdx, matches[i].distance);
+          // ROS_DEBUG("[Match %u: {%d}->{%d} %.4f]", i, matches[i].queryIdx, matches[i].trainIdx, matches[i].distance);
         }
       }
       tcp_e_ = pcl::PointXYZ(0,0,0);
       if (good_matches.size() >= 3)
       {
+        /*
         for (unsigned int i = 0; i < 3; i++)
         {
           int pi = good_matches[i].queryIdx;
@@ -923,6 +947,7 @@ class GripperSegmentationCollector
         // RANSAC1
         double tcp_e2[3];
         RANSAC(ds, matches, good_matches, kps, tcp_e2);
+        */
 
         // RANSAC 2
         double fkpose[14];
@@ -935,9 +960,10 @@ class GripperSegmentationCollector
         tcp_e_.y = tcp_e3[1];
         tcp_e_.z = tcp_e3[2];
 
+        ROS_INFO("Est TCP: [%f, %f %f]", tcp_e_.x, tcp_e_.y, tcp_e_.z);
+        // print
+        // ROS_INFO("Est TCP: **[%f, %f, %f] ** [%.4f, %.4f, %.4f] ** [%.4f, %.4f %.4f]", tcp_e3[0], tcp_e3[1], tcp_e3[2], tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
 
-        // print 
-        ROS_INFO("Est TCP: **[%f, %f, %f] ** [%.4f, %.4f, %.4f] ** [%.4f, %.4f %.4f]", tcp_e3[0], tcp_e3[1], tcp_e3[2], tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
         /*
         out.x = tcp_e2[0];
         out.y = tcp_e2[1];
@@ -947,9 +973,16 @@ class GripperSegmentationCollector
         out->y = tcp_e3[1];
         out->z = tcp_e3[2];
       }
+
+
+
       return good_matches;
     }
-
+    void printTime(timespec start, timespec end)
+    {
+      //ROS_INFO("Time: %.6fms", (end.tv_nsec - start.tv_nsec)/1e6);
+      printf ("Time: %.6fms\n", (end.tv_nsec - start.tv_nsec)/1e6);
+    }
     int RANSAC2(Data ds, std::vector<cv::DMatch> m, std::vector<cv::DMatch> gm, std::vector<cv::KeyPoint> kp, double ybar[3]){
       // copy
       double yo[3];
@@ -966,7 +999,12 @@ class GripperSegmentationCollector
       double dssbar =1e6;
       std::vector<int> indbar; indbar.clear();
 
-      for (int rep = 0; rep < 15; rep++)
+      // profile
+      timespec t1, t2;
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
+
+
+      for (int rep = 0; rep < 12; rep++)
       {
         double ybart[3];
         // copying values
@@ -978,6 +1016,7 @@ class GripperSegmentationCollector
         // updates ybar
         std::vector<cv::DMatch> gm2(gm.begin(), gm.begin()+2);
         gradDescent(ds, ybart, kp, gm2);
+
 
         std::vector<int> inds; inds.clear();
         // find the consensus set
@@ -1008,14 +1047,16 @@ class GripperSegmentationCollector
         }
         std::random_shuffle( gm.begin(), gm.end() );
       }
-      /*
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+      // printf("RANSAC2: "); printTime(t1, t2);
+
+
       std::vector<cv::DMatch> gmbar; gmbar.clear();
       for (unsigned int i = 0; i < indbar.size(); i++)
       {
         gmbar.push_back(gm[indbar[i]]);
       }
       gradDescent(ds, ybar, kp, gmbar);
-      */ 
       ROS_DEBUG("RANSAC2 [N=%2d] [%f, %f, %f]", nbar, ybar[0], ybar[1], ybar[2]);
       return 0;
     }
@@ -1053,7 +1094,6 @@ class GripperSegmentationCollector
             result[1] = temp[1];
             result[2] = temp[2];
             numBestMatch = nm;
-
           }
         }
         std::random_shuffle( gm.begin(), gm.end() );
@@ -1079,9 +1119,13 @@ class GripperSegmentationCollector
       return count;
     }
 
-    void gradDescent(Data ds, double est[3], std::vector<cv::KeyPoint> kp, std::vector<cv::DMatch> gm)
+    int gradDescent(Data ds, double est[3], std::vector<cv::KeyPoint> kp, std::vector<cv::DMatch> gm)
     {
-      for (int trial = 0; trial < 100; trial++)
+      // profile
+      timespec t1, t2;
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
+
+      for (int trial = 0; trial < 50; trial++)
       {
         double grad[3] = {0, 0, 0};
 
@@ -1097,21 +1141,29 @@ class GripperSegmentationCollector
           grad[1] += (est[1]-xi[1])*temp;
           grad[2] += (est[2]-xi[2])*temp;
         }
-        bool exit = false;
+        int exit = 0;
         for (int i = 0; i < 3; i++)
         {
-          int param = 40/gm.size();
+          double param = 10/gm.size();
           // updating estimate using gradient
           est[i] -= (grad[i]*param);
-          if (grad[i] > 1e-5)
-            exit = false;
+          // ROS_WARN("%.6f*%f (%lu) =%.6f", grad[i], param, gm.size(), grad[i]*param);
+          if (isnan(grad[i])) exit = -1;
+          if (grad[i] > 1e-5) exit = 1;
+          if (grad[i] > 1) exit = -2;
         }
-        if (exit)
+        if (exit != 0)
         {
-          ROS_DEBUG("GradDesc: Finished at [%3d] Est: [%f, %f %f]", trial, est[0], est[1], est[2]); 
-          return;
+          ROS_WARN("GradDesc: Finished at [%3d with id: %d] Est: [%f, %f %f]", trial, exit, est[0], est[1], est[2]); 
+          clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+          // printf("gradDesc: "); printTime(t1, t2);
+          return exit;
         }
       }
+
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+      // printTime(t1, t2);
+      return 1;
       //ROS_DEBUG("GradDesc: Never finished Est: [%f, %f %f]", est[0], est[1], est[2]); 
     }
 
