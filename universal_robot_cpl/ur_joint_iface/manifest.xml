@@ -1,0 +1,15 @@
+<package>
+  <description brief="ur_joint_iface">
+
+     ur_joint_iface
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/ur_joint_iface</url>
+  <depend package="ur10_controller_manager"/>
+
+</package>
+
+
