@@ -91,9 +91,9 @@ class URController
     double q_act[6];
     double qd_act[6];
     double i_act[6];
-    double acc_x[20];
-    double acc_y[20];
-    double acc_z[20];
+    double acc_x[6];
+    double acc_y[6];
+    double acc_z[6];
     double tcp_force_scalar;
     double tcp_force[6];
     double tcp_speed[6];
@@ -103,7 +103,8 @@ class URController
     double qd_des[6];
     double qdd_des[6];
     double i_des[6];
-    double moment_des[20];
+    double moment_des[6];
+    double tcp_wrench[6];
     ///////////////////////////////////////////////////////////////////////////
 
     //////////////////////////// Robot Mode States ////////////////////////////
@@ -115,6 +116,12 @@ class URController
     bool is_power_button_pressed;  /* The big green button on the controller box */
     bool is_safety_signal_such_that_we_should_stop; /* This is from the safety stop interface */
     uint8_t joint_mode_ids[6];
+    ///////////////////////////////////////////////////////////////////////////
+
+    ////////////////////////// Robot Error Messages ///////////////////////////
+    struct message_t msg_buffer[20];
+    char msg_text_buffers[20][100];
+    int msg_count;
     ///////////////////////////////////////////////////////////////////////////
 
     /////////////////////////// Robot Joint Commands //////////////////////////
@@ -150,6 +157,8 @@ URController::URController(ros::NodeHandle* _nh) :
   js_pub.msg_.position.resize(6,-9999.0);
   js_pub.msg_.velocity.resize(6,-9999.0);
   js_pub.msg_.effort.resize(6,-9999.0);
+  for(int i=0;i<20;i++)
+    msg_buffer[i].text = msg_text_buffers[i];
 
   cmd_sub = _nh->subscribe<URJointCommand>("/ur_joint_command", 1, 
                                            &URController::cmdCallback, this);
@@ -179,6 +188,7 @@ void URController::getRobotStates()
   robotinterface_get_target(q_des, qd_des, qdd_des);
   robotinterface_get_target_current(i_des);
   robotinterface_get_target_moment(moment_des);
+  robotinterface_get_tcp_wrench(tcp_wrench);
 
   // mode states
   robot_mode_id = robotinterface_get_robot_mode();
@@ -194,6 +204,12 @@ void URController::getRobotStates()
   /* This is from the safety stop interface */
   for(i=0;i<6;i++)
     joint_mode_ids[i] = robotinterface_get_joint_mode(i);
+
+  // read error codes
+  msg_count = robotinterface_get_message_count();
+  for(i=0;i<msg_count;i++) {
+    robotinterface_get_message(&msg_buffer[i]);
+  }
 }
 
 void URController::pubRobotStates()
@@ -224,8 +240,9 @@ void URController::pubRobotStates()
       state_pub.msg_.qd_des[i] = qd_des[i];
       state_pub.msg_.qdd_des[i] = qdd_des[i];
       state_pub.msg_.i_des[i] = i_des[i];
+      state_pub.msg_.tcp_wrench[i] = tcp_wrench[i];
     }
-    for(i=0;i<20;i++) {
+    for(i=0;i<6;i++) {
       state_pub.msg_.acc_x[i] = acc_x[i];
       state_pub.msg_.acc_y[i] = acc_y[i];
       state_pub.msg_.acc_z[i] = acc_z[i];
@@ -251,6 +268,12 @@ void URController::pubRobotStates()
     for(i=0;i<6;i++) {
       mode_pub.msg_.joint_mode_ids[i] = joint_mode_ids[i];
       mode_pub.msg_.joint_modes[i] = JOINT_MODES[joint_mode_ids[i]-JOINT_MODE_BAR];
+    }
+    mode_pub.msg_.messages.resize(msg_count);
+    for(i=0;i<msg_count;i++) {
+      mode_pub.msg_.messages[i].timestamp = msg_buffer[i].timestamp;
+      mode_pub.msg_.messages[i].source = msg_buffer[i].source;
+      mode_pub.msg_.messages[i].text = msg_buffer[i].text;
     }
     mode_pub.msg_.header.stamp = now;
     mode_pub.msg_.header.seq = loop_counter;
@@ -309,8 +332,10 @@ void URController::commandJoints()
 {
   if(loop_counter - latest_cmd_loop >= CMD_TIMEOUT) {
     robotinterface_command_velocity(zero_vector);
+#if 0
     if(loop_counter % CONTROL_RATE*10 == 0)
       printf("No command, loop_counter: %d, latest_cmd_loop: %d\n", loop_counter, latest_cmd_loop);
+#endif
     return;
   }
 
