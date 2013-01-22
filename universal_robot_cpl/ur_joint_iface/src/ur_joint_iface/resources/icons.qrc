@@ -1,0 +1,14 @@
+<RCC>
+  <qresource prefix="resources">
+    <file>empty.png</file>
+    <file>ur10_arm.png</file>
+    <file>rotate_y_neg_off.png</file>
+    <file>rotate_y_neg_on.png</file>
+    <file>rotate_y_pos_off.png</file>
+    <file>rotate_y_pos_on.png</file>
+    <file>rotate_z_neg_off.png</file>
+    <file>rotate_z_neg_on.png</file>
+    <file>rotate_z_pos_off.png</file>
+    <file>rotate_z_pos_on.png</file>
+  </qresource>
+</RCC>
