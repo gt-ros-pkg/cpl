@@ -22,12 +22,20 @@ int main(int argc, char** argv)
   {
     max_displacement = atoi(argv[1]);
   }
+  int idx_a = 0;
+  int idx_b = 1;
+  if (argc > 2)
+  {
+    idx_a = atoi(argv[2]);
+    idx_b = atoi(argv[3]);
+  }
   bool write_images = true;
   double epsilon_cost = 9e3;
   int num_images = 57;
   cv::Mat kernel(5,5,CV_8UC1, 255);
   std::string base_path("/home/thermans/Dropbox/Data/push_learning_object_visual_data/set0/object_img");
   std::ofstream out_file("/home/thermans/Desktop/shape_scores.txt");
+  // for (int i = idx_a; i < idx_a+1; ++j)
   for (int i = 0; i < num_images-1; ++i)
   {
     // load images from disk
@@ -35,19 +43,26 @@ int main(int argc, char** argv)
     imageA_path << base_path << i << ".png";
     cv::Mat imageA = cv::imread(imageA_path.str(),0);
     cv::Mat imageA1(imageA.size(), imageA.type());
+    // Perform close
     cv::dilate(imageA, imageA1, kernel);
+    cv::erode(imageA1, imageA1, kernel);
     cv::imshow("imageA", imageA*255);
     cv::imshow("imageA1", imageA1*255);
     // for (int j = idx_b; j < idx_b+1; ++j)
     for (int j = i+1; j < num_images; ++j)
     {
-      if (i == 8 && j == 21)
+      if ((i == 3 && j == 16) ||
+          (i == 8 && j == 20) ||
+          (i == 8 && j == 21) ||
+          (i == 8 && j == 28))
         continue;
       std::stringstream imageB_path;
       imageB_path << base_path << j << ".png";
       cv::Mat imageB = cv::imread(imageB_path.str(), 0);
+      // Perform close
       cv::Mat imageB1(imageB.size(), imageB.type());
       cv::dilate(imageB, imageB1, kernel);
+      cv::erode(imageB1, imageB1, kernel);
       cv::imshow("imageB", imageB*255);
       cv::imshow("imageB1", imageB1*255);
       double score = compareShapes(imageA1, imageB1, epsilon_cost, write_images, "/home/thermans/Desktop", max_displacement);

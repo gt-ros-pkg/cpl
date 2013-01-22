@@ -261,12 +261,21 @@ void displayMatch(cv::Mat& edge_imageA, cv::Mat& edge_imageB,
 {
   cv::Mat disp_img;
   edge_imageA.copyTo(disp_img);
+  // Display image B as another color
   cv::cvtColor(disp_img, disp_img, CV_GRAY2BGR);
+  for (int r=0; r < disp_img.rows; r++)
+  {
+    for (int c=0; c < disp_img.cols; c++)
+    {
+      if (edge_imageB.at<uchar>(r,c) > 0)
+        disp_img.at<cv::Vec3b>(r,c) = cv::Vec3b(0,0,255);
+    }
+  }
+
   for (unsigned int i = 0; i < samplesA.size(); ++i)
   {
     cv::Point start_point = samplesA[i];
     cv::Point end_point = samplesB[path[i]];
-    // TODO: Make this a parameter
     if (std::abs(start_point.x - end_point.x) +
         std::abs(start_point.y - end_point.y) < max_displacement &&
         end_point.x > 0 && end_point.x < edge_imageB.rows &&
