@@ -9,27 +9,28 @@
 
 namespace cpl_visual_features
 {
-typedef std::vector<float> ShapeDescriptor;
+typedef std::vector<double> ShapeDescriptor;
 typedef std::vector<ShapeDescriptor> ShapeDescriptors;
 typedef std::vector<int> Path;
 typedef std::vector<cv::Point> Samples;
 
 double compareShapes(cv::Mat& imageA, cv::Mat& imageB,
-                     float epsilonCost = 9e5, bool write_images=false,
-                     std::string filePath=".");
+                     double epsilonCost = 9e5, bool write_images=false,
+                     std::string filePath=".", int max_displacement=30);
 std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
-                                    float percentage = 0.3);
+                                    double percentage = 0.3);
 ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int radius_bins = 5,
                                       unsigned int theta_bins = 12);
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
-                          float epsilonCost = 9e5,
+                          double epsilonCost = 9e5,
                           bool write_images=false,
                           std::string filePath=".");
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path);
 void displayMatch(cv::Mat& edge_imgA,
-                  std::vector<cv::Point>& samplesA,
+                  cv::Mat& edge_imgB,
+                  Samples& samplesA,
                   Samples& samplesB,
                   Path& path, int max_displacement=30,
                   std::string filePath=".");

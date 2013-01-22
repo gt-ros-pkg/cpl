@@ -2,11 +2,11 @@
 #include <cpl_visual_features/extern/lap_cpp/lap.h>
 #include <math.h>
 #include <string>
+#include <iostream>
 
 namespace cpl_visual_features
 {
-// TODO: Replace write_images with path
-double compareShapes(cv::Mat& imageA, cv::Mat& imageB, float epsilonCost, bool write_images, std::string filePath)
+double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool write_images, std::string filePath, int max_displacement)
 {
   cv::Mat edge_imageA(imageA.size(), imageA.type());
   cv::Mat edge_imageB(imageB.size(), imageB.type());
@@ -22,14 +22,11 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, float epsilonCost, bool w
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
   Samples samplesB = samplePoints(edge_imageB);
-
   // construct shape descriptors for each sample
   ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
   ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
-
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB,
-                                          epsilonCost, write_images);
-
+                                          epsilonCost, write_images, filePath);
   // save the result
   if (write_images)
   {
@@ -41,16 +38,15 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, float epsilonCost, bool w
   // (uses code from http://www.magiclogic.com/assignment.html)
   Path min_path;
   double score = getMinimumCostPath(cost_matrix, min_path);
-  displayMatch(edge_imageA, samplesA, samplesB, min_path);
-
+  displayMatch(edge_imageA, edge_imageB, samplesA, samplesB, min_path, max_displacement, filePath);
   int sizeA = samplesA.size();
   int sizeB = samplesB.size();
-  
+
   // TODO: Return correspondences as well
   return (score-(fabs(sizeA-sizeB)*epsilonCost));
 }
 
-Samples samplePoints(cv::Mat& edge_image, float percentage)
+Samples samplePoints(cv::Mat& edge_image, double percentage)
 {
   Samples samples;
   Samples all_points;
@@ -88,9 +84,9 @@ ShapeDescriptors constructDescriptors(Samples& samples,
 {
   ShapeDescriptors descriptors;
   ShapeDescriptor descriptor;
-  float max_radius = 0;
-  float radius, theta;
-  float x1, x2, y1, y2;
+  double max_radius = 0;
+  double radius, theta;
+  double x1, x2, y1, y2;
   unsigned int i, j, k, m;
 
   // find maximum radius for normalization purposes
@@ -158,13 +154,13 @@ ShapeDescriptors constructDescriptors(Samples& samples,
 
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
-                          float epsilonCost,
+                          double epsilonCost,
                           bool write_images,
                           std::string filePath)
 {
   int mat_size = std::max(descriptorsA.size(), descriptorsB.size());
-  cv::Mat cost_matrix(mat_size, mat_size, CV_32FC1, 0.0f);
-  float d_cost, hi, hj;
+  cv::Mat cost_matrix(mat_size, mat_size, CV_64FC1, 0.0f);
+  double d_cost, hi, hj;
   ShapeDescriptor& descriptorA = descriptorsA.front();
   ShapeDescriptor& descriptorB = descriptorsB.front();
 
@@ -173,7 +169,7 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
   {
     for (int j=0; j < cost_matrix.cols; j++)
     {
-      cost_matrix.at<float>(i,j) = epsilonCost;
+      cost_matrix.at<double>(i,j) = epsilonCost;
     }
   }
 
@@ -197,7 +193,7 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
         }
       }
       d_cost /= 2;
-      cost_matrix.at<float>(i,j) = d_cost;
+      cost_matrix.at<double>(i,j) = d_cost;
     }
   }
 
@@ -217,15 +213,17 @@ double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
   const int dim = cost_matrix.rows;
   LapCost **cost_mat;
   cost_mat = new LapCost*[dim];
+  // std::cout << "Allocating cost matrix" << std::endl;
   for (int r = 0; r < dim; ++r)
   {
     cost_mat[r] = new LapCost[dim];
   }
+  // std::cout << "Populating cost matrix" << std::endl;
   for (int r = 0; r < dim; ++r)
   {
     for (int c = 0; c < dim; ++c)
     {
-      cost_mat[r][c] = cost_matrix.at<float>(r,c);
+      cost_mat[r][c] = cost_matrix.at<double>(r,c);
     }
   }
   LapRow* rowsol;
@@ -236,34 +234,51 @@ double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
   colsol = new LapRow[dim];
   u = new LapCost[dim];
   v = new LapCost[dim];
+  // std::cout << "Running lap" << std::endl;
   LapCost match_cost = lap(dim, cost_mat, rowsol, colsol, u, v);
+  // std::cout << "Ran lap" << std::endl;
   for (int r = 0; r < dim; ++r)
   {
     int c = rowsol[r];
     path.push_back(c);
   }
+  // std::cout << "Converted lap result" << std::endl;
+  for (int r = 0; r < dim; ++r)
+  {
+    delete cost_mat[r];
+  }
+  delete cost_mat;
+  delete u;
+  delete v;
+  delete rowsol;
+  delete colsol;
   return match_cost;
 }
 
-void displayMatch(cv::Mat& edge_imageA, Samples& samplesA, Samples& samplesB,
+void displayMatch(cv::Mat& edge_imageA, cv::Mat& edge_imageB,
+                  Samples& samplesA, Samples& samplesB,
                   Path& path, int max_displacement, std::string filePath)
 {
   cv::Mat disp_img;
   edge_imageA.copyTo(disp_img);
+  cv::cvtColor(disp_img, disp_img, CV_GRAY2BGR);
   for (unsigned int i = 0; i < samplesA.size(); ++i)
   {
     cv::Point start_point = samplesA[i];
     cv::Point end_point = samplesB[path[i]];
     // TODO: Make this a parameter
     if (std::abs(start_point.x - end_point.x) +
-        std::abs(start_point.y - end_point.y) < max_displacement)
+        std::abs(start_point.y - end_point.y) < max_displacement &&
+        end_point.x > 0 && end_point.x < edge_imageB.rows &&
+        end_point.y > 0 && end_point.x < edge_imageB.cols)
     {
-      cv::line(disp_img, start_point, end_point, cv::Scalar(255,255,255));
+      cv::line(disp_img, start_point, end_point, cv::Scalar(0,255,0));
     }
   }
+  cv::imwrite((filePath+"/matches.bmp").c_str(), disp_img);
   cv::imshow("match", disp_img);
-  cv::imshow("edges", edge_imageA);
-  cvMoveWindow("edges",disp_img.cols+5,0);  //This function does not have a C++ equivalent. Strange...
-  cv::waitKey();
+  cv::imshow("edgesA", edge_imageA);
+  cv::imshow("edgesB", edge_imageB);
+  cv::waitKey(3);
 }
 };
