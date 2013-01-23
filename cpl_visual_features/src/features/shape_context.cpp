@@ -6,35 +6,65 @@
 
 namespace cpl_visual_features
 {
+
+void swapImages(cv::Mat& a, cv::Mat& b)
+{
+  cv::Mat c = a;
+  a = b;
+  b = c;
+}
+
+void swapSamples(Samples& a, Samples& b)
+{
+  Samples c = a;
+  a = b;
+  b = c;
+}
+
 double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool write_images,
                      std::string filePath, int max_displacement, std::string filePostFix)
 {
   cv::Mat edge_imageA(imageA.size(), imageA.type());
   cv::Mat edge_imageB(imageB.size(), imageB.type());
+  cv::Mat edge_imageA_raw;
+  imageA.copyTo(edge_imageA_raw);
+  cv::Mat edge_imageB_raw;
+  imageB.copyTo(edge_imageB_raw);
 
   // do edge detection
   cv::Canny(imageA, edge_imageA, 0.05, 0.5);
   cv::Canny(imageB, edge_imageB, 0.05, 0.5);
-  if (write_images)
-  {
-    std::stringstream image_a_path;
-    image_a_path << filePath << "/edge_imageA_raw" << filePostFix << ".bmp";
-    std::stringstream image_b_path;
-    image_b_path << filePath << "/edge_imageB_raw" << filePostFix << ".bmp";
-    cv::imwrite(image_a_path.str().c_str(), edge_imageA);
-    cv::imwrite(image_b_path.str().c_str(), edge_imageB);
-  }
+
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
   Samples samplesB = samplePoints(edge_imageB);
+  std::cout << "samplesA.size() " << samplesA.size() << std::endl;
+  std::cout << "samplesB.size() " << samplesB.size() << std::endl;
+
+  // Swap images if B is shorter than A;
+  if (samplesA.size() > samplesB.size())
+  {
+    swapImages(imageA, imageB);
+    swapImages(edge_imageA, edge_imageB);
+    swapImages(edge_imageA_raw, edge_imageB_raw);
+    swapSamples(samplesA, samplesB);
+  }
+
   // construct shape descriptors for each sample
   ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
   ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB,
                                           epsilonCost, write_images, filePath, filePostFix);
+
   // save the result
   if (write_images)
   {
+    std::stringstream image_a_path_raw;
+    image_a_path_raw << filePath << "/edge_imageA_raw" << filePostFix << ".bmp";
+    std::stringstream image_b_path_raw;
+    image_b_path_raw << filePath << "/edge_imageB_raw" << filePostFix << ".bmp";
+    cv::imwrite(image_a_path_raw.str().c_str(), edge_imageA_raw);
+    cv::imwrite(image_b_path_raw.str().c_str(), edge_imageB_raw);
     std::stringstream image_a_path;
     image_a_path << filePath << "/edge_imageA" << filePostFix << ".bmp";
     std::stringstream image_b_path;
@@ -272,27 +302,60 @@ void displayMatch(cv::Mat& edge_imageA, cv::Mat& edge_imageB,
                   Path& path, int max_displacement, std::string filePath,
                   std::string filePostFix)
 {
-  cv::Mat disp_img;
-  edge_imageA.copyTo(disp_img);
-  // Display image B as another color
-  cv::cvtColor(disp_img, disp_img, CV_GRAY2BGR);
-  for (int r=0; r < disp_img.rows; r++)
+  int a_row_offset = 0;
+  int b_row_offset = 0;
+  int a_col_offset = 0;
+  int b_col_offset = 0;
+  if (edge_imageA.rows > edge_imageB.rows)
   {
-    for (int c=0; c < disp_img.cols; c++)
+    b_row_offset = (edge_imageA.rows - edge_imageB.rows)/2;
+  }
+  else if (edge_imageA.rows < edge_imageB.rows)
+  {
+    a_row_offset = (edge_imageB.rows - edge_imageA.rows)/2;
+  }
+  if (edge_imageA.cols > edge_imageB.cols)
+  {
+    b_col_offset = (edge_imageA.cols - edge_imageB.cols)/2;
+  }
+  else if (edge_imageA.cols < edge_imageB.cols)
+  {
+    a_col_offset = (edge_imageB.cols - edge_imageA.cols)/2;
+  }
+  cv::Mat disp_img(std::max(edge_imageA.rows, edge_imageB.rows),
+                   std::max(edge_imageA.cols, edge_imageB.cols), CV_8UC3, cv::Scalar(0,0,0));
+  // Display image A
+  for (int r=0; r < edge_imageA.rows; r++)
+  {
+    for (int c=0; c < edge_imageA.cols; c++)
+    {
+      if (edge_imageA.at<uchar>(r,c) > 0)
+        disp_img.at<cv::Vec3b>(r+a_row_offset, c+a_col_offset) = cv::Vec3b(255,0,0);
+    }
+  }
+
+  // Display image B as another color
+  for (int r=0; r < edge_imageB.rows; r++)
+  {
+    for (int c=0; c < edge_imageB.cols; c++)
     {
       if (edge_imageB.at<uchar>(r,c) > 0)
-        disp_img.at<cv::Vec3b>(r,c) = cv::Vec3b(0,0,255);
+        disp_img.at<cv::Vec3b>(r+b_row_offset, c+b_col_offset) = cv::Vec3b(0,0,255);
     }
   }
 
   for (unsigned int i = 0; i < samplesA.size(); ++i)
   {
     cv::Point start_point = samplesA[i];
+    start_point.x += a_col_offset;
+    start_point.y += a_row_offset;
     cv::Point end_point = samplesB[path[i]];
+    end_point.x += b_col_offset;
+    end_point.y += b_row_offset;
     if (std::abs(start_point.x - end_point.x) +
         std::abs(start_point.y - end_point.y) < max_displacement &&
-        end_point.x > 0 && end_point.x < edge_imageB.rows &&
-        end_point.y > 0 && end_point.x < edge_imageB.cols)
+        end_point.x > 0 && end_point.x < disp_img.rows &&
+        end_point.y > 0 && end_point.x < disp_img.cols)
     {
       cv::line(disp_img, start_point, end_point, cv::Scalar(0,255,0));
     }

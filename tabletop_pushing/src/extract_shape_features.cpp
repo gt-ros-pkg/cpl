@@ -12,6 +12,7 @@
 using namespace cpl_visual_features;
 
 #define XY_RES 0.00075
+// #define single_pair 1
 
 cv::Mat getObjectSillhoute(std::string image_path)
 {
@@ -31,9 +32,12 @@ cv::Mat getObjectFootprint(std::string image_path, std::string cloud_path)
 {
   cv::Mat kernel(5,5,CV_8UC1, 255);
   cv::Mat obj_mask = cv::imread(image_path,0);
+  cv::Mat obj_mask_target;
+  obj_mask.copyTo(obj_mask_target);
   // Perform close
-  cv::dilate(obj_mask, obj_mask, kernel);
-  cv::erode(obj_mask, obj_mask, kernel);
+  cv::dilate(obj_mask, obj_mask_target, kernel);
+  cv::erode(obj_mask_target, obj_mask, kernel);
+  // cv::erode(obj_mask, obj_mask, kernel);
 
   pcl16::PointCloud<pcl16::PointXYZ>::Ptr cloud(new pcl16::PointCloud<pcl16::PointXYZ>);
 
@@ -118,8 +122,11 @@ int main(int argc, char** argv)
   std::stringstream out_file_path;
   out_file_path << base_out_path << "shape_scores.txt";
   std::ofstream out_file(out_file_path.str().c_str());
-  // for (int i = idx_a; i < idx_a+1; ++i)
+#ifdef single_pair
+  for (int i = idx_a; i < idx_a+1; ++i)
+#else
   for (int i = 0; i < num_images-1; ++i)
+#endif
   {
     std::stringstream imageA_path;
     imageA_path << base_path << "object_img" << i << ".png";
@@ -128,10 +135,13 @@ int main(int argc, char** argv)
     std::stringstream cloudA_path;
     cloudA_path << base_path << "cloud" << i << ".pcd";
     cv::Mat base_image_a = getObjectFootprint(imageA_path.str(), cloudA_path.str());
-    cv::imshow("base_a", base_image_a);
+    // cv::imshow("base_a", base_image_a);
 
-    // for (int j = idx_b; j < idx_b+1; ++j)
+#ifdef single_pair
+    for (int j = idx_b; j < idx_b+1; ++j)
+#else
     for (int j = i+1; j < num_images; ++j)
+#endif
     {
       std::stringstream imageB_path;
       imageB_path << base_path << "object_img"  << j << ".png";
@@ -140,7 +150,7 @@ int main(int argc, char** argv)
       std::stringstream cloudB_path;
       cloudB_path << base_path << "cloud" << j << ".pcd";
       cv::Mat base_image_b = getObjectFootprint(imageB_path.str(), cloudB_path.str());
-      cv::imshow("base_b", base_image_b);
+      // cv::imshow("base_b", base_image_b);
 
       std::stringstream post_fix;
       post_fix << "_" << i << "_" << j;
