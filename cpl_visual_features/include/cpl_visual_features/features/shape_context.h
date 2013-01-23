@@ -16,7 +16,8 @@ typedef std::vector<cv::Point> Samples;
 
 double compareShapes(cv::Mat& imageA, cv::Mat& imageB,
                      double epsilonCost = 9e5, bool write_images=false,
-                     std::string filePath=".", int max_displacement=30);
+                     std::string filePath=".", int max_displacement=30,
+                     std::string filePostFix="");
 std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
                                     double percentage = 0.3);
 ShapeDescriptors constructDescriptors(Samples& samples,
@@ -26,12 +27,12 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
                           double epsilonCost = 9e5,
                           bool write_images=false,
-                          std::string filePath=".");
+                          std::string filePath=".", std::string filePostFix="");
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path);
 void displayMatch(cv::Mat& edge_imgA,
                   cv::Mat& edge_imgB,
                   Samples& samplesA,
                   Samples& samplesB,
                   Path& path, int max_displacement=30,
-                  std::string filePath=".");
+                  std::string filePath=".", std::string filePostFix="");
 };

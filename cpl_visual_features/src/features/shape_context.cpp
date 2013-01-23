@@ -6,7 +6,8 @@
 
 namespace cpl_visual_features
 {
-double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool write_images, std::string filePath, int max_displacement)
+double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool write_images,
+                     std::string filePath, int max_displacement, std::string filePostFix)
 {
   cv::Mat edge_imageA(imageA.size(), imageA.type());
   cv::Mat edge_imageB(imageB.size(), imageB.type());
@@ -16,8 +17,12 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   cv::Canny(imageB, edge_imageB, 0.05, 0.5);
   if (write_images)
   {
-    cv::imwrite((filePath+"/edge_imageA_raw.bmp").c_str(), edge_imageA);
-    cv::imwrite((filePath+"/edge_imageB_raw.bmp").c_str(), edge_imageB);
+    std::stringstream image_a_path;
+    image_a_path << filePath << "/edge_imageA_raw" << filePostFix << ".bmp";
+    std::stringstream image_b_path;
+    image_b_path << filePath << "/edge_imageB_raw" << filePostFix << ".bmp";
+    cv::imwrite(image_a_path.str().c_str(), edge_imageA);
+    cv::imwrite(image_b_path.str().c_str(), edge_imageB);
   }
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
@@ -26,19 +31,24 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
   ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB,
-                                          epsilonCost, write_images, filePath);
+                                          epsilonCost, write_images, filePath, filePostFix);
   // save the result
   if (write_images)
   {
-    cv::imwrite((filePath+"/edge_imageA.bmp").c_str(), edge_imageA);
-    cv::imwrite((filePath+"/edge_imageB.bmp").c_str(), edge_imageB);
+    std::stringstream image_a_path;
+    image_a_path << filePath << "/edge_imageA" << filePostFix << ".bmp";
+    std::stringstream image_b_path;
+    image_b_path << filePath << "/edge_imageB" << filePostFix << ".bmp";
+    cv::imwrite(image_a_path.str().c_str(), edge_imageA);
+    cv::imwrite(image_b_path.str().c_str(), edge_imageB);
   }
 
   // do bipartite graph matching to find point correspondences
   // (uses code from http://www.magiclogic.com/assignment.html)
   Path min_path;
   double score = getMinimumCostPath(cost_matrix, min_path);
-  displayMatch(edge_imageA, edge_imageB, samplesA, samplesB, min_path, max_displacement, filePath);
+  displayMatch(edge_imageA, edge_imageB, samplesA, samplesB, min_path, max_displacement,
+               filePath, filePostFix);
   int sizeA = samplesA.size();
   int sizeB = samplesB.size();
 
@@ -156,7 +166,7 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
                           double epsilonCost,
                           bool write_images,
-                          std::string filePath)
+                          std::string filePath, std::string filePostFix)
 {
   int mat_size = std::max(descriptorsA.size(), descriptorsB.size());
   cv::Mat cost_matrix(mat_size, mat_size, CV_64FC1, 0.0f);
@@ -201,7 +211,9 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
   cost_matrix.convertTo(int_cost_matrix, CV_8UC1, 255);
   if (write_images)
   {
-    cv::imwrite((filePath+"/cost_matrix.bmp").c_str(), int_cost_matrix);
+    std::stringstream cost_matrix_path;
+    cost_matrix_path << filePath << "/cost_matrix" << filePostFix << ".bmp";
+    cv::imwrite(cost_matrix_path.str().c_str(), int_cost_matrix);
   }
 
   return cost_matrix;
@@ -257,7 +269,8 @@ double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
 
 void displayMatch(cv::Mat& edge_imageA, cv::Mat& edge_imageB,
                   Samples& samplesA, Samples& samplesB,
-                  Path& path, int max_displacement, std::string filePath)
+                  Path& path, int max_displacement, std::string filePath,
+                  std::string filePostFix)
 {
   cv::Mat disp_img;
   edge_imageA.copyTo(disp_img);
@@ -284,7 +297,9 @@ void displayMatch(cv::Mat& edge_imageA, cv::Mat& edge_imageB,
       cv::line(disp_img, start_point, end_point, cv::Scalar(0,255,0));
     }
   }
-  cv::imwrite((filePath+"/matches.bmp").c_str(), disp_img);
+  std::stringstream match_path;
+  match_path << filePath << "/matches" << filePostFix << ".bmp";
+  cv::imwrite(match_path.str().c_str(), disp_img);
   cv::imshow("match", disp_img);
   cv::imshow("edgesA", edge_imageA);
   cv::imshow("edgesB", edge_imageB);
