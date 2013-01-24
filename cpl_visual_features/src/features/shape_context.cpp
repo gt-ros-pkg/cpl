@@ -27,13 +27,13 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   cv::Mat edge_imageA(imageA.size(), imageA.type());
   cv::Mat edge_imageB(imageB.size(), imageB.type());
   cv::Mat edge_imageA_raw;
-  imageA.copyTo(edge_imageA_raw);
   cv::Mat edge_imageB_raw;
-  imageB.copyTo(edge_imageB_raw);
 
   // do edge detection
   cv::Canny(imageA, edge_imageA, 0.05, 0.5);
   cv::Canny(imageB, edge_imageB, 0.05, 0.5);
+  edge_imageA.copyTo(edge_imageA_raw);
+  edge_imageB.copyTo(edge_imageB_raw);
 
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
