@@ -70,7 +70,9 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/gpu/gpu.hpp>
 #include <opencv2/nonfree/features2d.hpp>
+
 
 // STL
 #include <vector>
@@ -218,6 +220,21 @@ class GripperSegmentationCollector
     which_arm_ = "l";
     mode = 0;
     counter_ = 0;
+
+    ROS_INFO("[GripperSeg] Initial Pose");
+    pr2_gripper_segmentation::GripperPose psrv;
+    PoseStamped p;
+    p.header.frame_id = workspace_frame_;
+    p.pose.position.x = x_;
+    p.pose.position.y = y_;
+    p.pose.position.z = z_;
+    p.pose.orientation.w = 1;
+    psrv.request.arm = which_arm_;
+    psrv.request.p = p;
+    if (p_client_.call(psrv)){}
+    else {ROS_WARN("Service Fail");}
+
+
     ROS_INFO("[GripperSeg] Node Initialization Complete");
   }
 
@@ -312,9 +329,13 @@ class GripperSegmentationCollector
     void setDisplay(cv::Mat color_frame, mouseEvent me)
     {
 
+      std::ostringstream os;
+      os << " [" << ++counter_ << "]";
+      cv::putText(color_frame, os.str(), cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 465, false);
+
       if (me.event != CV_EVENT_LBUTTONUP)
       {
-        cv::circle(color_frame, me.cursor, 4, cv::Scalar(255, 255, 255), 1);
+        cv::circle(color_frame, me.cursor, 4, cv::Scalar(235, 235, 235), 1);
       }
 
       cv::putText(color_frame, "Press [N] to move to next frame", cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
@@ -366,8 +387,7 @@ class GripperSegmentationCollector
           cv::circle(color_frame, cv::Point(cp.x, cp.y), 5, cv::Scalar(200, 70, 200), 0);
         }
         cv::Point p = projectPointIntoImage(tcp_e_, "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
-        cv::circle(color_frame, p, 3, cv::Scalar(0, 0, 255), 3);
-        cv::circle(color_frame, p, 5, cv::Scalar(0, 0, 255), 3);
+        cv::circle(color_frame, p, 4, cv::Scalar(255, 0, 0), 3);
       }
       cv::imshow("what", color_frame);
     }
@@ -403,58 +423,38 @@ class GripperSegmentationCollector
         ROS_INFO("[GripperCollector]Initialization: Camera Info Done");
 
       }
+
       timespec t1, t2;
       clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
 
 
       cv::Mat color_frame, depth_frame, self_mask;
-      cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
+      cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
       cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
 
       color_frame = color_cv_ptr->image;
       depth_frame = depth_cv_ptr->image;
-      // #define ROSBAG 1
-      // #ifndef ROSBAG
+
       // cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
       // self_mask = mask_cv_ptr->image;
       XYZPointCloud cloud;
       pcl::fromROSMsg(*cloud_msg, cloud);
       tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-          cloud.header.stamp, ros::Duration(0.3));
+          cloud.header.stamp, ros::Duration(33e-3));
       pcl_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+
+
       cur_camera_header_ = img_msg->header;
       if (cloud_.size() == 0)
         cloud_ = cloud;
-      //else
-      //  cloud_ = averagePC(cloud_, cloud);
+      else
+        cloud_ = averagePC(cloud_, cloud);
 
-      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
-      printf("SCB: "); printTime(t1, t2);
-
-
-      /*
-      pr2_gripper_segmentation::GripperPose psrv;
-      PoseStamped p;
-      p.header.frame_id = workspace_frame_;
-      p.pose.position.x = x_;
-      p.pose.position.y = y_;
-      p.pose.position.z = z_;
-      p.pose.orientation.w = 1;
-      psrv.request.arm = which_arm_;
-      psrv.request.p = p;
-      if (p_client_.call(psrv)){}
-      else {ROS_WARN("Service Fail");}
 
       pcl::PointXYZ est1 = printValue1(color_frame);
       pcl::PointXYZ est2 = printValue2(color_frame); 
 
-
-      int key = 0;
-      mouseEvent m;
-      cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
-      std::ostringstream os;
-      os << " [" << ++counter_ << "]";
-      cv::putText(color_frame, os.str(), cv::Point(5,15), 1, 1, cv::Scalar(255, 255, 255), 1, 8, false);
+      // Keypoint selection
       cv::SURF surf;
       cv::Mat mask;
       std::vector<cv::KeyPoint> keypoints;
@@ -462,25 +462,33 @@ class GripperSegmentationCollector
       kps_ = keypoints;
       kpso_ = keypoints;
 
-      // do matching and all 
+      clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+      // printf("SCB: "); printTime(t1, t2);
+
+
+
+
+      // if we have arm model, estimate the tooltip
       if (ds.kp.size() > 0)
       {
         pcl::PointXYZ est3;
         good_matches_ = matchAndQuery(ds, kps_, color_frame, &est3);
-        ROS_INFO("EST-Color[%f][%f %f %f]", pow(pow(est3.x-est1.x,2)+pow(est3.y-est1.y,2)+pow(est3.z-est1.z,2), 0.5) ,est3.x-est1.x,est3.y-est1.y,est3.z-est1.z);
+        ROS_FATAL("EST-Color[%f][%f %f %f]", pow(pow(est3.x-est1.x,2)+pow(est3.y-est1.y,2)+pow(est3.z-est1.z,2), 0.5) ,est3.x-est1.x,est3.y-est1.y,est3.z-est1.z);
 
         ROS_DEBUG("E3-E1[%f][%f %f %f]", pow(pow(est3.x-est1.x,2)+pow(est3.y-est1.y,2)+pow(est3.z-est1.z,2), 0.5) ,est3.x-est1.x,est3.y-est1.y,est3.z-est1.z);
         ROS_DEBUG("E3-E2[%f][%f %f %f]", pow(pow(est3.x-est2.x,2)+pow(est3.y-est2.y,2)+pow(est3.z-est2.z,2), 0.5) ,est3.x-est2.x,est3.y-est2.y,est3.z-est2.z);
       }
 
-      // clear variables
+      // GUI Related
+      int key = 0;
+      cv::namedWindow("what", CV_WINDOW_AUTOSIZE);
+      mouseEvent m;
       setDisplay(color_frame.clone(), m);
       cv::setMouseCallback("what", onMouse, (void*) &m);
       key = cv::waitKey(5);
-
       kpsc_.clear();
       kps_bad_.clear();
-      */
+
 /*==================
       // terminate if no key is pressed
       if (key < 32)
@@ -516,7 +524,6 @@ class GripperSegmentationCollector
       cv::setMouseCallback("what", onMouse, (void*) &m);
 ================= */
 
-/*
       if (counter_ < 5)
       {
         return;
@@ -558,8 +565,7 @@ class GripperSegmentationCollector
         cloud_ = cloud;
         // counter_ = 0;
 
-
-        // ========== FEATURE STORAGE ===========/
+        // ==========ARM MODEL STORAGE ===========/
         cv::SurfDescriptorExtractor surfDesc;
         cv::Mat descriptors1;
         surfDesc.compute(color_frame, kpsc_, descriptors1);
@@ -579,11 +585,7 @@ class GripperSegmentationCollector
           ds.dist.push_back(distance(tcp, cur));
           ds.d.push_back(d);
         }
-
       }
-      */
-
-
 
       // Downsample everything first
       /*
@@ -620,6 +622,8 @@ class GripperSegmentationCollector
        */ 
       // ROS_INFO("[%u][%f %f %f] Sampled", counter, x_, y_,z_);
       //#else
+
+      // Move the arm
       counter++;
       y_+= 0.025;
       if (y_ > 0.35)
@@ -634,13 +638,19 @@ class GripperSegmentationCollector
           {
             z_ = -0.2;
           }
-
         }
       }
-
-      //cv::imshow("color", color_frame);
-      //cv::waitKey(10);
-      //#endif
+      pr2_gripper_segmentation::GripperPose psrv;
+      PoseStamped p;
+      p.header.frame_id = workspace_frame_;
+      p.pose.position.x = x_;
+      p.pose.position.y = y_;
+      p.pose.position.z = z_;
+      p.pose.orientation.w = 1;
+      psrv.request.arm = which_arm_;
+      psrv.request.p = p;
+      if (p_client_.call(psrv)){}
+      else {ROS_WARN("Service Fail");}
     }
 
 
@@ -877,7 +887,7 @@ class GripperSegmentationCollector
 
         cv::Point lgp = projectPointIntoImage(pcl::PointXYZ(gripper_pose[0], gripper_pose[1], gripper_pose[2]), "/torso_lift_link", "/head_mount_kinect_rgb_optical_frame", tf_);
 
-        cv::circle(color_frame, lgp, 4, cv::Scalar(255, 50, 50), 3);
+        cv::circle(color_frame, lgp, 4, cv::Scalar(0, 0, 255), 3);
 
         return pcl::PointXYZ(gripper_pose[0],gripper_pose[1],gripper_pose[2]);
       }
@@ -899,7 +909,7 @@ class GripperSegmentationCollector
       surfDes.compute(color_frame, kps, descriptors2);
 
       clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
-      printf("M&Q: "); printTime(t1, t2);
+      // printf("M&Q: "); printTime(t1, t2);
 
 
       cv::FlannBasedMatcher matcher;
@@ -955,12 +965,12 @@ class GripperSegmentationCollector
         double tcp_e3[3];
         for (int j = 0; j < 3; j++)
           tcp_e3[j] = fkpose[j];
-        RANSAC2(ds, matches, good_matches, kps, tcp_e3);
+        int n = RANSAC2(ds, matches, good_matches, kps, tcp_e3);
         tcp_e_.x = tcp_e3[0];
         tcp_e_.y = tcp_e3[1];
         tcp_e_.z = tcp_e3[2];
 
-        ROS_INFO("Est TCP: [%f, %f %f]", tcp_e_.x, tcp_e_.y, tcp_e_.z);
+        ROS_INFO("EST[%2d]: [%f, %f %f]", n, tcp_e_.x, tcp_e_.y, tcp_e_.z);
         // print
         // ROS_INFO("Est TCP: **[%f, %f, %f] ** [%.4f, %.4f, %.4f] ** [%.4f, %.4f %.4f]", tcp_e3[0], tcp_e3[1], tcp_e3[2], tcp_e2[0],tcp_e2[1],tcp_e2[2], tcp_e_.x, tcp_e_.y, tcp_e_.z);
 
@@ -981,7 +991,7 @@ class GripperSegmentationCollector
     void printTime(timespec start, timespec end)
     {
       //ROS_INFO("Time: %.6fms", (end.tv_nsec - start.tv_nsec)/1e6);
-      printf ("Time: %.6fms\n", (end.tv_nsec - start.tv_nsec)/1e6);
+      ROS_INFO ("Time: %.6fms\n", (end.tv_sec - start.tv_sec)*1e3 + (end.tv_nsec - start.tv_nsec)/1e6);
     }
     int RANSAC2(Data ds, std::vector<cv::DMatch> m, std::vector<cv::DMatch> gm, std::vector<cv::KeyPoint> kp, double ybar[3]){
       // copy
@@ -997,14 +1007,14 @@ class GripperSegmentationCollector
 
       int nbar = 0;
       double dssbar =1e6;
-      std::vector<int> indbar; indbar.clear();
+      std::vector<int> conbar; conbar.clear();
 
       // profile
       timespec t1, t2;
       clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
 
 
-      for (int rep = 0; rep < 12; rep++)
+      for (int rep = 0; rep < 14; rep++)
       {
         double ybart[3];
         // copying values
@@ -1015,35 +1025,40 @@ class GripperSegmentationCollector
 
         // updates ybar
         std::vector<cv::DMatch> gm2(gm.begin(), gm.begin()+2);
-        gradDescent(ds, ybart, kp, gm2);
-
-
-        std::vector<int> inds; inds.clear();
-        // find the consensus set
-        for (unsigned int i = 0; i < gm.size(); i++)
+        int res = gradDescent(ds, ybart, kp, gm2);
+        if (res == 0) 
         {
+          std::vector<int> cons; cons.clear();
+          // find the consensus set
+          for (unsigned int i = 0; i < gm.size(); i++)
+          {
             int pi = gm[i].queryIdx;
             int ci = gm[i].trainIdx;
             pcl::PointXYZ xi_pc = cloud_.at(kp[ci].pt.x, kp[ci].pt.y);
             double xi[3] = {xi_pc.x, xi_pc.y, xi_pc.z};
             double cur_dist = distance(ybart, xi);
-            if (!isnan(cur_dist) && fabs(cur_dist - ds.dist[pi]) < ds.dist[pi]*0.5)
+            if (!isnan(cur_dist) && fabs(cur_dist - ds.dist[pi]) < ds.dist[pi]*0.30)
             {
               // ROS_DEBUG("RANSAC2 >> curdist[%f] dsdist[%f]", cur_dist, ds.dist[pi]);
               dss += fabs(cur_dist - ds.dist[pi]);
               n++;
-              inds.push_back(i);
+              cons.push_back(i);
             }
-        }
+          }
 
-        ROS_DEBUG("RANSAC2 [@rep=%d][n=%2d] [%f, %f, %f]", rep, n, ybart[0], ybart[1], ybart[2]); 
-        if ((n > nbar) || (n == nbar && (dss < dssbar)))
+          ROS_DEBUG("RANSAC2 [@rep=%d][n=%2d] [%f, %f, %f]", rep, n, ybart[0], ybart[1], ybart[2]); 
+          if ((n > nbar) || (n == nbar && (dss < dssbar)))
+          {
+            nbar = n;
+            for (int i = 0; i < 3; i++)
+              ybar[i] = ybart[i];
+            dssbar = dss;
+            conbar = cons;
+          }
+        }
+        else if (res < 0)
         {
-          nbar = n;
-          for (int i = 0; i < 3; i++)
-            ybar[i] = ybart[i];
-          dssbar = dss;
-          indbar = inds;
+          // could not find the value
         }
         std::random_shuffle( gm.begin(), gm.end() );
       }
@@ -1052,13 +1067,13 @@ class GripperSegmentationCollector
 
 
       std::vector<cv::DMatch> gmbar; gmbar.clear();
-      for (unsigned int i = 0; i < indbar.size(); i++)
+      for (unsigned int i = 0; i < conbar.size(); i++)
       {
-        gmbar.push_back(gm[indbar[i]]);
+        gmbar.push_back(gm[conbar[i]]);
       }
       gradDescent(ds, ybar, kp, gmbar);
       ROS_DEBUG("RANSAC2 [N=%2d] [%f, %f, %f]", nbar, ybar[0], ybar[1], ybar[2]);
-      return 0;
+      return nbar;
     }
 
     void RANSAC(Data ds, std::vector<cv::DMatch> m, std::vector<cv::DMatch> gm, std::vector<cv::KeyPoint> kp, double result[3])
@@ -1128,7 +1143,7 @@ class GripperSegmentationCollector
       for (int trial = 0; trial < 50; trial++)
       {
         double grad[3] = {0, 0, 0};
-
+        unsigned int count = 0;
         // gm is shuffled need only two
         for (unsigned int i = 0; i < gm.size(); i++)
         {
@@ -1137,33 +1152,40 @@ class GripperSegmentationCollector
           pcl::PointXYZ xi_pc = cloud_.at(kp[ci].pt.x, kp[ci].pt.y);
           double xi[3] = {xi_pc.x, xi_pc.y, xi_pc.z};
           double temp = distance(est, xi)- ds.dist[pi];
-          grad[0] += (est[0]-xi[0])*temp;
-          grad[1] += (est[1]-xi[1])*temp;
-          grad[2] += (est[2]-xi[2])*temp;
+
+          // pointcloud can be nan
+          if (!isnan(temp))
+          {
+            grad[0] += (est[0]-xi[0])*temp;
+            grad[1] += (est[1]-xi[1])*temp;
+            grad[2] += (est[2]-xi[2])*temp;
+            count++;
+          }
         }
         int exit = 0;
+        if (count == 0) return -3;
         for (int i = 0; i < 3; i++)
         {
-          double param = 10/gm.size();
+          double param = 10/count;
           // updating estimate using gradient
           est[i] -= (grad[i]*param);
           // ROS_WARN("%.6f*%f (%lu) =%.6f", grad[i], param, gm.size(), grad[i]*param);
-          if (isnan(grad[i])) exit = -1;
-          if (grad[i] > 1e-5) exit = 1;
-          if (grad[i] > 1) exit = -2;
+          if (isnan(grad[i])) {exit = -1; break;};
+          if (fabs(grad[i]) < 1e-5) exit++;
+          else if (grad[i] > 1) {exit = -2; break;};
         }
-        if (exit != 0)
+        if (exit < 0 || exit == 3)
         {
-          ROS_WARN("GradDesc: Finished at [%3d with id: %d] Est: [%f, %f %f]", trial, exit, est[0], est[1], est[2]); 
+          // ROS_WARN("GradDesc: Finished at [%3d with id: %d] Est: [%f, %f %f]", trial, exit, est[0], est[1], est[2]); 
           clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
           // printf("gradDesc: "); printTime(t1, t2);
-          return exit;
+          return exit == 3 ? 0 : exit;
         }
       }
 
       clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
       // printTime(t1, t2);
-      return 1;
+      return 0;
       //ROS_DEBUG("GradDesc: Never finished Est: [%f, %f %f]", est[0], est[1], est[2]); 
     }
 

@@ -34,3 +34,5 @@ rosbuild_add_executable(collector src/gripper_segmentation_collect.cpp)
 rosbuild_link_boost(collector signals)
 target_link_libraries(collector ${LOG4CXX_LIB})
 
+
+

@@ -1,7 +1,9 @@
 <launch>
   <!-- <include file="/etc/ros/fuerte/openni_head.launch"/> -->
   <!-- <include file="$(find tabletop_pushing)/launch/pr2_camera_self_filter_kinect_head.launch" /> -->
-  <node name="test_node" pkg="pr2_gripper_segmentation" type="collector" respawn="false" output="screen">
+
+  <include file="$(find pr2_machine)/pr2.machine" />
+  <node name="test_node" pkg="pr2_gripper_segmentation" type="collector" respawn="false" output="screen" machine="c1">
 
     <remap from="color_image_topic" to="/kinect_head/rgb/image_color"/>
     <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
