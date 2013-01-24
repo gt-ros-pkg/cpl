@@ -37,6 +37,7 @@ cv::Mat getObjectFootprint(std::string image_path, std::string cloud_path)
   // Perform close
   cv::dilate(obj_mask, obj_mask_target, kernel);
   cv::erode(obj_mask_target, obj_mask, kernel);
+
   // cv::erode(obj_mask, obj_mask, kernel);
 
   pcl16::PointCloud<pcl16::PointXYZ>::Ptr cloud(new pcl16::PointCloud<pcl16::PointXYZ>);
@@ -96,7 +97,9 @@ cv::Mat getObjectFootprint(std::string image_path, std::string cloud_path)
   // Perform close
   cv::dilate(footprint, footprint, kernel);
   cv::erode(footprint, footprint, kernel);
-  // TODO: Low pass filter this response to smooth edges?
+  // Perform open
+  cv::erode(footprint, footprint, kernel);
+  cv::dilate(footprint, footprint, kernel);
   return footprint;
 }
 
