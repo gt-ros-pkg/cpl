@@ -3,13 +3,13 @@
 #include <ros/ros.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <sensor_msgs/JointState.h>
-#include "ur10_ctrl_iface/robotinterface.h"
-#include "ur10_ctrl_iface/Configuration.h"
-#include "ur10_ctrl_iface/microprocessor_commands.h"
-#include "ur10_ctrl_iface/microprocessor_definitions.h"
-#include "ur10_controller_manager/URJointStates.h"
-#include "ur10_controller_manager/URModeStates.h"
-#include "ur10_controller_manager/URJointCommand.h"
+#include "ur_ctrl_iface/robotinterface.h"
+#include "ur_ctrl_iface/Configuration.h"
+#include "ur_ctrl_iface/microprocessor_commands.h"
+#include "ur_ctrl_iface/microprocessor_definitions.h"
+#include "ur_controller_manager/URJointStates.h"
+#include "ur_controller_manager/URModeStates.h"
+#include "ur_controller_manager/URJointCommand.h"
 #include <math.h>
 
 using namespace std;
@@ -59,7 +59,7 @@ const char* JOINT_MODES[19] = {
   "JOINT_INITIALISATION_MODE",
   "JOINT_IDLE_MODE"};
 
-namespace ur10_controller_manager
+namespace ur_controller_manager
 {
 
 // Busy wait which keeps the robot active.
@@ -80,8 +80,8 @@ class URController
   private:
     ros::NodeHandle* nh;
     realtime_tools::RealtimePublisher<sensor_msgs::JointState> js_pub;
-    realtime_tools::RealtimePublisher<ur10_controller_manager::URJointStates> state_pub;
-    realtime_tools::RealtimePublisher<ur10_controller_manager::URModeStates> mode_pub;
+    realtime_tools::RealtimePublisher<ur_controller_manager::URJointStates> state_pub;
+    realtime_tools::RealtimePublisher<ur_controller_manager::URModeStates> mode_pub;
     ros::Subscriber cmd_sub;
     int64_t loop_counter;
     int64_t latest_cmd_loop;
@@ -471,7 +471,7 @@ int initialize_joints(double delta_move)
 
 }
 
-using namespace ur10_controller_manager;
+using namespace ur_controller_manager;
 
 int main(int argc, char* argv[])
 {

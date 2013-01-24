@@ -9,4 +9,4 @@ bool is_power_button_pressed
 bool is_safety_signal_such_that_we_should_stop 
 string[6] joint_modes
 uint8[6] joint_mode_ids
-ur10_controller_manager/URMessage[] messages
+ur_controller_manager/URMessage[] messages
