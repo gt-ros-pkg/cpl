@@ -635,8 +635,6 @@ class PushLearningAnalysis:
                 valid_choices += 1
             elif c.score < score_threshold:
                 valid_choices += 1
-            else:
-                print "Not drawing because of high score"
         if valid_choices == 0:
             return img
         # Draw circle for the location
