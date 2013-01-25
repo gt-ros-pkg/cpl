@@ -199,9 +199,12 @@ void solveCBCalibProblem(const CBCalibProblem& prob, CBCalibSolution& sol)
     init_estimate.insert(Symbol('k',j), Pose3());
     for(size_t i=0;i<num_ees;i++) {
       for(size_t l=0;l<num_cb_points;l++) {
+        Point3 kinect_p = prob.kinect_p_points[j][i][l];
+        if(kinect_p.x() != kinect_p.x())
+          continue;
         graph.add(boost::make_shared<CheckerboardArmFactor>(
               ee_fact_noise, Symbol('o',0), Symbol('k',j), 
-              prob.cb_p_points[l], prob.kinect_p_points[j][i][l], prob.base_T_ee_poses[i]));
+              prob.cb_p_points[l], kinect_p, prob.base_T_ee_poses[i]));
       }
     }
   }
