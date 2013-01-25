@@ -249,7 +249,7 @@ class PushLearningAnalysis:
                                                likelihood_arg=likelihood_arg,
                                                mean_push_fnc=self.get_mean_workspace_push,
                                                score_fnc=score_fnc)
-        print "Workspace push rankings:"
+        # print "Workspace push rankings:"
         for ranks in workspace_ranks:
             self.output_push_ranks(ranks,
                                    ['init_centroid.x','init_centroid.y','push_angle'],
@@ -584,7 +584,7 @@ class PushLearningAnalysis:
     #
     # Visualization functions
     #
-    def visualize_push_choices(self, ranks, score_threshold=None):
+    def visualize_push_choices(self, ranks, score_threshold=None, object_id=None):
         choices = []
         for rank in ranks:
             choices.append(rank[0])
@@ -597,7 +597,14 @@ class PushLearningAnalysis:
             disp_img = self.draw_push_choices_on_image(xy_groups[group_key], disp_img,
                                                        score_threshold=score_threshold)
         cv2.imshow('Chosen pushes', disp_img)
-        cv2.imwrite('/u/thermans/Desktop/push_learn_out.png', disp_img)
+        file_name = '/u/thermans/Desktop/push_learn_out'
+        if object_id is not None:
+            file_name += '_'+object_id
+        if score_threshold is not None:
+            file_name += '_'+str(score_threshold)
+
+        file_name += '.png'
+        cv2.imwrite(file_name, disp_img)
         cv2.waitKey()
 
     def draw_push_choices_on_image(self, choices, img, score_threshold=None):
@@ -628,6 +635,8 @@ class PushLearningAnalysis:
                 valid_choices += 1
             elif c.score < score_threshold:
                 valid_choices += 1
+            else:
+                print "Not drawing because of high score"
         if valid_choices == 0:
             return img
         # Draw circle for the location
@@ -642,7 +651,7 @@ class PushLearningAnalysis:
                 continue
             end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
             color = [0.0, 0.0, 0.0] # Black
-            cv2.line(img, (u,v), end_point, color,3)
+            #cv2.line(img, (u,v), end_point, color,3)
         for c in choices:
             if score_threshold is None:
                 pass
@@ -671,7 +680,7 @@ class PushLearningAnalysis:
                 # color = [0.0, 0.0, 255.0] # Red
             # Draw line depicting the angle
             end_point = (u-sin(c.push_angle)*(radius), v-cos(c.push_angle)*(radius))
-            cv2.line(img, (u,v), end_point, color)
+            cv2.line(img, (u,v), end_point, color, 2)
         return img
 
     def visualize_angle_push_choices(self, ranks, score_threshold=None):
@@ -698,8 +707,23 @@ class PushLearningAnalysis:
     #
     # IO Functions
     #
-    def read_in_push_trials(self, file_name):
-        self.all_trials = self.io.read_in_data_file(file_name)
+    def read_in_push_trials(self, file_name, object_id=None):
+        self.all_trials = []
+        object_ids = {}
+        if object_id is not None:
+            all_trials = self.io.read_in_data_file(file_name)
+            for t in all_trials:
+                if t.object_id in object_ids:
+                    pass
+                else:
+                    object_ids[t.object_id] = t.object_id
+                    print "object_id is:", t.object_id
+                if object_id == t.object_id:
+                    self.all_trials.append(t)
+        else:
+            self.all_trials = self.io.read_in_data_file(file_name)
+
+
 
     def output_push_choice(self, c, conditional_value, arg_value):
         '''
@@ -734,7 +758,7 @@ class PushLearningAnalysis:
             conditional_str = conditional_str[:-2]
         else:
             conditional_str = str(get_attr(ranks[0], conditional_value))
-        print 'Ranks for (' +  conditional_str + '):'
+        # print 'Ranks for (' +  conditional_str + '):'
         for i, c in enumerate(ranks):
             if i >= n:
                 break
@@ -745,7 +769,7 @@ class PushLearningAnalysis:
                 arg_str = arg_str[:-2]
             else:
                 arg_str = str(get_attr(c,arg_value))
-            print '\t ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
+            # print '\t ('+ arg_str+ ') : ' + str(c.score) + ', ' + str(c.var)
 
     def output_push_counts(self, ranks, conditional_value, arg_value, n=3):
         '''
@@ -843,19 +867,28 @@ class PushLearningAnalysis:
         return push.push_time / push.push_dist
 
 if __name__ == '__main__':
+    req_object_id = None
+    thresh = 1.0
     # TODO: Add more options to command line
     if len(sys.argv) > 1:
         data_path = str(sys.argv[1])
     else:
-        print 'Usage:',sys.argv[0],'input_file'
+        print 'Usage:',sys.argv[0],'input_file [object_id] [distance_thresh]'
         quit()
+    if len(sys.argv) > 2:
+        req_object_id = str(sys.argv[2])
+        if req_object_id == "None":
+            req_object_id = None
+    if len(sys.argv) > 3:
+        thresh = float(sys.argv[3])
+        print "thresh:", thresh
 
     pla = PushLearningAnalysis()
-    pla.read_in_push_trials(data_path)
+    pla.read_in_push_trials(data_path, req_object_id)
 
     # TODO: Use command line arguments to choose these
-    # workspace_ranks = pla.workspace_ranking()
-    # pla.visualize_push_choices(workspace_ranks, 1.0)
+    workspace_ranks = pla.workspace_ranking()
+    pla.visualize_push_choices(workspace_ranks, thresh, object_id=req_object_id)
     # angle_ranks = pla.angle_ranking()
     # pla.object_ranking()
     # pla.object_proxy_ranking()
