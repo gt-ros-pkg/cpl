@@ -1,0 +1,15 @@
+<package>
+  <description brief="openni_tracker_msgs">
+
+     openni_tracker_msgs
+
+  </description>
+  <author>martin</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/openni_tracker_msgs</url>
+  <depend package="roscpp"/>
+
+</package>
+
+
