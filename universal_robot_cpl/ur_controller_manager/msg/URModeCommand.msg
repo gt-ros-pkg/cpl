@@ -1,0 +1,9 @@
+bool robot_ready_mode
+bool robot_running_mode
+bool robot_freedrive_mode
+bool unlock_security_stop
+
+bool security_stop
+int8 joint_code
+int32 error_state
+int32 error_argument
