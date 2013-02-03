@@ -10,12 +10,14 @@
 #include "ur_controller_manager/URJointStates.h"
 #include "ur_controller_manager/URModeStates.h"
 #include "ur_controller_manager/URJointCommand.h"
+#include "ur_controller_manager/URModeCommand.h"
 #include <math.h>
 
 using namespace std;
 
 #define CMD_TIMEOUT 3
 #define CONTROL_RATE 125
+#define MSG_BUFFER_SIZE 100
 
 const char* ACTUATOR_NAMES[6] = { 
   "shoulder_pan_joint",
@@ -82,7 +84,8 @@ class URController
     realtime_tools::RealtimePublisher<sensor_msgs::JointState> js_pub;
     realtime_tools::RealtimePublisher<ur_controller_manager::URJointStates> state_pub;
     realtime_tools::RealtimePublisher<ur_controller_manager::URModeStates> mode_pub;
-    ros::Subscriber cmd_sub;
+    ros::Subscriber cmd_joint_sub;
+    ros::Subscriber cmd_mode_sub;
     int64_t loop_counter;
     int64_t latest_cmd_loop;
     bool was_emergency_stopped;
@@ -119,8 +122,8 @@ class URController
     ///////////////////////////////////////////////////////////////////////////
 
     ////////////////////////// Robot Error Messages ///////////////////////////
-    struct message_t msg_buffer[20];
-    char msg_text_buffers[20][100];
+    struct message_t msg_buffer[MSG_BUFFER_SIZE];
+    char msg_text_buffers[MSG_BUFFER_SIZE][100];
     int msg_count;
     ///////////////////////////////////////////////////////////////////////////
 
@@ -131,6 +134,17 @@ class URController
     double qdd_cmd[6];
     ///////////////////////////////////////////////////////////////////////////
 
+    /////////////////////////// Robot Mode Commands ///////////////////////////
+    bool set_robot_ready_mode;
+    bool set_robot_running_mode;
+    bool set_robot_freedrive_mode;
+    bool unlock_security_stop;
+    bool security_stop;
+    char joint_code;
+    int error_state;
+    int error_argument;
+    ///////////////////////////////////////////////////////////////////////////
+
   public:
     URController(ros::NodeHandle* _nh);
     void getRobotStates();
@@ -138,8 +152,11 @@ class URController
     void getRobotModeStates();
     void pubRobotModeStates();
     void commandJoints();
+    void commandModes();
+    void resetModes();
     void initializeJoints(double joint_delta);
-    void cmdCallback(const URJointCommand::ConstPtr& cmd);
+    void cmdJointCallback(const URJointCommand::ConstPtr& cmd);
+    void cmdModeCallback(const URModeCommand::ConstPtr& cmd);
     void startRobot();
     void controlLoop();
 };
@@ -157,11 +174,13 @@ URController::URController(ros::NodeHandle* _nh) :
   js_pub.msg_.position.resize(6,-9999.0);
   js_pub.msg_.velocity.resize(6,-9999.0);
   js_pub.msg_.effort.resize(6,-9999.0);
-  for(int i=0;i<20;i++)
+  for(int i=0;i<MSG_BUFFER_SIZE;i++)
     msg_buffer[i].text = msg_text_buffers[i];
 
-  cmd_sub = _nh->subscribe<URJointCommand>("/ur_joint_command", 1, 
-                                           &URController::cmdCallback, this);
+  cmd_joint_sub = _nh->subscribe<URJointCommand>("/ur_joint_command", 1, 
+                                           &URController::cmdJointCallback, this);
+  cmd_mode_sub = _nh->subscribe<URModeCommand>("/ur_mode_command", 10, 
+                                           &URController::cmdModeCallback, this);
   cmd_mode = 20;
 
   printf("Loading robot configuration...");
@@ -241,8 +260,6 @@ void URController::pubRobotStates()
       state_pub.msg_.qdd_des[i] = qdd_des[i];
       state_pub.msg_.i_des[i] = i_des[i];
       state_pub.msg_.tcp_wrench[i] = tcp_wrench[i];
-    }
-    for(i=0;i<6;i++) {
       state_pub.msg_.acc_x[i] = acc_x[i];
       state_pub.msg_.acc_y[i] = acc_y[i];
       state_pub.msg_.acc_z[i] = acc_z[i];
@@ -330,6 +347,8 @@ void URController::startRobot()
 
 void URController::commandJoints()
 {
+  if(robot_mode_id != ROBOT_RUNNING_MODE)
+    robotinterface_command_empty_command();
   if(loop_counter - latest_cmd_loop >= CMD_TIMEOUT) {
     robotinterface_command_velocity(zero_vector);
 #if 0
@@ -352,7 +371,30 @@ void URController::commandJoints()
   }
 }
 
-void URController::cmdCallback(const URJointCommand::ConstPtr& cmd)
+void URController::commandModes()
+{
+  if(set_robot_ready_mode)
+    robotinterface_set_robot_ready_mode();
+  if(set_robot_running_mode)
+    robotinterface_set_robot_running_mode();
+  if(set_robot_freedrive_mode)
+    robotinterface_set_robot_freedrive_mode();
+  if(unlock_security_stop)
+    robotinterface_unlock_security_stop();
+  if(security_stop)
+    robotinterface_security_stop(joint_code, error_state, error_argument);
+}
+
+void URController::resetModes()
+{
+  set_robot_ready_mode = false;
+  set_robot_running_mode = false;
+  set_robot_freedrive_mode = false;
+  unlock_security_stop = false;
+  security_stop = false;
+}
+
+void URController::cmdJointCallback(const URJointCommand::ConstPtr& cmd)
 {
   static int i;
   cmd_mode = cmd->mode;
@@ -362,6 +404,20 @@ void URController::cmdCallback(const URJointCommand::ConstPtr& cmd)
     qdd_cmd[i] = cmd->qdd_des[i];
   }
   latest_cmd_loop = loop_counter;
+}
+
+void URController::cmdModeCallback(const URModeCommand::ConstPtr& cmd)
+{
+  set_robot_ready_mode = set_robot_ready_mode || cmd->robot_ready_mode;
+  set_robot_running_mode = set_robot_running_mode || cmd->robot_running_mode;
+  set_robot_freedrive_mode = set_robot_freedrive_mode || cmd->robot_freedrive_mode;
+  unlock_security_stop = unlock_security_stop || cmd->unlock_security_stop;
+  security_stop = security_stop || cmd->security_stop;
+  if(cmd->security_stop) {
+    joint_code = cmd->joint_code;
+    error_state = cmd->error_state;
+    error_argument = cmd->error_argument;
+  }
 }
 
 void URController::controlLoop()
@@ -380,8 +436,12 @@ void URController::controlLoop()
     robotinterface_read_state_blocking();
     getRobotStates();
     pubRobotStates();
+    resetModes();
     ros::spinOnce();
+    robotinterface_set_tcp(zero_vector);
+    robotinterface_set_tcp_payload(3.0);
     commandJoints();
+    commandModes();
     robotinterface_send();
     loop_counter++;
   }

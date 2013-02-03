@@ -9,9 +9,10 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_genmsg()
 
 #set(UR10_LIBS configuration robotcomm rt kinematics collision math m)
-set(UR10_LIBS robotcomm kinematics configuration dev collision rt m math)
+set(UR10_LIBS robotcomm kinematics configuration dev collision m math)
 
 rosbuild_add_executable(ur_controller src/ur_controller.cpp)
+rosbuild_add_compile_flags(ur_controller -O2 -DNDEBUG -m32 -Wall)
 target_link_libraries (ur_controller ${UR10_LIBS})
 
 #rosbuild_add_library(ur10_cm_base
