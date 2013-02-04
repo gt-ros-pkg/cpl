@@ -53,34 +53,42 @@ class RAVEKinematics(object):
         self.robot.SetDOFValues(q)
         return np.mat(self.manip.GetEndEffectorTransform())
 
-    def inverse(self, x, q_guess=None, restarts=3, options=None):
+    def inverse(self, x, q_guess=None, restarts=3, 
+                q_min=6*[-999.0], q_max=6*[999.0], options=None):
         if options is None:
             options = self.options
         if q_guess is None:
             q_guess = np.zeros(6)
         q_wrapped, q_resid = self.wrap_angles(q_guess)
+        q_min = np.array(q_min)
+        q_max = np.array(q_max)
         with self.robot: 
             for i in range(restarts+1):
                 if i == 0:
                     self.robot.SetDOFValues(q_wrapped)
                 else:
-                    # just keep trying random joint configs now
+                    # just keep trying random joint configs after initial guess
                     self.robot.SetDOFValues(2*(np.random.rand(6)-0.5)*(2*np.pi))
                 #ikparam = IkParameterization(x.A, self.ikmodel6d)
                 sols = self.manip.FindIKSolutions(x.A, options)
-                if len(sols) > 0:
+                valid_sols = []
+                for sol in sols:
+                    if np.all(sol + q_resid >= q_min) and np.all(sol + q_resid <= q_max):
+                        valid_sols.append(sol)
+                if len(valid_sols) > 0:
                     break
-            if len(sols) == 0:
+            if len(valid_sols) == 0:
                 return None
-            best_sols = np.argsort(np.sum((sols - np.array(q_wrapped))**2,1))
+            best_sols = np.argsort(np.sum((valid_sols - np.array(q_wrapped))**2,1))
             for sol_ind in best_sols:
-                ret_sol = sols[sol_ind] + q_resid
+                ret_sol = valid_sols[sol_ind] + q_resid
                 if np.all(np.fabs(ret_sol) < 2.0*np.pi):
                     return ret_sol
             return None
 
     def inverse_rand_search(self, x, q_guess=None, pos_tol=0.01, rot_tol=20.0/180.0*np.pi, 
-                            restarts=10, options=None):
+                            restarts=10, 
+                            q_min=6*[-999.0], q_max=6*[999.0], options=None):
         num_restart = 0
         while not rospy.is_shutdown():
             if num_restart == 0:
@@ -91,7 +99,8 @@ class RAVEKinematics(object):
                 x_try = x.copy()
                 x_try[:3,:3] = x_diff[:3,:3] * x_try[:3,:3]
                 x_try[:3,3] += x_diff[:3,3]
-            sol = self.inverse(x_try, q_guess, restarts=1)
+            sol = self.inverse(x_try, q_guess, restarts=1, 
+                               q_min=q_min, q_max=q_max, options=options)
             if sol is not None:
                 return sol
             if num_restart == restarts:
