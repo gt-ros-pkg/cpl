@@ -58,7 +58,7 @@ void publishTransform(int joint, string const& child_frame_id)
 
 	transform.setRotation(tf::Quaternion(0.0, 0.0, 0.0)); // Add joint info
 	/*
-	// This is for rotation the data
+	// This is for rotating the data
 	tf::Transform change_frame;
 	change_frame.setOrigin(tf::Vector3(0, 0, 0)); // If we want to change the offset. 
 	tf::Quaternion frame_rotation;
