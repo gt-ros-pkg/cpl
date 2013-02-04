@@ -129,25 +129,38 @@ void publishTransforms(const std::string& frame_id) {
 	    KDL::Rotation rotation(m[0], m[1], m[2],
 				   m[3], m[4], m[5],
 				   m[6], m[7], m[8]);
+	    double x = -joint_position.position.X / 1000.0;
+	    double y = joint_position.position.Y / 1000.0;
+	    double z = joint_position.position.Z / 1000.0;	    
 	    double qx, qy, qz, qw;
 	    rotation.GetQuaternion(qx, qy, qz, qw);
+	    tf::Transform transform;
+	    transform.setOrigin(tf::Vector3(x, y, z));
+	    transform.setRotation(tf::Quaternion(qx, -qy, -qz, qw));
+	    
+	    
+	    tf::Transform change_frame;
+	    change_frame.setOrigin(tf::Vector3(0, 0, 0));
+	    tf::Quaternion frame_rotation;
+	    frame_rotation.setEulerZYX(1.5708, 0, 1.5708);
+	    change_frame.setRotation(frame_rotation);
+	    transform = change_frame * transform;
+	    
 
 	    openni_tracker_msgs::jointData jointData;
-	    jointData.pose.position.x=joint_position.position.X/1000.0;
-	    jointData.pose.position.y=joint_position.position.Y/1000.0;
-	    jointData.pose.position.z=joint_position.position.Z/1000.0;
-	    jointData.pose.orientation.x=qx;
-	    jointData.pose.orientation.y=qy;
-	    jointData.pose.orientation.z=qz;
-	    jointData.pose.orientation.w=qw;
+	    jointData.pose.position.x=transform.getOrigin().x();
+	    jointData.pose.position.y=transform.getOrigin().y();
+	    jointData.pose.position.z=transform.getOrigin().z();
+	    jointData.pose.orientation.x=0.0;
+	    jointData.pose.orientation.y=0.0;
+	    jointData.pose.orientation.z=0.0;
+	    jointData.pose.orientation.w=0.0;
 	    jointData.jointID=k;
 	    jointData.confidence=joint_position.fConfidence;
 	    skeletonMsg.joints.push_back(jointData);
 	  }
 	skeleton_pub.publish(skeletonMsg);
-
-
-
+	/*
         publishTransform(user, XN_SKEL_HEAD,           frame_id, "head");
         publishTransform(user, XN_SKEL_NECK,           frame_id, "neck");
         publishTransform(user, XN_SKEL_TORSO,          frame_id, "torso");
@@ -167,6 +180,7 @@ void publishTransforms(const std::string& frame_id) {
         publishTransform(user, XN_SKEL_RIGHT_HIP,      frame_id, "right_hip");
         publishTransform(user, XN_SKEL_RIGHT_KNEE,     frame_id, "right_knee");
         publishTransform(user, XN_SKEL_RIGHT_FOOT,     frame_id, "right_foot");
+	*/
     }
 }
 
@@ -296,12 +310,6 @@ int main(int argc, char **argv) {
 	CHECK_RC(nRetVal, "StartGenerating");
 
 	ros::Rate r(30);
-
-        /*
-        ros::NodeHandle pnh("~");
-        string frame_id("openni_depth_frame");
-        pnh.getParam("camera_frame_id", frame_id);
-        */      
 	
 	while (ros::ok()) {
 		g_Context.WaitAndUpdateAll();
