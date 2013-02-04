@@ -1,4 +1,5 @@
 #include "arm_mapping/factor_arm_mapping.h"
+#include "ros/param.h"
 
 using namespace std;
 using namespace gtsam;
@@ -121,12 +122,11 @@ Pose3 solveKAMProblem(const KAMProblem& prob)
 
 //////////////////////////////////////////////////////////////////////////////
 
-////////////////// Multi Kinect Checkerboard Calib Problem ///////////////////
+/////////////// Multi Kinect Arm Checkerboard Calib Problem //////////////////
 
-void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol)
+void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol, int num_ees)
 {
   size_t num_kinects = prob.kinect_p_points.size();
-  size_t num_ees = prob.kinect_p_points[0].size();
   size_t num_cb_points = prob.cb_p_points.size();
   randomPoses(num_kinects, sol.kinect_T_base_poses, 10);
   vector<Pose3> offset_pose_;
@@ -135,11 +135,13 @@ void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol)
   randomPoses(num_ees, prob.base_T_ee_poses, 1.5);
 
   for(size_t j=0;j<num_kinects;j++)
-    for(size_t i=0;i<num_ees;i++)
+    for(size_t i=0;i<num_ees;i++) {
+      prob.kinect_p_points[j].push_back(vector<Point3>());
       for(size_t l=0;l<num_cb_points;l++)
         prob.kinect_p_points[j][i].push_back(
             sol.kinect_T_base_poses[j] * prob.base_T_ee_poses[i] * 
             sol.cb_T_ee_pose.inverse() * prob.cb_p_points[l]);
+    }
 }
 
 class CheckerboardArmFactor : public NoiseModelFactor2<Pose3, Pose3>
@@ -186,18 +188,27 @@ class CheckerboardArmFactor : public NoiseModelFactor2<Pose3, Pose3>
 void solveCBCalibProblem(const CBCalibProblem& prob, CBCalibSolution& sol)
 {
   size_t num_kinects = prob.kinect_p_points.size();
-  size_t num_ees = prob.kinect_p_points[0].size();
   size_t num_cb_points = prob.cb_p_points.size();
   // noise terms
   noiseModel::Isotropic::shared_ptr ee_fact_noise = noiseModel::Isotropic::Sigma(3, 0.02);
+  //noiseModel::MEstimator::Base::shared_ptr robust_model = noiseModel::MEstimator::Fair::Create(3.0);
+  //noiseModel::Robust::shared_ptr robust_ee_fact_noise = noiseModel::Robust::Create(robust_model, ee_fact_noise);
 
   gtsam::NonlinearFactorGraph graph;
   Values init_estimate;
   init_estimate.insert(Symbol('o',0), Pose3());
 
+  double init_x, init_y, init_z, init_yaw, init_pitch, init_roll;
+  ros::param::param<double>("~init_x", init_x, 0.0);
+  ros::param::param<double>("~init_y", init_y, 0.0);
+  ros::param::param<double>("~init_z", init_z, 0.0);
+  ros::param::param<double>("~init_yaw", init_yaw, 0.0);
+  ros::param::param<double>("~init_pitch", init_pitch, 0.0);
+  ros::param::param<double>("~init_roll", init_roll, 0.0);
   for(size_t j=0;j<num_kinects;j++) {
-    init_estimate.insert(Symbol('k',j), Pose3());
-    for(size_t i=0;i<num_ees;i++) {
+    init_estimate.insert(Symbol('k',j), Pose3(Rot3::ypr(init_yaw,init_pitch,init_roll),
+                                              Point3(init_x,init_y,init_z)));
+    for(size_t i=0;i<prob.kinect_p_points[j].size();i++) {
       for(size_t l=0;l<num_cb_points;l++) {
         Point3 kinect_p = prob.kinect_p_points[j][i][l];
         if(kinect_p.x() != kinect_p.x())
@@ -215,6 +226,115 @@ void solveCBCalibProblem(const CBCalibProblem& prob, CBCalibSolution& sol)
   sol.cb_T_ee_pose = result.at<Pose3>(Symbol('o',0));
   for(size_t j=0;j<num_kinects;j++) 
     sol.kinect_T_base_poses.push_back(result.at<Pose3>(Symbol('k',j)));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+///////////////// Multi Kinect Checkerboard Calib Problem ////////////////////
+
+void generateKinectCBCalibProblem(KinectCBCalibProblem& prob, KinectCBCalibSolution& sol)
+{
+  size_t num_cbs = prob.kinect_p_points.size();
+  size_t num_kinects = prob.kinect_p_points[0].size();
+  size_t num_cb_points = prob.cb_p_points.size();
+  randomPoses(num_kinects, sol.kinect_T_world_poses, 10);
+  randomPoses(num_cbs, sol.cb_T_world_poses, 10);
+  Pose3 world_frame = sol.kinect_T_world_poses[0];
+  for(size_t i=0;i<num_kinects;i++)
+    sol.kinect_T_world_poses[i] = sol.kinect_T_world_poses[i] * world_frame.inverse();
+  for(size_t i=0;i<num_cbs;i++)
+    sol.cb_T_world_poses[i] = sol.cb_T_world_poses[i] * world_frame.inverse();
+
+  for(size_t j=0;j<num_cbs;j++)
+    for(size_t i=0;i<num_kinects;i++)
+      for(size_t l=0;l<num_cb_points;l++)
+        prob.kinect_p_points[j][i].push_back(
+            sol.kinect_T_world_poses[i] *  
+            sol.cb_T_world_poses[j].inverse() * prob.cb_p_points[l]);
+}
+
+class CheckerboardKinectFactor : public NoiseModelFactor2<Pose3, Pose3>
+{
+  public:
+    Point3 cb_p_point, kinect_p_point;
+    CheckerboardKinectFactor(const gtsam::SharedNoiseModel& noiseModel, 
+                          Key j1, Key j2, Point3 _cb_p_point, Point3 _kinect_p_point) :
+      NoiseModelFactor2<Pose3, Pose3>(noiseModel, j1, j2), 
+        cb_p_point(_cb_p_point), kinect_p_point(_kinect_p_point) {}
+
+    gtsam::Vector evaluateError(const gtsam::Pose3& cb_T_world,
+                                const gtsam::Pose3& kinect_T_world,
+                                boost::optional<Matrix&> H_1 = boost::none,
+                                boost::optional<Matrix&> H_2 = boost::none) const
+    {
+      if(H_1) {
+        (*H_1) = gtsam::Matrix_(3, 6);
+        Point3 pt = cb_T_world.inverse() * cb_p_point;
+        Matrix cross = Matrix_(3,3,
+                               0.0,-pt.z(),pt.y(),
+                               pt.z(),0.0,-pt.x(),
+                               -pt.y(),pt.x(),0.0);
+        (*H_1).block<3,3>(0,0) = -cross;
+        (*H_1).block<3,3>(0,3) = gtsam::Rot3::yaw(0).matrix();
+      }
+      if(H_2) {
+        (*H_2) = gtsam::Matrix_(3, 6);
+        Point3 pt = kinect_T_world.inverse() * kinect_p_point;
+        Matrix cross = Matrix_(3,3,
+                               0.0,-pt.z(),pt.y(),
+                               pt.z(),0.0,-pt.x(),
+                               -pt.y(),pt.x(),0.0);
+        (*H_2).block<3,3>(0,0) = cross;
+        (*H_2).block<3,3>(0,3) = -gtsam::Rot3::yaw(0).matrix();
+      }
+      return (kinect_T_world.inverse() * kinect_p_point -
+              cb_T_world.inverse() * cb_p_point).vector();
+    }
+};
+
+void solveKinectCBCalibProblem(const KinectCBCalibProblem& prob, KinectCBCalibSolution& sol)
+{
+  size_t num_cbs = prob.kinect_p_points.size();
+  size_t num_kinects = prob.kinect_p_points[0].size();
+  size_t num_cb_points = prob.cb_p_points.size();
+  // noise terms
+  noiseModel::Isotropic::shared_ptr cb_fact_noise = noiseModel::Isotropic::Sigma(3, 0.02);
+  noiseModel::Isotropic::shared_ptr init_kin_fact_noise = noiseModel::Isotropic::Sigma(6, 0.02);
+
+  gtsam::NonlinearFactorGraph graph;
+  graph.add(boost::make_shared<PriorFactor<Pose3> >(
+            Symbol('k',0), Pose3(), init_kin_fact_noise));
+  Values init_estimate;
+  for(size_t i=0;i<num_kinects;i++) {
+    init_estimate.insert(Symbol('k',i), Pose3());
+  }
+  for(size_t j=0;j<num_cbs;j++) {
+    init_estimate.insert(Symbol('c',j), Pose3());
+  }
+
+  for(size_t j=0;j<num_cbs;j++) {
+    for(size_t i=0;i<num_kinects;i++) {
+      if(prob.kinect_p_points[j][i].size() > 0) {
+        for(size_t l=0;l<num_cb_points;l++) {
+          Point3 kinect_p = prob.kinect_p_points[j][i][l];
+          if(kinect_p.x() != kinect_p.x())
+            continue;
+          graph.add(boost::make_shared<CheckerboardKinectFactor>(
+                cb_fact_noise, Symbol('c',j), Symbol('k',i), 
+                prob.cb_p_points[l], kinect_p));
+        }
+      }
+    }
+  }
+  printf("start error: %f\n", graph.error(init_estimate));
+  Values result = DoglegOptimizer(graph, init_estimate).optimize();
+  result.print();
+  printf("end error: %f\n", graph.error(result));
+  Pose3 world_frame = result.at<Pose3>(Symbol('k',0));
+  for(size_t j=0;j<num_cbs;j++) 
+    sol.cb_T_world_poses.push_back(result.at<Pose3>(Symbol('c',j))*world_frame.inverse());
+  for(size_t i=0;i<num_kinects;i++) 
+    sol.kinect_T_world_poses.push_back(result.at<Pose3>(Symbol('k',i))*world_frame.inverse());
 }
 
 //////////////////////////////////////////////////////////////////////////////

@@ -19,7 +19,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #uncomment if you have defined messages
 #rosbuild_genmsg()
 #uncomment if you have defined services
-#rosbuild_gensrv()
+rosbuild_gensrv()
 
 #common commands for building c++ executables and libraries
 #rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
@@ -43,9 +43,11 @@ rosbuild_add_library(${PROJECT_NAME} src/factor_arm_mapping.cpp)
 target_link_libraries(${PROJECT_NAME} gtsam-static)
 
 #set(executables test_file andrew_test test_factor_arm_mapping fam_1)
-set(executables final2_fam_mapping test_factor_arm_mapping pub_pc test_cb_calib find_cb_calib)
+set(executables final2_fam_mapping test_factor_arm_mapping pub_pc test_cb_calib test_kin_cb_calib find_cb_calib)
 
 foreach(exec ${executables})
     rosbuild_add_executable(${exec} src/${exec}.cpp)
     target_link_libraries(${exec} gtsam-static ${PROJECT_NAME} corresp_pc_utils)
 endforeach()
+
+rosbuild_add_executable(rgbd_assembler_kinect src/rgbd_assembler_kinect_node.cpp)

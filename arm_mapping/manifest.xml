@@ -16,6 +16,8 @@
   <depend package="tf" />
   <depend package="opencv2" />
 
+  <depend package="stereo_msgs" />
+
 </package>
 
 
