@@ -1,7 +1,7 @@
 <launch>
-<!--<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="1.670 -0.156 1.979 2.114 -1.40 -2.197 kinect1_camera_depth_frame kinect2_camera_depth_frame  100" />-->
+<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="-1.67 0.49 -1.924 -1.4 0.0 0.0 kinect1_camera_depth_frame kinect0_camera_depth_frame  100" />
 
-<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="-1.979 -0.156 1.670  0 0.5 0 kinect0_camera_depth_frame kinect1_camera_depth_frame  100" />
+<!--<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="1.670 -1.979 -0.156 1.4 0.0 0 kinect0_camera_depth_frame kinect1_camera_depth_frame 100" />-->
 
 <node pkg="openni_tracker_double" type="openni_tracker_double" name="tracker1" output="screen">
 <param name="kinectToUse" value="0" />
@@ -11,6 +11,7 @@
 <param name="kinectToUse" value="1" />
 <param name="frame_id" value="/kinect1_camera_depth_frame" />
 </node>
+
 <node pkg="skeleton_fusion" type="skeleton_fusion" name="skeletonFusion" output="screen">
 <param name="fixed_frame_id" value="/kinect0_camera_depth_frame" />
 </node>

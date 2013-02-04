@@ -220,44 +220,55 @@ int main(int argc, char **argv) {
    int i = 0;
     for (NodeInfoList::Iterator it = depthList.Begin();it != depthList.End(); ++it)
     {
-        if(i == kinectToUse)
-        {
+
+      if(i == kinectToUse)        
+      {
+	std::cout<<"i: "<<i<<std::endl;
             // Create the device node
             NodeInfo deviceInfo = *it;
             XnProductionNodeDescription nodeDesc = deviceInfo.GetDescription();
-            cout << "Creating: " << nodeDesc.strName << " . " << nodeDesc.strVendor << " . " << nodeDesc.Type << " Instance: " << deviceInfo.GetInstanceName() << endl;
+            cout << "Creating: " << nodeDesc.strName << " ,Vendor: " << nodeDesc.strVendor << ", Type: " << nodeDesc.Type << " Instance: " << deviceInfo.GetInstanceName() << endl;
             nRetVal = g_Context.CreateProductionTree(deviceInfo, g_DepthGenerator);
             xnPrintError(nRetVal, "Creating depthGen.: ");
 
             nRetVal = g_Context.EnumerateProductionTrees(XN_NODE_TYPE_USER, NULL, userList, NULL);
             xnPrintError(nRetVal, "Looking for user generators: ");
 
-            if(userList.Begin() == userList.End()){
+            if(userList.Begin() == userList.End())
+	      {
                 cout << "There is no user generators" << endl;
-            }
-
+	      }
+	    
             int j = 0;
-            for(NodeInfoList::Iterator nodeIt = userList.Begin(); (nodeIt != userList.End()) && (j < 1); j++)
+            int stop_ind = (kinectToUse == 0) ? 0 : 3;
+            for(NodeInfoList::Iterator nodeIt = userList.Begin(); (nodeIt != userList.End()); nodeIt++)
             {
-                NodeInfo info = *nodeIt;
-                XnProductionNodeDescription nodeDesc = info.GetDescription();
-                cout << "Info: " << nodeDesc.strName << " . " << nodeDesc.strVendor << " . " << nodeDesc.Type << " Instance: " << deviceInfo.GetInstanceName() << endl;
-                nRetVal = g_Context.CreateProductionTree(info, g_UserGenerator);
-                xnPrintError(nRetVal, "Creating the user gen.: ");
-
-                if(g_UserGenerator.IsValid())
-                {
-                    cout << "User generator is working.." << endl;
-
-                    XnCallbackHandle h1, h2, h3;
-                    g_UserGenerator.RegisterUserCallbacks(User_NewUser, User_LostUser, NULL, h1);
-                    g_UserGenerator.GetPoseDetectionCap().RegisterToPoseCallbacks(UserPose_PoseDetected, NULL, NULL, h2);
-                    g_UserGenerator.GetSkeletonCap().RegisterCalibrationCallbacks( UserCalibration_CalibrationStart, UserCalibration_CalibrationEnd, NULL, h3);
-                    //genUser.GetSkeletonCap().SetSmoothing(1.0);
-
-                    // Set the profile
-                    g_UserGenerator.GetSkeletonCap().SetSkeletonProfile(XN_SKEL_PROFILE_ALL);
-                }
+	      j++;
+	      std::cout<<"j: "<<j<<std::endl;
+	      
+              if(j++ == stop_ind) 
+		{
+		  NodeInfo info = *nodeIt;
+		  XnProductionNodeDescription nodeDesc2 = info.GetDescription();
+		  cout << "Info: " << nodeDesc2.strName << " ,Vendor: " << nodeDesc2.strVendor << ", Type: " << nodeDesc2.Type << " ,Instance: " << info.GetInstanceName() << endl;
+		  nRetVal = g_Context.CreateProductionTree(info, g_UserGenerator);
+		  xnPrintError(nRetVal, "Creating the user gen.: ");
+		  
+		  if(g_UserGenerator.IsValid())
+		    {
+		      cout << "User generator is working.." << endl;
+		      
+		      XnCallbackHandle h1, h2, h3;
+		      g_UserGenerator.RegisterUserCallbacks(User_NewUser, User_LostUser, NULL, h1);
+		      g_UserGenerator.GetPoseDetectionCap().RegisterToPoseCallbacks(UserPose_PoseDetected, NULL, NULL, h2);
+		      g_UserGenerator.GetSkeletonCap().RegisterCalibrationCallbacks(UserCalibration_CalibrationStart, UserCalibration_CalibrationEnd, NULL, h3);
+		      //genUser.GetSkeletonCap().SetSmoothing(1.0);
+		      
+		      // Set the profile
+		      g_UserGenerator.GetSkeletonCap().SetSkeletonProfile(XN_SKEL_PROFILE_ALL);
+		    }
+		}
+	      
             }
         }
         i++;
@@ -270,7 +281,8 @@ int main(int argc, char **argv) {
 	nRetVal = g_Context.FindExistingNode(XN_NODE_TYPE_USER, g_UserGenerator);
 	if (nRetVal != XN_STATUS_OK) {
 		nRetVal = g_UserGenerator.Create(g_Context);
-		CHECK_RC(nRetVal, "Find user generator");nh.param("kinectToUse", kinectToUse, 0);
+		CHECK_RC(nRetVal, "Find user generator");
+		nh.param("kinectToUse", kinectToUse, 0);
 	}
 
 	if (!g_UserGenerator.IsCapabilitySupported(XN_CAPABILITY_SKELETON)) {
