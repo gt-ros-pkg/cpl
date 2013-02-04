@@ -48,20 +48,20 @@
 #include <tf/transform_listener.h>
 
 // PCL
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/common/common.h>
-#include <pcl/common/eigen.h>
-#include <pcl/common/centroid.h>
-#include <pcl/io/io.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl_ros/transforms.h>
-#include <pcl/ros/conversions.h>
-#include <pcl/ModelCoefficients.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/filters/extract_indices.h>
+#include <pcl16/point_cloud.h>
+#include <pcl16/point_types.h>
+#include <pcl16/common/common.h>
+#include <pcl16/common/eigen.h>
+#include <pcl16/common/centroid.h>
+#include <pcl16/io/io.h>
+#include <pcl16/io/pcd_io.h>
+#include <pcl16_ros/transforms.h>
+#include <pcl16/ros/conversions.h>
+#include <pcl16/ModelCoefficients.h>
+#include <pcl16/sample_consensus/method_types.h>
+#include <pcl16/sample_consensus/model_types.h>
+#include <pcl16/segmentation/sac_segmentation.h>
+#include <pcl16/filters/extract_indices.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -70,6 +70,8 @@
 
 // Boost
 #include <boost/shared_ptr.hpp>
+
+#include <tabletop_pushing/point_cloud_segmentation.h>
 
 // STL
 #include <vector>
@@ -84,10 +86,13 @@
 #include <cstdlib> // for MAX_RAND
 
 using boost::shared_ptr;
-typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
+typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
+using tabletop_pushing::PointCloudSegmentation;
+using tabletop_pushing::ProtoObject;
+using tabletop_pushing::ProtoObjects;
 
 class DataCollectNode
 {
@@ -98,12 +103,46 @@ class DataCollectNode
       depth_sub_(n, "depth_image_topic", 1),
       cloud_sub_(n, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, depth_sub_, cloud_sub_),
-      camera_initialized_(false), save_count_(0)
+      camera_initialized_(false), save_count_(0), cluster_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
+    pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(new PointCloudSegmentation(tf_));
+
     // Get parameters from the server
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
     n_private_.param("save_all", save_all_, false);
+
+
+    n_private_.param("min_workspace_x", pcl_segmenter_->min_workspace_x_, 0.0);
+    n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
+    n_private_.param("max_workspace_x", pcl_segmenter_->max_workspace_x_, 0.0);
+    n_private_.param("max_workspace_z", pcl_segmenter_->max_workspace_z_, 0.0);
+    n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
+    n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
+
+    n_private_.param("mps_min_inliers", pcl_segmenter_->mps_min_inliers_, 10000);
+    n_private_.param("mps_min_angle_thresh", pcl_segmenter_->mps_min_angle_thresh_, 2.0);
+    n_private_.param("mps_min_dist_thresh", pcl_segmenter_->mps_min_dist_thresh_, 0.02);
+    n_private_.param("table_ransac_thresh", pcl_segmenter_->table_ransac_thresh_,
+                     0.01);
+    n_private_.param("table_ransac_angle_thresh",
+                     pcl_segmenter_->table_ransac_angle_thresh_, 30.0);
+    n_private_.param("pcl_cluster_tolerance", pcl_segmenter_->cluster_tolerance_,
+                     0.25);
+    n_private_.param("pcl_difference_thresh", pcl_segmenter_->cloud_diff_thresh_,
+                     0.01);
+    n_private_.param("pcl_min_cluster_size", pcl_segmenter_->min_cluster_size_,
+                     100);
+    n_private_.param("pcl_max_cluster_size", pcl_segmenter_->max_cluster_size_,
+                     2500);
+    n_private_.param("pcl_voxel_downsample_res", pcl_segmenter_->voxel_down_res_,
+                     0.005);
+    n_private_.param("pcl_cloud_intersect_thresh",
+                     pcl_segmenter_->cloud_intersect_thresh_, 0.005);
+    n_private_.param("pcl_concave_hull_alpha", pcl_segmenter_->hull_alpha_,
+                     0.1);
+    n_private_.param("use_pcl_voxel_downsample",
+                     pcl_segmenter_->use_voxel_down_, true);
 
     std::string output_path_def = "~";
     n_private_.param("img_output_path", base_output_path_, output_path_def);
@@ -127,17 +166,15 @@ class DataCollectNode
   {
     if (!camera_initialized_)
     {
+      ROS_INFO_STREAM("Initializing camera.");
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
-      ROS_INFO_STREAM("Cam info: " << cam_info_);
+      pcl_segmenter_->cam_info_ = cam_info_;
     }
     // Convert images to OpenCV format
     cv::Mat color_frame(bridge_.imgMsgToCv(img_msg));
     cv::Mat depth_frame(bridge_.imgMsgToCv(depth_msg));
-
-    // Swap kinect color channel order
-    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
@@ -154,25 +191,87 @@ class DataCollectNode
     }
 
     // color_frame, depth_frame
-    std::stringstream color_out;
-    std::stringstream depth_out;
-    color_out << base_output_path_ << "/color" << save_count_ << ".png";
-    depth_out << base_output_path_ << "/depth" << save_count_ << ".png";
     cv::Mat depth_save_img(depth_frame.size(), CV_16UC1);
     depth_frame.convertTo(depth_save_img, CV_16UC1, 65535/max_depth_);
     cv::imshow("color", color_frame);
     cv::imshow("depth", depth_save_img);
-    char c = cv::waitKey(display_wait_ms_);
 
-    ROS_INFO_STREAM("Writting image number " << save_count_);
+    // Transform point cloud into the correct frame and convert to PCL struct
+    XYZPointCloud cloud;
+    pcl16::fromROSMsg(*cloud_msg, cloud);
+    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
+                          cloud.header.stamp, ros::Duration(0.5));
+
+    // Compute transform
+    tf::StampedTransform transform;
+    tf_->lookupTransform(workspace_frame_, cloud.header.frame_id, ros::Time(0), transform);
+    pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+
+    XYZPointCloud object_cloud;
+    cv::Mat object_img;
+    ProtoObjects objs;
+    if (cluster_)
+    {
+      // Compute tabletop object segmentation
+      cur_camera_header_ = img_msg->header;
+      pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
+      objs = pcl_segmenter_->findTabletopObjects(cloud, object_cloud, false);
+      object_img = pcl_segmenter_->projectProtoObjectsIntoImage(
+          objs, color_frame.size(), cur_camera_header_.frame_id);
+      pcl_segmenter_->displayObjectImage(object_img, "Objects", true);
+    }
+
+    char c = cv::waitKey(display_wait_ms_);
+    if (c == 'c')
+    {
+      cluster_ = !cluster_;
+    }
+
     if (c == 's' || save_all_)
     {
+      ROS_INFO_STREAM("Writting image number " << save_count_);
+      std::stringstream color_out;
+      std::stringstream depth_out;
+      std::stringstream cloud_out;
+      std::stringstream object_img_out;
+      std::stringstream object_cloud_out;
+      std::stringstream transform_out;
+      color_out << base_output_path_ << "/color" << save_count_ << ".png";
+      depth_out << base_output_path_ << "/depth" << save_count_ << ".png";
+      transform_out << base_output_path_ << "/transform" << save_count_ << ".txt";
+      cloud_out << base_output_path_ << "/cloud" << save_count_ << ".pcd";
+      object_cloud_out << base_output_path_ << "/object_cloud" << save_count_ << ".pcd";
+      object_img_out << base_output_path_ << "/object_img" << save_count_ << ".png";
+
       cv::imwrite(color_out.str(), color_frame);
       cv::imwrite(depth_out.str(), depth_save_img);
+
       // save point cloud to disk
-      std::stringstream cloud_out;
-      cloud_out << base_output_path_ << "/cloud" << save_count_ << ".pcd";
-      pcl::io::savePCDFile(cloud_out.str(), *cloud_msg);
+      pcl16::io::savePCDFile(cloud_out.str(), *cloud_msg);
+
+      // TODO: Save tabletop object cloud to disk
+      if (cluster_ && object_cloud.size() > 0)
+      {
+        cv::imwrite(object_img_out.str(), object_img);
+        pcl16::io::savePCDFile(object_cloud_out.str(), object_cloud);
+        for (unsigned int i = 0; i < objs.size(); ++i)
+        {
+          std::stringstream cluster_cloud_out;
+          cluster_cloud_out << base_output_path_ << "/object_" << i << "_cloud" <<
+              save_count_ << ".pcd";
+          pcl16::io::savePCDFile(cluster_cloud_out.str(), object_cloud);
+        }
+      }
+
+      // Save transform
+      tf::Vector3 trans = transform.getOrigin();
+      tf::Quaternion rot = transform.getRotation();
+      std::ofstream transform_file(transform_out.str().c_str());
+      transform_file << "[" << rot.getX() << ", " << rot.getY() << ", " << rot.getZ() << ", "
+                     << rot.getW() << "]\n";
+      transform_file << "[" << trans.getX() << ", " << trans.getY() << ", " << trans.getZ()
+                     << "]\n";
+      ROS_INFO_STREAM("Wrote image number " << save_count_);
       save_count_++;
     }
   }
@@ -198,6 +297,7 @@ class DataCollectNode
   sensor_msgs::CameraInfo cam_info_;
   sensor_msgs::CvBridge bridge_;
   shared_ptr<tf::TransformListener> tf_;
+  shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int display_wait_ms_;
   bool save_all_;
   std::string base_output_path_;
@@ -206,6 +306,9 @@ class DataCollectNode
   bool camera_initialized_;
   int save_count_;
   double max_depth_;
+  std_msgs::Header cur_camera_header_;
+  std_msgs::Header prev_camera_header_;
+  bool cluster_;
 };
 
 int main(int argc, char ** argv)

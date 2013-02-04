@@ -40,10 +40,10 @@
 #include <tf/transform_listener.h>
 
 // PCL
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/common/eigen.h>
-#include <pcl/common/io.h>
+#include <pcl16/point_cloud.h>
+#include <pcl16/point_types.h>
+#include <pcl16/common/eigen.h>
+#include <pcl16/common/io.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -60,11 +60,13 @@
 namespace tabletop_pushing
 {
 
-typedef pcl::PointCloud<pcl::PointXYZ> XYZPointCloud;
+typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
+typedef pcl16::PointCloud<pcl16::Normal> NormalCloud;
 class ProtoObject
 {
  public:
   XYZPointCloud cloud;
+  NormalCloud normals;
   Eigen::Vector4f centroid;
   int id;
   bool moved;
@@ -100,7 +102,7 @@ class PointCloudSegmentation
    *
    * @return The object clusters.
    */
-  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud);
+  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -112,7 +114,7 @@ class PointCloudSegmentation
    * @return The object clusters.
    */
   ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud,
-                                   XYZPointCloud& objs_cloud);
+                                   XYZPointCloud& objs_cloud, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -126,10 +128,13 @@ class PointCloudSegmentation
    */
   ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud,
                                    XYZPointCloud& objs_cloud,
-                                   XYZPointCloud& plane_cloud);
+                                   XYZPointCloud& plane_cloud, bool use_mps=false);
 
   ProtoObjects findTabletopObjectsMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
                                       XYZPointCloud& plane_cloud);
+
+  ProtoObjects findTabletopObjectsCluster(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
+                                          XYZPointCloud& plane_cloud);
 
   /**
    * Function to segment point cloud regions using euclidean clustering
@@ -171,7 +176,10 @@ class PointCloudSegmentation
    */
   void matchMovedRegions(ProtoObjects& objs, ProtoObjects& moved_regions);
 
-  static inline double dist(pcl::PointXYZ a, pcl::PointXYZ b)
+  pcl16::ModelCoefficients fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud);
+  pcl16::ModelCoefficients fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud);
+
+  static inline double dist(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
     const double dx = a.x-b.x;
     const double dy = a.y-b.y;
@@ -179,7 +187,7 @@ class PointCloudSegmentation
     return std::sqrt(dx*dx+dy*dy+dz*dz);
   }
 
-  static inline double dist(pcl::PointXYZ a, geometry_msgs::Point b)
+  static inline double dist(pcl16::PointXYZ a, geometry_msgs::Point b)
   {
     const double dx = a.x-b.x;
     const double dy = a.y-b.y;
@@ -195,7 +203,7 @@ class PointCloudSegmentation
     return dx*dx+dy*dy+dz*dz;
   }
 
-  static inline double sqrDist(pcl::PointXYZ a, pcl::PointXYZ b)
+  static inline double sqrDist(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
     const double dx = a.x-b.x;
     const double dy = a.y-b.y;
@@ -203,7 +211,7 @@ class PointCloudSegmentation
     return dx*dx+dy*dy+dz*dz;
   }
 
-  static inline double sqrDistXY(pcl::PointXYZ a, pcl::PointXYZ b)
+  static inline double sqrDistXY(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
     const double dx = a.x-b.x;
     const double dy = a.y-b.y;
@@ -228,11 +236,11 @@ class PointCloudSegmentation
   bool pointIntersectsCloud(XYZPointCloud cloud, geometry_msgs::Point pt,
                             double thresh);
 
-  float pointLineXYDist(pcl::PointXYZ p,Eigen::Vector3f vec,Eigen::Vector4f base);
+  float pointLineXYDist(pcl16::PointXYZ p,Eigen::Vector3f vec,Eigen::Vector4f base);
 
   XYZPointCloud lineCloudIntersection(XYZPointCloud& cloud, Eigen::Vector3f vec,
                                       Eigen::Vector4f base);
-  std::vector<pcl::PointXYZ> lineCloudIntersectionEndPoints(
+  std::vector<pcl16::PointXYZ> lineCloudIntersectionEndPoints(
       XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base);
 
   /**
@@ -270,7 +278,7 @@ class PointCloudSegmentation
   void projectPointCloudIntoImage(XYZPointCloud& cloud, cv::Mat& lbl_img,
                                   std::string target_frame, unsigned int id=1);
 
-  cv::Point projectPointIntoImage(pcl::PointXYZ cur_point_pcl,
+  cv::Point projectPointIntoImage(pcl16::PointXYZ cur_point_pcl,
                                   std::string point_frame,
                                   std::string target_frame);
 
@@ -318,12 +326,19 @@ class PointCloudSegmentation
   double icp_transform_eps_;
   double icp_max_cor_dist_;
   double icp_ransac_thresh_;
+  int mps_min_inliers_;
+  double mps_min_angle_thresh_;
+  double mps_min_dist_thresh_;
+  double cylinder_ransac_thresh_;
+  double cylinder_ransac_angle_thresh_;
+  double sphere_ransac_thresh_;
+  bool optimize_cylinder_coefficients_;
 };
 
 XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
 {
   // Select points from point cloud that are in the mask:
-  pcl::PointIndices mask_indices;
+  pcl16::PointIndices mask_indices;
   mask_indices.header = input_cloud.header;
   for (int y = 0; y < mask.rows; ++y)
   {
@@ -338,7 +353,7 @@ XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
   }
 
   XYZPointCloud masked_cloud;
-  pcl::copyPointCloud(input_cloud, mask_indices, masked_cloud);
+  pcl16::copyPointCloud(input_cloud, mask_indices, masked_cloud);
   return masked_cloud;
 }
 };
