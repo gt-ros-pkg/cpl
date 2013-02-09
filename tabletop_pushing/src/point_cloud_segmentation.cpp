@@ -179,7 +179,6 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
   // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
   // projectPointCloudIntoImage(plane_cloud, plane_img, cur_camera_header_.frame_id, 255);
   // cv::imshow("table plane", plane_img);
-
   return table_centroid;
 }
 
@@ -233,66 +232,56 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
                                                             XYZPointCloud& objs_cloud,
                                                             XYZPointCloud& plane_cloud)
 {
-  ROS_WARN_STREAM("Finding tabletop objects MPS!");
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
-  ne.setMaxDepthChangeFactor (0.03f);
-  ne.setNormalSmoothingSize (20.0f);
-  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
+  ne.setMaxDepthChangeFactor(0.03f);
+  ne.setNormalSmoothingSize(20.0f);
+  pcl16::PointCloud<pcl16::Normal>::Ptr normal_cloud(new pcl16::PointCloud<pcl16::Normal>);
   ne.setInputCloud(input_cloud.makeShared());
   ne.compute(*normal_cloud);
 
-  cv::Mat normal_img(cv::Size(input_cloud.width, input_cloud.height), CV_32FC3, cv::Scalar(0));
-  for (int x = 0; x < normal_img.cols; ++x)
-    for (int y = 0; y < normal_img.rows; ++y)
-  {
-    cv::Vec3f norm;
-    norm[0] = abs(normal_cloud->at(x,y).normal_x);
-    norm[1] = abs(normal_cloud->at(x,y).normal_y);
-    norm[2] = abs(normal_cloud->at(x,y).normal_z);
-    normal_img.at<cv::Vec3f>(y,x) = norm;
-  }
-  cv::imshow("normals", normal_img);
+  // cv::Mat normal_img(cv::Size(input_cloud.width, input_cloud.height), CV_32FC3, cv::Scalar(0));
+  // for (int x = 0; x < normal_img.cols; ++x)
+  //   for (int y = 0; y < normal_img.rows; ++y)
+  // {
+  //   cv::Vec3f norm;
+  //   norm[0] = abs(normal_cloud->at(x,y).normal_x);
+  //   norm[1] = abs(normal_cloud->at(x,y).normal_y);
+  //   norm[2] = abs(normal_cloud->at(x,y).normal_z);
+  //   normal_img.at<cv::Vec3f>(y,x) = norm;
+  // }
+  // cv::imshow("normals", normal_img);
   // cv::waitKey();
 
   pcl16::OrganizedMultiPlaneSegmentation<PointXYZ, pcl16::Normal, pcl16::Label> mps;
-  // TODO: Check these parameters
-  // TODO: Expose them in the launch file
   mps.setMinInliers(mps_min_inliers_);
-  mps.setAngularThreshold(0.017453 *mps_min_angle_thresh_); // 2 degrees
-  mps.setDistanceThreshold(mps_min_dist_thresh_); // 2cm
+  mps.setAngularThreshold(0.017453 *mps_min_angle_thresh_);
+  mps.setDistanceThreshold(mps_min_dist_thresh_);
   mps.setInputNormals(normal_cloud);
   mps.setInputCloud(input_cloud.makeShared());
   std::vector<pcl16::PlanarRegion<PointXYZ>,
               Eigen::aligned_allocator<pcl16::PlanarRegion<PointXYZ> > > regions;
+  regions.clear();
   std::vector<pcl16::ModelCoefficients> coefficients;
   std::vector<pcl16::PointIndices> point_indices;
-  pcl16::OrganizedMultiPlaneSegmentation<PointXYZ, pcl16::Normal, pcl16::Label>::PointCloudLPtr labels;
+  pcl16::PointCloud<pcl16::Label>::Ptr labels(new pcl16::PointCloud<pcl16::Label>());
   std::vector<pcl16::PointIndices> label_indices;
   std::vector<pcl16::PointIndices> boundary_indices;
-  regions.clear();
   point_indices.clear();
   label_indices.clear();
   boundary_indices.clear();
-  ROS_WARN_STREAM("Segmenting and refining!");
-  mps.segmentAndRefine(regions);
-  ROS_WARN_STREAM("Segmented and refined!");
-  // mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
-
+  mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
   // TODO: Get table plane
   // TODO: Create objects and their clouds
   // TODO: Filter out arm
   ProtoObjects objs;
-  ROS_WARN_STREAM("Iterating throught " << regions.size() << " regions!");
   for (size_t i = 0; i < regions.size (); i++)
   {
     ProtoObject po;
     po.push_history.clear();
     po.boundary_angle_dist.clear();
     po.id = i;
-    // TODO: Get object point cloud
     pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
-    ROS_INFO_STREAM("Object has " << po.cloud.size() << " points");
     po.centroid[0] = regions[i].getCentroid()[0];
     po.centroid[1] = regions[i].getCentroid()[1];
     po.centroid[2] = regions[i].getCentroid()[2];
@@ -301,14 +290,13 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     po.transform = Eigen::Matrix4f::Identity();
     po.singulated = false;
     objs.push_back(po);
-    Eigen::Vector4f model = regions[i].getCoefficients ();
+    Eigen::Vector4f model = regions[i].getCoefficients();
     // TODO: Save object counter
-    XYZPointCloud boundary_cloud;
-    boundary_cloud.points = regions[i].getContour ();
-    printf ("Centroid: (%f, %f, %f)\n  Coefficients: (%f, %f, %f, %f)\n Inliers: %d\n",
-            po.centroid[0], po.centroid[1], po.centroid[2],
-            model[0], model[1], model[2], model[3],
-            boundary_cloud.points.size ());
+    // ROS_INFO_STREAM("Centroid: (" << po.centroid[0] << ", " << po.centroid[1] <<
+    //                 ", " << po.centroid[2] << ")\n Coefficients: (" <<
+    //                 model[0] << ", " << model[1] << ", " <<  model[2] << ", " <<
+    //                 model[3]  << ")\n Inliers: " << po.cloud.points.size() <<
+    //                 "\n Frame_id: " << po.cloud.header.frame_id << "\n");
   }
   return objs;
 }
@@ -896,7 +884,7 @@ cv::Point PointCloudSegmentation::projectPointIntoImage(
   catch (tf::TransformException e)
   {
     ROS_ERROR_STREAM("Error projecting 3D point into image plane.");
-    ROS_ERROR_STREAM(e.what());
+    // ROS_ERROR_STREAM(e.what());
     ROS_ERROR_STREAM("cur point header is: " << cur_point.header.frame_id);
     ROS_ERROR_STREAM("target frame is: " << target_frame);
   }

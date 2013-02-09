@@ -137,6 +137,8 @@ const std::string CENTROID_PROXY = "centroid";
 const std::string SPHERE_PROXY = "sphere";
 const std::string CYLINDER_PROXY = "cylinder";
 const std::string BOUNDING_BOX_XY_PROXY = "bounding_box_xy";
+const std::string HACK_TOOL_PROXY = "hack";
+const std::string EE_TOOL_PROXY = "end_effector_tool";
 
 class ObjectTracker25D
 {
@@ -155,7 +157,7 @@ class ObjectTracker25D
   }
 
   ProtoObject findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
-                               bool& no_objects, bool init=false)
+                               bool& no_objects, bool init=false, bool find_tool=false)
   {
     // TODO: Pass in arm mask
     ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud, use_mps_segmentation_);
@@ -171,9 +173,9 @@ class ObjectTracker25D
     if (objs.size() == 1)
     {
     }
-    else if (init || frame_count_ == 0)
+    else if (true || init || frame_count_ == 0)
     {
-      // Assume we care about the biggest currently
+      // NOTE: Assume we care about the biggest currently
       unsigned int max_size = 0;
       for (unsigned int i = 0; i < objs.size(); ++i)
       {
@@ -183,7 +185,16 @@ class ObjectTracker25D
           chosen_idx = i;
         }
       }
-
+      // // Assume we care about the highest currently
+      // float max_height = -1000.0;
+      // for (unsigned int i = 0; i < objs.size(); ++i)
+      // {
+      //   if (objs[i].centroid[2] > max_height)
+      //   {
+      //     max_height = objs[i].centroid[2];
+      //     chosen_idx = i;
+      //   }
+      // }
       // TODO: Extract color histogram
     }
     else // Find closest object to last time
@@ -212,7 +223,7 @@ class ObjectTracker25D
   }
 
   PushTrackerState computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
-                                std::string proxy_name, cv::Mat& in_frame)
+                                std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name, PoseStamped& arm_pose)
   {
     PushTrackerState state;
     // TODO: Have each proxy create an image, and send that image to the trackerDisplay
@@ -263,14 +274,21 @@ class ObjectTracker25D
       pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
       cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
       cv::Mat disp_img(in_frame.size(), CV_8UC3, cv::Scalar(0,0,0));
-      pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
-      lbl_img*=255;
-      pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
-      cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
-      const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-          centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
-      cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
-      cv::imshow("sphere",disp_img);
+      if (sphere_cloud.size() < 1)
+      {
+        ROS_INFO_STREAM("Sphere has 0 points");
+      }
+      else
+      {
+        pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
+        lbl_img*=255;
+        pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
+        cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
+        const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+            centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
+        cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
+        cv::imshow("sphere",disp_img);
+      }
       state.x.x = sphere.values[0];
       state.x.y = sphere.values[1];
       state.z = sphere.values[2];
@@ -359,6 +377,32 @@ class ObjectTracker25D
     else
     {
       ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
+    }
+
+    // TODO: Put in more tool proxy stuff here
+    if (tool_proxy_name == HACK_TOOL_PROXY)
+    {
+      // HACK: Need to replace this with the appropriately computed tool_proxy
+      PoseStamped tool_pose;
+      float tool_length = 0.16;
+      tf::Quaternion q;
+      double wrist_roll, wrist_pitch, wrist_yaw;
+      // ROS_INFO_STREAM("arm quaternion: " << arm_pose.pose.orientation);
+      tf::quaternionMsgToTF(arm_pose.pose.orientation, q);
+      tf::Matrix3x3(q).getRPY(wrist_roll, wrist_pitch, wrist_yaw);
+      // ROS_INFO_STREAM("Wrist yaw: " << wrist_yaw);
+      // TODO: Put tool proxy in "/?_gripper_tool_frame"
+      tool_pose.pose.position.x = arm_pose.pose.position.x + cos(wrist_yaw)*tool_length;
+      tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
+      tool_pose.header.frame_id = arm_pose.header.frame_id;
+      state.tool_x = tool_pose;
+    }
+    else if(tool_proxy_name == EE_TOOL_PROXY)
+    {
+    }
+    else
+    {
+      ROS_WARN_STREAM("Unknown tool perceptual proxy: " << tool_proxy_name << " requested");
     }
 
     if (use_displays_ || write_to_disk_)
@@ -459,7 +503,7 @@ class ObjectTracker25D
   }
 
   PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                              std::string proxy_name)
+                              std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name)
   {
     paused_ = false;
     initialized_ = false;
@@ -482,7 +526,7 @@ class ObjectTracker25D
     }
     else
     {
-      state = computeState(cur_obj, cloud, proxy_name, in_frame);
+      state = computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose);
       state.header.seq = 0;
       state.header.stamp = cloud.header.stamp;
       state.header.frame_id = cloud.header.frame_id;
@@ -511,11 +555,11 @@ class ObjectTracker25D
   }
 
   PushTrackerState updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                                std::string proxy_name)
+                                std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name)
   {
     if (!initialized_)
     {
-      return initTracks(in_frame, self_mask, cloud, proxy_name);
+      return initTracks(in_frame, self_mask, cloud, proxy_name, arm_pose, tool_proxy_name);
     }
     bool no_objects = false;
     ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
@@ -543,7 +587,7 @@ class ObjectTracker25D
     else
     {
       obj_saved_ = true;
-      state = computeState(cur_obj, cloud, proxy_name, in_frame);
+      state = computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose);
       state.header.seq = frame_count_;
       state.header.stamp = cloud.header.stamp;
       state.header.frame_id = cloud.header.frame_id;
@@ -929,6 +973,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_mps_segmentation", use_mps_segmentation_, false);
 
     n_private_.param("max_object_gripper_dist", max_object_gripper_dist_, 0.10);
+    n_private_.param("max_object_tool_dist", max_object_tool_dist_, 0.10);
     n_private_.param("gripper_not_moving_thresh", gripper_not_moving_thresh_, 0.005);
     n_private_.param("object_not_moving_thresh", object_not_moving_thresh_, 0.005);
     n_private_.param("gripper_not_moving_count_limit", gripper_not_moving_count_limit_, 100);
@@ -937,6 +982,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_too_far_count_limit", object_too_far_count_limit_, 5);
     n_private_.param("object_not_between_count_limit", object_not_between_count_limit_, 5);
     n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
+    n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1061,11 +1107,21 @@ class TabletopPushingPerceptionNode
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
+      PoseStamped arm_pose;
+      if (pushing_arm_ == "l")
+      {
+        arm_pose = l_arm_pose_;
+      }
+      else
+      {
+        arm_pose = r_arm_pose_;
+      }
       PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_);
+          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_, arm_pose, tool_proxy_name_);
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
-      tracker_state.action_primitive = action_primitive_;
+      tracker_state.behavior_primitive = behavior_primitive_;
+      tracker_state.tool_proxy_name = tool_proxy_name_;
 
       PointStamped start_point;
       PointStamped end_point;
@@ -1079,7 +1135,7 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
 
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayRobotGripperPoses(cur_color_frame_);
+      // displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
 
@@ -1105,7 +1161,7 @@ class TabletopPushingPerceptionNode
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayRobotGripperPoses(cur_color_frame_);
+      // displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
     }
@@ -1115,7 +1171,7 @@ class TabletopPushingPerceptionNode
     if (use_displays_)
     {
       cv::imshow("color", cur_color_frame_);
-      // cv::imshow("self_mask", cur_self_mask_);
+      cv::imshow("self_mask", cur_self_mask_);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
@@ -1204,14 +1260,39 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object disappeared");
     }
-    else if (objectTooFarFromGripper(tracker_state.x))
+    else if (controller_name_ != "tool_centroid_controller")
     {
-      abortPushingGoal("Object is too far from gripper.");
+      if (objectTooFarFromGripper(tracker_state.x))
+      {
+        abortPushingGoal("Object is too far from gripper.");
+      }
+      else if (behavior_primitive_ != "gripper_pull" &&
+               objectNotBetweenGoalAndGripper(tracker_state.x))
+      {
+        abortPushingGoal("Object is not between gripper and goal.");
+      }
     }
-    else if (action_primitive_ != "gripper_pull" &&
-             objectNotBetweenGoalAndGripper(tracker_state.x))
+    else
     {
-      abortPushingGoal("Object is not between gripper and goal.");
+      // TODO: Fix this to be based on the tool_proxy being used
+      PoseStamped tool_state;
+      if (pushing_arm_ == "l")
+      {
+        tool_state = l_arm_pose_;
+      }
+      else
+      {
+        tool_state = r_arm_pose_;
+      }
+
+      if (objectTooFarFromTool(tracker_state.x, tool_state))
+      {
+        abortPushingGoal("Object is too far from tool.");
+      }
+      else if (objectNotBetweenGoalAndTool(tracker_state.x, tool_state))
+      {
+        abortPushingGoal("Object is not between tool and goal.");
+      }
     }
   }
 
@@ -1237,9 +1318,14 @@ class TabletopPushingPerceptionNode
   {
     if ( have_depth_data_ )
     {
-      controller_name_ = req.controller_name;
-      proxy_name_ = req.proxy_name;
-      action_primitive_ = req.action_primitive;
+      if (!req.analyze_previous)
+      {
+        controller_name_ = req.controller_name;
+        proxy_name_ = req.proxy_name;
+        behavior_primitive_ = req.behavior_primitive;
+        tool_proxy_name_ = req.tool_proxy_name;
+      }
+
       if (req.initialize)
       {
         ROS_INFO_STREAM("Initializing");
@@ -1296,7 +1382,7 @@ class TabletopPushingPerceptionNode
     {
       cur_state = startTracking();
     }
-    bool pull_start = (req.action_primitive == "gripper_pull");
+    bool pull_start = (req.behavior_primitive == "gripper_pull");
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     tracker_goal_pose_ = req.goal_pose;
     if (!start_tracking_on_push_call_)
@@ -1319,6 +1405,7 @@ class TabletopPushingPerceptionNode
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
     res.theta = cur_state.x.theta;
+    res.tool_x = cur_state.tool_x;
 
     // Set basic push information
     PushVector p;
@@ -1581,8 +1668,17 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
+    PoseStamped arm_pose;
+    if (pushing_arm_ == "l")
+    {
+      arm_pose = l_arm_pose_;
+    }
+    else
+    {
+      arm_pose = r_arm_pose_;
+    }
     return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                                    proxy_name_);
+                                    proxy_name_, arm_pose, tool_proxy_name_);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -1614,7 +1710,8 @@ class TabletopPushingPerceptionNode
     pushing_arm_ = tracker_goal->which_arm;
     controller_name_ = tracker_goal->controller_name;
     proxy_name_ = tracker_goal->proxy_name;
-    action_primitive_ = tracker_goal->action_primitive;
+    behavior_primitive_ = tracker_goal->behavior_primitive;
+    tool_proxy_name_ = tracker_goal->tool_proxy_name;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
@@ -1719,7 +1816,21 @@ class TabletopPushingPerceptionNode
     return object_not_between_count_ >= object_not_between_count_limit_;
   }
 
-  // TODO: Make this threshold the initial distance when pushing +- some epsilon
+  bool objectNotBetweenGoalAndTool(Pose2D& obj_state, PoseStamped& tool_state)
+  {
+    if( pointIsBetweenOthers(tool_state.pose.position, obj_state, tracker_goal_pose_,
+                             object_not_between_tool_epsilon_))
+    {
+      ++object_not_between_count_;
+    }
+    else
+    {
+      object_not_between_count_ = 0;
+    }
+    return object_not_between_count_ >= object_not_between_count_limit_;
+  }
+
+  // TODO: Make this threshold the initial distance when pushing + some epsilon
   bool objectTooFarFromGripper(Pose2D& obj_state)
   {
     geometry_msgs::Point gripper_pt;
@@ -1733,6 +1844,22 @@ class TabletopPushingPerceptionNode
     }
     float gripper_dist = hypot(gripper_pt.x-obj_state.x,gripper_pt.y-obj_state.y);
     if (gripper_dist  > max_object_gripper_dist_)
+    {
+      ++object_too_far_count_;
+    }
+    else
+    {
+      object_too_far_count_ = 0;
+    }
+    return object_too_far_count_ >= object_too_far_count_limit_;
+  }
+
+  bool objectTooFarFromTool(Pose2D& obj_state, PoseStamped& tool_state)
+  {
+    geometry_msgs::Point tool_pt;
+    tool_pt = tool_state.pose.position;
+    float tool_dist = hypot(tool_pt.x-obj_state.x, tool_pt.y-obj_state.y);
+    if (tool_dist  > max_object_tool_dist_)
     {
       ++object_too_far_count_;
     }
@@ -1994,7 +2121,8 @@ class TabletopPushingPerceptionNode
   std::string pushing_arm_;
   std::string proxy_name_;
   std::string controller_name_;
-  std::string action_primitive_;
+  std::string behavior_primitive_;
+  std::string tool_proxy_name_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
   bool just_spun_;
@@ -2006,6 +2134,7 @@ class TabletopPushingPerceptionNode
   Twist r_arm_vel_;
   bool use_mps_segmentation_;
   double max_object_gripper_dist_;
+  double max_object_tool_dist_;
   double object_not_moving_thresh_;
   int object_not_moving_count_;
   int object_not_moving_count_limit_;
@@ -2019,6 +2148,7 @@ class TabletopPushingPerceptionNode
   int object_not_between_count_;
   int object_not_between_count_limit_;
   double object_not_between_epsilon_;
+  double object_not_between_tool_epsilon_;
 };
 
 int main(int argc, char ** argv)

@@ -1,5 +1,6 @@
 <launch>
     <!-- <include file="$(find hrl_pr2_lib)/launch/openni_kinect_polled.launch"/> -->
+    <param name="servo_head_during_pushing" type="bool" value="true"/>
     <node pkg="tabletop_pushing" type="position_feedback_push_node.py" name="tabletop_push_node" output="screen">
       <param name="torso_z_offset" type="double" value="0.3"/>
       <param name="default_torso_height" type="double" value="0.26"/>
@@ -20,6 +21,9 @@
       <param name="max_heading_push_u_x" type="double" value="0.03"/>
 
       <param name="push_control_direct_goal_gain" type="double" value="0.15"/>
+
+      <param name="tool_control_contact_goal_gain" type="double" value="0.15"/>
+      <param name="tool_control_contact_gain" type="double" value="0.2"/>
 
       <param name="overhead_feedback_down_vel" type="double" value="0.0"/>
       <param name="max_close_effort" type="double" value="50"/>

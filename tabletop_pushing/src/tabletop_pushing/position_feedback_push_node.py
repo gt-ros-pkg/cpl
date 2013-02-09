@@ -52,6 +52,8 @@ import sys
 
 from push_primitives import *
 
+_USE_CONTROLLER_IO = False
+
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
                                     -0.34601608409943324,
@@ -136,7 +138,8 @@ class PositionFeedbackPushNode:
         self.controller_io = ControlAnalysisIO()
         out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
-        self.controller_io.open_out_file(out_file_name)
+        if _USE_CONTROLLER_IO:
+            self.controller_io.open_out_file(out_file_name)
 
         # Setup parameters
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
@@ -182,6 +185,8 @@ class PositionFeedbackPushNode:
 
         self.k_contact_g = rospy.get_param('~push_control_contact_goal_gain', 0.05)
         self.k_contact_d = rospy.get_param('~push_control_contact_gain', 0.05)
+        self.k_tool_contact_g = rospy.get_param('~tool_control_contact_goal_gain', 0.05)
+        self.k_tool_contact_d = rospy.get_param('~tool_control_contact_gain', 0.05)
 
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
@@ -191,6 +196,9 @@ class PositionFeedbackPushNode:
 
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
+
+        self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
+
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
@@ -364,7 +372,7 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Point head at ' + str(look_pt))
         head_res = self.robot.head.look_at(look_pt,
                                            'torso_lift_link',
-                                           camera_frame)
+                                           camera_frame, wait=True)
         if head_res:
             rospy.loginfo('Succeeded in pointing head')
             return True
@@ -431,7 +439,8 @@ class PositionFeedbackPushNode:
         self.desired_pose = request.goal_pose
         goal.controller_name = request.controller_name
         goal.proxy_name = request.proxy_name
-        goal.action_primitive = request.action_primitive
+        goal.behavior_primitive = request.behavior_primitive
+        goal.tool_proxy_name = request.tool_proxy_name
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -442,7 +451,6 @@ class PositionFeedbackPushNode:
         self.stop_moving_vel(which_arm)
         result = ac.get_result()
         response.action_aborted = result.aborted
-        # TODO: send back more information?
         return response
 
     def tracker_feedback_push(self, feedback):
@@ -476,6 +484,10 @@ class PositionFeedbackPushNode:
         elif feedback.controller_name == CENTROID_CONTROLLER:
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
                                                               cur_pose)
+        elif feedback.controller_name == TOOL_CENTROID_CONTROLLER:
+            tool_pose = feedback.tool_x
+            update_twist = self.toolCentroidCompensationController(feedback, self.desired_pose,
+                                                                   tool_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
@@ -488,9 +500,17 @@ class PositionFeedbackPushNode:
                           str(update_twist.twist.linear.y) + ', ' +
                           str(update_twist.twist.linear.z) + ')\n')
 
-        self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                      update_twist.twist, update_twist.header.stamp.to_sec(),
-                                      cur_pose.pose)
+        if _USE_CONTROLLER_IO:
+            self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                          update_twist.twist, update_twist.header.stamp.to_sec(),
+                                          cur_pose.pose)
+        if self.servo_head_during_pushing:
+            look_pt = np.asmatrix([feedback.x.x,
+                                   feedback.x.y,
+                                   feedback.z])
+            head_res = self.robot.head.look_at(look_pt, feedback.header.frame_id,
+                                               self.head_pose_cam_frame)
+
         self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
@@ -590,6 +610,44 @@ class PositionFeedbackPushNode:
                           str(contact_pt_y_dot) + ')')
         return u
 
+    def toolCentroidCompensationController(self, cur_state, desired_state, tool_pose):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # Push centroid towards the desired goal
+        centroid = cur_state.x
+        tool = tool_pose.pose.position
+        x_error = desired_state.x - centroid.x
+        y_error = desired_state.y - centroid.y
+        goal_x_dot = self.k_tool_contact_g*x_error
+        goal_y_dot = self.k_tool_contact_g*y_error
+
+        # Add in direction to corect for not pushing through the centroid
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        m = (((tool.x - centroid.x)*x_error + (tool.y - centroid.y)*y_error) /
+             sqrt(x_error*x_error + y_error*y_error))
+        tan_pt_x = centroid.x + m*x_error
+        tan_pt_y = centroid.y + m*y_error
+        contact_pt_x_dot = self.k_tool_contact_d*(tan_pt_x - tool.x)
+        contact_pt_y_dot = self.k_tool_contact_d*(tan_pt_y - tool.y)
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
+        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
+            rospy.loginfo('tool: (' + str(tool.x) + ', ' + str(tool.y) + ')')
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
+                          str(contact_pt_y_dot) + ')')
+        return u
+
     def directGoalController(self, cur_state, desired_state):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
@@ -606,7 +664,6 @@ class PositionFeedbackPushNode:
         goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
         goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
 
-        # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot
         u.twist.linear.y = goal_y_dot
         if self.feedback_count % 5 == 0:
@@ -632,7 +689,6 @@ class PositionFeedbackPushNode:
         goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
         goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
 
-        # TODO: Clip values that get too big
         u.twist.linear.x = goal_x_dot
         u.twist.linear.y = goal_y_dot
         if self.feedback_count % 5 == 0:
@@ -703,7 +759,7 @@ class PositionFeedbackPushNode:
         response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        is_pull = request.action_primitive == GRIPPER_PULL
+        is_pull = request.behavior_primitive == GRIPPER_PULL
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -839,7 +895,7 @@ class PositionFeedbackPushNode:
         response = FeedbackPushResponse()
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
-        is_pull = request.action_primitive == GRIPPER_PULL
+        is_pull = request.behavior_primitive == GRIPPER_PULL
 
         if request.left_arm:
             ready_joints = LEFT_ARM_READY_JOINTS
@@ -909,12 +965,20 @@ class PositionFeedbackPushNode:
                 ready_joints = LEFT_ARM_HIGH_SWEEP_READY_JOINTS
             which_arm = 'l'
             wrist_roll = -pi
+            robot_gripper = self.robot.left_gripper
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_HIGH_SWEEP_READY_JOINTS
             which_arm = 'r'
             wrist_roll = 0.0
+            robot_gripper = self.robot.right_gripper
+
+        if request.open_gripper:
+            res = robot_gripper.open(block=True, position=0.9)
+            raw_input('waiting for input to close gripper: ')
+            print '\n'
+            res = robot_gripper.close(block=True, effort=self.max_close_effort)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
@@ -1801,7 +1865,8 @@ class PositionFeedbackPushNode:
 
     def shutdown_hook(self):
         rospy.loginfo('Cleaning up node on shutdown')
-        self.controller_io.close_out_file()
+        if _USE_CONTROLLER_IO:
+            self.controller_io.close_out_file()
         # TODO: stop moving the arms on shutdown
 
     #

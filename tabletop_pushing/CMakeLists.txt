@@ -48,3 +48,5 @@ rosbuild_add_executable(save_kinect_data src/save_kinect_images.cpp)
 target_link_libraries(save_kinect_data point_cloud_segmentation)
 target_link_libraries(save_kinect_data ${OpenCV_LIBRARIES})
 rosbuild_link_boost(save_kinect_data signals)
+
+rosbuild_add_executable(extract_shape_features src/extract_shape_features.cpp)

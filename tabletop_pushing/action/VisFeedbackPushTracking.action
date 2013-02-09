@@ -4,20 +4,24 @@ geometry_msgs/Pose2D desired_pose
 string which_arm
 string controller_name
 string proxy_name
-string action_primitive
+string behavior_primitive
+string tool_proxy_name
 ---
 # Result Definition
 std_msgs/Header header
 geometry_msgs/Pose2D x
 geometry_msgs/Pose2D x_error
+geometry_msgs/PoseStamped tool_x
 bool aborted
 ---
 # Feedback Definition
 std_msgs/Header header
-geometry_msgs/Pose2D x
-geometry_msgs/Pose2D x_dot
+geometry_msgs/Pose2D x # Object pose
+geometry_msgs/Pose2D x_dot # Object velocity
+geometry_msgs/PoseStamped tool_x
 float64 z
 bool no_detection
 string controller_name
 string proxy_name
-string action_primitive
+string behavior_primitive
+string tool_proxy_name
