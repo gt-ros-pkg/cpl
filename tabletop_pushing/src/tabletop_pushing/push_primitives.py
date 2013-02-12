@@ -1,3 +1,6 @@
+# To add a new primitive need to put in perform_push() in tabletop_executive.py, need to add which controllers can use it
+# need to add a precondiiton method for it
+
 ROBOT_ARMS = ['r', 'l']
 # ROBOT_ARMS = ['r']
 # ROBOT_ARMS = ['l']
@@ -16,8 +19,9 @@ GRIPPER_PUSH = 'gripper_push'
 GRIPPER_SWEEP = 'gripper_sweep'
 TOOL_SWEEP = 'tool_sweep'
 OVERHEAD_PUSH = 'overhead_push'
+PINCHER_PUSH = 'pincher_push'
 GRIPPER_PULL = 'gripper_pull'
-PUSH_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP]
+PUSH_PRIMITIVES = [PINCHER_PUSH, OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP]
 # PUSH_PRIMITIVES = [GRIPPER_SWEEP]
 TOOL_PRIMITIVES = [TOOL_SWEEP]
 BEHAVIOR_PRIMITIVES = {CENTROID_CONTROLLER:PUSH_PRIMITIVES, SPIN_COMPENSATION:PUSH_PRIMITIVES,
@@ -51,4 +55,5 @@ PRECONDITION_METHODS = {GRIPPER_PULL:CENTROID_PULL_PRECONDITION,
                         OVERHEAD_PUSH:CENTROID_PUSH_PRECONDITION,
                         GRIPPER_PUSH:CENTROID_PUSH_PRECONDITION,
                         GRIPPER_SWEEP:CENTROID_PUSH_PRECONDITION,
+                        PINCHER_PUSH:CENTROID_PUSH_PRECONDITION,
                         TOOL_SWEEP:TOOL_SWEEP_PRECONDITION}

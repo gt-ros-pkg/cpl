@@ -497,7 +497,7 @@ class TabletopExecutive:
             elif behavior_primitive == GRIPPER_SWEEP:
                 result = self.feedback_sweep_object(which_arm, push_vector_res.push,
                                                     goal_pose, controller_name, proxy_name, behavior_primitive)
-            elif behavior_primitive == GRIPPER_PUSH or behavior_primitive == GRIPPER_PULL:
+            elif behavior_primitive == GRIPPER_PUSH or behavior_primitive == PINCHER_PUSH or behavior_primitive == GRIPPER_PULL:
                 result = self.gripper_feedback_push_object(which_arm,
                                                            push_vector_res.push, goal_pose,
                                                            controller_name, proxy_name, behavior_primitive)
@@ -708,6 +708,10 @@ class TabletopExecutive:
         if behavior_primitive == GRIPPER_PULL:
             offset_dist = self.gripper_pull_offset_dist
             start_z = self.gripper_pull_start_z
+        elif behavior_primitive == PINCHER_PUSH:
+            offset_dist = self.gripper_offset_dist
+            start_z = self.gripper_start_z
+            push_req.open_gripper = True
         else:
             offset_dist = self.gripper_offset_dist
             start_z = self.gripper_start_z
