@@ -74,6 +74,9 @@ class TabletopExecutive:
         self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
+        self.pincher_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.07)
+        self.pincher_start_z = rospy.get_param('~gripper_push_start_z', -0.30)
+
         self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
         self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.02)
         self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
@@ -142,9 +145,16 @@ class TabletopExecutive:
         self.table_proxy = rospy.ServiceProxy('get_table_location', LocateTable)
 
         if use_singulation:
+            self.use_singulation = True
             self.init_singulation()
+        else:
+            self.use_singulation = False
         if use_learning:
+            self.use_learning = True
             self.init_learning()
+        else:
+            self.use_learning = False
+        rospy.on_shutdown(self.shutdown_hook)
 
     def init_singulation(self):
         # Singulation Push proxy
@@ -356,6 +366,11 @@ class TabletopExecutive:
                 which_arm = self.choose_arm(push_vec_res.push, controller_name)
             else:
                 which_arm = input_arm
+
+            if _USE_LEARN_IO:
+                self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
+                                                  goal_pose, behavior_primitive, controller_name,
+                                                  proxy_name, which_arm, object_id, precondition_method)
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
                                               push_vec_res, goal_pose,
@@ -715,8 +730,8 @@ class TabletopExecutive:
             offset_dist = self.gripper_pull_offset_dist
             start_z = self.gripper_pull_start_z
         elif behavior_primitive == PINCHER_PUSH:
-            offset_dist = self.gripper_offset_dist
-            start_z = self.gripper_start_z
+            offset_dist = self.pincher_offset_dist
+            start_z = self.pincher_start_z
             push_req.open_gripper = True
         else:
             offset_dist = self.gripper_offset_dist
@@ -991,8 +1006,8 @@ class TabletopExecutive:
     def generate_random_table_pose(self, init_pose=None):
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
-            goal_pose.x = 0.55
-            goal_pose.y = -0.1
+            goal_pose.x = 0.7
+            goal_pose.y = 0.2
             goal_pose.theta = 3.01697971833
             return goal_pose
         min_x = self.min_workspace_x
@@ -1021,6 +1036,11 @@ class TabletopExecutive:
                       ', ' + str(rand_pose.theta) + ')')
         self.previous_rand_pose = rand_pose
         return rand_pose
+
+    def shutdown_hook(self):
+        rospy.loginfo('Cleaning up tabletop_executive_node on shutdown')
+        if self.use_learning:
+            self.finish_learning()
 
 if __name__ == '__main__':
     random.seed()

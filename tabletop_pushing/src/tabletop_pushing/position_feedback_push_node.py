@@ -1883,6 +1883,8 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Cleaning up node on shutdown')
         if _USE_CONTROLLER_IO:
             self.controller_io.close_out_file()
+        if _USE_LEARN_IO:
+            self.learn_io.close_out_file()
         # TODO: stop moving the arms on shutdown
 
     #

@@ -158,6 +158,20 @@ class PushLearningIO:
             print 'Greater than 1.0 x: ', str(push)
         return push
 
+    def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, behavior_primitive,
+                             controller, proxy, which_arm, object_id, precondition_method):
+        if self.data_out is None:
+            rospy.logerr('Attempting to write to file that has not been opened.')
+            return
+        rospy.logdebug('Writing pre push output line.\n')
+        data_line = object_id+' '+str(init_centroid.x)+' '+str(init_centroid.y)+' '+str(init_centroid.z)+' '+\
+            str(init_orientation)+' '+str(0.0)+' '+str(0.0)+' '+\
+            str(0.0)+' '+str(0.0)+' '+\
+            str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method+'\n'
+        self.data_out.write(data_line)
+        self.data_out.flush()
+
     def read_in_data_file(self, file_name):
         data_in = file(file_name, 'r')
         x = [self.parse_line(l) for l in data_in.readlines()]
