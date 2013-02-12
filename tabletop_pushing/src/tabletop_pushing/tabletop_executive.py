@@ -50,7 +50,7 @@ import random
 from push_primitives import *
 
 _OFFLINE = False
-_USE_LEARN_IO = False
+_USE_LEARN_IO = True
 _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
 _SPIN_FIRST = False
@@ -93,6 +93,7 @@ class TabletopExecutive:
         self.min_workspace_y = -self.max_workspace_y
 
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
+        self.learn_file_base = rospy.get_param('push_learn_file_base_path', '/u/thermans/data/new/aff_learn_out_')
 
         # Setup service proxies
         if not _OFFLINE:
@@ -154,7 +155,8 @@ class TabletopExecutive:
         # Singulation Push proxy
         if _USE_LEARN_IO:
             self.learn_io = PushLearningIO()
-            learn_file_name = '/u/thermans/data/new/aff_learn_out_'+str(rospy.get_time())+'.txt'
+            learn_file_name = self.learn_file_base+str(rospy.get_time())+'.txt'
+            self.learn_out_file_name = learn_file_name
             rospy.loginfo('Opening learn file: '+learn_file_name)
             self.learn_io.open_out_file(learn_file_name)
         self.learning_push_vector_proxy = rospy.ServiceProxy(
@@ -657,6 +659,8 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        if _USE_LEARN_IO:
+            push_req.learn_out_file_name = self.learn_out_file_name
 
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
@@ -700,6 +704,8 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        if _USE_LEARN_IO:
+            push_req.learn_out_file_name = self.learn_out_file_name
 
         # Use the sent wrist yaw
         wrist_yaw = push_vector.push_angle
@@ -753,6 +759,8 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        if _USE_LEARN_IO:
+            push_req.learn_out_file_name = self.learn_out_file_name
 
         # if push_req.left_arm:
         if push_vector.push_angle > 0:
@@ -816,6 +824,8 @@ class TabletopExecutive:
         # TODO: Note, curently a hack
         push_req.open_gripper = False
         push_req.goal_pose = goal_pose
+        if _USE_LEARN_IO:
+            push_req.learn_out_file_name = self.learn_out_file_name
 
         # if push_req.left_arm:
         if push_vector.push_angle > 0:

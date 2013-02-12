@@ -53,6 +53,7 @@ import sys
 from push_primitives import *
 
 _USE_CONTROLLER_IO = False
+_USE_LEARN_IO = True
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
@@ -136,6 +137,7 @@ class PositionFeedbackPushNode:
     def __init__(self):
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
         self.controller_io = ControlAnalysisIO()
+        self.use_learn_io = False
         out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
         if _USE_CONTROLLER_IO:
@@ -411,6 +413,11 @@ class PositionFeedbackPushNode:
         start_point = request.start_point.point
         wrist_yaw = request.wrist_yaw
 
+        self.use_learn_io = (_USE_LEARN_IO and request.learn_out_file_name != '')
+        if self.use_learn_io:
+            self.learn_io = ControlAnalysisIO()
+            self.learn_io.open_out_file(request.learn_out_file_name)
+
         if request.left_arm:
             which_arm = 'l'
         else:
@@ -423,6 +430,8 @@ class PositionFeedbackPushNode:
         rospy.loginfo('waiting for server')
         if not ac.wait_for_server(rospy.Duration(5.0)):
             rospy.loginfo('Failed to connect to push tracker server')
+            if self.use_learn_io:
+                self.learn_io.close_out_file()
             return response
         ac.cancel_all_goals()
         self.feedback_count = 0
@@ -451,6 +460,8 @@ class PositionFeedbackPushNode:
         self.stop_moving_vel(which_arm)
         result = ac.get_result()
         response.action_aborted = result.aborted
+        if self.use_learn_io:
+            self.learn_io.close_out_file()
         return response
 
     def tracker_feedback_push(self, feedback):
@@ -504,6 +515,11 @@ class PositionFeedbackPushNode:
             self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                           update_twist.twist, update_twist.header.stamp.to_sec(),
                                           cur_pose.pose)
+        if self.use_learn_io:
+            self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                     update_twist.twist, update_twist.header.stamp.to_sec(),
+                                     cur_pose.pose)
+
         if self.servo_head_during_pushing:
             look_pt = np.asmatrix([feedback.x.x,
                                    feedback.x.y,
