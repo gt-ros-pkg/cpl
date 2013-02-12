@@ -229,14 +229,8 @@ class ObjectTracker25D
     // TODO: Have each proxy create an image, and send that image to the trackerDisplay
     // function to deal with saving and display.
     cv::RotatedRect obj_ellipse;
-    if (proxy_name == CENTROID_PROXY)
-    {
-      state.x.x = cur_obj.centroid[0];
-      state.x.y = cur_obj.centroid[1];
-      state.z = cur_obj.centroid[2];
-      state.x.theta = 0.0;
-    }
-    else if (proxy_name == ELLIPSE_PROXY)
+    if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY || proxy_name == SPHERE_PROXY ||
+        proxy_name == CYLINDER_PROXY)
     {
       obj_ellipse = fitObjectEllipse(cur_obj);
       previous_obj_ellipse_ = obj_ellipse;
@@ -267,62 +261,6 @@ class ObjectTracker25D
             state.x.theta += M_PI;
         }
       }
-    }
-    else if (proxy_name == SPHERE_PROXY)
-    {
-      XYZPointCloud sphere_cloud;
-      pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
-      cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
-      cv::Mat disp_img(in_frame.size(), CV_8UC3, cv::Scalar(0,0,0));
-      if (sphere_cloud.size() < 1)
-      {
-        ROS_INFO_STREAM("Sphere has 0 points");
-      }
-      else
-      {
-        pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
-        lbl_img*=255;
-        pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
-        cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
-        const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
-            centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
-        cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
-        cv::imshow("sphere",disp_img);
-      }
-      state.x.x = sphere.values[0];
-      state.x.y = sphere.values[1];
-      state.z = sphere.values[2];
-      state.x.theta = 0.0;
-      // TODO: Draw ellipse of the projected circle parallel to the table 
-      std::stringstream out_name;
-      out_name << base_output_path_ << "sphere_" << frame_set_count_ << "_"
-               << record_count_ << ".png";
-      cv::imwrite(out_name.str(), disp_img);
-
-      // ROS_INFO_STREAM("sphere (x,y,z,r): " << state.x.x << ", " << state.x.y << ", " << state.z
-      //                 << ", " << sphere.values[3] << ")");
-      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
-      //                 << ", " << cur_obj.centroid[2] << ")");
-    }
-    else if (proxy_name == CYLINDER_PROXY)
-    {
-      XYZPointCloud cylinder_cloud;
-      pcl16::ModelCoefficients cylinder = pcl_segmenter_->fitCylinderRANSAC(cur_obj,cylinder_cloud);
-      cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
-      pcl_segmenter_->projectPointCloudIntoImage(cylinder_cloud, lbl_img);
-      lbl_img*=255;
-      cv::imshow("cylinder",lbl_img);
-      ROS_INFO_STREAM("cylinder: " << cylinder);
-      // NOTE: Z may be bade, depending on how it is computed
-      // TODO: Update this to the cylinder centroid
-      state.x.x = cylinder.values[0];
-      state.x.y = cylinder.values[1];
-      state.z = cur_obj.centroid[2];//# cylinder.values[2];
-      state.x.theta = 0.0;
-      // ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
-      //                 cylinder.values[2] << ")");
-      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
-      //                 << ", " << cur_obj.centroid[2] << ")");
     }
     else if (proxy_name == BOUNDING_BOX_XY_PROXY)
     {
@@ -378,32 +316,88 @@ class ObjectTracker25D
     {
       ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
     }
+    if (proxy_name == SPHERE_PROXY)
+    {
+      XYZPointCloud sphere_cloud;
+      pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
+      cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+      cv::Mat disp_img(in_frame.size(), CV_8UC3, cv::Scalar(0,0,0));
+      if (sphere_cloud.size() < 1)
+      {
+        ROS_INFO_STREAM("Sphere has 0 points");
+      }
+      else
+      {
+        pcl_segmenter_->projectPointCloudIntoImage(sphere_cloud, lbl_img);
+        lbl_img*=255;
+        pcl16::PointXYZ centroid_point(sphere.values[0], sphere.values[1], sphere.values[2]);
+        cv::cvtColor(lbl_img, disp_img, CV_GRAY2BGR);
+        const cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(
+            centroid_point, cur_obj.cloud.header.frame_id, camera_frame_);
+        cv::circle(disp_img, img_c_idx, 4, cv::Scalar(0,255,0));
+        cv::imshow("sphere",disp_img);
+      }
+      state.x.x = sphere.values[0];
+      state.x.y = sphere.values[1];
+      state.z = sphere.values[2];
+      // state.x.theta = 0.0;
+      // TODO: Draw ellipse of the projected circle parallel to the table 
+      // std::stringstream out_name;
+      // out_name << base_output_path_ << "sphere_" << frame_set_count_ << "_"
+      //          << record_count_ << ".png";
+      // cv::imwrite(out_name.str(), disp_img);
+
+      // ROS_INFO_STREAM("sphere (x,y,z,r): " << state.x.x << ", " << state.x.y << ", " << state.z
+      //                 << ", " << sphere.values[3] << ")");
+      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+      //                 << ", " << cur_obj.centroid[2] << ")");
+    }
+    if (proxy_name == CYLINDER_PROXY)
+    {
+      XYZPointCloud cylinder_cloud;
+      pcl16::ModelCoefficients cylinder = pcl_segmenter_->fitCylinderRANSAC(cur_obj,cylinder_cloud);
+      cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
+      pcl_segmenter_->projectPointCloudIntoImage(cylinder_cloud, lbl_img);
+      lbl_img*=255;
+      cv::imshow("cylinder",lbl_img);
+      ROS_INFO_STREAM("cylinder: " << cylinder);
+      // NOTE: Z may be bade, depending on how it is computed
+      // TODO: Update this to the cylinder centroid
+      state.x.x = cylinder.values[0];
+      state.x.y = cylinder.values[1];
+      state.z = cur_obj.centroid[2];//# cylinder.values[2];
+      // state.x.theta = 0.0;
+      // ROS_INFO_STREAM("cylinder (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
+      //                 cylinder.values[2] << ")");
+      // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
+      //                 << ", " << cur_obj.centroid[2] << ")");
+    }
 
     // TODO: Put in more tool proxy stuff here
-    if (tool_proxy_name == HACK_TOOL_PROXY)
-    {
-      // HACK: Need to replace this with the appropriately computed tool_proxy
-      PoseStamped tool_pose;
-      float tool_length = 0.16;
-      tf::Quaternion q;
-      double wrist_roll, wrist_pitch, wrist_yaw;
-      // ROS_INFO_STREAM("arm quaternion: " << arm_pose.pose.orientation);
-      tf::quaternionMsgToTF(arm_pose.pose.orientation, q);
-      tf::Matrix3x3(q).getRPY(wrist_roll, wrist_pitch, wrist_yaw);
-      // ROS_INFO_STREAM("Wrist yaw: " << wrist_yaw);
-      // TODO: Put tool proxy in "/?_gripper_tool_frame"
-      tool_pose.pose.position.x = arm_pose.pose.position.x + cos(wrist_yaw)*tool_length;
-      tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
-      tool_pose.header.frame_id = arm_pose.header.frame_id;
-      state.tool_x = tool_pose;
-    }
-    else if(tool_proxy_name == EE_TOOL_PROXY)
-    {
-    }
-    else
-    {
-      ROS_WARN_STREAM("Unknown tool perceptual proxy: " << tool_proxy_name << " requested");
-    }
+    // if (tool_proxy_name == HACK_TOOL_PROXY)
+    // {
+    //   // HACK: Need to replace this with the appropriately computed tool_proxy
+    //   PoseStamped tool_pose;
+    //   float tool_length = 0.16;
+    //   tf::Quaternion q;
+    //   double wrist_roll, wrist_pitch, wrist_yaw;
+    //   // ROS_INFO_STREAM("arm quaternion: " << arm_pose.pose.orientation);
+    //   tf::quaternionMsgToTF(arm_pose.pose.orientation, q);
+    //   tf::Matrix3x3(q).getRPY(wrist_roll, wrist_pitch, wrist_yaw);
+    //   // ROS_INFO_STREAM("Wrist yaw: " << wrist_yaw);
+    //   // TODO: Put tool proxy in "/?_gripper_tool_frame"
+    //   tool_pose.pose.position.x = arm_pose.pose.position.x + cos(wrist_yaw)*tool_length;
+    //   tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
+    //   tool_pose.header.frame_id = arm_pose.header.frame_id;
+    //   state.tool_x = tool_pose;
+    // }
+    // else if(tool_proxy_name == EE_TOOL_PROXY)
+    // {
+    // }
+    // else
+    // {
+    //   ROS_WARN_STREAM("Unknown tool perceptual proxy: " << tool_proxy_name << " requested");
+    // }
 
     if (use_displays_ || write_to_disk_)
     {
