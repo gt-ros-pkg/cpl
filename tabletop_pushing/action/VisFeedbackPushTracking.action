@@ -19,6 +19,7 @@ std_msgs/Header header
 geometry_msgs/Pose2D x # Object pose
 geometry_msgs/Pose2D x_dot # Object velocity
 geometry_msgs/PoseStamped tool_x
+geometry_msgs/Pose2D init_x # Object pose
 float64 z
 bool no_detection
 string controller_name

@@ -196,6 +196,8 @@ class PositionFeedbackPushNode:
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
         self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.015)
 
+        self.straight_v = rospy.get_param('~straight_line_goal_vel', 0.03)
+
         self.use_jinv = rospy.get_param('~use_jinv', True)
         self.use_cur_joint_posture = rospy.get_param('~use_joint_posture', True)
 
@@ -503,6 +505,8 @@ class PositionFeedbackPushNode:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
             update_twist = self.directGoalGripperController(feedback, self.desired_pose, cur_pose)
+        elif feedback.controller_name == STRAIGHT_LINE_CONTROLLER:
+            update_twist = self.straightLineController(feedback, self.desired_pose)
         elif feedback.controller_name == SPIN_COMPENSATION:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
 
@@ -679,6 +683,29 @@ class PositionFeedbackPushNode:
         y_error = desired_state.y - centroid.y
         goal_x_dot = max(min(self.k_g_direct*x_error, self.max_goal_vel), -self.max_goal_vel)
         goal_y_dot = max(min(self.k_g_direct*y_error, self.max_goal_vel), -self.max_goal_vel)
+
+        u.twist.linear.x = goal_x_dot
+        u.twist.linear.y = goal_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+        return u
+
+    def straightLineController(self, cur_state, desired_state):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # Push centroid towards the desired goal
+        centroid = cur_state.x
+        x_error = desired_state.x - cur_state.init_x.x
+        y_error = desired_state.y - cur_state.init_x.y
+        goal_x_dot = x_error/(fabs(x_error)+fabs(y_error))*self.straight_v
+        goal_y_dot = y_error/(fabs(x_error)+fabs(y_error))*self.straight_v
 
         u.twist.linear.x = goal_x_dot
         u.twist.linear.y = goal_y_dot

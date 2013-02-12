@@ -532,7 +532,9 @@ class ObjectTracker25D
       state.header.frame_id = cloud.header.frame_id;
       state.no_detection = false;
     }
-
+    state.init_x.x = state.x.x;
+    state.init_x.y = state.x.y;
+    state.init_x.theta = state.x.theta;
     state.x_dot.x = 0.0;
     state.x_dot.y = 0.0;
     state.x_dot.theta = 0.0;
@@ -544,6 +546,7 @@ class ObjectTracker25D
 
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
+    init_state_ = state;
     previous_obj_ = cur_obj;
     obj_saved_ = true;
     return state;
@@ -606,7 +609,11 @@ class ObjectTracker25D
                        << ", " << state.x_dot.theta << ")");
       previous_obj_ = cur_obj;
     }
-    // We updat the header and take care of other bookkeeping before returning
+    // We update the header and take care of other bookkeeping before returning
+    state.init_x.x = init_state_.x.x;
+    state.init_x.y = init_state_.x.y;
+    state.init_x.theta = init_state_.x.theta;
+
     previous_time_ = state.header.stamp.toSec();
     previous_state_ = state;
     frame_count_++;
@@ -862,6 +869,7 @@ class ObjectTracker25D
   double previous_time_;
   ProtoObject previous_obj_;
   PushTrackerState previous_state_;
+  PushTrackerState init_state_;
   cv::RotatedRect previous_obj_ellipse_;
   bool use_displays_;
   bool write_to_disk_;

@@ -1,5 +1,12 @@
-# To add a new primitive need to put in perform_push() in tabletop_executive.py, need to add which controllers can use it
-# need to add a precondiiton method for it
+# To add a new controller:
+#     need to put in correct switch in tracker_feedback_push() in positon_feedback_push_node.py
+#     need to add admissable primitives to BEHAVIOR_PRIMITIVES
+#     need to add admissable proxies to PERCEPTUAL_PROXIES
+# To add a new primitive:
+#     need to put in perform_push() in tabletop_executive.py
+#     need to add which controllers can use it
+#     need to add a precondiiton method for it
+# TODO: To add a new proxy:
 
 ROBOT_ARMS = ['r', 'l']
 # ROBOT_ARMS = ['r']
@@ -8,11 +15,13 @@ CENTROID_CONTROLLER ='centroid_controller'
 TOOL_CENTROID_CONTROLLER ='tool_centroid_controller'
 SPIN_COMPENSATION = 'spin_compensation'
 SPIN_TO_HEADING = 'spin_to_heading'
+STRAIGHT_LINE_CONTROLLER = 'straight_line_controller'
 DIRECT_GOAL_CONTROLLER = 'direct_goal_controller'
 DIRECT_GOAL_GRIPPER_CONTROLLER = 'direct_goal_gripper_controller'
 CONTROLLERS = [CENTROID_CONTROLLER, SPIN_COMPENSATION, DIRECT_GOAL_CONTROLLER]
 # CONTROLLERS = [SPIN_COMPENSATION]
 # CONTROLLERS = [DIRECT_GOAL_CONTROLLER]
+# CONTROLLERS = [STRAIGHT_LINE_CONTROLLER]
 # CONTROLLERS = [TOOL_CENTROID_CONTROLLER]
 
 GRIPPER_PUSH = 'gripper_push'
@@ -22,11 +31,12 @@ TOOL_POKE = 'tool_poke'
 OVERHEAD_PUSH = 'overhead_push'
 PINCHER_PUSH = 'pincher_push'
 GRIPPER_PULL = 'gripper_pull'
-PUSH_PRIMITIVES = [PINCHER_PUSH, OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP]
+PUSH_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, PINCHER_PUSH, GRIPPER_SWEEP]
 # PUSH_PRIMITIVES = [GRIPPER_SWEEP]
 # PUSH_PRIMITIVES = [PINCHER_PUSH]
 TOOL_PRIMITIVES = [TOOL_SWEEP]
 BEHAVIOR_PRIMITIVES = {CENTROID_CONTROLLER:PUSH_PRIMITIVES, SPIN_COMPENSATION:PUSH_PRIMITIVES,
+                       STRAIGHT_LINE_CONTROLLER:PUSH_PRIMITIVES,
                        DIRECT_GOAL_CONTROLLER:[GRIPPER_PULL],
                        DIRECT_GOAL_GRIPPER_CONTROLLER:[GRIPPER_PULL],
                        TOOL_CENTROID_CONTROLLER:TOOL_PRIMITIVES}
@@ -40,12 +50,13 @@ BOUNDING_BOX_XY_PROXY = 'bounding_box_xy'
 HACK_TOOL_PROXY = 'hack'
 EE_TOOL_PROXY = 'end_effector_tool'
 
-CENTROID_PROXIES = [CENTROID_PROXY, SPHERE_PROXY, BOUNDING_BOX_XY_PROXY]
+CENTROID_PROXIES = [ELLIPSE_PROXY, SPHERE_PROXY, BOUNDING_BOX_XY_PROXY]
 # CENTROID_PROXIES = [CENTROID_PROXY]
 POSE_PROXIES = [ELLIPSE_PROXY, BOUNDING_BOX_XY_PROXY]
 
 PERCEPTUAL_PROXIES = {CENTROID_CONTROLLER:CENTROID_PROXIES,
                       SPIN_COMPENSATION:POSE_PROXIES,
+                      STRAIGHT_LINE_CONTROLLER:CENTROID_PROXIES,
                       DIRECT_GOAL_CONTROLLER:CENTROID_PROXIES,
                       DIRECT_GOAL_GRIPPER_CONTROLLER:CENTROID_PROXIES,
                       TOOL_CENTROID_CONTROLLER:CENTROID_PROXIES}
