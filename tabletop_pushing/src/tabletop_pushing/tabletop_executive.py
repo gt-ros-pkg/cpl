@@ -74,7 +74,7 @@ class TabletopExecutive:
         self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
-        self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.08)
+        self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.09)
         self.pincher_start_z = rospy.get_param('~pincher_push_start_z', -0.29)
 
         self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
@@ -1008,7 +1008,7 @@ class TabletopExecutive:
     def generate_random_table_pose(self, init_pose=None):
         if _USE_FIXED_GOAL:
             goal_pose = Pose2D()
-            goal_pose.x = 0.7
+            goal_pose.x = 0.5
             goal_pose.y = 0.2
             goal_pose.theta = 3.01697971833
             return goal_pose

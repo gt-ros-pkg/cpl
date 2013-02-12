@@ -117,7 +117,9 @@ _POSTURES = {
     'old_elbowupr': [-0.79,0,-1.6, -0.79,3.14, -0.79,5.49],
     'old_elbowupl': [0.79,0,1.6, -0.79,3.14, -0.79,5.49],
     'elbowdownr': [-0.028262077316910873, 1.2946342642324222, -0.25785640577652386, -1.5498884526859626, -31.278913849571776, -1.0527644894829107, -1.8127318367654268],
-    'elbowdownl': [-0.0088195719039858515, 1.2834828245284853, 0.20338442004843196, -1.5565279256852611, -0.096340012666916802, -1.0235018652439782, 1.7990893054129216]
+    'elbowdownl': [-0.0088195719039858515, 1.2834828245284853, 0.20338442004843196, -1.5565279256852611, -0.096340012666916802, -1.0235018652439782, 1.7990893054129216],
+    'gripper_place_r': [-0.58376927, 0.20531188, -1.98435142, -1.35661954, -10.97764169, -0.08100618, -6.48535644],
+    'gripper_place_l': [0.9424233, 0.24058796, 2.04239987, -1.4576695 , -1.58940656, -0.5444458 , -6.23912942]
 }
 
 def subPIAngle(theta):
@@ -977,6 +979,7 @@ class PositionFeedbackPushNode:
         if is_pull:
             res = robot_gripper.open(block=True, position=0.9)
 
+        self.use_gripper_place_joint_posture = True
         if request.high_arm_init:
             start_pose.pose.position.z = self.high_arm_init_z
             self.move_to_cart_pose(start_pose, which_arm)
@@ -991,6 +994,7 @@ class PositionFeedbackPushNode:
         # Move to start pose
         self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
+        self.use_gripper_place_joint_posture = False
         if is_pull:
             rospy.loginfo('Moving forward to grasp pose')
             pose_err, err_dist = self.move_relative_gripper(
@@ -1815,13 +1819,17 @@ class PositionFeedbackPushNode:
     def get_desired_posture(self, which_arm):
         if which_arm == 'l':
             posture = 'elbowupl'
+            place_posture = 'gripper_place_l'
         else:
             posture = 'elbowupr'
+            place_posture = 'gripper_place_r'
 
         joints = self.get_arm_joint_pose(which_arm)
         joints = joints.tolist()
         joints = [j[0] for j in joints]
-        if self.use_cur_joint_posture:
+        if self.use_gripper_place_joint_posture:
+            m = Float64MultiArray(data=_POSTURES[place_posture])
+        elif self.use_cur_joint_posture:
             m = Float64MultiArray(data=joints)
         else:
             m = Float64MultiArray(data=_POSTURES[posture])
@@ -1931,6 +1939,13 @@ class PositionFeedbackPushNode:
         '''
         Main control loop for the node
         '''
+        # getting_joints = True
+        # while getting_joints:
+        #     code_in = raw_input('Press <Enter> to get current arm joints: ')
+        #     print 'Left arm: ' + str(self.robot.left.pose())
+        #     print 'Right arm: ' + str(self.robot.right.pose())
+        #     if code_in.startswith('q'):
+        #         getting_joints = False
         self.init_spine_pose()
         self.init_head_pose(self.head_pose_cam_frame)
         self.init_arms()
