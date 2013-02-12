@@ -4,9 +4,12 @@
 #     need to add admissable proxies to PERCEPTUAL_PROXIES
 # To add a new primitive:
 #     need to put in perform_push() in tabletop_executive.py
-#     need to add which controllers can use it
-#     need to add a precondiiton method for it
-# TODO: To add a new proxy:
+#     need to add which controllers can use it in BEHAVIOR_PRIMITIVES (maybe add to  another PUSH_PRIMITIVES, TOOL_PRIMITIVES, etc.)
+#     need to add a precondiiton method for it in PRECONDITION_METHODS
+# To add a new proxy: TODO: Check this by adding a new proxy
+#     need to put in computeState() in tabletop_pushing_perception_node.cpp
+#     need to add which controllers can use it in PERCEPTUAL_PROXIES (maybe add to  another CENTROID_PROXIES, POSE_PROXIES, etc.)
+#     need to add a string constant for the name in tabletop_pushing_perception_node.cpp
 
 ROBOT_ARMS = ['r', 'l']
 # ROBOT_ARMS = ['r']
@@ -29,9 +32,10 @@ GRIPPER_SWEEP = 'gripper_sweep'
 TOOL_SWEEP = 'tool_sweep'
 TOOL_POKE = 'tool_poke'
 OVERHEAD_PUSH = 'overhead_push'
+OPEN_OVERHEAD_PUSH = 'open_overhead_push'
 PINCHER_PUSH = 'pincher_push'
 GRIPPER_PULL = 'gripper_pull'
-PUSH_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, PINCHER_PUSH, GRIPPER_SWEEP]
+PUSH_PRIMITIVES = [OVERHEAD_PUSH, GRIPPER_PUSH, GRIPPER_SWEEP, OPEN_OVERHEAD_PUSH, PINCHER_PUSH]
 # PUSH_PRIMITIVES = [GRIPPER_SWEEP]
 # PUSH_PRIMITIVES = [PINCHER_PUSH]
 TOOL_PRIMITIVES = [TOOL_SWEEP]
@@ -66,6 +70,7 @@ CENTROID_PULL_PRECONDITION = 'centroid_pull'
 TOOL_SWEEP_PRECONDITION = 'tool_sweep'
 PRECONDITION_METHODS = {GRIPPER_PULL:CENTROID_PULL_PRECONDITION,
                         OVERHEAD_PUSH:CENTROID_PUSH_PRECONDITION,
+                        OPEN_OVERHEAD_PUSH:CENTROID_PUSH_PRECONDITION,
                         GRIPPER_PUSH:CENTROID_PUSH_PRECONDITION,
                         GRIPPER_SWEEP:CENTROID_PUSH_PRECONDITION,
                         PINCHER_PUSH:CENTROID_PUSH_PRECONDITION,

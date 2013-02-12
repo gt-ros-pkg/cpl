@@ -507,7 +507,7 @@ class TabletopExecutive:
                       str(push_vector_res.push.start_point.z) + ')')
         rospy.loginfo('Push angle: ' + str(push_angle))
         if not _OFFLINE:
-            if behavior_primitive == OVERHEAD_PUSH:
+            if behavior_primitive == OVERHEAD_PUSH or behavior_primitive == OPEN_OVERHEAD_PUSH:
                 result = self.overhead_feedback_push_object(which_arm,
                                                             push_vector_res.push, goal_pose,
                                                             controller_name, proxy_name, behavior_primitive)
@@ -674,6 +674,8 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        if behavior_primitive == OPEN_OVERHEAD_PUSH:
+            push_req.open_gripper = True
         if _USE_LEARN_IO:
             push_req.learn_out_file_name = self.learn_out_file_name
 

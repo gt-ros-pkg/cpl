@@ -753,12 +753,14 @@ class PositionFeedbackPushNode:
                 ready_joints = LEFT_ARM_PULL_READY_JOINTS
             which_arm = 'l'
             wrist_pitch = 0.5*pi
+            robot_gripper = self.robot.left_gripper
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_PULL_READY_JOINTS
             which_arm = 'r'
             wrist_pitch = -0.5*pi
+            robot_gripper = self.robot.right_gripper
 
         rospy.logdebug('Moving gripper up')
         pose_err, err_dist = self.move_relative_gripper(
@@ -795,6 +797,8 @@ class PositionFeedbackPushNode:
                                self.post_move_count_thresh)
         rospy.loginfo('Done moving up to end point')
 
+        if request.open_gripper:
+            res = robot_gripper.close(block=True, effort=self.max_close_effort)
         self.reset_arm_pose(True, which_arm, request.high_arm_init)
         return response
 
@@ -967,8 +971,10 @@ class PositionFeedbackPushNode:
         start_pose.pose.orientation.z = q[2]
         start_pose.pose.orientation.w = q[3]
 
-        if request.open_gripper or is_pull:
-            # TODO: Open different distance for pull and open push
+        # TODO: Make gripper open dist a parameter
+        if request.open_gripper:
+            res = robot_gripper.open(block=True, position=0.05)
+        if is_pull:
             res = robot_gripper.open(block=True, position=0.9)
 
         if request.high_arm_init:
@@ -1073,13 +1079,14 @@ class PositionFeedbackPushNode:
                 ready_joints = LEFT_ARM_PULL_READY_JOINTS
             which_arm = 'l'
             wrist_pitch = 0.5*pi
+            robot_gripper = self.robot.left_gripper
         else:
             ready_joints = RIGHT_ARM_READY_JOINTS
             if request.high_arm_init:
                 ready_joints = RIGHT_ARM_PULL_READY_JOINTS
             which_arm = 'r'
             wrist_pitch = -0.5*pi
-
+            robot_gripper = self.robot.right_gripper
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
         start_pose.pose.position.x = start_point.x
@@ -1102,6 +1109,9 @@ class PositionFeedbackPushNode:
             arm_pose = self.get_arm_joint_pose(which_arm)
             arm_pose[-3] =  wrist_pitch
             self.set_arm_joint_pose(arm_pose, which_arm, nsecs=1.0)
+
+        if request.open_gripper:
+            res = robot_gripper.open(block=True, position=0.05)
 
         if request.high_arm_init:
             # Move to offset pose above the table
