@@ -1,0 +1,40 @@
+<launch>  
+
+   <node pkg="robot_self_filter_color" type="self_filter_color" 
+         name="pc_self_filter" respawn="true" output="screen">
+
+     <!-- The topic for the input cloud -->
+     <remap from="cloud_in" to="/pc_trimmed" />
+
+     <!-- The topic for the output cloud -->
+     <remap from="cloud_out" to="/pc_out" />
+
+     <!-- The frame of the sensor used to obtain the data to be
+       filtered; This parameter is optional. If it is not specified,
+       shadow points will be considered outside -->
+     <param name="sensor_frame" type="string" value="/kinect1_rgb_optical_frame" />
+
+     <!-- Minimum distance to sensor (for point not to be considered inside) -->
+     <param name="min_sensor_dist" type="double" value="0.01" />
+
+     <!-- The padding to be added for the body parts the robot can see -->
+     <param name="self_see_default_padding" type="double" value="0.02" />
+
+     <!-- The scaling to be added for the body parts the robot can see -->
+     <param name="self_see_default_scale" type="double" value="1.0" />
+     
+     <!-- The names of the links the sensor can see -->
+     <rosparam>
+        self_see_links:
+            - name: shoulder_link
+            - name: upper_shoulder_link
+            - name: upper_arm_middle_link
+            - name: forearm_link
+            - name: forearm_middle_link
+            - name: wrist_1_link
+            - name: wrist_2_link
+            - name: wrist_3_link
+     </rosparam>
+     
+   </node>
+</launch>
