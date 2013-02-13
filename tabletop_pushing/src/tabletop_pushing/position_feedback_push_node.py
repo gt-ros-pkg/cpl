@@ -140,6 +140,7 @@ class PositionFeedbackPushNode:
         rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
         self.controller_io = ControlAnalysisIO()
         self.use_learn_io = False
+        self.use_gripper_place_joint_posture = False
         out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
         if _USE_CONTROLLER_IO:
