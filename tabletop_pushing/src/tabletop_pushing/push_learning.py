@@ -119,6 +119,7 @@ class PushLearningIO:
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
+        self.data_out.write(_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -169,6 +170,7 @@ class PushLearningIO:
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method+'\n'
+        self.data_out.write(_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()
 
