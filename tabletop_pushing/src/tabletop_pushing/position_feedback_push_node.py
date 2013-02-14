@@ -742,6 +742,50 @@ class PositionFeedbackPushNode:
             rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' + str(goal_y_dot) + ')')
         return u
 
+    def affineFeedbackController(self, cur_state, A, b):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        X = np.asarray(cur_state.x)
+
+        u_t = A*X+b
+        # TODO: Make this dependent on the specified control state
+        u.twist.linear.x = u_t[0]
+        u.twist.linear.y = u_t[1]
+        return u
+
+    def RBNFeedbackController(self, cur_state, C, W):
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        X = np.asarray(cur_state.x)
+        # TODO: Make the control size based on provided info...
+        u_t = np.zeros((2,1))
+        D = np.zeros((2,1))
+        for w in W:
+            r_i = np.exp(C-X)
+            u_t += w*r_i
+            D += r_i
+
+        # Normalize factors
+        for j, r in enumerate(u_t):
+            u_t[j] = r/D
+
+        # TODO: Make this dependent on the specified control state
+        u.twist.linear.x = u_t[0]
+        u.twist.linear.y = u_t[1]
+        return u
+
     #
     # Post behavior functions
     #
