@@ -147,6 +147,8 @@ class PositionFeedbackPushNode:
             self.controller_io.open_out_file(out_file_name)
 
         # Setup parameters
+        self.learned_controller_base_path = rospy.get_param('~learned_controller_base_path',
+                                                            '/u/thermans/cfg/controllers/')
         self.torso_z_offset = rospy.get_param('~torso_z_offset', 0.30)
         self.look_pt_x = rospy.get_param('~look_point_x', 0.7)
         self.head_pose_cam_frame = rospy.get_param('~head_pose_cam_frame',
@@ -456,6 +458,12 @@ class PositionFeedbackPushNode:
         goal.behavior_primitive = request.behavior_primitive
         goal.tool_proxy_name = request.tool_proxy_name
 
+        # Load learned controller information if necessary
+        if goal.controller_name.startswith(RBN_CONTROLLER_PREFIX):
+            self.RBN_P, self.RBN_W, self.RBN_hyp = self.loadRBNController(goal.controller_name)
+        elif goal.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
+            self.AFFINE_A, self.AFFINE_B = self.loadAffineController(goal.controller_name)
+
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
         # Block until done
@@ -512,6 +520,10 @@ class PositionFeedbackPushNode:
             update_twist = self.straightLineController(feedback, self.desired_pose)
         elif feedback.controller_name == SPIN_COMPENSATION:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
+        elif feedback.controller_name.startswith(RBN_CONTROLLER_PREFIX):
+            update_twist = self.RBNFeedbackController(feedback, self.RBN_P, self.RBN_W)
+        elif feedback.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
+            update_twist = self.affineFeedbackController(feedback, self.AFFINE_A, self.AFFINE_B)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
@@ -759,7 +771,7 @@ class PositionFeedbackPushNode:
         u.twist.linear.y = u_t[1]
         return u
 
-    def RBNFeedbackController(self, cur_state, C, W):
+    def RBNFeedbackController(self, cur_state, P, W):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
@@ -768,13 +780,14 @@ class PositionFeedbackPushNode:
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
 
+        # TODO: Trigaug this state
         X = np.asarray(cur_state.x)
-        # TODO: Make the control size based on provided info...
-        u_t = np.zeros((2,1))
-        D = np.zeros((2,1))
+        u_t = np.zeros((P.shape[1], 1))
+        D = np.zeros((P.shape[1], 1))
+        # TODO: Figure out the right thing to compute from the parameters
         for w in W:
-            r_i = np.exp(C-X)
-            u_t += w*r_i
+            r_i = np.exp(X-w.T)
+            u_t += p*r_i
             D += r_i
 
         # Normalize factors
@@ -1968,6 +1981,27 @@ class PositionFeedbackPushNode:
             self.cs.carefree_switch('l', '%s'+self.base_vel_controller_name)
             self.arm_mode = 'vel_mode'
             rospy.sleep(self.post_controller_switch_sleep)
+
+    def loadRBNController(self, controller_name):
+        controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')
+        data_in = controller_file.readlines()
+        controller_file.close()
+        M = int(data_in[0].split()[1])
+        N = int(data_in[1].split()[1])
+        Pn = int(data_in[2].split()[1])
+        Wn = int(data_in[3].split()[1])
+        Hyp = np.asarray([float(h) for h in data_in[4].split()])
+        data_in = data_in[5:]
+        P = np.asmatrix([d.split() for d in data_in[:N]],'float')
+        W = np.asmatrix([d.split() for d in data_in[N:]],'float')
+        return (P, W, hyp)
+
+    def loadAffineController(self, controller_name):
+        controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')
+        A = None
+        B = None
+        controller_file.close()
+        return (A, B)
 
     def shutdown_hook(self):
         rospy.loginfo('Cleaning up node on shutdown')
