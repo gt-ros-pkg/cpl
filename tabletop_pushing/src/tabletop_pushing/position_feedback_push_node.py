@@ -473,8 +473,8 @@ class PositionFeedbackPushNode:
         goal.tool_proxy_name = request.tool_proxy_name
 
         # Load learned controller information if necessary
-        if goal.controller_name.startswith(RBN_CONTROLLER_PREFIX):
-            self.RBN_P, self.RBN_W, self.RBN_hyp = self.loadRBNController(goal.controller_name)
+        if goal.controller_name.startswith(RBF_CONTROLLER_PREFIX):
+            self.RBF_P, self.RBF_W, self.RBF_hyp = self.loadRBFController(goal.controller_name)
         elif goal.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             self.AFFINE_A, self.AFFINE_B = self.loadAffineController(goal.controller_name)
 
@@ -534,8 +534,8 @@ class PositionFeedbackPushNode:
             update_twist = self.straightLineController(feedback, self.desired_pose)
         elif feedback.controller_name == SPIN_COMPENSATION:
             update_twist = self.spinCompensationController(feedback, self.desired_pose)
-        elif feedback.controller_name.startswith(RBN_CONTROLLER_PREFIX):
-            update_twist = self.RBNFeedbackController(feedback, self.RBN_P, self.RBN_W)
+        elif feedback.controller_name.startswith(RBF_CONTROLLER_PREFIX):
+            update_twist = self.RBFFeedbackController(feedback, self.RBF_P, self.RBF_W)
         elif feedback.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             update_twist = self.affineFeedbackController(feedback, self.AFFINE_A, self.AFFINE_B)
 
@@ -785,7 +785,7 @@ class PositionFeedbackPushNode:
         u.twist.linear.y = u_t[1]
         return u
 
-    def RBNFeedbackController(self, cur_state, P, W):
+    def RBFFeedbackController(self, cur_state, P, W):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
@@ -800,15 +800,7 @@ class PositionFeedbackPushNode:
         u_t = np.zeros((P.shape[1], 1))
         D = np.zeros((P.shape[1], 1))
         # TODO: Figure out the right thing to compute from the parameters
-        for w in W:
-            r_i = np.exp(X-w.T)
-            u_t += p*r_i
-            D += r_i
-
-        # Normalize factors
-        for j, r in enumerate(u_t):
-            u_t[j] = r/D
-
+        u_t = self.u_max*np.sin(
         # TODO: Make this dependent on the specified control state
         u.twist.linear.x = u_t[0]
         u.twist.linear.y = u_t[1]
@@ -1997,7 +1989,7 @@ class PositionFeedbackPushNode:
             self.arm_mode = 'vel_mode'
             rospy.sleep(self.post_controller_switch_sleep)
 
-    def loadRBNController(self, controller_name):
+    def loadRBFController(self, controller_name):
         controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')
         data_in = controller_file.readlines()
         controller_file.close()
