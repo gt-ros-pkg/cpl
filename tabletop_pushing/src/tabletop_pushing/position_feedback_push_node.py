@@ -1994,7 +1994,7 @@ class PositionFeedbackPushNode:
         data_in = data_in[5:]
         P = np.asmatrix([d.split() for d in data_in[:N]],'float')
         W = np.asmatrix([d.split() for d in data_in[N:]],'float')
-        return (P, W, hyp)
+        return (P, W, Hyp)
 
     def loadAffineController(self, controller_name):
         controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')
