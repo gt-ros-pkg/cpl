@@ -14,48 +14,53 @@ class RBFControl:
         controller_file.close()
         M = int(data_in[0].split()[1])
         N = int(data_in[1].split()[1])
-        Un = int(data_in[2].split()[1])
+        E = int(data_in[2].split()[1])
         D = int(data_in[3].split()[1])
         Hyp = np.asarray([float(h) for h in data_in[4].split()])
-        self.ell = np.exp(Hyp[:D]) # characteristic length scale
-        self.ell_diag = np.diag(1/self.ell)
-        self.sf2 = np.exp(2*Hyp[D+1]) # signal variance
-
+        self.Hyp = np.reshape(Hyp, (E, D+2))
         data_in = data_in[5:]
         Ypi = np.asmatrix([d.split() for d in data_in[:N]],'float')
         Xpi = np.asmatrix([d.split() for d in data_in[N:]],'float')
         self.Xpi = Xpi.T
-        self.Ypi = Ypi.T
+        self.Ypi = Ypi
         self.N = N
         self.D = D
+        self.E = E
 
     def computeBetaPi(self):
         '''
         Compute the RBF network weights in GP form
         '''
-        self.beta = np.zeros((self.N,self.N))
-        KX = np.zeros((self.N,self.N))
-        for i in xrange(self.N):
-            for j in range(i, self.N):
-                xk = self.squaredExponentialKernelARD(self.Xpi[:,i], self.Xpi[:,j])
-                KX[i,j] = xk
-                KX[j,i] = xk
-        self.beta = KX
-        print self.beta
+        self.beta = np.zeros((self.N, self.E))
+        for i in xrange(self.E):
+            Lambda = np.diag(np.exp(-1*self.Hyp[i,:self.D])) # Length scale
+            sf2 = np.exp(2*self.Hyp[i,self.D]) # signal variance
+            sigmaBeta2 = np.exp(2*self.Hyp[i,self.D+1]) # kernel noise
+            KX = np.zeros((self.N, self.N))
+            # TODO: Make this batch
+            for r in xrange(self.N):
+                for c in range(i, self.N):
+                    krc = self.squaredExponentialKernelARD(self.Xpi[:,r], self.Xpi[:,c], Lambda, sf2)
+                    KX[r,c] = krc
+                    KX[c,r] = krc
+            A = KX+sigmaBeta2*np.eye(self.N)
+            B = self.Ypi[:,i]
+            betai = np.linalg.solve(A, B)
+            self.beta[:,i] = betai.squeeze()
 
-    def squaredExponentialKernelARD(self, x, c):
+    def squaredExponentialKernelARD(self, x, c, ell, sf2):
         '''
         Squared exponential with automatic relavence determination pre-computed parameters 'self.ell_diag'
         '''
-        r = self.squaredDist(self.ell_diag*x,self.ell_diag*c)
-        return self.sf2*np.exp(r/2)
+        r = self.squaredDist(ell*x, ell*c)
+        return sf2*np.exp(r/2)
 
-    def squaredExponentialKernel(self, x, c, sf):
+    def squaredExponentialKernel(self, x, c, sf2):
         '''
         Squared exponential without the length scale hyperparemeters
         '''
         r = self.squaredDist(x,c)
-        return sf*np.exp(r/2)
+        return sf2*np.exp(r/2)
 
     def squaredDist(self, x1, x2):
         '''
