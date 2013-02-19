@@ -134,6 +134,20 @@ def sign(x):
         return -1
     return 1
 
+def trigAugState(X, ndx, remove_old=False):
+    X_aug = []
+    if remove_old:
+        for i, x in enumerate(X):
+            if i in ndx:
+                continue
+            else:
+                X_aug.append(x)
+    else:
+        X_aug = X[:]
+    for i in ndx:
+        X_aug = np.append(X_aug, [sin(X[i]), cos(X[i])])
+    return np.asarray(X_aug)
+
 class PositionFeedbackPushNode:
 
     def __init__(self):
@@ -780,8 +794,9 @@ class PositionFeedbackPushNode:
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
 
-        # TODO: Trigaug this state
-        X = np.asarray(cur_state.x)
+        # Replace angles with sin(theta), cos(theta)
+        ndx = [4]
+        X = trigAugState(np.asarray(cur_state.x), ndx, True)
         u_t = np.zeros((P.shape[1], 1))
         D = np.zeros((P.shape[1], 1))
         # TODO: Figure out the right thing to compute from the parameters
