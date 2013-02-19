@@ -52,15 +52,13 @@ class RBFControl:
         '''
         Squared exponential with automatic relavence determination pre-computed parameters 'self.ell_diag'
         '''
-        r = self.squaredDist(ell*x, ell*c)
-        return sf2*np.exp(r/2)
+        return sf2*np.exp(-self.squaredDist(ell*x, ell*c)/2)
 
     def squaredExponentialKernel(self, x, c, sf2):
         '''
         Squared exponential without the length scale hyperparemeters
         '''
-        r = self.squaredDist(x,c)
-        return sf2*np.exp(r/2)
+        return sf2*np.exp(-self.squaredDist(x,c)/2)
 
     def squaredDist(self, x1, x2):
         '''
