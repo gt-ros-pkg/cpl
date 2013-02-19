@@ -1,6 +1,6 @@
 import numpy as np
 
-class RBFControl:
+class RBFController:
     '''
     Class to implement an RBF network controller based on PILCO learning for use in control of the robot.
     '''
