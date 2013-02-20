@@ -37,7 +37,16 @@ public:
     nh_("~")
   {
     string temp="openni_depth_frame";
-    skeletonData_sub = nh_.subscribe("/skeleton_data", 100, &skeleton_fusion::msgCallback,this);
+    bool useBag;
+    nh_.param("useBag", useBag, false);
+	if(useBag)
+	{
+		skeletonData_sub = nh_.subscribe("/skeletonDataBag", 100, &skeleton_fusion::msgCallback,this);
+	}else
+	{
+		skeletonData_sub = nh_.subscribe("/skeleton_data", 100, &skeleton_fusion::msgCallback,this);
+	}
+
     skeletonData_pub=nh_.advertise<openni_tracker_msgs::skeletonData>("/person", 1000);
     skeleton_cloud_pub_0=nh_.advertise<sensor_msgs::PointCloud2>("/skeleton_cloud_0",1);
     skeleton_cloud_pub_1=nh_.advertise<sensor_msgs::PointCloud2>("/skeleton_cloud_1",1);
@@ -194,79 +203,82 @@ void PublishPointCloud(pcl::PointCloud<Point> cloud_in,int kinectID)
 
 int getJointIndex(openni_tracker_msgs::skeletonData sk,int jnt_id)
 {
-  for(int i=0;i<sk.joints.size();i++)
-    {
-      if(sk.joints[i].jointID==jnt_id)
+	for(int i=0;i<sk.joints.size();i++)
 	{
-	  return i;
+		if(sk.joints[i].jointID==jnt_id)
+		{
+			return i;
+		}
 	}
-    }
-  return -1;
+	return -1;
 }
 void msgCallback(const openni_tracker_msgs::skeletonData::ConstPtr &msg)
 {
   // Retrieve the data from the two nodes and either save or fusion them.
-  ros::Time t=msg->header.stamp;
-  ROS_INFO("time=%8f, kinectID: %d",t.toSec(),msg->kinectID);
+	ros::Time t=msg->header.stamp;
+	//ROS_INFO("time=%8f, kinectID: %d",t.toSec(),msg->kinectID);
 
-  vector<int> jointID_array;
-  vector<float> confidences;
-  pcl::PointCloud<Point> pt_cloud=ExtractPointCloud(msg,jointID_array,confidences);
-  tf::StampedTransform transf;
+	vector<int> jointID_array;
+	vector<float> confidences;
+	pcl::PointCloud<Point> pt_cloud=ExtractPointCloud(msg,jointID_array,confidences);
+	tf::StampedTransform transf;
 
-  try{
-    tf_listener.waitForTransform(fixed_frame_id, msg->header.frame_id ,ros::Time(0), ros::Duration(2.0));
-    tf_listener.lookupTransform( fixed_frame_id, msg->header.frame_id,ros::Time(0), transf);
-  }
-  catch(tf::TransformException ex)
+	try{
+		tf_listener.waitForTransform(fixed_frame_id, msg->header.frame_id ,ros::Time(0), ros::Duration(2.0));
+		tf_listener.lookupTransform(fixed_frame_id, msg->header.frame_id,ros::Time(0), transf);
+	}
+	catch(tf::TransformException ex)
+	{
+		ROS_ERROR("SkeletonFusion TF error:%s", ex.what());
+		return;
+	}
+	tf::Vector3 v3 = transf.getOrigin();
+	tf::Quaternion quat = transf.getRotation();
+	Eigen::Quaternionf rot(quat.w(), quat.x(), quat.y(), quat.z());
+	Eigen::Vector3f offset(v3.x(), v3.y(), v3.z());
+
+	pcl::PointCloud<Point> converted_pt_cloud;
+	converted_pt_cloud=ConvertPointCloud(pt_cloud,offset,rot);
+	PublishPointCloud(converted_pt_cloud,msg->kinectID);
+
+
+	bool success=false;
+	int jnt_id=15;
+	for(int k=0;k<jointID_array.size();k++)
     {
-      ROS_ERROR("SkeletonFusion TF error:%s", ex.what());
-      return;
-    }
-  tf::Vector3 v3 = transf.getOrigin();
-  tf::Quaternion quat = transf.getRotation();
-  Eigen::Quaternionf rot(quat.w(), quat.x(), quat.y(), quat.z());
-  Eigen::Vector3f offset(v3.x(), v3.y(), v3.z());
- 
-  pcl::PointCloud<Point> converted_pt_cloud;
-  converted_pt_cloud=ConvertPointCloud(pt_cloud,offset,rot);
-  PublishPointCloud(converted_pt_cloud,msg->kinectID);
-
-  
-  bool success=false;
-  int jnt_id=15;
-  for(int k=0;k<jointID_array.size();k++)
-    {
-      if(jointID_array[k]!=jnt_id) //right hand
-	{
-	  continue;
-	}
-      float conf=confidences[k];
-      if(conf<0.9)
-	{
-	  continue;
-	}
-      success=true;
-      Point pq=converted_pt_cloud.points[k];
-      int ind=getJointIndex(person,jnt_id);
-      ind=0;
-      
-      if(jnt_id==-1) // this joint isn't in the list
-	{
-	  openni_tracker_msgs::jointData new_joint;
-	  new_joint.pose.position.x=pq.x;
-	  new_joint.pose.position.y=pq.y;
-	  new_joint.pose.position.z=pq.z;
-	  new_joint.jointID=jnt_id;
-	  person.joints.push_back(new_joint);
-	}
-      else
-	{
-	  openni_tracker_msgs::jointData current_joint = person.joints[ind];
-	  person.joints[ind].pose.position.x=(current_joint.pose.position.x*current_joint.confidence+pq.x*conf)/(conf+current_joint.confidence);
-	  person.joints[ind].pose.position.y=(current_joint.pose.position.y*current_joint.confidence+pq.y*conf)/(conf+current_joint.confidence);
-	  person.joints[ind].pose.position.z=(current_joint.pose.position.z*current_joint.confidence+pq.z*conf)/(conf+current_joint.confidence);	  
-	}
+		if(jointID_array[k]!=jnt_id) //right hand
+		{
+		  	//continue;
+		}
+	
+		float conf=confidences[k];
+		if(conf<0.9)
+		{
+		  	continue;
+		}
+		success=true;
+		Point pq=converted_pt_cloud.points[k];
+		// This should be getJointIndex(person, k) right ? And then call it in the start of the loop.
+		int ind=getJointIndex(person,jnt_id);
+		// What's happening here ?
+		//ind=0;
+		ind = k;
+		if(jnt_id==-1) // this joint isn't in the list
+		{
+			openni_tracker_msgs::jointData new_joint;
+			new_joint.pose.position.x=pq.x;
+			new_joint.pose.position.y=pq.y;
+			new_joint.pose.position.z=pq.z;
+			new_joint.jointID=jnt_id; // Should get index from getJointIndex ??
+			person.joints.push_back(new_joint);
+		}
+		else
+		{
+			openni_tracker_msgs::jointData current_joint = person.joints[ind];
+			person.joints[ind].pose.position.x=(current_joint.pose.position.x*current_joint.confidence+pq.x*conf)/(conf+current_joint.confidence);
+			person.joints[ind].pose.position.y=(current_joint.pose.position.y*current_joint.confidence+pq.y*conf)/(conf+current_joint.confidence);
+			person.joints[ind].pose.position.z=(current_joint.pose.position.z*current_joint.confidence+pq.z*conf)/(conf+current_joint.confidence);	  
+		}
     }
 
   /*
@@ -301,36 +313,40 @@ void msgCallback(const openni_tracker_msgs::skeletonData::ConstPtr &msg)
  
   */
 
-  if(success)
-    {
-      person.header.stamp=ros::Time::now();
-      pcl::PointCloud<Point> pt_cloud2=ExtractPointCloudPerson();
-      //pcl::PointCloud<Point> converted_pt_cloud2;
-      //converted_pt_cloud2=ConvertPointCloud(pt_cloud2,offset,rot);
-      PublishPointCloud(pt_cloud2,99);
-      //publishGlobalSkeleton();
-    }
+	if(success)
+	{
+		person.header.stamp=ros::Time::now();
+		pcl::PointCloud<Point> pt_cloud2=ExtractPointCloudPerson();
+		//pcl::PointCloud<Point> converted_pt_cloud2;
+		//converted_pt_cloud2=ConvertPointCloud(pt_cloud2,offset,rot);
+		PublishPointCloud(pt_cloud2,99);
+		//publishGlobalSkeleton();
+	}
 }
 
 
 void init_variables()
 {
-  //person.joints=vector<float> values(24);
-  openni_tracker_msgs::jointData nj;
-  nj.pose.position.x=0.0;
-  nj.pose.position.y=0.0;
-  nj.pose.position.z=0.0;
-  nj.confidence=0.0001;
- for(int k=0;k<=24;k++)// Looping through all the joints
-   {
-     if(k==15)
-       {
-	 nj.jointID=k;
-	 person.joints.push_back(nj);
-       }
-
-    }
-  person.header.frame_id=fixed_frame_id;
+	//person.joints=vector<float> values(24);
+	openni_tracker_msgs::jointData nj;
+	nj.pose.position.x=0.0;
+	nj.pose.position.y=0.0;
+	nj.pose.position.z=0.0;
+	nj.confidence=0.0001;
+	for(int k=0;k<=24;k++)// Looping through all the joints
+	{
+	/*
+		if(k==15)
+		{
+			nj.jointID=k;
+			person.joints.push_back(nj);
+		}
+		*/
+		
+		nj.jointID=k;
+		person.joints.push_back(nj);
+	}
+	person.header.frame_id=fixed_frame_id;
 }
 
 };;

@@ -1,6 +1,7 @@
 <launch>
 <node pkg="openni_tracker_double" type="test_multi" name="tracker2" output="screen">
 <param name="kinectToUse" value="1" />
+<param name="useBag" value="true" />
 <param name="frame_id" value="/kinect1_camera_depth_frame" />
 </node>
 

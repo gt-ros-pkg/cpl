@@ -3,6 +3,7 @@
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <ros/param.h>
+#include <rosbag/bag.h>
 #include <tf/transform_broadcaster.h>
 #include <kdl/frames.hpp>
 #include <openni_tracker_msgs/jointData.h>
@@ -24,8 +25,10 @@ XnBool g_bNeedPose   = FALSE;
 XnChar g_strPose[20] = "";
 
 int kinectToUse;
+bool useBag;
 string frame_id;
 ros::Publisher skeleton_pub;
+rosbag::Bag bag;
 
 
 void XN_CALLBACK_TYPE User_NewUser(xn::UserGenerator& generator, XnUserID nId, void* pCookie) {
@@ -124,6 +127,7 @@ void publishTransforms(const std::string& frame_id) {
 	  {
 
 	    XnSkeletonJointPosition joint_position;
+	    // Here we can add a check for .isJointActive(), and only publish those.
 	    g_UserGenerator.GetSkeletonCap().GetSkeletonJointPosition(user,(XnSkeletonJoint) k, joint_position);
 	    XnSkeletonJointOrientation joint_orientation;
 	    g_UserGenerator.GetSkeletonCap().GetSkeletonJointOrientation(user,(XnSkeletonJoint) k, joint_orientation);
@@ -161,6 +165,11 @@ void publishTransforms(const std::string& frame_id) {
 	    jointData.confidence=joint_position.fConfidence;
 	    skeletonMsg.joints.push_back(jointData);
 	  }
+	if(useBag)
+	{
+		bag.write("skeletonDataBag", ros::Time::now(), skeletonMsg);
+	}
+
 	skeleton_pub.publish(skeletonMsg);
 
 	
@@ -201,6 +210,8 @@ int main(int argc, char **argv) {
     string configFilename = ros::package::getPath("openni_tracker_double") + "/openni_tracker.xml";
     XnStatus nRetVal = g_Context.InitFromXmlFile(configFilename.c_str());
     CHECK_RC(nRetVal, "InitFromXml");
+    
+
 
     //XnStatus nRetVal = XN_STATUS_OK;
 
@@ -208,7 +219,23 @@ int main(int argc, char **argv) {
 
     nRetVal = g_Context.Init();
     XN_IS_STATUS_OK(nRetVal);
+    
+	ros::NodeHandle pnh("~");
+	ros::Rate r(30);
+	string temp="openni_depth_frame";
+	pnh.param("frame_id",frame_id, temp);    
+	pnh.param("kinectToUse", kinectToUse, 0);
+	pnh.param("useBag", useBag, false);
+	std::cout<<"kinectToUse: "<<kinectToUse<<std::endl;
+	skeleton_pub = pnh.advertise<openni_tracker_msgs::skeletonData>("/skeleton_data", 1000);
 
+    if(useBag == true)
+    {
+    	ROS_INFO("Using rosbag for data storage");
+    	char bagName [50];
+    	int n = sprintf(bagName,"kinect%d.bag", kinectToUse);
+    	bag.open(bagName, rosbag::bagmode::Write);
+    }
 
    // SELECTION OF THE DEVICE
     xn::EnumerationErrors errors;
@@ -336,12 +363,10 @@ int main(int argc, char **argv) {
         nRetVal = g_Context.FindExistingNode(XN_NODE_TYPE_DEPTH, g_DepthGenerator);
         printf("Production tree of the depth generator created.\n");
         XN_IS_STATUS_OK(nRetVal);
-        printf("XN_IS_STATUS_OK(nRetVal).\n");
 
 
 
     CHECK_RC(nRetVal, "Find depth generator");
-     printf("CHECK_RC(nRetVal, Find depth generator);\n");
 
     nRetVal = g_Context.FindExistingNode(XN_NODE_TYPE_USER, g_UserGenerator);
     printf("User generator found.\n");
@@ -381,20 +406,19 @@ int main(int argc, char **argv) {
     nRetVal = g_Context.StartGeneratingAll();
     CHECK_RC(nRetVal, "StartGenerating");
 
-    ros::NodeHandle pnh("~");
-    ros::Rate r(30);
-    string temp="openni_depth_frame";
-    pnh.param("frame_id",frame_id, temp);    
-    pnh.param("kinectToUse", kinectToUse, 0);
-    std::cout<<"kinectToUse: "<<kinectToUse<<std::endl;
-    skeleton_pub = pnh.advertise<openni_tracker_msgs::skeletonData>("/skeleton_data", 1000);
+
 
     while (ros::ok()) {
         g_Context.WaitAndUpdateAll();
         publishTransforms(frame_id);
         r.sleep();
     }
+    
+	if(useBag == true)
+	{
+		bag.close();
+	}
 
-    g_Context.Shutdown();
+    g_Context.Release();
     return 0;
 }
