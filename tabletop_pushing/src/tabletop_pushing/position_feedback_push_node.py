@@ -47,7 +47,7 @@ import numpy as np
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt, atan2
-from controller_analysis import ControlAnalysisIO
+from push_learning import ControlAnalysisIO
 import sys
 
 from push_primitives import *

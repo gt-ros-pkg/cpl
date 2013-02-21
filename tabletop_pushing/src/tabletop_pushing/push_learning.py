@@ -31,28 +31,21 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
-from geometry_msgs.msg import Point, Pose2D
-from math import sin, cos, pi, sqrt, fabs, atan2, hypot
-import cv2
+from geometry_msgs.msg import Point, Pose2D, Twist
 import tf.transformations as tr
+from push_primitives import *
+from tabletop_pushing.srv import *
+from tabletop_pushing.msg import *
+import rospy
+import cv2
 import numpy as np
 import sys
-import rospy
-from push_primitives import *
+from math import sin, cos, pi, sqrt, fabs, atan2, hypot
+from pylab import *
 
-_VERSION_LINE = '# v0.3'
-_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method '
-
-def get_attr(instance, attribute):
-    '''
-    A wrapper for the builtin python getattr which handles recursive attributes of attributes
-    '''
-    attr_list = attribute.split('.')
-    def get_nested_attr(instance, attr_list):
-        if len(attr_list) == 1:
-            return getattr(instance, attr_list[0])
-        return get_nested_attr(getattr(instance, attr_list[0]), attr_list[1:])
-    return get_nested_attr(instance, attr_list)
+_VERSION_LINE = '# v0.4'
+_LEARN_TRIAL_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method '
+_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
 
 class PushTrial:
     def __init__(self):
@@ -84,23 +77,6 @@ class PushTrial:
                 'goal_pose:\n' + str(self.goal_pose) + '\n'+
                 'push_time: ' + str(self.push_time))
 
-def compare_pushes(a, b):
-    if a.score < b.score:
-        return -1
-    elif a.score > b.score:
-        return 1
-    else:
-        return 0
-
-def compare_counts(a, b):
-    if a.successful_count > b.successful_count:
-        return -1
-    elif a.successful_count < b.successful_count:
-        return 1
-    else:
-        return 0
-
-
 class PushLearningIO:
     def __init__(self):
         self.data_out = None
@@ -119,7 +95,7 @@ class PushLearningIO:
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
-        self.data_out.write(_HEADER_LINE+'\n')
+        self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -170,7 +146,7 @@ class PushLearningIO:
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method+'\n'
-        self.data_out.write(_HEADER_LINE+'\n')
+        self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -198,7 +174,7 @@ class PushLearningIO:
     def open_out_file(self, file_name):
         self.data_out = file(file_name, 'a')
         self.data_out.write(_VERSION_LINE+'\n')
-        self.data_out.write(_HEADER_LINE+'\n')
+        self.data_out.write(_LEARN_HEADER_LINE+'\n')
         self.data_out.flush()
 
     def close_out_file(self):
@@ -879,6 +855,198 @@ class PushLearningAnalysis:
 
     def compute_normalized_push_time(self, push):
         return push.push_time / push.push_dist
+
+class ControlTimeStep:
+    def __init__(self, x, x_dot, x_desired, theta0, u, t):
+        self.x = x
+        self.x_dot = x_dot
+        self.x_desired = x_desired
+        self.theta0 = theta0
+        self.u = u
+        self.t = t
+
+class ControlAnalysisIO:
+    def __init__(self):
+        self.data_out = None
+        self.data_in = None
+
+    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose):
+        if self.data_out is None:
+            rospy.logerr('Attempting to write to file that has not been opened.')
+            return
+        data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
+            str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
+            str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
+            str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
+            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
+            str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+\
+            '\n'
+        self.data_out.write(data_line)
+        self.data_out.flush()
+
+    def parse_line(self, line):
+        if line.startswith('#'):
+            return None
+        data = [float(s) for s in line.split()]
+        x = Pose2D()
+        x_dot = Pose2D()
+        x_desired = Pose2D()
+        u = Twist()
+        x.x = data[0]
+        x.y = data[1]
+        x.theta = data[2]
+        x_dot.x = data[3]
+        x_dot.y = data[4]
+        x_dot.theta = data[5]
+        x_desired.x = data[6]
+        x_desired.y = data[7]
+        x_desired.theta = data[8]
+        theta0 = data[9]
+        u.linear.x = data[10]
+        u.linear.y = data[11]
+        u.linear.z = data[12]
+        u.angular.x = data[13]
+        u.angular.y = data[14]
+        u.angular.z = data[15]
+        t = data[16]
+        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t)
+        return cts
+
+    def read_in_data_file(self, file_name):
+        data_in = file(file_name, 'r')
+        x = [self.parse_line(l) for l in data_in.readlines()[1:]]
+        data_in.close()
+        return filter(None, x)
+
+    def open_out_file(self, file_name):
+        self.data_out = file(file_name, 'a')
+        self.data_out.write(_CONTROL_HEADER_LINE+'\n')
+        self.data_out.flush()
+
+    def close_out_file(self):
+        self.data_out.close()
+
+# Helper functions
+def get_attr(instance, attribute):
+    '''
+    A wrapper for the builtin python getattr which handles recursive attributes of attributes
+    '''
+    attr_list = attribute.split('.')
+    def get_nested_attr(instance, attr_list):
+        if len(attr_list) == 1:
+            return getattr(instance, attr_list[0])
+        return get_nested_attr(getattr(instance, attr_list[0]), attr_list[1:])
+    return get_nested_attr(instance, attr_list)
+
+def compare_pushes(a, b):
+    if a.score < b.score:
+        return -1
+    elif a.score > b.score:
+        return 1
+    else:
+        return 0
+
+def compare_counts(a, b):
+    if a.successful_count > b.successful_count:
+        return -1
+    elif a.successful_count < b.successful_count:
+        return 1
+    else:
+        return 0
+
+def plot_controller_results(file_name, spin=False):
+    # TODO: Plot with dashes and dots for no color distinction
+    io = ControlAnalysisIO()
+    controls = io.read_in_data_file(file_name)
+    XS = [c.x.x for c in controls]
+    YS = [c.x.y for c in controls]
+    Thetas = [c.x.y for c in controls]
+    init_x = XS[0]
+    init_y = YS[0]
+    goal_x = controls[0].x_desired.x
+    goal_y = controls[0].x_desired.y
+    goal_theta = controls[0].x_desired.theta
+    figure()
+    plot(XS,YS)
+    scatter(XS,YS)
+    ax = gca()
+    print ylim()
+    print ax.set_xlim(xlim()[1]-(ylim()[1]-ylim()[0]), xlim()[1])
+    headings = [Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
+    arrows = [ax.add_patch(h) for h in headings]
+    init_arrow = Arrow(controls[0].x.x, controls[0].x.y,
+                       cos(controls[0].x.theta)*0.01,
+                       sin(controls[0].x.theta)*0.01, 0.05,
+                       axes=ax, facecolor='red')
+    goal_arrow = Arrow(controls[0].x_desired.x, controls[0].x_desired.y,
+                       cos(controls[0].x_desired.theta)*0.01,
+                       sin(controls[0].x_desired.theta)*0.01, 0.05,
+                       axes=ax, facecolor='green')
+    ax.add_patch(goal_arrow)
+    ax.add_patch(init_arrow)
+    scatter(init_x, init_y, c='r')
+    scatter(goal_x, goal_y, c='g')
+    xlabel('x (meters)')
+    ylabel('y (meters)')
+    title('Tracker Ouput')
+    savefig('/home/thermans/sandbox/tracker-output.png')
+    figure()
+    ux = [c.u.linear.x for c in controls]
+    uy = [c.u.linear.y for c in controls]
+    if spin:
+        uy = [c.u.linear.z for c in controls]
+    plot(ux)
+    plot(uy)
+    xlabel('Time')
+    ylabel('Velocity (m/s)')
+    legend(['u_x', 'u_y'])
+    title('Feedback Controller - Input Velocities')
+    savefig('/home/thermans/sandbox/feedback-input.png')
+    figure()
+    xdots = [c.x_dot.x for c in controls]
+    ydots = [c.x_dot.y for c in controls]
+    plot(xdots)
+    plot(ydots)
+    xlabel('Time')
+    ylabel('Velocity (m/s)')
+    title('Tracker Velocities')
+    legend(['x_dot', 'y_dot'])
+    savefig('/home/thermans/sandbox/tracker-velocities.png')
+    figure()
+    thetadots = [c.x_dot.theta for c in controls]
+    plot(thetadots,c='r')
+    xlabel('Time')
+    ylabel('Velocity (rad/s)')
+    title('Tracker Velocities')
+    legend(['theta_dot'])
+    savefig('/home/thermans/sandbox/tracker-theta-vel.png')
+    figure()
+    x_err = [c.x_desired.x - c.x.x for c in controls]
+    y_err = [c.x_desired.y - c.x.y for c in controls]
+    plot(x_err)
+    plot(y_err)
+    xlabel('Time')
+    ylabel('Error (meters)')
+    title('Position Error')
+    legend(['x_err', 'y_err'])
+    savefig('/home/thermans/sandbox/pos-err.png')
+    figure()
+    if spin:
+        theta_err = [c.x_desired.theta - c.x.theta for c in controls]
+    else:
+        theta_err = [c.theta0 - c.x.theta for c in controls]
+    plot(theta_err, c='r')
+    xlabel('Time')
+    ylabel('Error (radians)')
+    if spin:
+        title('Error in Orientation')
+    else:
+        title('Heading Deviation from Initial')
+    savefig('/home/thermans/sandbox/theta-err.png')
+    show()
+
+if __name__ == '__main__':
+    plot_controller_results(sys.argv[1])
 
 if __name__ == '__main__':
     req_object_id = None
