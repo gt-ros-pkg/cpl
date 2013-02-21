@@ -40,12 +40,13 @@ import rospy
 import cv2
 import numpy as np
 import sys
-from math import sin, cos, pi, sqrt, fabs, atan2, hypot
+from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos
 from pylab import *
 
 _VERSION_LINE = '# v0.4'
 _LEARN_TRIAL_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method '
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
+_DEBUG_IO = False
 
 class PushTrial:
     def __init__(self):
@@ -76,6 +77,24 @@ class PushTrial:
                 'final_orientation: ' + str(self.final_orientation) + '\n'+
                 'goal_pose:\n' + str(self.goal_pose) + '\n'+
                 'push_time: ' + str(self.push_time))
+
+class ControlTimeStep:
+    def __init__(self, x, x_dot, x_desired, theta0, u, t):
+        self.x = x
+        self.x_dot = x_dot
+        self.x_desired = x_desired
+        self.theta0 = theta0
+        self.u = u
+        self.t = t
+
+class PushCtrlTrial:
+    def __init__(self):
+        self.trial_start = None
+        self.trial_end = None
+        self.trial_trajectory = []
+
+    def __str__(self):
+        return (str(self.trial_start) + '\n' + str(self.trial_trajectory) + '\n' + str(self.trial_end))
 
 class PushLearningIO:
     def __init__(self):
@@ -179,6 +198,149 @@ class PushLearningIO:
 
     def close_out_file(self):
         self.data_out.close()
+
+class ControlAnalysisIO:
+    def __init__(self):
+        self.data_out = None
+        self.data_in = None
+
+    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose):
+        if self.data_out is None:
+            rospy.logerr('Attempting to write to file that has not been opened.')
+            return
+        data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
+            str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
+            str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
+            str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
+            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
+            str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+\
+            '\n'
+        self.data_out.write(data_line)
+        self.data_out.flush()
+
+    def parse_line(self, line):
+        if line.startswith('#'):
+            return None
+        data = [float(s) for s in line.split()]
+        x = Pose2D()
+        x_dot = Pose2D()
+        x_desired = Pose2D()
+        u = Twist()
+        x.x = data[0]
+        x.y = data[1]
+        x.theta = data[2]
+        x_dot.x = data[3]
+        x_dot.y = data[4]
+        x_dot.theta = data[5]
+        x_desired.x = data[6]
+        x_desired.y = data[7]
+        x_desired.theta = data[8]
+        theta0 = data[9]
+        u.linear.x = data[10]
+        u.linear.y = data[11]
+        u.linear.z = data[12]
+        u.angular.x = data[13]
+        u.angular.y = data[14]
+        u.angular.z = data[15]
+        t = data[16]
+        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t)
+        return cts
+
+    def read_in_data_file(self, file_name):
+        data_in = file(file_name, 'r')
+        x = [self.parse_line(l) for l in data_in.readlines()[1:]]
+        data_in.close()
+        return filter(None, x)
+
+    def open_out_file(self, file_name):
+        self.data_out = file(file_name, 'a')
+        self.data_out.write(_CONTROL_HEADER_LINE+'\n')
+        self.data_out.flush()
+
+    def close_out_file(self):
+        self.data_out.close()
+
+class CombinedPushLearnControlIO:
+    def __init__(self):
+        self.pl_io = PushLearningIO()
+        self.ctrl_io = ControlAnalysisIO()
+        self.push_trials = []
+
+    def read_in_data_file(self, file_name):
+        data_in = file(file_name, 'r')
+        read_pl_trial_line = False
+        read_ctrl_line = False
+        trial_is_start = True
+        self.push_trials = []
+        current_trial = PushCtrlTrial()
+        for line in  data_in.readlines():
+            if line.startswith(_VERSION_LINE):
+                if _DEBUG_IO:
+                    print 'Ignoring version line'
+                continue
+            elif line.startswith(_LEARN_TRIAL_HEADER_LINE):
+                if _DEBUG_IO:
+                    print 'Read learn trial header'
+                read_pl_trial_line = True
+                read_ctrl_line = False
+            elif line.startswith(_CONTROL_HEADER_LINE):
+                if _DEBUG_IO:
+                    print 'Read control header'
+                read_ctrl_line = True
+            elif read_pl_trial_line:
+                if _DEBUG_IO:
+                    print 'Reading trial'
+                trial = self.pl_io.parse_line(line)
+                read_pl_trial_line = False
+                if trial_is_start:
+                    current_trial.trial_start = trial
+                    if _DEBUG_IO:
+                        print 'Trial is start trial'
+                else:
+                    if _DEBUG_IO:
+                        print 'Trial is end trial'
+                    current_trial.trial_end = trial
+                    self.push_trials.append(current_trial)
+                    current_trial = PushCtrlTrial()
+                trial_is_start = not trial_is_start
+            elif read_ctrl_line:
+                if _DEBUG_IO:
+                    print 'Read ctrl pt'
+                traj_pt = self.ctrl_io.parse_line(line)
+                current_trial.trial_trajectory.append(traj_pt)
+            else:
+                if _DEBUG_IO:
+                    print 'None of these?'
+        data_in.close()
+
+class HandPlacementPerformanceAnalysis:
+    def analyze_straight_line_push(self, push_trial):
+        init_pose = push_trial.trial_start.init_centroid
+        goal_pose = push_trial.trial_start.goal_pose
+        final_pose = push_trial.trial_end.final_centroid
+        push_trial.trial_trajectory
+        err_x = goal_pose.x - final_pose.x
+        err_y = goal_pose.y - final_pose.y
+        final_error =  hypot(err_x, err_y)
+
+        angle_errs = []
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            if i == 0:
+                continue
+            prev_pt = push_trial.trial_trajectory[i-1]
+            goal_vector = np.asarray([goal_pose.x - prev_pt.x.x, goal_pose.y - prev_pt.x.y])
+            push_vector = np.asarray([pt.x.x - prev_pt.x.x, pt.x.y - prev_pt.x.y])
+            angle_errs.append(self.angle_between_vectors(goal_vector, push_vector))
+        mean_angle_errs = sum(angle_errs)/len(angle_errs)
+        # print mean_angle_errs, 'rad'
+        # print final_error, 'cm'
+        return (mean_angle_errs, final_error)
+
+    def angle_between_vectors(self, a, b):
+        a_dot_b = sum(a*b)
+        norm_a = hypot(a[0], a[1])
+        norm_b = hypot(b[0], b[1])
+        return acos(a_dot_b/(norm_a*norm_b))
 
 class BruteForceKNN:
     def __init__(self, data):
@@ -855,76 +1017,6 @@ class PushLearningAnalysis:
 
     def compute_normalized_push_time(self, push):
         return push.push_time / push.push_dist
-
-class ControlTimeStep:
-    def __init__(self, x, x_dot, x_desired, theta0, u, t):
-        self.x = x
-        self.x_dot = x_dot
-        self.x_desired = x_desired
-        self.theta0 = theta0
-        self.u = u
-        self.t = t
-
-class ControlAnalysisIO:
-    def __init__(self):
-        self.data_out = None
-        self.data_in = None
-
-    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose):
-        if self.data_out is None:
-            rospy.logerr('Attempting to write to file that has not been opened.')
-            return
-        data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
-            str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
-            str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
-            str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
-            str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
-            str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+\
-            '\n'
-        self.data_out.write(data_line)
-        self.data_out.flush()
-
-    def parse_line(self, line):
-        if line.startswith('#'):
-            return None
-        data = [float(s) for s in line.split()]
-        x = Pose2D()
-        x_dot = Pose2D()
-        x_desired = Pose2D()
-        u = Twist()
-        x.x = data[0]
-        x.y = data[1]
-        x.theta = data[2]
-        x_dot.x = data[3]
-        x_dot.y = data[4]
-        x_dot.theta = data[5]
-        x_desired.x = data[6]
-        x_desired.y = data[7]
-        x_desired.theta = data[8]
-        theta0 = data[9]
-        u.linear.x = data[10]
-        u.linear.y = data[11]
-        u.linear.z = data[12]
-        u.angular.x = data[13]
-        u.angular.y = data[14]
-        u.angular.z = data[15]
-        t = data[16]
-        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t)
-        return cts
-
-    def read_in_data_file(self, file_name):
-        data_in = file(file_name, 'r')
-        x = [self.parse_line(l) for l in data_in.readlines()[1:]]
-        data_in.close()
-        return filter(None, x)
-
-    def open_out_file(self, file_name):
-        self.data_out = file(file_name, 'a')
-        self.data_out.write(_CONTROL_HEADER_LINE+'\n')
-        self.data_out.flush()
-
-    def close_out_file(self):
-        self.data_out.close()
 
 # Helper functions
 def get_attr(instance, attribute):
