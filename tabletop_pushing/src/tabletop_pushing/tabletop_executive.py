@@ -298,7 +298,7 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_push_exploration(self, object_id, tool_proxy_name=EE_TOOL_PROXY):
+    def run_push_exploration(self, object_id, tool_proxy_name=EE_TOOL_PROXY, learn_start_loc=False):
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
@@ -312,7 +312,8 @@ class TabletopExecutive:
         return True
 
     def explore_push(self, behavior_primitive, controller_name, proxy_name, object_id,
-                     precondition_method='centroid_push', input_arm=None, tool_proxy_name=EE_TOOL_PROXY):
+                     precondition_method='centroid_push', input_arm=None,
+                     tool_proxy_name=EE_TOOL_PROXY, learn_start_loc=False):
         if input_arm is not None:
             rospy.loginfo('Exploring push behavior: (' + behavior_primitive + ', '
                           + controller_name + ', ' + proxy_name + ', ' + input_arm + ')')
@@ -350,7 +351,8 @@ class TabletopExecutive:
         while not done_with_push:
             start_time = time.time()
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
-                                                             proxy_name, behavior_primitive, tool_proxy_name)
+                                                             proxy_name, behavior_primitive,
+                                                             tool_proxy_name, learn_start_loc)
 
             if push_vec_res is None:
                 return None
@@ -421,11 +423,13 @@ class TabletopExecutive:
 
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
-                                     behavior_primitive, tool_proxy_name):
+                                     behavior_primitive, tool_proxy_name, learn_start_loc=False):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
-                                                                 proxy_name, behavior_primitive, tool_proxy_name)
+                                                                 proxy_name, behavior_primitive,
+                                                                 tool_proxy_name,
+                                                                 learn_start_loc=learn_start_loc)
 
             if push_vec_res is None:
                 return None
@@ -582,7 +586,8 @@ class TabletopExecutive:
             return None
 
     def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
-                                         behavior_primitive, tool_proxy_name=EE_TOOL_PROXY, get_pose_only=False):
+                                         behavior_primitive, tool_proxy_name=EE_TOOL_PROXY, 
+                                         get_pose_only=False, learn_start_loc=False):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -592,6 +597,7 @@ class TabletopExecutive:
         push_vector_req.tool_proxy_name = tool_proxy_name
         push_vector_req.behavior_primitive = behavior_primitive
         push_vector_req.get_pose_only = get_pose_only
+        push_vector_req.learn_start_loc = learn_start_loc
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -1046,6 +1052,7 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
+    learn_start_loc = True
     use_singulation = False
     use_learning = True
     use_guided = True
@@ -1068,7 +1075,8 @@ if __name__ == '__main__':
                     rospy.logwarn("No object id given.")
             if code_in.lower().startswith('q'):
                 break
-            clean_exploration = node.run_push_exploration(object_id=code_in)
+            clean_exploration = node.run_push_exploration(object_id=code_in,
+                                                          learn_start_loc=learn_start_loc)
             if not clean_exploration:
                 rospy.loginfo('Not clean end to pushing stuff')
                 break

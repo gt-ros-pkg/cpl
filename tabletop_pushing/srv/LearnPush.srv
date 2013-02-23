@@ -1,6 +1,8 @@
 bool initialize
 bool analyze_previous
 geometry_msgs/Pose2D goal_pose
+bool learn_start_loc
+bool new_object
 bool get_pose_only
 string controller_name
 string proxy_name
@@ -10,6 +12,7 @@ string tool_proxy_name
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid
 geometry_msgs/PoseStamped tool_x
+geometry_msgs/Pose2D goal_pose
 float64 theta
 bool no_push
 bool no_objects

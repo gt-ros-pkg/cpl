@@ -269,6 +269,17 @@ class PointCloudSegmentation
                                        std::string target_frame);
 
   /**
+   * Method to project the current proto object into an image
+   *
+   * @param obj The objects
+   * @param img_in An image of correct size for the projection
+   * @param target_frame The frame of the associated image
+   *
+   * @return Image containing the projected object
+   */
+  cv::Mat projectProtoObjectIntoImage(ProtoObject& obj, cv::Size img_size, std::string target_frame);
+
+  /**
    * Visualization function of proto objects projected into an image
    *
    * @param obj_img The projected objects image

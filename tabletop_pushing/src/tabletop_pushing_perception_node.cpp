@@ -128,6 +128,8 @@ using tabletop_pushing::ProtoObjects;
 using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
 using cpl_visual_features::subPIAngle;
+using cpl_visual_features::ShapeDescriptors;
+
 typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
 typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
@@ -1410,6 +1412,33 @@ class TabletopPushingPerceptionNode
     res.theta = cur_state.x.theta;
     res.tool_x = cur_state.tool_x;
 
+    // Choose a pushing location to test if we are learning good pushing locations
+    if (req.learn_start_loc)
+    {
+      // Get shape features here
+      cv::Mat obj_mask = pcl_segmenter_->projectProtoObjectIntoImage(
+          cur_obj, cur_color_frame_.size(), cur_camera_header_.frame_id);
+
+      // Get shape features and associated locations
+      ShapeLocations locs = extractFootprintShapeFeature(obj_mask, cur_point_cloud_, res.centroid);
+
+      if (req.new_object)
+      {
+        start_loc_history_.clear();
+      }
+      // TODO: Choose location from features and history
+      int loc_idx = choosePushStartLoc(locs, req.new_object);
+      ShapeLocation loc = locs[loc_idx];
+
+      // Set goal for pushing and then get start location as usual below
+      float new_push_angle = atan2(res.centroid.y-loc.boundary_loc_.y, res.centroid.x-loc.boundary_loc_.x);
+      const float new_push_dist = 0.3; // Make this a class constant or something...
+      req.goal_pose.x = res.centroid.x+cos(new_push_angle)*new_push_dist;
+      req.goal_pose.y = res.centroid.y+sin(new_push_angle)*new_push_dist;
+    }
+    res.goal_pose.x = req.goal_pose.x;
+    res.goal_pose.y = req.goal_pose.y;
+
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
@@ -1460,6 +1489,25 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
+  /**
+   * Method to determine which pushing location to choose as a function of current object shape descriptors and history
+   *
+   * @param locs Shape features and associated boundary locations
+   * @param new_object Whether this object is new or has a history
+   *
+   * @return The index of the location in locs
+   */
+  int choosePushStartLoc(ShapeLocations& locs, bool new_object)
+  {
+    if (new_object)
+    {
+      start_loc_history_.clear();
+    }
+    // TODO: Choose location index from features and history
+    int loc_idx = 0;
+    start_loc_history_.push_back(locs[loc_idx]);
+    return loc_idx;
+  }
   LearnPush::Response getSpinPushStartPose(LearnPush::Request& req)
   {
     PushTrackerState cur_state = startTracking();
@@ -1486,6 +1534,14 @@ class TabletopPushingPerceptionNode
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
+
+    // TODO: Set up push loc learning here, after figuring it out above
+    if (req.learn_start_loc)
+    {
+    }
+    else
+    {
+    }
 
     // Use estimated ellipse to determine object extent and pushing locations
     Eigen::Vector3f major_axis(std::cos(cur_state.x.theta),
@@ -1873,6 +1929,12 @@ class TabletopPushingPerceptionNode
     return object_too_far_count_ >= object_too_far_count_limit_;
   }
 
+  // TODO: Setup this function for push start pose stuff
+  bool pushingTimeUp()
+  {
+    return false;
+  }
+
   bool pointIsBetweenOthers(geometry_msgs::Point pt, Pose2D& x1, Pose2D& x2, double epsilon=0.0)
   {
     // Project the vector pt->x2 onto the vector x1->x2
@@ -2152,6 +2214,7 @@ class TabletopPushingPerceptionNode
   int object_not_between_count_limit_;
   double object_not_between_epsilon_;
   double object_not_between_tool_epsilon_;
+  ShapeLocations start_loc_history_;
 };
 
 int main(int argc, char ** argv)
