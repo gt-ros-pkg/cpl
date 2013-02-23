@@ -31,6 +31,9 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
+#ifndef point_cloud_segmentation_h_DEFINED
+#define point_cloud_segmentation_h_DEFINED
+
 // ROS Message Types
 #include <std_msgs/Header.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -357,3 +360,4 @@ XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
   return masked_cloud;
 }
 };
+#endif // point_cloud_segmentation_h_DEFINED

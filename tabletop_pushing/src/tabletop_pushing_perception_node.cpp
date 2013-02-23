@@ -87,8 +87,9 @@
 // tabletop_pushing
 #include <tabletop_pushing/LearnPush.h>
 #include <tabletop_pushing/LocateTable.h>
-#include <tabletop_pushing/point_cloud_segmentation.h>
 #include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
+#include <tabletop_pushing/point_cloud_segmentation.h>
+#include <tabletop_pushing/shape_features.h>
 
 // STL
 #include <vector>

@@ -1,6 +1,9 @@
 // shape_context.cpp : Defines the entry point for the console application.
 //
 
+#ifndef shape_context_h_DEFINED
+#define shape_context_h_DEFINED
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -18,11 +21,16 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB,
                      double epsilonCost = 9e5, bool write_images=false,
                      std::string filePath=".", int max_displacement=30,
                      std::string filePostFix="");
+
 std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
                                     double percentage = 0.3);
+
+ShapeDescriptors extractDescriptors(cv::Mat& image);
+
 ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int radius_bins = 5,
                                       unsigned int theta_bins = 12);
+
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,
                           double epsilonCost = 9e5,
@@ -36,3 +44,4 @@ void displayMatch(cv::Mat& edge_imgA,
                   Path& path, int max_displacement=30,
                   std::string filePath=".", std::string filePostFix="");
 };
+#endif // shape_context_h_DEFINED

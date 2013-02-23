@@ -86,6 +86,23 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   return (score-(fabs(sizeA-sizeB)*epsilonCost));
 }
 
+ShapeDescriptors extractDescriptors(cv::Mat& image)
+{
+  cv::Mat edge_image(image.size(), image.type());
+  cv::Mat edge_image_raw;
+
+  // do edge detection
+  cv::Canny(image, edge_image, 0.05, 0.5);
+  edge_image.copyTo(edge_image_raw);
+
+  // sample a subset of the edge pixels
+  Samples samples = samplePoints(edge_image);
+
+  // construct shape descriptors for each sample
+  ShapeDescriptors descriptors = constructDescriptors(samples);
+  return descriptors;
+}
+
 Samples samplePoints(cv::Mat& edge_image, double percentage)
 {
   Samples samples;
