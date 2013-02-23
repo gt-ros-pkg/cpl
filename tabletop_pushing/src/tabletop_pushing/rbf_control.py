@@ -1,3 +1,5 @@
+import roslib; roslib.load_manifest('tabletop_pushing')
+import rospy
 import numpy as np
 
 class RBFController:
@@ -26,6 +28,7 @@ class RBFController:
         '''
         Read controller data from disk that was learned by PILCO
         '''
+        rospy.logwarn('controller_path:'+controller_path)
         controller_file = file(controller_path,'r')
         data_in = controller_file.readlines()
         controller_file.close()

@@ -48,7 +48,9 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import sin, cos, pi, fabs, sqrt, atan2
 from push_learning import ControlAnalysisIO
+import rbf_control
 import sys
+
 
 from push_primitives import *
 
@@ -787,7 +789,7 @@ class PositionFeedbackPushNode:
         u.twist.linear.y = u_t[1]
         return u
 
-    def RBFFeedbackController(self, cur_state, Xpi, Ypi, Hyp):
+    def RBFFeedbackController(self, cur_state):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
@@ -1990,9 +1992,9 @@ class PositionFeedbackPushNode:
             rospy.sleep(self.post_controller_switch_sleep)
 
     def setupRBFController(self, controller_name):
-        controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')
+        controller_file_path = self.learned_controller_base_path+controller_name+'.txt'
         self.RBF = rbf_control.RBFController()
-        self.RBF.loadRBFController(controller_file)
+        self.RBF.loadRBFController(controller_file_path)
         self.RBF.computeBetaPi()
         # TODO: Read u_max from file
 
