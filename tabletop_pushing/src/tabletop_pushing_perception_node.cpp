@@ -1222,10 +1222,15 @@ class TabletopPushingPerceptionNode
     float y_dist = fabs(y_error);
     float theta_dist = fabs(theta_error);
 
-    if (timing_push_ && pushingTimeUp())
+    if (timing_push_)
     {
-      abortPushingGoal("Pushing time up");
+      if (pushingTimeUp())
+      {
+        abortPushingGoal("Pushing time up");
+      }
+      return;
     }
+
     if (controller_name_ == "spin_to_heading")
     {
       if (theta_dist < tracker_angle_thresh_)
