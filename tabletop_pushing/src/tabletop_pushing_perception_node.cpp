@@ -988,6 +988,8 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_not_between_count_limit", object_not_between_count_limit_, 5);
     n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
     n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
+    // TODO: Expose if you care to
+    start_loc_push_time_ = 5.0;
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1220,6 +1222,10 @@ class TabletopPushingPerceptionNode
     float y_dist = fabs(y_error);
     float theta_dist = fabs(theta_error);
 
+    if (timing_push_ && pushingTimeUp())
+    {
+      abortPushingGoal("Pushing time up");
+    }
     if (controller_name_ == "spin_to_heading")
     {
       if (theta_dist < tracker_angle_thresh_)
@@ -1415,26 +1421,26 @@ class TabletopPushingPerceptionNode
     // Choose a pushing location to test if we are learning good pushing locations
     if (req.learn_start_loc)
     {
+      timing_push_ = true;
       // Get shape features here
       cv::Mat obj_mask = pcl_segmenter_->projectProtoObjectIntoImage(
           cur_obj, cur_color_frame_.size(), cur_camera_header_.frame_id);
 
       // Get shape features and associated locations
       ShapeLocations locs = extractFootprintShapeFeature(obj_mask, cur_point_cloud_, res.centroid);
-
-      if (req.new_object)
-      {
-        start_loc_history_.clear();
-      }
-      // TODO: Choose location from features and history
       int loc_idx = choosePushStartLoc(locs, req.new_object);
-      ShapeLocation loc = locs[loc_idx];
+      ShapeLocation chosen_loc = locs[loc_idx];
 
       // Set goal for pushing and then get start location as usual below
-      float new_push_angle = atan2(res.centroid.y-loc.boundary_loc_.y, res.centroid.x-loc.boundary_loc_.x);
+      float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
+                                   res.centroid.x - chosen_loc.boundary_loc_.x);
       const float new_push_dist = 0.3; // Make this a class constant or something...
       req.goal_pose.x = res.centroid.x+cos(new_push_angle)*new_push_dist;
       req.goal_pose.y = res.centroid.y+sin(new_push_angle)*new_push_dist;
+    }
+    else
+    {
+      timing_push_ = false;
     }
     res.goal_pose.x = req.goal_pose.x;
     res.goal_pose.y = req.goal_pose.y;
@@ -1777,6 +1783,7 @@ class TabletopPushingPerceptionNode
     object_not_detected_count_ = 0;
     object_too_far_count_ = 0;
     object_not_between_count_ = 0;
+    push_start_time_ = ros::Time::now().toSec();
 
     if (obj_tracker_->isInitialized())
     {
@@ -1929,9 +1936,12 @@ class TabletopPushingPerceptionNode
     return object_too_far_count_ >= object_too_far_count_limit_;
   }
 
-  // TODO: Setup this function for push start pose stuff
   bool pushingTimeUp()
   {
+    if (ros::Time::now().toSec() - push_start_time_ > start_loc_push_time_)
+    {
+      return true;
+    }
     return false;
   }
 
@@ -2215,6 +2225,9 @@ class TabletopPushingPerceptionNode
   double object_not_between_epsilon_;
   double object_not_between_tool_epsilon_;
   ShapeLocations start_loc_history_;
+  double start_loc_push_time_;
+  double push_start_time_;
+  bool timing_push_;
 };
 
 int main(int argc, char ** argv)
