@@ -1,0 +1,24 @@
+<package>
+  <description brief="oni-recording">
+
+     skeleton_fusion
+
+  </description>
+  <author>martin</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url></url>
+  <depend package="roscpp"/>
+  <depend package="roslib"/>
+  <depend package="tf"/>
+  <depend package="pcl"/>
+  
+  <rosdep name="openni-dev"/>
+  <rosdep name="nite-dev"/>
+  <rosdep name="libopenni-dev"/>
+  <rosdep name="libusb-1.0-dev" />
+  <rosdep name="libopenni-nite-dev"/>
+  <rosdep name="libopenni-sensor-primesense-dev"/>
+</package>
+
+
