@@ -62,6 +62,7 @@
 #include <pcl16/common/eigen.h>
 #include <pcl16/common/centroid.h>
 #include <pcl16/io/io.h>
+#include <pcl16/io/pcd_io.h>
 #include <pcl16_ros/transforms.h>
 #include <pcl16/ros/conversions.h>
 #include <pcl16/ModelCoefficients.h>
@@ -839,8 +840,8 @@ class ObjectTracker25D
                                std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
     img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
                                 std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
-    float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
-                                         img_maj_idx.x-img_c_idx.x));
+    // float img_angle = RAD2DEG(std::atan2(img_maj_idx.y-img_c_idx.y,
+    //                                      img_maj_idx.x-img_c_idx.x));
     // cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
     // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
     // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
@@ -1433,8 +1434,8 @@ class TabletopPushingPerceptionNode
 
       // Get shape features and associated locations
       ShapeLocations locs = extractFootprintShapeFeature(obj_mask, cur_point_cloud_, res.centroid);
-      // TODO: This still isn't implemented
-      int loc_idx = choosePushStartLoc(locs, req.new_object);
+      // TODO: This still isn't implemented fully
+      int loc_idx = choosePushStartLoc(locs, cur_obj, req.new_object);
       ShapeLocation chosen_loc = locs[loc_idx];
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
       // Set goal for pushing and then get start location as usual below
@@ -1443,6 +1444,18 @@ class TabletopPushingPerceptionNode
       const float new_push_dist = 0.3; // Make this a class constant or something...
       req.goal_pose.x = res.centroid.x+cos(new_push_angle)*new_push_dist;
       req.goal_pose.y = res.centroid.y+sin(new_push_angle)*new_push_dist;
+
+      // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
+      // change features in the future
+      std::stringstream cloud_file_name;
+      cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
+      std::stringstream color_file_name;
+      color_file_name << base_output_path_ << req.trial_id << "_color.bmp";
+      std::stringstream depth_file_name;
+      depth_file_name << base_output_path_ << req.trial_id << "_depth.bmp";
+      pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
+      cv::imwrite(color_file_name.str(), cur_color_frame_);
+      cv::imwrite(color_file_name.str(), cur_depth_frame_);
     }
     else
     {
@@ -1509,11 +1522,15 @@ class TabletopPushingPerceptionNode
    *
    * @return The index of the location in locs
    */
-  int choosePushStartLoc(ShapeLocations& locs, bool new_object)
+  int choosePushStartLoc(ShapeLocations& locs, ProtoObject cur_obj, bool new_object)
   {
     if (new_object)
     {
       start_loc_history_.clear();
+    }
+    for (unsigned int l = 0; l < locs.size(); ++l)
+    {
+      // TODO: Transform boundary locations into object frame before adding to history
     }
     // TODO: Choose location index from features and history
     int loc_idx = 0;

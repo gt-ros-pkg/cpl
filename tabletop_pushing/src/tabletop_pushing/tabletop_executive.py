@@ -61,7 +61,6 @@ class TabletopExecutive:
 
     def __init__(self, use_singulation, use_learning):
         self.previous_rand_pose = None
-        self.push_loc_shape_features = []
 
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
@@ -171,6 +170,12 @@ class TabletopExecutive:
             self.learn_out_file_name = learn_file_name
             rospy.loginfo('Opening learn file: '+learn_file_name)
             self.learn_io.open_out_file(learn_file_name)
+
+        # Start loc learning stuff
+        self.push_loc_shape_features = []
+        self.push_count = 0
+        self.base_trial_id = str(rospy.get_time())
+
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
         # Get table height and raise to that before anything else
@@ -306,8 +311,10 @@ class TabletopExecutive:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
+                        trial_id = str(object_id) + str(self.base_trial_id) + str(self.push_count)
+                        self.push_count += 1
                         res = self.explore_push_start_locs(behavior_primitive, controller, proxy,
-                                                           object_id, arm)
+                                                           trial_id, arm)
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
                             return False
@@ -407,7 +414,7 @@ class TabletopExecutive:
                 done_with_push = True
         return res
 
-    def explore_push_start_locs(self, behavior_primitive, controller_name, proxy_name, object_id,
+    def explore_push_start_locs(self, behavior_primitive, controller_name, proxy_name, trial_id,
                                 which_arm, precondition_method=CENTROID_PUSH_PRECONDITION):
         rospy.loginfo('Exploring push start locs for triple: (' + behavior_primitive + ', ' +
                       controller_name + ', ' + proxy_name + ')')
@@ -457,7 +464,7 @@ class TabletopExecutive:
             if _USE_LEARN_IO:
                 self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
                                                   goal_pose, behavior_primitive, controller_name,
-                                                  proxy_name, which_arm, object_id,
+                                                  proxy_name, which_arm, trial_id,
                                                   precondition_method, shape_descriptor)
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
@@ -1146,7 +1153,7 @@ if __name__ == '__main__':
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
-    else:
+    elif use_learning:
         # node.run_feedback_testing(behavior_primitive)
         while True:
             need_object_id = True
