@@ -61,6 +61,7 @@ class TabletopExecutive:
 
     def __init__(self, use_singulation, use_learning):
         self.previous_rand_pose = None
+        self.push_loc_shape_features = []
 
         rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
@@ -300,6 +301,7 @@ class TabletopExecutive:
                 return
 
     def run_start_loc_learning(self, object_id):
+        self.push_loc_shape_features = []
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
@@ -444,7 +446,8 @@ class TabletopExecutive:
                                                              proxy_name, behavior_primitive,
                                                              learn_start_loc=True,
                                                              new_object=(not start_loc_trials))
-
+            goal_pose = push_vec_res.goal_pose
+            self.push_loc_shape_features.append(push_vec_res.shape_descriptor)
             if push_vec_res is None:
                 return None
             elif push_vec_res == 'quit':
@@ -454,7 +457,8 @@ class TabletopExecutive:
                                               push_vec_res, goal_pose,
                                               controller_name, proxy_name)
             push_time = time.time() - start_time
-
+            # TODO: Analyze push here / write result to disk
+            self.push_loc_shape_features
             if res == 'quit':
                 return res
             elif res == 'aborted':
@@ -463,7 +467,6 @@ class TabletopExecutive:
                 start_loc_trials += 1
                 if start_loc_trials > self.num_start_loc_samples:
                     done_with_push = True
-        # TODO: Write results to disk
         return res
 
     def get_feedback_push_initial_obj_pose(self):
