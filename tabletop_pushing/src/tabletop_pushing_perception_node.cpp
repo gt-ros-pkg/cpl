@@ -1433,9 +1433,10 @@ class TabletopPushingPerceptionNode
 
       // Get shape features and associated locations
       ShapeLocations locs = extractFootprintShapeFeature(obj_mask, cur_point_cloud_, res.centroid);
+      // TODO: This still isn't implemented
       int loc_idx = choosePushStartLoc(locs, req.new_object);
       ShapeLocation chosen_loc = locs[loc_idx];
-
+      res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
       // Set goal for pushing and then get start location as usual below
       float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
                                    res.centroid.x - chosen_loc.boundary_loc_.x);

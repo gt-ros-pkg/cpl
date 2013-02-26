@@ -12,7 +12,7 @@
 class ShapeLocation
 {
  public:
-  ShapeLocation(geometry_msgs::Point boundary_loc, cpl_visual_features::ShapeDescriptor descriptor) :
+  ShapeLocation(geometry_msgs::Point boundary_loc, cpl_visual_features::ShapeDescriptor descriptor):
       boundary_loc_(boundary_loc), descriptor_(descriptor)
   {
   }

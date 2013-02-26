@@ -442,7 +442,7 @@ class TabletopExecutive:
             start_time = time.time()
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
                                                              proxy_name, behavior_primitive,
-                                                             tool_proxy_name, learn_start_loc=True,
+                                                             learn_start_loc=True,
                                                              new_object=(not start_loc_trials))
 
             if push_vec_res is None:
@@ -452,7 +452,7 @@ class TabletopExecutive:
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
                                               push_vec_res, goal_pose,
-                                              controller_name, proxy_name, tool_proxy_name)
+                                              controller_name, proxy_name)
             push_time = time.time() - start_time
 
             if res == 'quit':
@@ -490,8 +490,8 @@ class TabletopExecutive:
 
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
-                                     behavior_primitive, tool_proxy_name, learn_start_loc=False,
-                                     new_object=False):
+                                     behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
+                                     learn_start_loc=False, new_object=False):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
@@ -908,7 +908,8 @@ class TabletopExecutive:
         return push_res
 
     def feedback_tool_sweep_object(self, which_arm, push_info, goal_pose, controller_name,
-                                   proxy_name, behavior_primitive, tool_proxy_name, high_init=True, open_gripper=True):
+                                   proxy_name, behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
+                                   high_init=True, open_gripper=True):
         push_vector = push_info.push
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
@@ -1123,7 +1124,7 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    learn_start_loc = False
+    learn_start_loc = True
     use_singulation = False
     use_learning = True
     use_guided = True
@@ -1134,8 +1135,6 @@ if __name__ == '__main__':
     node = TabletopExecutive(use_singulation, use_learning)
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
-    elif learn_start_loc:
-        node.run_start_loc_learning()
     else:
         # node.run_feedback_testing(behavior_primitive)
         while True:
@@ -1148,7 +1147,10 @@ if __name__ == '__main__':
                     rospy.logwarn("No object id given.")
             if code_in.lower().startswith('q'):
                 break
-            clean_exploration = node.run_push_exploration(object_id=code_in)
+            if learn_start_loc:
+                clean_exploration = node.run_start_loc_learning(object_id=code_in)
+            else:
+                clean_exploration = node.run_push_exploration(object_id=code_in)
             if not clean_exploration:
                 rospy.loginfo('Not clean end to pushing stuff')
                 break

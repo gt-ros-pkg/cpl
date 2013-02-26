@@ -16,3 +16,4 @@ geometry_msgs/Pose2D goal_pose
 float64 theta
 bool no_push
 bool no_objects
+float64[] shape_descriptor
