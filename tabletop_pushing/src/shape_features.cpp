@@ -13,7 +13,6 @@ inline int worldLocToIdx(double val, double min_val, double max_val)
   return round((val-min_val)/XY_RES);
 }
 
-// TODO: turn this into a given image
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud)
 {
   cv::Mat kernel(5,5,CV_8UC1, 255);
@@ -83,6 +82,8 @@ ShapeLocations extractFootprintShapeFeature(cv::Mat obj_mask, pcl16::PointCloud<
 {
   cv::Mat base_image_a = getObjectFootprint(obj_mask, cloud);
   // cv::imshow("base_a", base_image_a);
+  // TODO: Get better samples for 3D boundary locations
+  cv::Point2f center(centroid.x, centroid.y);
   ShapeDescriptors s = extractDescriptors(base_image_a);
   ShapeLocations locs;
   for (int i = 0; i < s.size(); ++i)

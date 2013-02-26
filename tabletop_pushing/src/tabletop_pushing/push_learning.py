@@ -44,7 +44,7 @@ from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos
 from pylab import *
 
 _VERSION_LINE = '# v0.4'
-_LEARN_TRIAL_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method '
+_LEARN_TRIAL_HEADER_LINE = '# object_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
 _DEBUG_IO = False
 
@@ -155,7 +155,8 @@ class PushLearningIO:
         return push
 
     def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, behavior_primitive,
-                             controller, proxy, which_arm, object_id, precondition_method):
+                            controller, proxy, which_arm, object_id, precondition_method,
+                            shape_descriptor=None):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -164,7 +165,11 @@ class PushLearningIO:
             str(init_orientation)+' '+str(0.0)+' '+str(0.0)+' '+\
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
-            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method+'\n'
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method
+        if shape_descriptor is not None:
+            for s in shape_descriptor:
+                data_line += ' '+str(s)
+        data_line+='\n'
         self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()

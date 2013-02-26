@@ -251,11 +251,11 @@ class TabletopExecutive:
             start_time = time.time()
             # Select controller to use
             if use_spin_push:
-                controller_name = 'spin_to_heading'
+                controller_name = SPIN_TO_HEADING
             elif _USE_CENTROID_CONTROLLER:
-                controller_name = 'centroid_controller'
+                controller_name = CENTROID_CONTROLLER
             else:
-                controller_name = 'spin_compensation'
+                controller_name = SPIN_COMPENSATION
 
             if use_spin_push:
                 goal_pose = self.generate_random_table_pose()
@@ -327,7 +327,7 @@ class TabletopExecutive:
         return True
 
     def explore_push(self, behavior_primitive, controller_name, proxy_name, object_id,
-                     precondition_method='centroid_push', input_arm=None,
+                     precondition_method=CENTROID_PUSH_PRECONDITION, input_arm=None,
                      tool_proxy_name=EE_TOOL_PROXY):
         if input_arm is not None:
             rospy.loginfo('Exploring push behavior: (' + behavior_primitive + ', '
@@ -408,7 +408,7 @@ class TabletopExecutive:
         return res
 
     def explore_push_start_locs(self, behavior_primitive, controller_name, proxy_name, object_id,
-                                which_arm):
+                                which_arm, precondition_method=CENTROID_PUSH_PRECONDITION):
         rospy.loginfo('Exploring push start locs for triple: (' + behavior_primitive + ', ' +
                       controller_name + ', ' + proxy_name + ')')
         timeout = 2
@@ -447,18 +447,25 @@ class TabletopExecutive:
                                                              learn_start_loc=True,
                                                              new_object=(not start_loc_trials))
             goal_pose = push_vec_res.goal_pose
-            self.push_loc_shape_features.append(push_vec_res.shape_descriptor)
+            shape_descriptor = push_vec_res.shape_descriptor[:]
+            self.push_loc_shape_features.append(shape_descriptor)
             if push_vec_res is None:
                 return None
             elif push_vec_res == 'quit':
                 return push_vec_res
 
+            if _USE_LEARN_IO:
+                self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
+                                                  goal_pose, behavior_primitive, controller_name,
+                                                  proxy_name, which_arm, object_id,
+                                                  precondition_method, shape_descriptor)
+
             res, push_res = self.perform_push(which_arm, behavior_primitive,
                                               push_vec_res, goal_pose,
                                               controller_name, proxy_name)
             push_time = time.time() - start_time
-            # TODO: Analyze push here / write result to disk
-            self.push_loc_shape_features
+
+            # TODO: Analyze push here / write result to disk / retrain regressor
             if res == 'quit':
                 return res
             elif res == 'aborted':
@@ -618,7 +625,8 @@ class TabletopExecutive:
         return ('done', result)
 
     def analyze_push(self, behavior_primitive, controller_name, proxy_name,
-                     which_arm, push_time, push_vector_res, goal_pose, object_id, precondition_method='centroid_push'):
+                     which_arm, push_time, push_vector_res, goal_pose, object_id,
+                     precondition_method=CENTROID_PUSH_PRECONDITION):
         push_angle = push_vector_res.push.push_angle
         analysis_res = self.request_learning_analysis()
         rospy.loginfo('Done getting analysis response.')
