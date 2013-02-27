@@ -35,5 +35,10 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
 std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj);
 
 ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj);
+
+cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs);
+
+double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b);
+
 };
 #endif // shape_features_h_DEFINED

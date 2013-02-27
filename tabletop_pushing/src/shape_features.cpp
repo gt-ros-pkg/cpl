@@ -117,7 +117,7 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
   ShapeDescriptors descriptors = constructDescriptors(samples, radius_bins, theta_bins);
   // TODO: Orient descriptors towards centroid
   ShapeLocations locs;
-  for (int i = 0; i < descriptors.size(); ++i)
+  for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
     geometry_msgs::Point pt;
     pt.x = samples[i].x;
@@ -127,4 +127,69 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
   }
   return locs;
 }
+
+/**
+ * Create an (upper-triangular) affinity matrix for a set of ShapeLocations
+ *
+ * @param locs The vector of ShapeLocation descriptors to compare
+ *
+ * @return An upper-triangular matrix of all pairwise distances between descriptors
+ */
+cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
+{
+  cv::Mat affinity(locs.size(), locs.size(), CV_64FC1, cv::Scalar(0.0));
+  for (int r = 0; r < affinity.rows; ++r)
+  {
+    for (int c = r+1; c < affinity.cols; ++c)
+    {
+      affinity.at<double>(r,c) = shapeFeatureSimilarity(locs[r], locs[c]);
+    }
+  }
+  cv::imshow("affinity", affinity);
+  return affinity;
+}
+
+/**
+ * Compute the (chi-squared) distance between two ShapeLocation descriptors
+ *
+ * @param a The first descriptor
+ * @param b The second descriptor
+ *
+ * @return The distance between a and b
+ */
+double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
+{
+  // compute affinity between shape context i and j
+  // using chi-squared test statistic
+  double d_affinity = 0;
+  // TODO: Normalize to have L1 of 1 before comparing
+  double a_sum = 0.0;
+  double b_sum = 0.0;
+  for (unsigned int k=0; k < a.descriptor_.size(); k++)
+  {
+    a_sum += a.descriptor_[k];
+    b_sum += b.descriptor_[k];
+  }
+  if (a_sum == 0.0)
+  {
+    a_sum = 1.0;
+  }
+  if (b_sum == 0.0)
+  {
+    b_sum = 1.0;
+  }
+  for (unsigned int k=0; k < a.descriptor_.size(); k++)
+  {
+    const double a_k = a.descriptor_[k]/a_sum;
+    const double b_k = b.descriptor_[k]/b_sum;
+    const double a_plus_b = a_k + b_k;
+    if (a_plus_b > 0)
+    {
+      d_affinity += pow(a_k - b_k, 2) / (a_plus_b);
+    }
+  }
+  d_affinity = 1.0 - d_affinity/2;
+  return d_affinity;
+}
+
 };

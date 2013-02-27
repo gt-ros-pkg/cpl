@@ -1528,6 +1528,10 @@ class TabletopPushingPerceptionNode
     }
     // TODO: Choose location index from features and history
     int loc_idx = 0;
+    // TODO: Choose a location based on the affinity_matrix
+    cv::Mat affinity_matrix = computeShapeFeatureAffinityMatrix(locs);
+
+    // TODO: Check if the chosen point is in the history and look again
 
     // Transform location into object frame for storage in history
     ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state), locs[loc_idx].descriptor_);
