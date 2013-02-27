@@ -197,7 +197,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
     y1 = samples.at(i).y;
 
     // construct descriptor
-    for (m=0; m < samples.size()-1; m++)
+    for (m=0; m < samples.size(); m++)
     {
       if (m != i)
       {
@@ -267,7 +267,7 @@ ShapeDescriptors constructDescriptors(Samples& samples,
     }
 
     // construct descriptor
-    for (m=0; m < samples.size()-1; m++)
+    for (m=0; m < samples.size(); m++)
     {
       if (m != i)
       {
