@@ -37,7 +37,9 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   edge_imageB.copyTo(edge_imageB_raw);
 
   // sample a subset of the edge pixels
+  // std::cout << "Getting samples points on A" << std::endl;
   Samples samplesA = samplePoints(edge_imageA);
+  // std::cout << "Getting samples points on B" << std::endl;
   Samples samplesB = samplePoints(edge_imageB);
   // std::cout << "samplesA.size() " << samplesA.size() << std::endl;
   // std::cout << "samplesB.size() " << samplesB.size() << std::endl;
@@ -52,11 +54,14 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   }
 
   // construct shape descriptors for each sample
+  // std::cout << "Getting descriptors for samples A" << std::endl;
   ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
+  // std::cout << "Getting descriptors for samples B" << std::endl;
   ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
+  // std::cout << "Computing cost matrix" << std::endl;
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB,
                                           epsilonCost, write_images, filePath, filePostFix);
-
+  // std::cout << "Computed cost matrix" << std::endl;
   // save the result
   if (write_images)
   {
@@ -138,8 +143,10 @@ Samples samplePoints(cv::Mat& edge_image, double percentage)
 
 int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bins)
 {
-  int radius_idx = std::max(std::min((int)(radius*radius_bins), radius_bins), 0);
-  int theta_idx = std::max(std::min((int)(theta*theta_bins), theta_bins),0);
+  int radius_idx = std::max(std::min((int)std::floor(radius*radius_bins), radius_bins-1), 0);
+  int theta_idx = std::max(std::min((int)std::floor(theta*theta_bins), theta_bins-1),0);
+  // std::cout << "radius idx: " << radius_idx << std:: endl;
+  // std::cout << "theta idx: " << theta_idx << std:: endl;
   int idx = theta_idx*radius_bins+radius_idx;
   return idx;
 }
@@ -262,6 +269,7 @@ ShapeDescriptors constructDescriptors(Samples& samples,
     }
   }
   max_radius = log(max_radius);
+  // std::cout << "Got max_radius of: " << max_radius << std::endl;
 
   // build a descriptor for each sample
   for (i=0; i < samples.size(); i++)
@@ -272,14 +280,15 @@ ShapeDescriptors constructDescriptors(Samples& samples,
     {
       descriptor.push_back(0);
     }
+    x1 = samples.at(i).x;
+    y1 = samples.at(i).y;
 
     // construct descriptor
     for (m=0; m < samples.size(); m++)
     {
       if (m != i)
       {
-        x1 = samples.at(i).x;
-        y1 = samples.at(i).y;
+        // std::cout << "Constructing descriptor for (" << i << ", " << m << ")" << std::endl;
         x2 = samples.at(m).x;
         y2 = samples.at(m).y;
 
@@ -293,7 +302,9 @@ ShapeDescriptors constructDescriptors(Samples& samples,
           theta += M_PI;
         }
         theta /= 2*M_PI;
+        // std::cout << "Getting idx for (" << radius << ", " << theta << ")" << std::endl;
         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
+        // std::cout << "Idx is: " << idx << std::endl;
         descriptor.at(idx)++;
       }
     }
@@ -479,6 +490,6 @@ void displayMatch(cv::Mat& edge_imageA, cv::Mat& edge_imageB,
   cv::imshow("match", disp_img);
   cv::imshow("edgesA", edge_imageA);
   cv::imshow("edgesB", edge_imageB);
-  cv::waitKey(3);
+  cv::waitKey();
 }
 };

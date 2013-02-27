@@ -18,13 +18,16 @@ int main(int argc, char** argv)
     imageA = cv::imread(argv[1]);
     imageB = cv::imread(argv[2]);
   }
+
   cv::Mat imageA1(imageA.size(), imageA.type());
   cv::Mat imageB1(imageB.size(), imageB.type());
 
   // convert from color to grayscale, needed by Canny
   cv::cvtColor(imageA, imageA1, CV_RGB2GRAY);
   cv::cvtColor(imageB, imageB1, CV_RGB2GRAY);
-  float score = compareShapes(imageA1, imageB1, 9e5, true, "/home/rahul");
+  cv::imshow("ImageA", imageA1);
+  cv::imshow("ImageB", imageB1);
+  float score = compareShapes(imageA1, imageB1, 9e5, false, "/u/thermans/Desktop/");
   ROS_INFO_STREAM("Object match with score: " << score);
 
   return 0;
