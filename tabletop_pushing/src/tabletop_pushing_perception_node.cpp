@@ -1438,6 +1438,7 @@ class TabletopPushingPerceptionNode
       int loc_idx = choosePushStartLoc(locs, cur_state, req.new_object);
       ShapeLocation chosen_loc = locs[loc_idx];
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
+
       // Set goal for pushing and then get start location as usual below
       float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
                                    res.centroid.x - chosen_loc.boundary_loc_.x);
@@ -1525,18 +1526,13 @@ class TabletopPushingPerceptionNode
     {
       start_loc_history_.clear();
     }
-    for (unsigned int l = 0; l < locs.size(); ++l)
-    {
-      // TODO: Transform boundary locations into object frame before adding to history
-      geometry_msgs::Point obj_pt = worldPointInObjectFrame(locs[l].boundary_loc_, cur_state);
-      geometry_msgs::Point world_pt = objectPointInWorldFrame(world_pt, cur_state);
-      ROS_INFO_STREAM("original world_pt: " << locs[l].boundary_loc_);
-      ROS_INFO_STREAM("obj_pt: " << obj_pt);
-      ROS_INFO_STREAM("world_pt: " << world_pt);
-    }
     // TODO: Choose location index from features and history
     int loc_idx = 0;
-    start_loc_history_.push_back(locs[loc_idx]);
+
+    // Transform location into object frame for storage in history
+    ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state), locs[loc_idx].descriptor_);
+    start_loc_history_.push_back(s);
+
     return loc_idx;
   }
 
@@ -1548,7 +1544,6 @@ class TabletopPushingPerceptionNode
     shifted_pt.y = world_pt.y - cur_state.x.y;
     double ct = cos(cur_state.x.theta);
     double st = sin(cur_state.x.theta);
-
     // Rotate into correct frame
     geometry_msgs::Point obj_pt;
     obj_pt.x = ct*shifted_pt.x - st*shifted_pt.y;
@@ -1564,7 +1559,6 @@ class TabletopPushingPerceptionNode
     double st = sin(cur_state.x.theta);
     rotated_pt.x =  ct*obj_pt.x + st*obj_pt.y;
     rotated_pt.y = -st*obj_pt.x + ct*obj_pt.y;
-
     // Shift to world frame
     geometry_msgs::Point world_pt;
     world_pt.x = rotated_pt.x + cur_state.x.x;
