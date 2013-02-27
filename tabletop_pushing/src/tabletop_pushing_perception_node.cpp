@@ -1435,7 +1435,7 @@ class TabletopPushingPerceptionNode
       ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
 
       // TODO: This still isn't implemented fully
-      int loc_idx = choosePushStartLoc(locs, cur_obj, req.new_object);
+      int loc_idx = choosePushStartLoc(locs, cur_state, req.new_object);
       ShapeLocation chosen_loc = locs[loc_idx];
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
       // Set goal for pushing and then get start location as usual below
@@ -1519,7 +1519,7 @@ class TabletopPushingPerceptionNode
    *
    * @return The index of the location in locs
    */
-  int choosePushStartLoc(ShapeLocations& locs, ProtoObject cur_obj, bool new_object)
+  int choosePushStartLoc(ShapeLocations& locs, PushTrackerState& cur_state, bool new_object)
   {
     if (new_object)
     {
@@ -1528,12 +1528,50 @@ class TabletopPushingPerceptionNode
     for (unsigned int l = 0; l < locs.size(); ++l)
     {
       // TODO: Transform boundary locations into object frame before adding to history
+      geometry_msgs::Point obj_pt = worldPointInObjectFrame(locs[l].boundary_loc_, cur_state);
+      geometry_msgs::Point world_pt = objectPointInWorldFrame(world_pt, cur_state);
+      ROS_INFO_STREAM("original world_pt: " << locs[l].boundary_loc_);
+      ROS_INFO_STREAM("obj_pt: " << obj_pt);
+      ROS_INFO_STREAM("world_pt: " << world_pt);
     }
     // TODO: Choose location index from features and history
     int loc_idx = 0;
     start_loc_history_.push_back(locs[loc_idx]);
     return loc_idx;
   }
+
+  geometry_msgs::Point worldPointInObjectFrame(geometry_msgs::Point world_pt, PushTrackerState& cur_state)
+  {
+    // Center on object frame
+    geometry_msgs::Point shifted_pt;
+    shifted_pt.x = world_pt.x - cur_state.x.x;
+    shifted_pt.y = world_pt.y - cur_state.x.y;
+    double ct = cos(cur_state.x.theta);
+    double st = sin(cur_state.x.theta);
+
+    // Rotate into correct frame
+    geometry_msgs::Point obj_pt;
+    obj_pt.x = ct*shifted_pt.x - st*shifted_pt.y;
+    obj_pt.y = st*shifted_pt.x + ct*shifted_pt.y;
+    return obj_pt;
+  }
+
+  geometry_msgs::Point objectPointInWorldFrame(geometry_msgs::Point obj_pt, PushTrackerState& cur_state)
+  {
+    // Rotate out of object frame
+    geometry_msgs::Point rotated_pt;
+    double ct = cos(cur_state.x.theta);
+    double st = sin(cur_state.x.theta);
+    rotated_pt.x =  ct*obj_pt.x + st*obj_pt.y;
+    rotated_pt.y = -st*obj_pt.x + ct*obj_pt.y;
+
+    // Shift to world frame
+    geometry_msgs::Point world_pt;
+    world_pt.x = rotated_pt.x + cur_state.x.x;
+    world_pt.y = rotated_pt.y + cur_state.x.y;
+    return world_pt;
+  }
+
   LearnPush::Response getSpinPushStartPose(LearnPush::Request& req)
   {
     PushTrackerState cur_state = startTracking();
