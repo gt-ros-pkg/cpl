@@ -163,18 +163,17 @@ class TabletopExecutive:
             'get_singulation_push_vector', SingulationPush)
 
     def init_learning(self):
-        # Singulation Push proxy
-        if _USE_LEARN_IO:
-            self.learn_io = PushLearningIO()
-            learn_file_name = self.learn_file_base+str(rospy.get_time())+'.txt'
-            self.learn_out_file_name = learn_file_name
-            rospy.loginfo('Opening learn file: '+learn_file_name)
-            self.learn_io.open_out_file(learn_file_name)
-
         # Start loc learning stuff
         self.push_loc_shape_features = []
         self.push_count = 0
         self.base_trial_id = str(rospy.get_time())
+
+        if _USE_LEARN_IO:
+            self.learn_io = PushLearningIO()
+            learn_file_name = self.learn_file_base+str(self.base_trial_id)+'.txt'
+            self.learn_out_file_name = learn_file_name
+            rospy.loginfo('Opening learn file: '+learn_file_name)
+            self.learn_io.open_out_file(learn_file_name)
 
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
@@ -311,7 +310,7 @@ class TabletopExecutive:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
-                        trial_id = str(object_id) + str(self.base_trial_id) + str(self.push_count)
+                        trial_id = str(object_id) +'_'+ str(self.base_trial_id) + str(self.push_count)
                         self.push_count += 1
                         res = self.explore_push_start_locs(behavior_primitive, controller, proxy,
                                                            trial_id, arm)
@@ -452,7 +451,8 @@ class TabletopExecutive:
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
                                                              proxy_name, behavior_primitive,
                                                              learn_start_loc=True,
-                                                             new_object=(not start_loc_trials))
+                                                             new_object=(not start_loc_trials),
+                                                             trial_id=trial_id)
             goal_pose = push_vec_res.goal_pose
             shape_descriptor = push_vec_res.shape_descriptor[:]
             self.push_loc_shape_features.append(shape_descriptor)
@@ -508,14 +508,15 @@ class TabletopExecutive:
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                      behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
-                                     learn_start_loc=False, new_object=False):
+                                     learn_start_loc=False, new_object=False, trial_id=''):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
                                                                  proxy_name, behavior_primitive,
                                                                  tool_proxy_name,
                                                                  learn_start_loc=learn_start_loc,
-                                                                 new_object=new_object)
+                                                                 new_object=new_object,
+                                                                 trial_id=trial_id)
 
             if push_vec_res is None:
                 return None
@@ -675,7 +676,7 @@ class TabletopExecutive:
     def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                          behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
                                          get_pose_only=False, learn_start_loc=False,
-                                         new_object=False):
+                                         new_object=False, trial_id=''):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -687,6 +688,7 @@ class TabletopExecutive:
         push_vector_req.get_pose_only = get_pose_only
         push_vector_req.learn_start_loc = learn_start_loc
         push_vector_req.new_object = new_object
+        push_vector_req.trial_id = trial_id
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)

@@ -168,7 +168,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
   }
 
   max_radius = log(max_radius);
-  std::cout << "Found max radius of: " << max_radius << std::endl;
+  // std::cout << "Found max radius of: " << max_radius << std::endl;
 
   // build a descriptor for each sample
   for (i=0; i < samples.size(); i++)

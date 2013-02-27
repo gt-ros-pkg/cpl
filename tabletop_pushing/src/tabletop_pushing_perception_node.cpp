@@ -993,8 +993,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_not_between_count_limit", object_not_between_count_limit_, 5);
     n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
     n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
-    // TODO: Expose if you care to
-    start_loc_push_time_ = 5.0;
+    n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1432,10 +1431,6 @@ class TabletopPushingPerceptionNode
     if (req.learn_start_loc)
     {
       timing_push_ = true;
-      // Get shape features here
-      cv::Mat obj_mask = pcl_segmenter_->projectProtoObjectIntoImage(
-          cur_obj, cur_color_frame_.size(), cur_camera_header_.frame_id);
-
       // Get shape features and associated locations
       ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
 
@@ -1455,12 +1450,9 @@ class TabletopPushingPerceptionNode
       std::stringstream cloud_file_name;
       cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
       std::stringstream color_file_name;
-      color_file_name << base_output_path_ << req.trial_id << "_color.bmp";
-      std::stringstream depth_file_name;
-      depth_file_name << base_output_path_ << req.trial_id << "_depth.bmp";
+      color_file_name << base_output_path_ << req.trial_id << "_color.png";
       pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
       cv::imwrite(color_file_name.str(), cur_color_frame_);
-      cv::imwrite(color_file_name.str(), cur_depth_frame_);
     }
     else
     {

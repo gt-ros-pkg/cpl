@@ -41,8 +41,6 @@ std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj)
     cv::Point2f pt(hull_cloud.at(i).x, hull_cloud.at(i).y);
     samples.push_back(pt);
   }
-  std::cout << "Got samples of size: " << samples.size() << std::endl;
-  // TODO: Visualize hull to see if its any good
   return samples;
 }
 
@@ -116,10 +114,8 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
   Samples2f samples = getObjectBoundarySamples(cur_obj);
   unsigned int radius_bins = 5;
   unsigned int theta_bins = 12;
-  std::cout << "Constructing descriptors" <<  std::endl;
   ShapeDescriptors descriptors = constructDescriptors(samples, radius_bins, theta_bins);
   // TODO: Orient descriptors towards centroid
-  std::cout << "Got descriptors of size: " << descriptors.size() << std::endl;
   ShapeLocations locs;
   for (int i = 0; i < descriptors.size(); ++i)
   {

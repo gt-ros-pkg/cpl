@@ -198,7 +198,7 @@ class PushLearningIO:
     def open_out_file(self, file_name):
         self.data_out = file(file_name, 'a')
         self.data_out.write(_VERSION_LINE+'\n')
-        self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
+        # self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.flush()
 
     def close_out_file(self):
