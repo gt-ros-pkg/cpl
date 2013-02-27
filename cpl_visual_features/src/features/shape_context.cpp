@@ -1,5 +1,6 @@
 #include <cpl_visual_features/features/shape_context.h>
 #include <cpl_visual_features/extern/lap_cpp/lap.h>
+#include <cpl_visual_features/helpers.h>
 #include <math.h>
 #include <string>
 #include <iostream>
@@ -206,11 +207,13 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
         radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
         radius = log(radius);
         radius /= max_radius;
-        theta = atan2(y1-y2,x1-x2) + M_PI/2;
-        // TODO: Rotate theta so that center orientation is 0
+        theta = atan2(y1-y2,x1-x2);
+        // Rotate theta so that center orientation is 0
+        theta = cpl_visual_features::subPIAngle(theta-center_angle);
+        // Get in range [0,2pi]
+        theta += M_PI/2;
         // Get theta in range [0,1]
         theta /= 2*M_PI;
-        // FIXME: It's broken here
         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
         descriptor.at(idx)++;
       }

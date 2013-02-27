@@ -166,7 +166,7 @@ double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
   // compute affinity between shape context i and j
   // using chi-squared test statistic
   double d_affinity = 0;
-  // TODO: Normalize to have L1 of 1 before comparing
+
   double a_sum = 0.0;
   double b_sum = 0.0;
   for (unsigned int k=0; k < a.descriptor_.size(); k++)
@@ -184,6 +184,7 @@ double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
   }
   for (unsigned int k=0; k < a.descriptor_.size(); k++)
   {
+    // NOTE: Normalizing to have L1 of 1 for comparison
     const double a_k = a.descriptor_[k]/a_sum;
     const double b_k = b.descriptor_[k]/b_sum;
     const double a_plus_b = a_k + b_k;
