@@ -41,6 +41,7 @@ std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj)
     cv::Point2f pt(hull_cloud.at(i).x, hull_cloud.at(i).y);
     samples.push_back(pt);
   }
+  // TODO: Visualize the above boundary
   return samples;
 }
 
@@ -114,7 +115,8 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
   int radius_bins = 5;
   int theta_bins = 12;
   cv::Point2f center(cur_obj.centroid[0], cur_obj.centroid[1]);
-  ShapeDescriptors descriptors = constructDescriptors(samples, center, radius_bins, theta_bins);
+  bool use_center = true;
+  ShapeDescriptors descriptors = constructDescriptors(samples, center, use_center, radius_bins, theta_bins);
   ShapeLocations locs;
   for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
@@ -140,8 +142,13 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
   double max_affinity = 0.0;
   for (int r = 0; r < affinity.rows; ++r)
   {
-    for (int c = r+1; c < affinity.cols; ++c)
+    for (int c = r; c < affinity.cols; ++c)
     {
+      if (r == c)
+      {
+        affinity.at<double>(r,c) = 1.0;
+        continue;
+      }
       affinity.at<double>(r,c) = shapeFeatureSimilarity(locs[r], locs[c]);
       if (affinity.at<double>(r,c) > max_affinity)
       {
@@ -149,7 +156,7 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
       }
     }
   }
-  // cv::imshow("affinity", affinity/max_affinity);
+  cv::imshow("affinity", affinity/max_affinity);
   return affinity;
 }
 

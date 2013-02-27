@@ -29,6 +29,7 @@ std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
 ShapeDescriptors extractDescriptors(cv::Mat& image);
 
 ShapeDescriptors constructDescriptors(Samples2f& samples, cv::Point2f& center,
+                                      bool use_center = false,
                                       int radius_bins = 5,
                                       int theta_bins = 12,
                                       double max_radius = 0);

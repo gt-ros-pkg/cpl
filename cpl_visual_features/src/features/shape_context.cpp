@@ -146,6 +146,7 @@ int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bi
 
 ShapeDescriptors constructDescriptors(Samples2f& samples,
                                       cv::Point2f& center,
+                                      bool use_center,
                                       int radius_bins,
                                       int theta_bins,
                                       double max_radius)
@@ -208,8 +209,11 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
         radius = log(radius);
         radius /= max_radius;
         theta = atan2(y1-y2,x1-x2);
-        // Rotate theta so that center orientation is 0
-        theta = cpl_visual_features::subPIAngle(theta-center_angle);
+        if (use_center)
+        {
+          // Rotate theta so that center orientation is 0
+          theta = cpl_visual_features::subPIAngle(theta-center_angle);
+        }
         // Get in range [0,2pi]
         theta += M_PI/2;
         // Get theta in range [0,1]
