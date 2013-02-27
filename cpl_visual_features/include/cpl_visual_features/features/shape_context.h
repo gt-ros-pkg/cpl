@@ -16,6 +16,7 @@ typedef std::vector<double> ShapeDescriptor;
 typedef std::vector<ShapeDescriptor> ShapeDescriptors;
 typedef std::vector<int> Path;
 typedef std::vector<cv::Point> Samples;
+typedef std::vector<cv::Point2f> Samples2f;
 
 double compareShapes(cv::Mat& imageA, cv::Mat& imageB,
                      double epsilonCost = 9e5, bool write_images=false,
@@ -26,6 +27,10 @@ std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
                                     double percentage = 0.3);
 
 ShapeDescriptors extractDescriptors(cv::Mat& image);
+
+ShapeDescriptors constructDescriptors(Samples2f& samples,
+                                      unsigned int radius_bins = 5,
+                                      unsigned int theta_bins = 12);
 
 ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int radius_bins = 5,

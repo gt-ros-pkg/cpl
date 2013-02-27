@@ -109,9 +109,16 @@
 #define DISPLAY_WAIT 1
 
 using boost::shared_ptr;
+
 using tabletop_pushing::LearnPush;
 using tabletop_pushing::LocateTable;
 using tabletop_pushing::PushVector;
+using tabletop_pushing::PointCloudSegmentation;
+using tabletop_pushing::ProtoObject;
+using tabletop_pushing::ProtoObjects;
+using tabletop_pushing::ShapeLocation;
+using tabletop_pushing::ShapeLocations;
+
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
@@ -123,9 +130,6 @@ typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
 typedef pcl16::registration::TransformationEstimationSVD<pcl16::PointXYZ, pcl16::PointXYZ>
 TransformEstimator;
-using tabletop_pushing::PointCloudSegmentation;
-using tabletop_pushing::ProtoObject;
-using tabletop_pushing::ProtoObjects;
 using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
 using cpl_visual_features::subPIAngle;
@@ -1433,7 +1437,8 @@ class TabletopPushingPerceptionNode
           cur_obj, cur_color_frame_.size(), cur_camera_header_.frame_id);
 
       // Get shape features and associated locations
-      ShapeLocations locs = extractFootprintShapeFeature(obj_mask, cur_point_cloud_, res.centroid);
+      ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
+
       // TODO: This still isn't implemented fully
       int loc_idx = choosePushStartLoc(locs, cur_obj, req.new_object);
       ShapeLocation chosen_loc = locs[loc_idx];

@@ -4,13 +4,46 @@
 #include <tabletop_pushing/shape_features.h>
 #include <pcl16_ros/transforms.h>
 #include <pcl16/ros/conversions.h>
+#include <pcl16/surface/concave_hull.h>
+#include <iostream>
 
 #define XY_RES 0.00075
 using namespace cpl_visual_features;
+using tabletop_pushing::ProtoObject;
+namespace tabletop_pushing
+{
 
 inline int worldLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
+}
+
+std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj)
+{
+  // Get 2D projection of object
+  XYZPointCloud footprint_cloud(cur_obj.cloud);
+  for (int i = 0; i < footprint_cloud.size(); ++i)
+  {
+    footprint_cloud.at(i).z = 0.0;
+  }
+  // TODO: Examine sensitivity of hull_alpha...
+  double hull_alpha = 0.01;
+  XYZPointCloud hull_cloud;
+  pcl16::ConcaveHull<pcl16::PointXYZ> hull;
+  hull.setDimension(2);
+  hull.setInputCloud(footprint_cloud.makeShared());
+  hull.setAlpha(hull_alpha);
+  hull.reconstruct(hull_cloud);
+
+  std::vector<cv::Point2f> samples;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    cv::Point2f pt(hull_cloud.at(i).x, hull_cloud.at(i).y);
+    samples.push_back(pt);
+  }
+  std::cout << "Got samples of size: " << samples.size() << std::endl;
+  // TODO: Visualize hull to see if its any good
+  return samples;
 }
 
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud)
@@ -77,20 +110,25 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
   return footprint;
 }
 
-ShapeLocations extractFootprintShapeFeature(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                                            geometry_msgs::Point centroid)
+ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
 {
-  cv::Mat base_image_a = getObjectFootprint(obj_mask, cloud);
-  // cv::imshow("base_a", base_image_a);
   // TODO: Get better samples for 3D boundary locations
-  cv::Point2f center(centroid.x, centroid.y);
-  ShapeDescriptors s = extractDescriptors(base_image_a);
+  Samples2f samples = getObjectBoundarySamples(cur_obj);
+  unsigned int radius_bins = 5;
+  unsigned int theta_bins = 12;
+  std::cout << "Constructing descriptors" <<  std::endl;
+  ShapeDescriptors descriptors = constructDescriptors(samples, radius_bins, theta_bins);
+  // TODO: Orient descriptors towards centroid
+  std::cout << "Got descriptors of size: " << descriptors.size() << std::endl;
   ShapeLocations locs;
-  for (int i = 0; i < s.size(); ++i)
+  for (int i = 0; i < descriptors.size(); ++i)
   {
-    // TODO: Need to actually get these locations
-    ShapeLocation loc(geometry_msgs::Point(), s[i]);
+    geometry_msgs::Point pt;
+    pt.x = samples[i].x;
+    pt.y = samples[i].y;
+    ShapeLocation loc(pt, descriptors[i]);
     locs.push_back(loc);
   }
-  return locs;;
+  return locs;
 }
+};

@@ -616,7 +616,7 @@ class TabletopExecutive:
                 rospy.logwarn('Unknown behavior_primitive: ' + str(behavior_primitive))
                 result = None
         else:
-            rospy.loginfo('Tool Pose: ' + str(push_vector_res.tool_x))
+            # rospy.loginfo('Tool Pose: ' + str(push_vector_res.tool_x))
             result = FeedbackPushResponse()
 
         # NOTE: If the call aborted, recall with the same settings

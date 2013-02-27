@@ -8,6 +8,10 @@
 #include <cpl_visual_features/features/shape_context.h>
 #include <geometry_msgs/PointStamped.h>
 #include <vector>
+#include <tabletop_pushing/point_cloud_segmentation.h>
+
+namespace tabletop_pushing
+{
 
 class ShapeLocation
 {
@@ -28,6 +32,8 @@ typedef std::vector<ShapeLocation> ShapeLocations;
 
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud);
 
-ShapeLocations extractFootprintShapeFeature(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                                            geometry_msgs::Point centroid);
+std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj);
+
+ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj);
+};
 #endif // shape_features_h_DEFINED

@@ -47,6 +47,7 @@
 #include <pcl16/point_types.h>
 #include <pcl16/common/eigen.h>
 #include <pcl16/common/io.h>
+#include <pcl16/ModelCoefficients.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
