@@ -110,12 +110,11 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
 
 ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
 {
-  // TODO: Get better samples for 3D boundary locations
   Samples2f samples = getObjectBoundarySamples(cur_obj);
-  unsigned int radius_bins = 5;
-  unsigned int theta_bins = 12;
-  ShapeDescriptors descriptors = constructDescriptors(samples, radius_bins, theta_bins);
-  // TODO: Orient descriptors towards centroid
+  int radius_bins = 5;
+  int theta_bins = 12;
+  cv::Point2f center(cur_obj.centroid[0], cur_obj.centroid[1]);
+  ShapeDescriptors descriptors = constructDescriptors(samples, center, radius_bins, theta_bins);
   ShapeLocations locs;
   for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
@@ -138,14 +137,19 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
 {
   cv::Mat affinity(locs.size(), locs.size(), CV_64FC1, cv::Scalar(0.0));
+  double max_affinity = 0.0;
   for (int r = 0; r < affinity.rows; ++r)
   {
     for (int c = r+1; c < affinity.cols; ++c)
     {
       affinity.at<double>(r,c) = shapeFeatureSimilarity(locs[r], locs[c]);
+      if (affinity.at<double>(r,c) > max_affinity)
+      {
+        max_affinity = affinity.at<double>(r,c);
+      }
     }
   }
-  cv::imshow("affinity", affinity);
+  // cv::imshow("affinity", affinity/max_affinity);
   return affinity;
 }
 

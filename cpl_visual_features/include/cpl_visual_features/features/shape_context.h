@@ -28,9 +28,10 @@ std::vector<cv::Point> samplePoints(cv::Mat& edge_image,
 
 ShapeDescriptors extractDescriptors(cv::Mat& image);
 
-ShapeDescriptors constructDescriptors(Samples2f& samples,
-                                      unsigned int radius_bins = 5,
-                                      unsigned int theta_bins = 12);
+ShapeDescriptors constructDescriptors(Samples2f& samples, cv::Point2f& center,
+                                      int radius_bins = 5,
+                                      int theta_bins = 12,
+                                      double max_radius = 0);
 
 ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int radius_bins = 5,
@@ -41,12 +42,16 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           double epsilonCost = 9e5,
                           bool write_images=false,
                           std::string filePath=".", std::string filePostFix="");
+
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path);
+
 void displayMatch(cv::Mat& edge_imgA,
                   cv::Mat& edge_imgB,
                   Samples& samplesA,
                   Samples& samplesB,
                   Path& path, int max_displacement=30,
                   std::string filePath=".", std::string filePostFix="");
+
+int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bins);
 };
 #endif // shape_context_h_DEFINED

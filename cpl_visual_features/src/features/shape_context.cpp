@@ -38,8 +38,8 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   // sample a subset of the edge pixels
   Samples samplesA = samplePoints(edge_imageA);
   Samples samplesB = samplePoints(edge_imageB);
-  std::cout << "samplesA.size() " << samplesA.size() << std::endl;
-  std::cout << "samplesB.size() " << samplesB.size() << std::endl;
+  // std::cout << "samplesA.size() " << samplesA.size() << std::endl;
+  // std::cout << "samplesB.size() " << samplesB.size() << std::endl;
 
   // Swap images if B is shorter than A;
   if (samplesA.size() > samplesB.size())
@@ -135,40 +135,51 @@ Samples samplePoints(cv::Mat& edge_image, double percentage)
   return samples;
 }
 
+int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bins)
+{
+  int radius_idx = std::max(std::min((int)(radius*radius_bins), radius_bins), 0);
+  int theta_idx = std::max(std::min((int)(theta*theta_bins), theta_bins),0);
+  int idx = theta_idx*radius_bins+radius_idx;
+  return idx;
+}
+
 ShapeDescriptors constructDescriptors(Samples2f& samples,
-                                      unsigned int radius_bins,
-                                      unsigned int theta_bins)
+                                      cv::Point2f& center,
+                                      int radius_bins,
+                                      int theta_bins,
+                                      double max_radius)
 {
   ShapeDescriptors descriptors;
   ShapeDescriptor descriptor;
-  double max_radius = 0;
+  // double max_radius = 0;
   double radius, theta;
   double x1, x2, y1, y2;
   unsigned int i, j, k, m;
 
-  // find maximum radius for normalization purposes
-  for (i=0; i < samples.size(); i++)
+  // find maximum radius for normalization purposes (unless passed in as argument)
+  if (max_radius == 0)
   {
-    for (k=0; k < samples.size(); k++)
+    for (i=0; i < samples.size(); i++)
     {
-      if (k != i)
+      x1 = samples.at(i).x;
+      y1 = samples.at(i).y;
+      for (k=0; k < samples.size(); k++)
       {
-        x1 = samples.at(i).x;
-        y1 = samples.at(i).y;
-        x2 = samples.at(k).x;
-        y2 = samples.at(k).y;
-
-        radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
-        if (radius > max_radius)
+        if (k != i)
         {
-          max_radius = radius;
+          x2 = samples.at(k).x;
+          y2 = samples.at(k).y;
+
+          radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
+          if (radius > max_radius)
+          {
+            max_radius = radius;
+          }
         }
       }
     }
   }
-
   max_radius = log(max_radius);
-  // std::cout << "Found max radius of: " << max_radius << std::endl;
 
   // build a descriptor for each sample
   for (i=0; i < samples.size(); i++)
@@ -180,28 +191,28 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
       descriptor.push_back(0);
     }
 
+    // Orient descriptor towards center
+    double center_angle = atan2(center.y-samples[i].y, center.x-samples[i].x);
+    x1 = samples.at(i).x;
+    y1 = samples.at(i).y;
+
     // construct descriptor
     for (m=0; m < samples.size()-1; m++)
     {
       if (m != i)
       {
-        x1 = samples.at(i).x;
-        y1 = samples.at(i).y;
         x2 = samples.at(m).x;
         y2 = samples.at(m).y;
-
         radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
         radius = log(radius);
         radius /= max_radius;
-        theta = atan(fabs(y1-y2) / fabs(x1-x2));
-        theta += M_PI/2;
-        if (y1-y2 < 0)
-        {
-          theta += M_PI;
-        }
+        theta = atan2(y1-y2,x1-x2) + M_PI/2;
+        // TODO: Rotate theta so that center orientation is 0
+        // Get theta in range [0,1]
         theta /= 2*M_PI;
-        descriptor.at(std::min((unsigned int)(radius*radius_bins),radius_bins) *
-                      std::min((unsigned int)(theta*theta_bins),theta_bins))++;
+        // FIXME: It's broken here
+        int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
+        descriptor.at(idx)++;
       }
     }
 
@@ -275,7 +286,8 @@ ShapeDescriptors constructDescriptors(Samples& samples,
           theta += M_PI;
         }
         theta /= 2*M_PI;
-        descriptor.at((int)(radius*radius_bins) * (int)(theta*theta_bins))++;
+        int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
+        descriptor.at(idx)++;
       }
     }
 
