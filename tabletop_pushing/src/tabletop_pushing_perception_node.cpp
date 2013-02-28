@@ -997,6 +997,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
     n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
+    n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1530,7 +1531,7 @@ class TabletopPushingPerceptionNode
       start_loc_history_.clear();
     }
     // Get shape features and associated locations
-    ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
+    ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj, use_center_pointing_shape_context_);
 
     // Choose location index from features and history
     int loc_idx = 0;
@@ -2336,6 +2337,7 @@ class TabletopPushingPerceptionNode
   double start_loc_push_dist_;
   double push_start_time_;
   bool timing_push_;
+  bool use_center_pointing_shape_context_;
 };
 
 int main(int argc, char ** argv)

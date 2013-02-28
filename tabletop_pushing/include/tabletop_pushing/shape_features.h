@@ -34,9 +34,9 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
 
 std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj);
 
-ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj);
+ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center = true);
 
-cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs);
+cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 
 double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
 

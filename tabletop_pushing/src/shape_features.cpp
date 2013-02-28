@@ -109,13 +109,12 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
   return footprint;
 }
 
-ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
+ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
 {
   Samples2f samples = getObjectBoundarySamples(cur_obj);
   int radius_bins = 5;
   int theta_bins = 12;
   cv::Point2f center(cur_obj.centroid[0], cur_obj.centroid[1]);
-  bool use_center = true;
   ShapeDescriptors descriptors = constructDescriptors(samples, center, use_center, radius_bins, theta_bins);
   ShapeLocations locs;
   for (unsigned int i = 0; i < descriptors.size(); ++i)
@@ -126,17 +125,18 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj)
     ShapeLocation loc(pt, descriptors[i]);
     locs.push_back(loc);
   }
+  computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
 
 /**
- * Create an (upper-triangular) affinity matrix for a set of ShapeLocations
+ * Create an affinity matrix for a set of ShapeLocations
  *
  * @param locs The vector of ShapeLocation descriptors to compare
  *
  * @return An upper-triangular matrix of all pairwise distances between descriptors
  */
-cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
+cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center)
 {
   cv::Mat affinity(locs.size(), locs.size(), CV_64FC1, cv::Scalar(0.0));
   double max_affinity = 0.0;
@@ -159,7 +159,14 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
       }
     }
   }
-  cv::imshow("affinity", affinity);
+  if (use_center)
+  {
+    cv::imshow("affinity-with-centers", affinity);
+  }
+  else
+  {
+    cv::imshow("affinity", affinity);
+  }
   return affinity;
 }
 
