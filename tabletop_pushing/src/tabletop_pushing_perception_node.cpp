@@ -102,6 +102,8 @@
 #include <float.h>
 #include <math.h>
 #include <cmath>
+#include <time.h> // for srand(time(NULL))
+#include <cstdlib> // for MAX_RAND
 
 // Debugging IFDEFS
 #define DISPLAY_INPUT_COLOR 1
@@ -1521,8 +1523,8 @@ class TabletopPushingPerceptionNode
    *
    * @return The the location and descriptor of the push location
    */
-  ShapeLocation choosePushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
-                                   int num_clusters)
+  ShapeLocation choosePushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state,
+                                   bool new_object, int num_clusters)
   {
     if (new_object)
     {
@@ -1531,15 +1533,23 @@ class TabletopPushingPerceptionNode
     // Get shape features and associated locations
     ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
 
-    // TODO: Choose location index from features and history
+    // Choose location index from features and history
     int loc_idx = 0;
-    // TODO: Choose a location based on the affinity_matrix
-    cv::Mat affinity_matrix = computeShapeFeatureAffinityMatrix(locs);
-
-    // TODO: Check if the chosen point is in the history and look again
+    if (start_loc_history_.size() == 0)
+    {
+      // TODO: Improve this to find a more unique / prototypical point?
+      loc_idx = rand() % locs.size();
+    }
+    else
+    {
+      // TODO: Cluster locs based on shape similarity
+      cv::Mat affinity_matrix = computeShapeFeatureAffinityMatrix(locs);
+      // TODO: Find which clusters the previous choices map too, pick one other than those
+    }
 
     // Transform location into object frame for storage in history
-    ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state), locs[loc_idx].descriptor_);
+    ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state),
+                    locs[loc_idx].descriptor_);
     start_loc_history_.push_back(s);
 
     return locs[loc_idx];
@@ -2294,6 +2304,9 @@ class TabletopPushingPerceptionNode
 
 int main(int argc, char ** argv)
 {
+  int seed = time(NULL);
+  srand(seed);
+  std::cout << "Rand seed is: " << seed << std::endl;
   ros::init(argc, argv, "tabletop_pushing_perception_node");
   ros::NodeHandle n;
   TabletopPushingPerceptionNode perception_node(n);

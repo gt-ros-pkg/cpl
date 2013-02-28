@@ -206,4 +206,35 @@ double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
   return d_affinity;
 }
 
+void clusterFeatures(ShapeLocations& locs, int k, std::vector<int>& cluste_ids, ShapeDescriptors& centers)
+{
+
+  // TODO: Initialize centers
+  bool done = false;
+  double error = 0.0;
+  double prev_error = 0.0;
+
+  while (!done)
+  {
+    // Find clusters
+    for (int l = 0; l < locs.size(); ++l)
+    {
+      for (int c = 0; c < k; ++c)
+      {
+      }
+    }
+
+    // Find centers
+    for (int c = 0; c < k; ++c)
+    {
+    }
+
+    if (error == prev_error)
+    {
+      done = true;
+    }
+    prev_error = error;
+  }
+}
+
 };

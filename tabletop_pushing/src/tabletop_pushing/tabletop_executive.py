@@ -471,7 +471,9 @@ class TabletopExecutive:
                                               controller_name, proxy_name)
             push_time = time.time() - start_time
 
-            # TODO: Analyze push here / write result to disk / retrain regressor
+            self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                              push_vec_res, goal_pose, trial_id, precondition_method)
+
             if res == 'quit':
                 return res
             elif res == 'aborted':
