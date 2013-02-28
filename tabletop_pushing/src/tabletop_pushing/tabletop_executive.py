@@ -476,7 +476,7 @@ class TabletopExecutive:
 
             if res == 'quit':
                 return res
-            elif res == 'aborted':
+            elif res == 'aborted' or res == 'done':
                 if self.servo_head_during_pushing:
                     self.raise_and_look(point_head_only=True)
                 start_loc_trials += 1
@@ -516,7 +516,7 @@ class TabletopExecutive:
                                                                  tool_proxy_name,
                                                                  learn_start_loc=learn_start_loc,
                                                                  new_object=new_object,
-                                                                 num_clusters=1,
+                                                                 num_clusters=num_clusters,
                                                                  trial_id=trial_id)
 
             if push_vec_res is None:
@@ -627,10 +627,10 @@ class TabletopExecutive:
             return ('aborted', result)
 
         rospy.loginfo('Done performing push behavior.')
-        if _OFFLINE:
-            code_in = raw_input("Press <Enter> to try another push: ")
-            if code_in.lower().startswith('q'):
-                return ('quit', result)
+        # if _OFFLINE:
+        #     code_in = raw_input("Press <Enter> to try another push: ")
+        #     if code_in.lower().startswith('q'):
+        #         return ('quit', result)
         return ('done', result)
 
     def analyze_push(self, behavior_primitive, controller_name, proxy_name,
