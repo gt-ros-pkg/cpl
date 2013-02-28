@@ -1360,7 +1360,7 @@ class TabletopPushingPerceptionNode
       }
       else if (req.analyze_previous || req.get_pose_only)
       {
-        ROS_INFO_STREAM("Getting current object pose");
+        ROS_INFO_STREAM("Getting current object pose\n");
         res = getObjectPose();
         res.no_push = true;
         recording_input_ = false;
@@ -1439,7 +1439,6 @@ class TabletopPushingPerceptionNode
       ShapeLocation chosen_loc = choosePushStartLoc(cur_obj, cur_state, req.new_object,
                                                     req.num_start_loc_clusters);
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
-
       // Set goal for pushing and then get start location as usual below
       float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
                                    res.centroid.x - chosen_loc.boundary_loc_.x);
@@ -1507,7 +1506,7 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
                     << p.start_point.y << ", " << p.start_point.z << ")");
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
-    ROS_INFO_STREAM("Push angle: " << p.push_angle);
+    ROS_INFO_STREAM("Push angle: " << p.push_angle << "\n");
     start_centroid_ = cur_obj.centroid;
     res.push = p;
     return res;
@@ -1542,20 +1541,53 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      // TODO: Cluster locs based on shape similarity
+      // Cluster locs based on shape similarity
       std::vector<int> cluster_ids;
       ShapeDescriptors centers;
-      double min_err_change = 0.01;
+      double min_err_change = 0.001;
       int max_iter = 1000;
-      tabletop_pushing::clusterFeatures(locs, num_clusters, cluster_ids, centers, min_err_change, max_iter);
-      // TODO: Find which clusters the previous choices map too, pick one other than those randomly
+      tabletop_pushing::clusterShapeFeatures(locs, num_clusters, cluster_ids, centers, min_err_change, max_iter);
+      // TODO: Easier to just keep picking random locs and choose first one with unused cluster center?
+      // Find which clusters the previous choices map too, pick one other than those randomly
+      std::vector<int> used_clusters;
+      for (int i = 0; i < start_loc_history_.size(); ++i)
+      {
+        double cluster_dist = 0;
+        int closest = tabletop_pushing::closestShapeFeatureCluster(start_loc_history_[i].descriptor_, centers,
+                                                                   cluster_dist);
+        used_clusters.push_back(closest);
+      }
+      bool done = false;
+      int rand_cluster = -1;
+      while (!done)
+      {
+        rand_cluster = rand() % num_clusters;
+        done = true;
+        for (int i = 0; i < used_clusters.size(); ++i)
+        {
+          if (used_clusters[i] == rand_cluster)
+          {
+            done = false;
+          }
+        }
+      }
+      ROS_INFO_STREAM("Chose cluster " << rand_cluster);
+      // Pick random loc that has cluster id rand_cluster
+      std::vector<int> loc_choices;
+      for (int l = 0; l < locs.size(); ++l)
+      {
+        if (cluster_ids[l] == rand_cluster)
+        {
+          loc_choices.push_back(l);
+        }
+      }
+      int choice_idx = rand()%loc_choices.size();
+      loc_idx = loc_choices[choice_idx];
     }
-
     // Transform location into object frame for storage in history
     ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state),
                     locs[loc_idx].descriptor_);
     start_loc_history_.push_back(s);
-
     return locs[loc_idx];
   }
 

@@ -42,9 +42,13 @@ double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_vi
 
 double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
 
-void clusterFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids, cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter);
+void clusterShapeFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids,
+                          cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter,
+                          int num_retries = 5);
 
 cpl_visual_features::ShapeDescriptor shapeFeatureMean(ShapeLocations& locs, std::vector<int>& cluster_ids, int c);
 
+int closestShapeFeatureCluster(cpl_visual_features::ShapeDescriptor& descriptor,
+                               cpl_visual_features::ShapeDescriptors& centers, double& min_dist);
 };
 #endif // shape_features_h_DEFINED
