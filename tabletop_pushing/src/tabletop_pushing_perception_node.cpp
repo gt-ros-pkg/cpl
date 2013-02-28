@@ -994,6 +994,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
     n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
     n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
+    n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1404,7 +1405,7 @@ class TabletopPushingPerceptionNode
     }
     bool pull_start = (req.behavior_primitive == "gripper_pull");
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-    tracker_goal_pose_ = req.goal_pose;
+
     if (!start_tracking_on_push_call_)
     {
       obj_tracker_->pause();
@@ -1431,20 +1432,17 @@ class TabletopPushingPerceptionNode
     if (req.learn_start_loc)
     {
       timing_push_ = true;
-      // Get shape features and associated locations
-      ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
 
-      // TODO: This still isn't implemented fully
-      int loc_idx = choosePushStartLoc(locs, cur_state, req.new_object);
-      ShapeLocation chosen_loc = locs[loc_idx];
+      // Get the pushing location
+      ShapeLocation chosen_loc = choosePushStartLoc(cur_obj, cur_state, req.new_object,
+                                                    req.num_start_loc_clusters);
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
 
       // Set goal for pushing and then get start location as usual below
       float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
                                    res.centroid.x - chosen_loc.boundary_loc_.x);
-      const float new_push_dist = 0.3; // Make this a class constant or something...
-      req.goal_pose.x = res.centroid.x+cos(new_push_angle)*new_push_dist;
-      req.goal_pose.y = res.centroid.y+sin(new_push_angle)*new_push_dist;
+      req.goal_pose.x = res.centroid.x+cos(new_push_angle)*start_loc_push_dist_;
+      req.goal_pose.y = res.centroid.y+sin(new_push_angle)*start_loc_push_dist_;
 
       // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
       // change features in the future
@@ -1461,6 +1459,7 @@ class TabletopPushingPerceptionNode
     }
     res.goal_pose.x = req.goal_pose.x;
     res.goal_pose.y = req.goal_pose.y;
+    tracker_goal_pose_ = req.goal_pose;
 
     // Set basic push information
     PushVector p;
@@ -1515,17 +1514,23 @@ class TabletopPushingPerceptionNode
   /**
    * Method to determine which pushing location to choose as a function of current object shape descriptors and history
    *
-   * @param locs Shape features and associated boundary locations
+   * @param cur_obj Object for which we are choosing the push location
+   * @param cur_state Current state information of the object
    * @param new_object Whether this object is new or has a history
+   * @param num_clusters Number of push clusters to use in finding push locations
    *
-   * @return The index of the location in locs
+   * @return The the location and descriptor of the push location
    */
-  int choosePushStartLoc(ShapeLocations& locs, PushTrackerState& cur_state, bool new_object)
+  ShapeLocation choosePushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
+                                   int num_clusters)
   {
     if (new_object)
     {
       start_loc_history_.clear();
     }
+    // Get shape features and associated locations
+    ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj);
+
     // TODO: Choose location index from features and history
     int loc_idx = 0;
     // TODO: Choose a location based on the affinity_matrix
@@ -1537,7 +1542,7 @@ class TabletopPushingPerceptionNode
     ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state), locs[loc_idx].descriptor_);
     start_loc_history_.push_back(s);
 
-    return loc_idx;
+    return locs[loc_idx];
   }
 
   geometry_msgs::Point worldPointInObjectFrame(geometry_msgs::Point world_pt, PushTrackerState& cur_state)
@@ -2282,6 +2287,7 @@ class TabletopPushingPerceptionNode
   double object_not_between_tool_epsilon_;
   ShapeLocations start_loc_history_;
   double start_loc_push_time_;
+  double start_loc_push_dist_;
   double push_start_time_;
   bool timing_push_;
 };

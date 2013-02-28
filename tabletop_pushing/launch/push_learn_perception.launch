@@ -5,7 +5,8 @@
     <remap from="mask_image_topic" to="/kinect_head/rgb/image_rect_color/self_mask"/>
     <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>
 
-    <param name="start_loc_push_time_limit" value="3.0" type="double"/>
+    <param name="start_loc_push_time_limit" value="4.0" type="double"/>
+    <param name="start_loc_push_dist" value="0.30" type="double"/>
     <param name="use_displays" value="true" type="bool"/>
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
