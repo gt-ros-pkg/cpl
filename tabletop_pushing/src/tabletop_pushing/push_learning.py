@@ -66,6 +66,7 @@ class PushTrial:
         self.push_angle = 0.0
         self.push_dist = 0.0
         self.continuation = False
+        self.shape_descriptor = []
 
     def __str__(self):
         return (self.object_id +
@@ -146,6 +147,10 @@ class PushLearningIO:
             push.precondition_method = l.pop()
         else:
             push.precondition_method = 'push_centroid'
+        push.shape_descriptor = []
+        while len(l) > 0:
+            push.shape_descriptor.append(float(l.pop()))
+
         push.push_angle = atan2(push.goal_pose.y-push.init_centroid.y,
                                 push.goal_pose.x-push.init_centroid.x)
         push.push_dist = hypot(push.goal_pose.y-push.init_centroid.y,
