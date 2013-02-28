@@ -1543,8 +1543,12 @@ class TabletopPushingPerceptionNode
     else
     {
       // TODO: Cluster locs based on shape similarity
-      cv::Mat affinity_matrix = computeShapeFeatureAffinityMatrix(locs);
-      // TODO: Find which clusters the previous choices map too, pick one other than those
+      std::vector<int> cluster_ids;
+      ShapeDescriptors centers;
+      double min_err_change = 0.01;
+      int max_iter = 1000;
+      tabletop_pushing::clusterFeatures(locs, num_clusters, cluster_ids, centers, min_err_change, max_iter);
+      // TODO: Find which clusters the previous choices map too, pick one other than those randomly
     }
 
     // Transform location into object frame for storage in history

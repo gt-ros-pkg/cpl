@@ -38,7 +38,13 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj);
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs);
 
-double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b);
+double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
+
+double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
+
+void clusterFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids, cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter);
+
+cpl_visual_features::ShapeDescriptor shapeFeatureMean(ShapeLocations& locs, std::vector<int>& cluster_ids, int c);
 
 };
 #endif // shape_features_h_DEFINED

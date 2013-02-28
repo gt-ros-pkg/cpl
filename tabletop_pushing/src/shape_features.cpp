@@ -149,7 +149,8 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
         affinity.at<double>(r,c) = 1.0;
         continue;
       }
-      double sim_score = shapeFeatureSimilarity(locs[r], locs[c]);
+      double sim_score = 1.0 - shapeFeatureChiSquareDist(locs[r].descriptor_,
+                                                         locs[c].descriptor_);
       affinity.at<double>(r,c) = sim_score;
       affinity.at<double>(c,r) = sim_score;
       if (affinity.at<double>(r,c) > max_affinity)
@@ -170,7 +171,7 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
  *
  * @return The distance between a and b
  */
-double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
+double shapeFeatureChiSquareDist(ShapeDescriptor& a, ShapeDescriptor& b)
 {
   // compute affinity between shape context i and j
   // using chi-squared test statistic
@@ -178,10 +179,10 @@ double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
 
   double a_sum = 0.0;
   double b_sum = 0.0;
-  for (unsigned int k=0; k < a.descriptor_.size(); k++)
+  for (unsigned int k=0; k < a.size(); k++)
   {
-    a_sum += a.descriptor_[k];
-    b_sum += b.descriptor_[k];
+    a_sum += a[k];
+    b_sum += b[k];
   }
   if (a_sum == 0.0)
   {
@@ -191,50 +192,124 @@ double shapeFeatureSimilarity(ShapeLocation& a, ShapeLocation& b)
   {
     b_sum = 1.0;
   }
-  for (unsigned int k=0; k < a.descriptor_.size(); k++)
+  for (unsigned int k=0; k < a.size(); k++)
   {
     // NOTE: Normalizing to have L1 of 1 for comparison
-    const double a_k = a.descriptor_[k]/a_sum;
-    const double b_k = b.descriptor_[k]/b_sum;
+    const double a_k = a[k]/a_sum;
+    const double b_k = b[k]/b_sum;
     const double a_plus_b = a_k + b_k;
     if (a_plus_b > 0)
     {
       d_affinity += pow(a_k - b_k, 2) / (a_plus_b);
     }
   }
-  d_affinity = 1.0 - d_affinity/2;
+  d_affinity = d_affinity/2;
   return d_affinity;
 }
 
-void clusterFeatures(ShapeLocations& locs, int k, std::vector<int>& cluste_ids, ShapeDescriptors& centers)
+/**
+ * Compute the squared euclidean distance between two ShapeLocation descriptors
+ *
+ * @param a The first descriptor
+ * @param b The second descriptor
+ *
+ * @return The distance between a and b
+ */
+double shapeFeatureSquaredEuclideanDist(ShapeDescriptor& a, ShapeDescriptor& b)
 {
+  double dist = 0;
+  for(int k = 0; k < a.size(); ++k)
+  {
+    double k_dist = a[k] - b[k];
+    dist += k_dist*k_dist;
+  }
+  return dist;
+}
 
-  // TODO: Initialize centers
+void clusterFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids, ShapeDescriptors& centers, double min_err_change, int max_iter)
+{
+  // Initialize centers
+  std::vector<int> rand_idxes;
+  for (int c = 0; c < k; ++c)
+  {
+    int rand_idx = -1;
+    bool done = false;
+    while (!done)
+    {
+      rand_idx = rand() % c;
+      done = true;
+      for (int i = 0; i < rand_idxes.size(); ++i)
+      {
+        if (rand_idxes[i] == rand_idx)
+        {
+          done = false;
+        }
+      }
+    }
+    rand_idxes.push_back(rand_idx);
+    centers.push_back(ShapeDescriptor(locs[rand_idx].descriptor_));
+  }
+
   bool done = false;
-  double error = 0.0;
-  double prev_error = 0.0;
-
-  while (!done)
+  double error = 0;
+  double prev_error = FLT_MAX;
+  double delta_error = FLT_MAX;
+  cluster_ids.assign(k, -1);
+  for (int i = 0; i < max_iter && delta_error > min_err_change; ++i)
   {
     // Find clusters
     for (int l = 0; l < locs.size(); ++l)
     {
+      int min_idx = -1;
+      double min_dist = FLT_MAX;
       for (int c = 0; c < k; ++c)
       {
+        double c_dist = (shapeFeatureSquaredEuclideanDist(locs[l].descriptor_, centers[c]));
+        if (c_dist < min_dist)
+        {
+          c_dist = min_dist;
+          min_idx = c;
+        }
       }
+      cluster_ids[l] = min_idx;
     }
 
     // Find centers
     for (int c = 0; c < k; ++c)
     {
+      centers[c] = shapeFeatureMean(locs, cluster_ids, c);
     }
 
-    if (error == prev_error)
-    {
-      done = true;
-    }
+    delta_error = prev_error - error;
     prev_error = error;
   }
+  // TODO: Add in recursive call to perform multiple restarts
+}
+
+ShapeDescriptor shapeFeatureMean(ShapeLocations& locs, std::vector<int>& cluster_ids, int c)
+{
+  ShapeDescriptor mean_val;
+  for (int i = 0; i < locs[0].descriptor_.size(); ++i)
+  {
+    mean_val.push_back(0);
+  }
+  int N = 0;
+  for (int l = 0; l < locs.size(); ++l)
+  {
+    if (cluster_ids[l] == c)
+    {
+      for (int i = 0; i < locs[l].descriptor_.size(); ++i)
+      {
+        N++;
+        mean_val[i] += locs[l].descriptor_[i];
+      }
+    }
+  }
+  for (int i = 0; i < mean_val.size(); ++i)
+  {
+    mean_val[i] /= N;
+  }
+  return mean_val;
 }
 
 };
