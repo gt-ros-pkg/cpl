@@ -125,7 +125,7 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
     ShapeLocation loc(pt, descriptors[i]);
     locs.push_back(loc);
   }
-  computeShapeFeatureAffinityMatrix(locs, use_center);
+  // computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
 
