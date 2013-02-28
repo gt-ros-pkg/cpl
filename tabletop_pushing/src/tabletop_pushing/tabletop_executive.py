@@ -310,7 +310,7 @@ class TabletopExecutive:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
-                        trial_id = str(object_id) +'_'+ str(self.base_trial_id) + str(self.push_count)
+                        trial_id = str(object_id) +'_'+ str(self.base_trial_id) + '_' + str(self.push_count)
                         self.push_count += 1
                         res = self.explore_push_start_locs(behavior_primitive, controller, proxy,
                                                            trial_id, arm)
