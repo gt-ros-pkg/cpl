@@ -40,7 +40,7 @@ import rospy
 import cv2
 import numpy as np
 import sys
-from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos
+from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos, isnan
 from pylab import *
 
 _VERSION_LINE = '# v0.4'
@@ -323,7 +323,33 @@ class CombinedPushLearnControlIO:
                     print 'None of these?'
         data_in.close()
 
-class HandPlacementPerformanceAnalysis:
+    def write_training_file(self, file_name, X, Y):
+        data_out = file(file_name, 'w')
+        for x,y in zip(X,Y):
+            print y, x
+            if math.isnan(y):
+                continue
+            data_line = str(y)
+            for i, xi in enumerate(x):
+                if (xi) > 0:
+                    data_line += ' ' + str(i+1)+':'+str(xi)
+            data_line +='\n'
+            data_out.write(data_line)
+        data_out.close()
+
+class StartLocPerformanceAnalysis:
+    def generate_training_file(self, file_in, file_out):
+        plio = CombinedPushLearnControlIO()
+        plio.read_in_data_file(file_in)
+        Y = []
+        X = []
+        for p in plio.push_trials:
+            y = self.analyze_straight_line_push(p)
+            x = p.trial_start.shape_descriptor
+            Y.append(y[0])
+            X.append(x)
+        plio.write_training_file(file_out, X, Y)
+
     def analyze_straight_line_push(self, push_trial):
         init_pose = push_trial.trial_start.init_centroid
         goal_pose = push_trial.trial_start.goal_pose
