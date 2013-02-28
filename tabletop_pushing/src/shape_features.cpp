@@ -149,14 +149,16 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs)
         affinity.at<double>(r,c) = 1.0;
         continue;
       }
-      affinity.at<double>(r,c) = shapeFeatureSimilarity(locs[r], locs[c]);
+      double sim_score = shapeFeatureSimilarity(locs[r], locs[c]);
+      affinity.at<double>(r,c) = sim_score;
+      affinity.at<double>(c,r) = sim_score;
       if (affinity.at<double>(r,c) > max_affinity)
       {
         max_affinity = affinity.at<double>(r,c);
       }
     }
   }
-  cv::imshow("affinity", affinity/max_affinity);
+  cv::imshow("affinity", affinity);
   return affinity;
 }
 
