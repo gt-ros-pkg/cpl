@@ -906,7 +906,7 @@ class TabletopPushingPerceptionNode
       just_spun_(false), major_axis_spin_pos_scale_(0.75), object_not_moving_thresh_(0),
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
-      gripper_not_moving_count_limit_(10)
+      gripper_not_moving_count_limit_(10), current_file_id_("")
 
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -1192,7 +1192,18 @@ class TabletopPushingPerceptionNode
     if (write_input_to_disk_ && recording_input_)
     {
       std::stringstream out_name;
-      out_name << base_output_path_ << "input" << record_count_ << ".png";
+      if (current_file_id_.size() > 0)
+      {
+        std::stringstream cloud_out_name;
+        out_name << base_output_path_ << current_file_id_ << "_input_" << record_count_ << ".png";
+        cloud_out_name << base_output_path_ << current_file_id_ << "_object_" << record_count_ << ".pcd";
+        ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+        pcl16::io::savePCDFile(cloud_out_name.str(), cur_obj.cloud);
+      }
+      else
+      {
+        out_name << base_output_path_ << "input" << record_count_ << ".png";
+      }
       cv::imwrite(out_name.str(), cur_color_frame_);
       // std::stringstream self_out_name;
       // self_out_name << base_output_path_ << "self" << record_count_ << ".png";
@@ -1380,6 +1391,15 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Determining push start pose");
         res = getPushStartPose(req);
         recording_input_ = !res.no_objects;
+        if (recording_input_)
+        {
+          ROS_INFO_STREAM("Starting input recording");
+          ROS_INFO_STREAM("current_file_id: " << current_file_id_);
+        }
+        else
+        {
+          ROS_INFO_STREAM("Stopping input recording");
+        }
         res.no_push = res.no_objects;
       }
     }
@@ -1452,6 +1472,7 @@ class TabletopPushingPerceptionNode
       cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
       std::stringstream color_file_name;
       color_file_name << base_output_path_ << req.trial_id << "_color.png";
+      current_file_id_ = req.trial_id;
       pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
       cv::imwrite(color_file_name.str(), cur_color_frame_);
     }
@@ -2338,6 +2359,7 @@ class TabletopPushingPerceptionNode
   double push_start_time_;
   bool timing_push_;
   bool use_center_pointing_shape_context_;
+  std::string current_file_id_;
 };
 
 int main(int argc, char ** argv)
