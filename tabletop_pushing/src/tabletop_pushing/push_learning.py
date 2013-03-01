@@ -323,22 +323,28 @@ class CombinedPushLearnControlIO:
                     print 'None of these?'
         data_in.close()
 
-    def write_training_file(self, file_name, X, Y):
+    def write_training_file(self, file_name, X, Y, normalize=False):
         data_out = file(file_name, 'w')
         for x,y in zip(X,Y):
             print y, x
             if math.isnan(y):
                 continue
             data_line = str(y)
+            x_norm = 1.0
+            if normalize:
+                x_norm = 0.0
+                for xi in x:
+                    x_norm += xi
+                x_norm /= len(x)
             for i, xi in enumerate(x):
-                if (xi) > 0:
-                    data_line += ' ' + str(i+1)+':'+str(xi)
+                if xi > 0:
+                    data_line += ' ' + str(i+1)+':'+str(xi/float(x_norm))
             data_line +='\n'
             data_out.write(data_line)
         data_out.close()
 
 class StartLocPerformanceAnalysis:
-    def generate_training_file(self, file_in, file_out):
+    def generate_training_file(self, file_in, file_out, normalize=False):
         plio = CombinedPushLearnControlIO()
         plio.read_in_data_file(file_in)
         Y = []
@@ -348,7 +354,7 @@ class StartLocPerformanceAnalysis:
             x = p.trial_start.shape_descriptor
             Y.append(y[0])
             X.append(x)
-        plio.write_training_file(file_out, X, Y)
+        plio.write_training_file(file_out, X, Y, normalize)
 
     def analyze_straight_line_push(self, push_trial):
         init_pose = push_trial.trial_start.init_centroid
