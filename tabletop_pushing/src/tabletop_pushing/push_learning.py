@@ -330,15 +330,17 @@ class CombinedPushLearnControlIO:
             if math.isnan(y):
                 continue
             data_line = str(y)
-            x_norm = 1.0
             if normalize:
-                x_norm = 0.0
+                feature_sum = 0.0
                 for xi in x:
-                    x_norm += xi
-                x_norm /= len(x)
-            for i, xi in enumerate(x):
-                if xi > 0:
-                    data_line += ' ' + str(i+1)+':'+str(xi/float(x_norm))
+                    feature_sum += xi
+                for i, xi in enumerate(x):
+                    if xi > 0:
+                        data_line += ' ' + str(i+1)+':'+str(sqrt(xi/float(feature_sum)))
+            else:
+                for i, xi in enumerate(x):
+                    if xi > 0:
+                        data_line += ' ' + str(i+1)+':'+str(xi)
             data_line +='\n'
             data_out.write(data_line)
         data_out.close()

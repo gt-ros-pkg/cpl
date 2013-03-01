@@ -1459,6 +1459,7 @@ class TabletopPushingPerceptionNode
       // Get the pushing location
       ShapeLocation chosen_loc = choosePushStartLoc(cur_obj, cur_state, req.new_object,
                                                     req.num_start_loc_clusters);
+      ROS_INFO_STREAM("Chosen loc is: (" << chosen_loc.boundary_loc_.x << ", " << chosen_loc.boundary_loc_.y << ")");
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
       // Set goal for pushing and then get start location as usual below
       float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
@@ -1553,6 +1554,7 @@ class TabletopPushingPerceptionNode
     }
     // Get shape features and associated locations
     ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj, use_center_pointing_shape_context_);
+    // tabletop_pushing::extractObjectShapeFeatures(cur_obj, !use_center_pointing_shape_context_);
 
     // Choose location index from features and history
     int loc_idx = 0;

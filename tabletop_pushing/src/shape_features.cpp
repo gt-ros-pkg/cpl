@@ -239,9 +239,22 @@ void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<in
   cv::Mat samples(locs.size(), locs[0].descriptor_.size(), CV_32FC1);
   for (int r = 0; r < samples.rows; ++r)
   {
+    // NOTE: Normalize features here
+    float feature_sum = 0;
     for (int c = 0; c < samples.cols; ++c)
     {
       samples.at<float>(r,c) = locs[r].descriptor_[c];
+      feature_sum += samples.at<float>(r,c);
+    }
+    if (feature_sum == 0)
+    {
+      continue;
+    }
+    for (int c = 0; c < samples.cols; ++c)
+    {
+      samples.at<float>(r,c) /= feature_sum;
+      // NOTE: Use Hellinger distance for comparison
+      samples.at<float>(r,c) = sqrt(samples.at<float>(r,c));
     }
   }
   cv::TermCriteria term_crit(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, max_iter, min_err_change);
