@@ -323,11 +323,16 @@ class CombinedPushLearnControlIO:
                     print 'None of these?'
         data_in.close()
 
-    def write_training_file(self, file_name, X, Y, normalize=False):
+    def write_example_file(self, file_name, X, Y, normalize=False, debug=False):
         data_out = file(file_name, 'w')
+        print 'Normalize:', normalize
+        i = 0
         for x,y in zip(X,Y):
-            print y, x
+            i += 1
+            if debug:
+                print y, x
             if math.isnan(y):
+                print 'Skipping writing example: ', i
                 continue
             data_line = str(y)
             if normalize:
@@ -345,18 +350,71 @@ class CombinedPushLearnControlIO:
             data_out.write(data_line)
         data_out.close()
 
+    def read_example_file(self, file_name):
+        pass
+
+    def read_regression_prediction_file(self, file_name):
+        data_in = file(file_name, 'r')
+        Y_hat = [float(y.strip()) for y in data_in.readlines()]
+        return Y_hat
+
 class StartLocPerformanceAnalysis:
-    def generate_training_file(self, file_in, file_out, normalize=False):
-        plio = CombinedPushLearnControlIO()
-        plio.read_in_data_file(file_in)
+    def generate_train_and_test_files(self, file_in, file_out, normalize=False, train_percent=0.6,
+                                      must_move_epsilon=0.05):
+        self.plio = CombinedPushLearnControlIO()
+        self.plio.read_in_data_file(file_in)
         Y = []
         X = []
-        for p in plio.push_trials:
+        for i, p in enumerate(self.plio.push_trials):
             y = self.analyze_straight_line_push(p)
+            if y[2] < must_move_epsilon:
+                print 'Not adding trial', i, 'beacuse object only moved', y[2], 'meters.'
+                continue
+            else:
+                print 'Trial', i, 'moved', y[2], 'meters.'
             x = p.trial_start.shape_descriptor
             Y.append(y[0])
             X.append(x)
-        plio.write_training_file(file_out, X, Y, normalize)
+
+        if file_out.endswith('.txt'):
+            train_file_out = file_out[:-4]+'_train'+'.txt'
+            test_file_out = file_out[:-4]+'_test'+'.txt'
+        else:
+            train_file_out = file_out+'_train'
+            test_file_out = file_out+'_test'
+
+        # TODO: Make more informed based on object_id
+        num_train_examples = int(train_percent*len(X))
+        print 'Read in', len(X), 'examples'
+        print 'Training file has', num_train_examples, 'examples'
+        print 'Test file has', len(X)-num_train_examples, 'examples'
+        self.Y_train = []
+        self.X_train = []
+        self.Y_test = []
+        self.X_test = []
+
+        for i, xy in enumerate(zip(X,Y)):
+            x = xy[0]
+            y = xy[1]
+            if i < num_train_examples:
+                self.Y_train.append(y)
+                self.X_train.append(x)
+            else:
+                self.Y_test.append(y)
+                self.X_test.append(x)
+        print 'len(Y_train)', len(self.Y_train)
+        self.plio.write_example_file(train_file_out, self.X_train, self.Y_train, normalize)
+        print 'len(Y_test)', len(self.Y_test)
+        self.plio.write_example_file(test_file_out, self.X_test, self.Y_test, normalize)
+
+    def plot_svm_results(self, pred_file):
+        self.Y_hat = self.plio.read_regression_prediction_file(pred_file)
+        plot(self.Y_test,'bo')
+        plot(self.Y_hat, 'r+', hold=True)
+        xlabel('Test index')
+        ylabel('Straight push score')
+        title('Push Scoring Evaluation')
+        show()
 
     def analyze_straight_line_push(self, push_trial):
         init_pose = push_trial.trial_start.init_centroid
@@ -366,7 +424,7 @@ class StartLocPerformanceAnalysis:
         err_x = goal_pose.x - final_pose.x
         err_y = goal_pose.y - final_pose.y
         final_error =  hypot(err_x, err_y)
-
+        total_change = hypot(final_pose.x - init_pose.x, final_pose.y - init_pose.y)
         angle_errs = []
         for i, pt in enumerate(push_trial.trial_trajectory):
             if i == 0:
@@ -378,12 +436,15 @@ class StartLocPerformanceAnalysis:
         mean_angle_errs = sum(angle_errs)/len(angle_errs)
         # print mean_angle_errs, 'rad'
         # print final_error, 'cm'
-        return (mean_angle_errs, final_error)
+        return (mean_angle_errs, final_error, total_change)
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
         norm_a = hypot(a[0], a[1])
         norm_b = hypot(b[0], b[1])
+        if norm_a == 0 or norm_b == 0:
+            # print 'Bad angle, returning max value'
+            return pi
         return acos(a_dot_b/(norm_a*norm_b))
 
 class BruteForceKNN:
