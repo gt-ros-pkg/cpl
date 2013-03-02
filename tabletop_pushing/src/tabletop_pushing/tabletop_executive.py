@@ -429,20 +429,21 @@ class TabletopExecutive:
         if self.servo_head_during_pushing:
             self.raise_and_look(point_head_only=True)
 
-        # NOTE: Get initial object pose here to make sure goal pose is far enough away
-        init_pose = self.get_feedback_push_initial_obj_pose()
-        while not _OFFLINE and self.out_of_workspace(init_pose):
-            rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
-                          str(init_pose.y) + ')')
-            code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
-            if code_in.lower().startswith('q'):
-                return 'quit'
-            init_pose = self.get_feedback_push_initial_obj_pose()
 
         start_loc_trials = 0
         # Doesn't matter what the goal_pose is, the start pose server picks it for us
         goal_pose = Pose2D()
         for i in xrange(num_pushes):
+            # NOTE: Get initial object pose here to make sure goal pose is far enough away
+            init_pose = self.get_feedback_push_initial_obj_pose()
+            while not _OFFLINE and self.out_of_workspace(init_pose):
+                rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
+                              str(init_pose.y) + ')')
+                code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
+                if code_in.lower().startswith('q'):
+                    return 'quit'
+                init_pose = self.get_feedback_push_initial_obj_pose()
+
             trial_id = str(object_id) +'_'+ str(self.base_trial_id) + '_' + str(self.push_count)
             self.push_count += 1
             start_time = time.time()

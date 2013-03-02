@@ -125,7 +125,7 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
     ShapeLocation loc(pt, descriptors[i]);
     locs.push_back(loc);
   }
-  // computeShapeFeatureAffinityMatrix(locs, use_center);
+  computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
 
@@ -140,6 +140,23 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center)
 {
   cv::Mat affinity(locs.size(), locs.size(), CV_64FC1, cv::Scalar(0.0));
   double max_affinity = 0.0;
+  ShapeDescriptors normalized;
+  for (int i = 0; i < locs.size(); ++i)
+  {
+    ShapeDescriptor desc(locs[i].descriptor_);
+    double feature_sum = 0;
+    for (int j = 0; j < desc.size(); ++j)
+    {
+      feature_sum += desc[j];
+    }
+    if (feature_sum == 0) continue;
+    for (int j = 0; j < desc.size(); ++j)
+    {
+      desc[j] = sqrt(desc[j]/feature_sum);
+    }
+    normalized.push_back(desc);
+  }
+
   for (int r = 0; r < affinity.rows; ++r)
   {
     for (int c = r; c < affinity.cols; ++c)
@@ -149,8 +166,7 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center)
         affinity.at<double>(r,c) = 1.0;
         continue;
       }
-      double sim_score = 1.0 - shapeFeatureChiSquareDist(locs[r].descriptor_,
-                                                         locs[c].descriptor_);
+      double sim_score = 1.0 - sqrt(shapeFeatureSquaredEuclideanDist(normalized[r],normalized[c]));
       affinity.at<double>(r,c) = sim_score;
       affinity.at<double>(c,r) = sim_score;
       if (affinity.at<double>(r,c) > max_affinity)
@@ -381,9 +397,19 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
 {
   int min_idx = -1;
   min_dist = FLT_MAX;
+  ShapeDescriptor normalized(descriptor);
+  float feature_sum = 0;
+  for (int i = 0; i < normalized.size(); ++i)
+  {
+    feature_sum += normalized[i];
+  }
+  for (int i = 0; i < normalized.size(); ++i)
+  {
+    normalized[i] = sqrt(normalized[i]/feature_sum);
+  }
   for (int c = 0; c < centers.size(); ++c)
   {
-    double c_dist = (shapeFeatureSquaredEuclideanDist(descriptor, centers[c]));
+    double c_dist = (shapeFeatureSquaredEuclideanDist(normalized, centers[c]));
     if (c_dist < min_dist)
     {
       min_dist = c_dist;
