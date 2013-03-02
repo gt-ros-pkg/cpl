@@ -437,7 +437,7 @@ class StartLocPerformanceAnalysis:
         plotter.legend([p1,p2],['True Score', 'Predicted Score'], loc=2)
         plotter.show()
 
-    def analyze_straight_line_push(self, push_trial):
+    def analyze_straight_line_push(self, push_trial, normalize_score=False):
         init_pose = push_trial.trial_start.init_centroid
         goal_pose = push_trial.trial_start.goal_pose
         final_pose = push_trial.trial_end.final_centroid
@@ -447,6 +447,11 @@ class StartLocPerformanceAnalysis:
         final_error =  hypot(err_x, err_y)
         total_change = hypot(final_pose.x - init_pose.x, final_pose.y - init_pose.y)
         angle_errs = []
+        init_goal_vector = np.asarray([goal_pose.x - init_pose.x, goal_pose.y - init_pose.y])
+        init_final_vector = np.asarray([final_pose.x - init_pose.x, final_pose.y - init_pose.y])
+        final_angle_diff = self.angle_between_vectors(init_goal_vector, init_final_vector)
+        final_angle_area = 0.5*fabs(init_goal_vector[0]*init_final_vector[1]-
+                                    init_goal_vector[1]*init_final_vector[0])
         for i, pt in enumerate(push_trial.trial_trajectory):
             if i == 0:
                 continue
@@ -460,7 +465,12 @@ class StartLocPerformanceAnalysis:
         mean_angle_errs = sum(angle_errs)/len(angle_errs)
         # print mean_angle_errs, 'rad'
         # print final_error, 'cm'
-        return (1.0-mean_angle_errs/pi, final_error, total_change)
+        if normalize_score:
+            score = 1.0-mean_angle_errs/pi
+        else:
+            score = mean_angle_errs
+
+        return (score, final_error, total_change, final_angle_diff, final_angle_area)
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
