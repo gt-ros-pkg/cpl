@@ -41,7 +41,9 @@ import cv2
 import numpy as np
 import sys
 from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos, isnan
-from pylab import *
+#from pylab import *
+import matplotlib.pyplot as plotter
+import random
 
 _VERSION_LINE = '# v0.4'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
@@ -331,7 +333,7 @@ class CombinedPushLearnControlIO:
             i += 1
             if debug:
                 print y, x
-            if math.isnan(y):
+            if isnan(y):
                 print 'Skipping writing example: ', i
                 continue
             data_line = str(y)
@@ -367,6 +369,10 @@ class StartLocPerformanceAnalysis:
         X = []
         for i, p in enumerate(self.plio.push_trials):
             y = self.analyze_straight_line_push(p)
+            if p.trial_start.object_id.startswith('tv_remote'):
+                print 'Skipping tv_remote trial'
+                continue
+
             if y[2] < must_move_epsilon:
                 print 'Not adding trial', i, 'beacuse object only moved', y[2], 'meters.'
                 continue
@@ -375,7 +381,8 @@ class StartLocPerformanceAnalysis:
             x = p.trial_start.shape_descriptor
             Y.append(y[0])
             X.append(x)
-
+        Z = zip(X,Y)
+        # random.shuffle(Z)
         if file_out.endswith('.txt'):
             train_file_out = file_out[:-4]+'_train'+'.txt'
             test_file_out = file_out[:-4]+'_test'+'.txt'
@@ -393,7 +400,7 @@ class StartLocPerformanceAnalysis:
         self.Y_test = []
         self.X_test = []
 
-        for i, xy in enumerate(zip(X,Y)):
+        for i, xy in enumerate(Z):
             x = xy[0]
             y = xy[1]
             if i < num_train_examples:
@@ -409,12 +416,26 @@ class StartLocPerformanceAnalysis:
 
     def plot_svm_results(self, pred_file):
         self.Y_hat = self.plio.read_regression_prediction_file(pred_file)
-        plot(self.Y_test,'bo')
-        plot(self.Y_hat, 'r+', hold=True)
-        xlabel('Test index')
-        ylabel('Straight push score')
-        title('Push Scoring Evaluation')
-        show()
+
+        Ys_ordered = zip(self.Y_test[:],self.Y_hat[:])
+        Ys_ordered.sort(key=lambda test_value: test_value[0])
+        Y_test_ordered = []
+        Y_hat_ordered = []
+        Y_diffs = []
+        for Ys in Ys_ordered:
+            Y_test_ordered.append(Ys[0])
+            Y_hat_ordered.append(Ys[1])
+            Y_diffs.append(fabs(Ys[0]-Ys[1]))
+        print 'Average error is', sum(Y_diffs)/len(Y_diffs)
+        print 'Max error is', max(Y_diffs)
+        print 'Min error is', min(Y_diffs)
+        p1, = plotter.plot(Y_test_ordered,'bx')
+        p2, = plotter.plot(Y_hat_ordered, 'r+')
+        plotter.xlabel('Test index')
+        plotter.ylabel('Straight push score')
+        plotter.title('Push Scoring Evaluation')
+        plotter.legend([p1,p2],['True Score', 'Predicted Score'], loc=2)
+        plotter.show()
 
     def analyze_straight_line_push(self, push_trial):
         init_pose = push_trial.trial_start.init_centroid
@@ -432,11 +453,14 @@ class StartLocPerformanceAnalysis:
             prev_pt = push_trial.trial_trajectory[i-1]
             goal_vector = np.asarray([goal_pose.x - prev_pt.x.x, goal_pose.y - prev_pt.x.y])
             push_vector = np.asarray([pt.x.x - prev_pt.x.x, pt.x.y - prev_pt.x.y])
-            angle_errs.append(self.angle_between_vectors(goal_vector, push_vector))
+            if hypot(push_vector[0], push_vector[1]) == 0:
+                continue
+            else:
+                angle_errs.append(self.angle_between_vectors(goal_vector, push_vector))
         mean_angle_errs = sum(angle_errs)/len(angle_errs)
         # print mean_angle_errs, 'rad'
         # print final_error, 'cm'
-        return (mean_angle_errs, final_error, total_change)
+        return (1.0-mean_angle_errs/pi, final_error, total_change)
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
@@ -1163,89 +1187,87 @@ def plot_controller_results(file_name, spin=False):
     goal_x = controls[0].x_desired.x
     goal_y = controls[0].x_desired.y
     goal_theta = controls[0].x_desired.theta
-    figure()
-    plot(XS,YS)
-    scatter(XS,YS)
-    ax = gca()
+    plotter.figure()
+    plotter.plot(XS,YS)
+    plotter.scatter(XS,YS)
+    ax = plotter.gca()
     print ylim()
     print ax.set_xlim(xlim()[1]-(ylim()[1]-ylim()[0]), xlim()[1])
-    headings = [Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
+    headings = [plotter.Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
     arrows = [ax.add_patch(h) for h in headings]
-    init_arrow = Arrow(controls[0].x.x, controls[0].x.y,
-                       cos(controls[0].x.theta)*0.01,
-                       sin(controls[0].x.theta)*0.01, 0.05,
-                       axes=ax, facecolor='red')
-    goal_arrow = Arrow(controls[0].x_desired.x, controls[0].x_desired.y,
-                       cos(controls[0].x_desired.theta)*0.01,
-                       sin(controls[0].x_desired.theta)*0.01, 0.05,
-                       axes=ax, facecolor='green')
+    init_arrow = plotter.Arrow(controls[0].x.x, controls[0].x.y,
+                               cos(controls[0].x.theta)*0.01,
+                               sin(controls[0].x.theta)*0.01, 0.05,
+                               axes=ax, facecolor='red')
+    goal_arrow = plotter.Arrow(controls[0].x_desired.x, controls[0].x_desired.y,
+                               cos(controls[0].x_desired.theta)*0.01,
+                               sin(controls[0].x_desired.theta)*0.01, 0.05,
+                               axes=ax, facecolor='green')
     ax.add_patch(goal_arrow)
     ax.add_patch(init_arrow)
-    scatter(init_x, init_y, c='r')
-    scatter(goal_x, goal_y, c='g')
-    xlabel('x (meters)')
-    ylabel('y (meters)')
-    title('Tracker Ouput')
-    savefig('/home/thermans/sandbox/tracker-output.png')
-    figure()
+    plotter.scatter(init_x, init_y, c='r')
+    plotter.scatter(goal_x, goal_y, c='g')
+    plotter.xlabel('x (meters)')
+    plotter.ylabel('y (meters)')
+    plotter.title('Tracker Ouput')
+    plotter.savefig('/home/thermans/sandbox/tracker-output.png')
+    plotter.figure()
     ux = [c.u.linear.x for c in controls]
     uy = [c.u.linear.y for c in controls]
     if spin:
         uy = [c.u.linear.z for c in controls]
-    plot(ux)
-    plot(uy)
-    xlabel('Time')
-    ylabel('Velocity (m/s)')
-    legend(['u_x', 'u_y'])
-    title('Feedback Controller - Input Velocities')
-    savefig('/home/thermans/sandbox/feedback-input.png')
-    figure()
+    plotter.plot(ux)
+    plotter.plot(uy)
+    plotter.xlabel('Time')
+    plotter.ylabel('Velocity (m/s)')
+    plotter.legend(['u_x', 'u_y'])
+    plotter.title('Feedback Controller - Input Velocities')
+    plotter.savefig('/home/thermans/sandbox/feedback-input.png')
+    plotter.figure()
     xdots = [c.x_dot.x for c in controls]
     ydots = [c.x_dot.y for c in controls]
-    plot(xdots)
-    plot(ydots)
-    xlabel('Time')
-    ylabel('Velocity (m/s)')
-    title('Tracker Velocities')
-    legend(['x_dot', 'y_dot'])
-    savefig('/home/thermans/sandbox/tracker-velocities.png')
-    figure()
+    plotter.plot(xdots)
+    plotter.plot(ydots)
+    plotter.xlabel('Time')
+    plotter.ylabel('Velocity (m/s)')
+    plotter.title('Tracker Velocities')
+    plotter.legend(['x_dot', 'y_dot'])
+    plotter.savefig('/home/thermans/sandbox/tracker-velocities.png')
+    plotter.figure()
     thetadots = [c.x_dot.theta for c in controls]
-    plot(thetadots,c='r')
-    xlabel('Time')
-    ylabel('Velocity (rad/s)')
-    title('Tracker Velocities')
-    legend(['theta_dot'])
-    savefig('/home/thermans/sandbox/tracker-theta-vel.png')
-    figure()
+    plotter.plot(thetadots,c='r')
+    plotter.xlabel('Time')
+    plotter.ylabel('Velocity (rad/s)')
+    plotter.title('Tracker Velocities')
+    plotter.legend(['theta_dot'])
+    plotter.savefig('/home/thermans/sandbox/tracker-theta-vel.png')
+    plotter.figure()
     x_err = [c.x_desired.x - c.x.x for c in controls]
     y_err = [c.x_desired.y - c.x.y for c in controls]
-    plot(x_err)
-    plot(y_err)
-    xlabel('Time')
-    ylabel('Error (meters)')
-    title('Position Error')
-    legend(['x_err', 'y_err'])
-    savefig('/home/thermans/sandbox/pos-err.png')
-    figure()
+    plotter.plot(x_err)
+    plotter.plot(y_err)
+    plotter.xlabel('Time')
+    plotter.ylabel('Error (meters)')
+    plotter.title('Position Error')
+    plotter.legend(['x_err', 'y_err'])
+    plotter.savefig('/home/thermans/sandbox/pos-err.png')
+    plotter.figure()
     if spin:
         theta_err = [c.x_desired.theta - c.x.theta for c in controls]
     else:
         theta_err = [c.theta0 - c.x.theta for c in controls]
-    plot(theta_err, c='r')
-    xlabel('Time')
-    ylabel('Error (radians)')
+    plotter.plot(theta_err, c='r')
+    plotter.xlabel('Time')
+    plotter.ylabel('Error (radians)')
     if spin:
-        title('Error in Orientation')
+        plotter.title('Error in Orientation')
     else:
-        title('Heading Deviation from Initial')
-    savefig('/home/thermans/sandbox/theta-err.png')
-    show()
+        plotter.title('Heading Deviation from Initial')
+    plotter.savefig('/home/thermans/sandbox/theta-err.png')
+    plotter.show()
 
 if __name__ == '__main__':
-    plot_controller_results(sys.argv[1])
-
-if __name__ == '__main__':
+    # plot_controller_results(sys.argv[1])
     req_object_id = None
     thresh = 1.0
     # TODO: Add more options to command line
