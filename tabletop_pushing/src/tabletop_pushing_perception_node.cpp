@@ -1571,6 +1571,17 @@ class TabletopPushingPerceptionNode
       double min_err_change = 0.001;
       int max_iter = 1000;
       tabletop_pushing::clusterShapeFeatures(locs, num_clusters, cluster_ids, centers, min_err_change, max_iter);
+
+      // Display the boundary locations colored by their cluster IDs
+      cv::Mat boundary_disp_img(cur_color_frame_.size(), CV_32FC3, cv::Scalar(0,0,0));
+      for (unsigned int i = 0; i < locs.size(); ++i)
+      {
+        const cv::Point2f img_idx = pcl_segmenter_->projectPointIntoImage(
+            locs[i].boundary_loc_, cur_obj.cloud.header.frame_id, camera_frame_);
+        boundary_disp_img.at<cv::Vec3f>(img_idx.y, img_idx.x) = pcl_segmenter_->colors_[cluster_ids[i]];
+      }
+      cv::imshow("Cluster colors", boundary_disp_img);
+
       // TODO: Easier to just keep picking random locs and choose first one with unused cluster center?
       // Find which clusters the previous choices map too, pick one other than those randomly
       std::vector<int> used_clusters;
