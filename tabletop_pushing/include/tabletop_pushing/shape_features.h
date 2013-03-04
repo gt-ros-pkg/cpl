@@ -6,7 +6,6 @@
 #include <pcl16/point_cloud.h>
 #include <pcl16/point_types.h>
 #include <cpl_visual_features/features/shape_context.h>
-#include <geometry_msgs/PointStamped.h>
 #include <vector>
 #include <tabletop_pushing/point_cloud_segmentation.h>
 
