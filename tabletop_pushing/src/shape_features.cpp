@@ -18,31 +18,26 @@ inline int worldLocToIdx(double val, double min_val, double max_val)
   return round((val-min_val)/XY_RES);
 }
 
-std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj)
+XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj)
 {
   // Get 2D projection of object
   XYZPointCloud footprint_cloud(cur_obj.cloud);
-  for (int i = 0; i < footprint_cloud.size(); ++i)
-  {
-    footprint_cloud.at(i).z = 0.0;
-  }
+  // for (int i = 0; i < footprint_cloud.size(); ++i)
+  // {
+  //   footprint_cloud.at(i).z = 0.0;
+  // }
+
   // TODO: Examine sensitivity of hull_alpha...
   double hull_alpha = 0.01;
   XYZPointCloud hull_cloud;
   pcl16::ConcaveHull<pcl16::PointXYZ> hull;
-  hull.setDimension(2);
+  hull.setDimension(2);  // NOTE: Get 2D projection of object
   hull.setInputCloud(footprint_cloud.makeShared());
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
 
-  std::vector<cv::Point2f> samples;
-  for (int i = 0; i < hull_cloud.size(); ++i)
-  {
-    cv::Point2f pt(hull_cloud.at(i).x, hull_cloud.at(i).y);
-    samples.push_back(pt);
-  }
   // TODO: Visualize the above boundary
-  return samples;
+  return hull_cloud;
 }
 
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud)
@@ -111,7 +106,13 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
 
 ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
 {
-  Samples2f samples = getObjectBoundarySamples(cur_obj);
+  XYZPointCloud samples_pcl = getObjectBoundarySamples(cur_obj);
+  Samples2f samples;
+  for (unsigned int i = 0; i < samples_pcl.size(); ++i)
+  {
+    cv::Point2f pt(samples_pcl[i].x, samples_pcl[i].y);
+    samples.push_back(pt);
+  }
   int radius_bins = 5;
   int theta_bins = 12;
   cv::Point2f center(cur_obj.centroid[0], cur_obj.centroid[1]);
@@ -119,10 +120,7 @@ ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
   ShapeLocations locs;
   for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
-    geometry_msgs::Point pt;
-    pt.x = samples[i].x;
-    pt.y = samples[i].y;
-    ShapeLocation loc(pt, descriptors[i]);
+    ShapeLocation loc(samples_pcl[i], descriptors[i]);
     locs.push_back(loc);
   }
   computeShapeFeatureAffinityMatrix(locs, use_center);
@@ -287,102 +285,6 @@ void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<in
     }
     centers.push_back(s);
   }
-}
-void clusterShapeFeaturesCustom(ShapeLocations& locs, int num_clusters, std::vector<int>& cluster_ids, ShapeDescriptors& centers,
-                                double min_err_change, int max_iter)
-{
-  // Initialize centers
-  std::vector<int> rand_idxes;
-  for (int c = 0; c < num_clusters; ++c)
-  {
-    int rand_idx = -1;
-    bool done = false;
-    while (!done)
-    {
-      rand_idx = rand() % locs.size();
-      done = true;
-      for (int i = 0; i < rand_idxes.size(); ++i)
-      {
-        if (rand_idxes[i] == rand_idx)
-        {
-          done = false;
-        }
-      }
-    }
-    rand_idxes.push_back(rand_idx);
-    centers.push_back(ShapeDescriptor(locs[rand_idx].descriptor_));
-  }
-
-  bool done = false;
-  double error = 0;
-  double prev_error = FLT_MAX;
-  double delta_error = FLT_MAX;
-  cluster_ids.assign(num_clusters, -1);
-  for (int i = 0; i < max_iter && delta_error > min_err_change; ++i)
-  {
-    // std::cout << "kmeans iter: " << i << std::endl << "\tdelta_error is " << delta_error << std::endl;
-    // Find clusters
-    for (int l = 0; l < locs.size(); ++l)
-    {
-      double cluster_dist = 0;
-      cluster_ids[l] = closestShapeFeatureCluster(locs[l].descriptor_, centers, cluster_dist);
-      error += cluster_dist;
-    }
-
-    // Find centers
-    for (int c = 0; c < num_clusters; ++c)
-    {
-      centers[c] = shapeFeatureMean(locs, cluster_ids, c);
-    }
-    error = sqrt(error/locs.size());
-    // std::cout << "Current error is " << error << std::endl;
-    delta_error = prev_error - error;
-    prev_error = error;
-    error = 0;
-  }
-  // std::cout << "delta_error is: " << delta_error << std::endl;
-  // TODO: Add in recursive call to perform multiple restarts
-}
-
-/**
- * Compute the mean of a set of shape features
- *
- * @param locs The vector of ShapeLocation features
- * @param cluster_ids The vector identifying cluster ids for each ShapeLocation
- * @param c The cluster id to compute the mean of
- *
- * @return The mean ShapeDescriptor associated with cluster c
- */
-ShapeDescriptor shapeFeatureMean(ShapeLocations& locs, std::vector<int>& cluster_ids, int c)
-{
-  ShapeDescriptor mean_val;
-  for (int i = 0; i < locs[0].descriptor_.size(); ++i)
-  {
-    mean_val.push_back(0.0);
-  }
-  int N = 0;
-  for (int l = 0; l < locs.size(); ++l)
-  {
-    if (cluster_ids[l] == c)
-    {
-      N++;
-      for (int i = 0; i < locs[l].descriptor_.size(); ++i)
-      {
-        mean_val[i] += locs[l].descriptor_[i];
-      }
-    }
-  }
-  // std::cout << "Cluster " << c << " has " << N << " cluster members." << std::endl << std::endl;
-  if (N == 0)
-  {
-    std::cerr << "No members in cluster: " << c << "!" << std::endl;
-    return mean_val;
-  }
-  for (int i = 0; i < mean_val.size(); ++i)
-  {
-    mean_val[i] /= N;
-  }
-  return mean_val;
 }
 
 /**

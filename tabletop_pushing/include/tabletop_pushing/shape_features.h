@@ -16,11 +16,11 @@ namespace tabletop_pushing
 class ShapeLocation
 {
  public:
-  ShapeLocation(geometry_msgs::Point boundary_loc, cpl_visual_features::ShapeDescriptor descriptor):
+  ShapeLocation(pcl16::PointXYZ boundary_loc, cpl_visual_features::ShapeDescriptor descriptor):
       boundary_loc_(boundary_loc), descriptor_(descriptor)
   {
   }
-  geometry_msgs::Point boundary_loc_;
+  pcl16::PointXYZ boundary_loc_;
   cpl_visual_features::ShapeDescriptor descriptor_;
  private:
   ShapeLocation()
@@ -32,7 +32,7 @@ typedef std::vector<ShapeLocation> ShapeLocations;
 
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud);
 
-std::vector<cv::Point2f> getObjectBoundarySamples(ProtoObject& cur_obj);
+pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj);
 
 ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center = true);
 
@@ -45,8 +45,6 @@ double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a,
 void clusterShapeFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids,
                           cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter,
                           int num_retries = 5);
-
-cpl_visual_features::ShapeDescriptor shapeFeatureMean(ShapeLocations& locs, std::vector<int>& cluster_ids, int c);
 
 int closestShapeFeatureCluster(cpl_visual_features::ShapeDescriptor& descriptor,
                                cpl_visual_features::ShapeDescriptors& centers, double& min_dist);

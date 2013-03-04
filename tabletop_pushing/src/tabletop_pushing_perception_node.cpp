@@ -1615,31 +1615,31 @@ class TabletopPushingPerceptionNode
     return locs[loc_idx];
   }
 
-  geometry_msgs::Point worldPointInObjectFrame(geometry_msgs::Point world_pt, PushTrackerState& cur_state)
+  pcl16::PointXYZ worldPointInObjectFrame(pcl16::PointXYZ world_pt, PushTrackerState& cur_state)
   {
     // Center on object frame
-    geometry_msgs::Point shifted_pt;
+    pcl16::PointXYZ shifted_pt;
     shifted_pt.x = world_pt.x - cur_state.x.x;
     shifted_pt.y = world_pt.y - cur_state.x.y;
     double ct = cos(cur_state.x.theta);
     double st = sin(cur_state.x.theta);
     // Rotate into correct frame
-    geometry_msgs::Point obj_pt;
+    pcl16::PointXYZ obj_pt;
     obj_pt.x = ct*shifted_pt.x - st*shifted_pt.y;
     obj_pt.y = st*shifted_pt.x + ct*shifted_pt.y;
     return obj_pt;
   }
 
-  geometry_msgs::Point objectPointInWorldFrame(geometry_msgs::Point obj_pt, PushTrackerState& cur_state)
+  pcl16::PointXYZ objectPointInWorldFrame(pcl16::PointXYZ obj_pt, PushTrackerState& cur_state)
   {
     // Rotate out of object frame
-    geometry_msgs::Point rotated_pt;
+    pcl16::PointXYZ rotated_pt;
     double ct = cos(cur_state.x.theta);
     double st = sin(cur_state.x.theta);
     rotated_pt.x =  ct*obj_pt.x + st*obj_pt.y;
     rotated_pt.y = -st*obj_pt.x + ct*obj_pt.y;
     // Shift to world frame
-    geometry_msgs::Point world_pt;
+    pcl16::PointXYZ world_pt;
     world_pt.x = rotated_pt.x + cur_state.x.x;
     world_pt.y = rotated_pt.y + cur_state.x.y;
     return world_pt;
