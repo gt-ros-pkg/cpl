@@ -204,7 +204,16 @@ class PointCloudSegmentation
     return std::sqrt(dx*dx+dy*dy+dz*dz);
   }
 
-  static inline double sqrDist(Eigen::Vector4f a, Eigen::Vector4f b)
+  static inline double sqrDist(Eigen::Vector3f& a, pcl16::PointXYZ& b)
+  {
+    const double dx = a[0]-b.x;
+    const double dy = a[1]-b.y;
+    const double dz = a[2]-b.z;
+    return dx*dx+dy*dy+dz*dz;
+  }
+
+
+  static inline double sqrDist(Eigen::Vector4f& a, Eigen::Vector4f& b)
   {
     const double dx = a[0]-b[0];
     const double dy = a[1]-b[1];

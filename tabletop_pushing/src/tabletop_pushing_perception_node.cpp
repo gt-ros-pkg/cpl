@@ -1629,6 +1629,8 @@ class TabletopPushingPerceptionNode
                                             geometry_msgs::Pose2D goal_pose, int num_start_loc_pushes_per_sample,
                                             int num_start_loc_sample_locs)
   {
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
+    int rot_idx = -1;
     if (new_object)
     {
       // Set new object model
@@ -1636,14 +1638,28 @@ class TabletopPushingPerceptionNode
       // Reset boundary traversal data
       start_loc_arc_length_percent_ = 0.0;
       start_loc_push_sample_count_ = 0;
+      start_loc_history_.clear();
+
+      // NOTE: Initial start location is the dominant orientation
+      double min_angle_dist = FLT_MAX;
+      for (int i = 0; i < hull_cloud.size(); ++i)
+      {
+        double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).y - cur_state.x.x);
+        double angle_dist_i = subPIAngle(theta_i - cur_state.x.theta);
+        if (angle_dist_i < min_angle_dist)
+        {
+          min_angle_dist = angle_dist_i;
+          rot_idx = i;
+        }
+      }
     }
     else
     {
       // Increment boundary location if necessary
-      if (start_loc_push_sample_count_ % num_start_loc_pushes_per_sample == 0)
+      if (start_loc_history_.size() % num_start_loc_pushes_per_sample == 0)
       {
         start_loc_arc_length_percent_ += 1.0/num_start_loc_sample_locs;
-        ROS_WARN_STREAM("Incrementing arc length percent based on: " << num_start_loc_pushes_per_sample);
+        ROS_INFO_STREAM("Incrementing arc length percent based on: " << num_start_loc_pushes_per_sample);
       }
 
       // Align object to start_loc_object_
@@ -1655,43 +1671,68 @@ class TabletopPushingPerceptionNode
       //     start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
       // cv::imshow("start_loc_obj", start_loc_obj_img*255);
       // cv::waitKey();
+
+      // Get initial object boundary location in the current world frame
+      Eigen::Vector3f init_loc_vec_obj(start_loc_history_[0].boundary_loc_.x,
+                                       start_loc_history_[0].boundary_loc_.y,
+                                       start_loc_history_[0].boundary_loc_.z);
+      Eigen::Vector3f init_loc_vec_world = rot.transpose()*init_loc_vec_obj;
+      // Find index of closest point on current boundary to the initial pushing location
+      double min_dist = FLT_MAX;
+      for (int i = 0; i < hull_cloud.size(); ++i)
+      {
+        double dist_i = pcl_segmenter_->sqrDist(init_loc_vec_world, hull_cloud.at(i));
+        if (dist_i < min_dist)
+        {
+          min_dist = dist_i;
+          rot_idx = i;
+        }
+      }
     }
-    start_loc_push_sample_count_++;
 
     // Compute cumulative distance around the boundary at each point
-    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
-
-    // TODO: Permute the boundary so that index 0 is aligned with initial orientation
-
-    std::vector<double> boundary_dists;
+    std::vector<double> boundary_dists(hull_cloud.size(), 0.0);
     double boundary_length = 0.0;
+    ROS_INFO_STREAM("rot_idx is " << rot_idx);
     for (int i = 1; i <= hull_cloud.size(); ++i)
     {
-      // NOTE: This makes boundary_dists[0] = 0.0, and we have no location at 100% the boundary_length
-      boundary_dists.push_back(boundary_length);
-      double loc_dist = pcl_segmenter_->dist(hull_cloud[i-1], hull_cloud[i % hull_cloud.size()]);
+      int idx0 = (rot_idx+i-1)%hull_cloud.size();
+      int idx1 = (rot_idx+i)%hull_cloud.size();
+      // NOTE: This makes boundary_dists[rot_idx] = 0.0, and we have no location at 100% the boundary_length
+      boundary_dists[idx0] = boundary_length;
+      double loc_dist = pcl_segmenter_->dist(hull_cloud[idx0], hull_cloud[idx1]);
       boundary_length += loc_dist;
-      // ROS_INFO_STREAM("Pt[" << i % hull_cloud.size() << "] " << loc_dist << " further along total dist " <<
+      // ROS_INFO_STREAM("Pt[" << idx1 << "] " << loc_dist << " further along total dist " <<
       //                 boundary_length);
     }
 
     // Find location at start_loc_arc_length_percent_ around the boundary
     double desired_boundary_dist = start_loc_arc_length_percent_*boundary_length;
-    ROS_INFO_STREAM("Finding location at dist ~= " << desired_boundary_dist << " of " << boundary_length);
+    ROS_INFO_STREAM("Finding location at dist " << desired_boundary_dist << " ~= " << start_loc_arc_length_percent_ <<
+                    " of " << boundary_length);
     int boundary_loc_idx;
-    for (boundary_loc_idx = 0; boundary_loc_idx < hull_cloud.size(); ++boundary_loc_idx)
+    double min_boundary_dist_diff = FLT_MAX;
+    for (int i = 0; i < hull_cloud.size(); ++i)
     {
-      if (desired_boundary_dist < boundary_dists[boundary_loc_idx])
+      double boundary_dist_diff_i = fabs(desired_boundary_dist - boundary_dists[i]);
+      if (boundary_dist_diff_i < min_boundary_dist_diff)
       {
-        break;
+        min_boundary_dist_diff = boundary_dist_diff_i;
+        boundary_loc_idx = i;
       }
     }
+    ROS_INFO_STREAM("Chose location at idx: " << boundary_loc_idx << " with diff " << min_boundary_dist_diff);
 
-    // Get descriptor and return
+    // Get descriptor at the chosen location
     ShapeLocations locs = tabletop_pushing::extractShapeFeaturesFromSamples(hull_cloud, cur_obj,
                                                                             use_center_pointing_shape_context_);
+    // Add into pushing history in object frame
+    ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
+                    locs[boundary_loc_idx].descriptor_);
+    start_loc_history_.push_back(s);
 
     // TODO: Project desired outline to show where to place object before pushing?
+
     return locs[boundary_loc_idx];
   }
 
@@ -1721,12 +1762,14 @@ class TabletopPushingPerceptionNode
     pcl16::PointXYZ shifted_pt;
     shifted_pt.x = world_pt.x - cur_state.x.x;
     shifted_pt.y = world_pt.y - cur_state.x.y;
+    shifted_pt.z = world_pt.z - cur_state.z;
     double ct = cos(cur_state.x.theta);
     double st = sin(cur_state.x.theta);
     // Rotate into correct frame
     pcl16::PointXYZ obj_pt;
     obj_pt.x = ct*shifted_pt.x - st*shifted_pt.y;
     obj_pt.y = st*shifted_pt.x + ct*shifted_pt.y;
+    obj_pt.z = shifted_pt.z; // NOTE: Currently assume 2D motion
     return obj_pt;
   }
 
@@ -1738,10 +1781,12 @@ class TabletopPushingPerceptionNode
     double st = sin(cur_state.x.theta);
     rotated_pt.x =  ct*obj_pt.x + st*obj_pt.y;
     rotated_pt.y = -st*obj_pt.x + ct*obj_pt.y;
+    rotated_pt.z = obj_pt.z;  // NOTE: Currently assume 2D motion
     // Shift to world frame
     pcl16::PointXYZ world_pt;
     world_pt.x = rotated_pt.x + cur_state.x.x;
     world_pt.y = rotated_pt.y + cur_state.x.y;
+    world_pt.z = rotated_pt.z + cur_state.z;
     return world_pt;
   }
 
