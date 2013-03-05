@@ -929,7 +929,6 @@ class TabletopPushingPerceptionNode
     n_private_.param("mps_min_angle_thresh", pcl_segmenter_->mps_min_angle_thresh_, 2.0);
     n_private_.param("mps_min_dist_thresh", pcl_segmenter_->mps_min_dist_thresh_, 0.02);
 
-
     std::string default_workspace_frame = "torso_lift_link";
     n_private_.param("workspace_frame", workspace_frame_,
                      default_workspace_frame);
@@ -945,37 +944,27 @@ class TabletopPushingPerceptionNode
     pcl_segmenter_->num_downsamples_ = num_downsamples_;
 
     std::string cam_info_topic_def = "/kinect_head/rgb/camera_info";
-    n_private_.param("cam_info_topic", cam_info_topic_,
-                     cam_info_topic_def);
-    n_private_.param("table_ransac_thresh", pcl_segmenter_->table_ransac_thresh_,
-                     0.01);
-    n_private_.param("table_ransac_angle_thresh",
-                     pcl_segmenter_->table_ransac_angle_thresh_, 30.0);
-    n_private_.param("cylinder_ransac_thresh",
-                     pcl_segmenter_->cylinder_ransac_thresh_, 0.03);
-    n_private_.param("cylinder_ransac_angle_thresh",
-                     pcl_segmenter_->cylinder_ransac_angle_thresh_, 1.5);
-    n_private_.param("optimize_cylinder_coefficients",
-                     pcl_segmenter_->optimize_cylinder_coefficients_,
-                     false);
-    n_private_.param("sphere_ransac_thresh",
-                     pcl_segmenter_->sphere_ransac_thresh_, 0.01);
-    n_private_.param("pcl_cluster_tolerance", pcl_segmenter_->cluster_tolerance_,
-                     0.25);
-    n_private_.param("pcl_difference_thresh", pcl_segmenter_->cloud_diff_thresh_,
-                     0.01);
-    n_private_.param("pcl_min_cluster_size", pcl_segmenter_->min_cluster_size_,
-                     100);
-    n_private_.param("pcl_max_cluster_size", pcl_segmenter_->max_cluster_size_,
-                     2500);
-    n_private_.param("pcl_voxel_downsample_res", pcl_segmenter_->voxel_down_res_,
-                     0.005);
-    n_private_.param("pcl_cloud_intersect_thresh",
-                     pcl_segmenter_->cloud_intersect_thresh_, 0.005);
-    n_private_.param("pcl_concave_hull_alpha", pcl_segmenter_->hull_alpha_,
-                     0.1);
-    n_private_.param("use_pcl_voxel_downsample",
-                     pcl_segmenter_->use_voxel_down_, true);
+    n_private_.param("cam_info_topic", cam_info_topic_, cam_info_topic_def);
+
+    // PCL Segmentation parameters
+    n_private_.param("table_ransac_thresh", pcl_segmenter_->table_ransac_thresh_, 0.01);
+    n_private_.param("table_ransac_angle_thresh", pcl_segmenter_->table_ransac_angle_thresh_, 30.0);
+    n_private_.param("cylinder_ransac_thresh", pcl_segmenter_->cylinder_ransac_thresh_, 0.03);
+    n_private_.param("cylinder_ransac_angle_thresh", pcl_segmenter_->cylinder_ransac_angle_thresh_, 1.5);
+    n_private_.param("optimize_cylinder_coefficients", pcl_segmenter_->optimize_cylinder_coefficients_, false);
+    n_private_.param("sphere_ransac_thresh", pcl_segmenter_->sphere_ransac_thresh_, 0.01);
+    n_private_.param("pcl_cluster_tolerance", pcl_segmenter_->cluster_tolerance_, 0.25);
+    n_private_.param("pcl_difference_thresh", pcl_segmenter_->cloud_diff_thresh_, 0.01);
+    n_private_.param("pcl_min_cluster_size", pcl_segmenter_->min_cluster_size_, 100);
+    n_private_.param("pcl_max_cluster_size", pcl_segmenter_->max_cluster_size_, 2500);
+    n_private_.param("pcl_voxel_downsample_res", pcl_segmenter_->voxel_down_res_, 0.005);
+    n_private_.param("pcl_cloud_intersect_thresh", pcl_segmenter_->cloud_intersect_thresh_, 0.005);
+    n_private_.param("pcl_concave_hull_alpha", pcl_segmenter_->hull_alpha_, 0.1);
+    n_private_.param("use_pcl_voxel_downsample", pcl_segmenter_->use_voxel_down_, true);
+    n_private_.param("icp_max_iters", pcl_segmenter_->icp_max_iters_, 100);
+    n_private_.param("icp_transform_eps", pcl_segmenter_->icp_transform_eps_, 0.0);
+    n_private_.param("icp_max_cor_dist", pcl_segmenter_->icp_max_cor_dist_, 1.0);
+    n_private_.param("icp_ransac_thresh", pcl_segmenter_->icp_ransac_thresh_, 0.015);
 
     n_private_.param("push_tracker_dist_thresh", tracker_dist_thresh_, 0.05);
     n_private_.param("push_tracker_angle_thresh", tracker_angle_thresh_, 0.01);
@@ -998,6 +987,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
+
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
 
     // Initialize classes requiring parameters
@@ -1483,8 +1473,11 @@ class TabletopPushingPerceptionNode
       p.start_point.y = chosen_loc.boundary_loc_.y;
       p.start_point.z = chosen_loc.boundary_loc_.z;
       p.push_angle = new_push_angle;
+      p.push_dist = start_loc_push_dist_;
 
+      // Push for a fixed amount of time
       timing_push_ = true;
+
       // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
       // change features in the future
       std::stringstream cloud_file_name;
@@ -1533,8 +1526,8 @@ class TabletopPushingPerceptionNode
     displayPushVector(cur_color_frame_, start_point, end_point);
     displayPushVector(cur_color_frame_, start_point, end_point, "initial_vector", true);
     learn_callback_count_++;
-    ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
-                    << p.start_point.y << ", " << p.start_point.z << ")");
+    ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", " << p.start_point.y << ", " <<
+                    p.start_point.z << ")");
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
     ROS_INFO_STREAM("Push angle: " << p.push_angle << "\n");
     res.push = p;
@@ -1646,20 +1639,60 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      // TODO: Increment boundary location if necessary
+      // Increment boundary location if necessary
       if (start_loc_push_sample_count_ % num_start_loc_pushes_per_sample == 0)
       {
         start_loc_arc_length_percent_ += 1.0/num_start_loc_sample_locs;
+        ROS_WARN_STREAM("Incrementing arc length percent based on: " << num_start_loc_pushes_per_sample);
       }
-      // TODO: Align object to start_loc_object_
+
+      // Align object to start_loc_object_
       Eigen::Matrix4f t;
       double icp_fitness = pcl_segmenter_->ICPProtoObjects(start_loc_obj_, cur_obj, t);
+      Eigen::Matrix3f rot = t.block<3,3>(0,0);
+      // ROS_INFO_STREAM("ICP fitness: " << icp_fitness << " for object transform " << rot);
+      // cv::Mat start_loc_obj_img = pcl_segmenter_->projectProtoObjectIntoImage(
+      //     start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
+      // cv::imshow("start_loc_obj", start_loc_obj_img*255);
+      // cv::waitKey();
+    }
+    start_loc_push_sample_count_++;
+
+    // Compute cumulative distance around the boundary at each point
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
+
+    // TODO: Permute the boundary so that index 0 is aligned with initial orientation
+
+    std::vector<double> boundary_dists;
+    double boundary_length = 0.0;
+    for (int i = 1; i <= hull_cloud.size(); ++i)
+    {
+      // NOTE: This makes boundary_dists[0] = 0.0, and we have no location at 100% the boundary_length
+      boundary_dists.push_back(boundary_length);
+      double loc_dist = pcl_segmenter_->dist(hull_cloud[i-1], hull_cloud[i % hull_cloud.size()]);
+      boundary_length += loc_dist;
+      // ROS_INFO_STREAM("Pt[" << i % hull_cloud.size() << "] " << loc_dist << " further along total dist " <<
+      //                 boundary_length);
     }
 
-    // TODO: Get location and descriptor and return
+    // Find location at start_loc_arc_length_percent_ around the boundary
+    double desired_boundary_dist = start_loc_arc_length_percent_*boundary_length;
+    ROS_INFO_STREAM("Finding location at dist ~= " << desired_boundary_dist << " of " << boundary_length);
+    int boundary_loc_idx;
+    for (boundary_loc_idx = 0; boundary_loc_idx < hull_cloud.size(); ++boundary_loc_idx)
+    {
+      if (desired_boundary_dist < boundary_dists[boundary_loc_idx])
+      {
+        break;
+      }
+    }
+
+    // Get descriptor and return
+    ShapeLocations locs = tabletop_pushing::extractShapeFeaturesFromSamples(hull_cloud, cur_obj,
+                                                                            use_center_pointing_shape_context_);
 
     // TODO: Project desired outline to show where to place object before pushing?
-    return choosePushStartLoc(cur_obj, cur_state, new_object, num_start_loc_pushes_per_sample);
+    return locs[boundary_loc_idx];
   }
 
   ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)

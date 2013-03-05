@@ -35,6 +35,9 @@ pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj
 
 ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center = true);
 
+ShapeLocations extractShapeFeaturesFromSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl, ProtoObject& cur_obj,
+                                               bool use_center);
+
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 
 double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);

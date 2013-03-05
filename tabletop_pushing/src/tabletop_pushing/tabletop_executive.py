@@ -413,8 +413,8 @@ class TabletopExecutive:
                 done_with_push = True
         return res
 
-    def explore_push_start_locs(self, num_pushes_per_sample, num_sample_locs, behavior_primitive, controller_name, proxy_name,
-                                object_id, which_arm,
+    def explore_push_start_locs(self, num_pushes_per_sample, num_sample_locs, behavior_primitive, controller_name,
+                                proxy_name, object_id, which_arm,
                                 precondition_method=CENTROID_PUSH_PRECONDITION):
         rospy.loginfo('Exploring push start locs for triple: (' + behavior_primitive + ', ' +
                       controller_name + ', ' + proxy_name + ')')
@@ -438,29 +438,27 @@ class TabletopExecutive:
         for i in xrange(num_sample_locs):
             # TODO: update goal location based on sample location
             # TODO: Make this actually do what we want to do in terms of sampling locations & density
-            self.start_loc_goal_y_delta = self.goal_y_base_delta*i
             # Doesn't matter what the goal_pose is, the start pose server picks it for us
             goal_pose = self.generate_random_table_pose()
             for j in xrange(num_pushes_per_sample):
                 # NOTE: Get initial object pose here to make sure goal pose is far enough away
                 init_pose = self.get_feedback_push_initial_obj_pose()
-                if not _OFFLINE:
-                    if self.start_loc_use_fixed_goal:
-                        reset = False
-                        while not reset:
-                            code_in = raw_input('Move object to initial test pose and press <Enter> to continue: ')
-                            if code_in.lower().startswith('q'):
-                                return 'quit'
-                            reset = True
-                            init_pose = self.get_feedback_push_initial_obj_pose()
-                    else:
-                        while self.out_of_workspace(init_pose):
-                            rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
-                                          str(init_pose.y) + ')')
-                            code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
-                            if code_in.lower().startswith('q'):
-                                return 'quit'
-                            init_pose = self.get_feedback_push_initial_obj_pose()
+                if self.start_loc_use_fixed_goal:
+                    reset = False
+                    while not reset:
+                        code_in = raw_input('Move object to initial test pose and press <Enter> to continue: ')
+                        if code_in.lower().startswith('q'):
+                            return 'quit'
+                        reset = True
+                        init_pose = self.get_feedback_push_initial_obj_pose()
+                elif not _OFFLINE:
+                    while self.out_of_workspace(init_pose):
+                        rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
+                                      str(init_pose.y) + ')')
+                        code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
+                        if code_in.lower().startswith('q'):
+                            return 'quit'
+                        init_pose = self.get_feedback_push_initial_obj_pose()
 
                 trial_id = str(object_id) +'_'+ str(self.base_trial_id) + '_' + str(self.push_count)
                 self.push_count += 1
@@ -1178,7 +1176,7 @@ if __name__ == '__main__':
     use_singulation = False
     use_learning = True
     use_guided = True
-    max_pushes = 50
+    max_pushes = 500
     behavior_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
     # tool_proxy_name = EE_TOOL_PROXY
     # tool_proxy_name = HACK_TOOL_PROXY

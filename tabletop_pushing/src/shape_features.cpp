@@ -107,6 +107,11 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
 ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
 {
   XYZPointCloud samples_pcl = getObjectBoundarySamples(cur_obj);
+  return extractShapeFeaturesFromSamples(samples_pcl, cur_obj, use_center);
+}
+
+ShapeLocations extractShapeFeaturesFromSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, bool use_center)
+{
   Samples2f samples;
   for (unsigned int i = 0; i < samples_pcl.size(); ++i)
   {
