@@ -21,8 +21,8 @@ class ShapeLocation
   }
   pcl16::PointXYZ boundary_loc_;
   cpl_visual_features::ShapeDescriptor descriptor_;
- private:
-  ShapeLocation()
+
+  ShapeLocation() : boundary_loc_(0.0,0.0,0.0), descriptor_()
   {
   }
 };

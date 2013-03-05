@@ -469,7 +469,9 @@ class TabletopExecutive:
                                                                  behavior_primitive, learn_start_loc=True,
                                                                  new_object=(not start_loc_trials),
                                                                  num_clusters=self.num_start_loc_clusters,
-                                                                 trial_id=trial_id)
+                                                                 trial_id=trial_id,
+                                                                 num_sample_locs=num_sample_locs,
+                                                                 num_pushes_per_sample=num_pushes_per_sample)
                 goal_pose = push_vec_res.goal_pose
                 shape_descriptor = push_vec_res.shape_descriptor[:]
                 self.push_loc_shape_features.append(shape_descriptor)
@@ -525,7 +527,7 @@ class TabletopExecutive:
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                      behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
                                      learn_start_loc=False, new_object=False, num_clusters=1,
-                                     trial_id=''):
+                                     trial_id='',num_sample_locs=1, num_pushes_per_sample=1):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
@@ -534,7 +536,9 @@ class TabletopExecutive:
                                                                  learn_start_loc=learn_start_loc,
                                                                  new_object=new_object,
                                                                  num_clusters=num_clusters,
-                                                                 trial_id=trial_id)
+                                                                 trial_id=trial_id,
+                                                                 num_sample_locs=num_sample_locs,
+                                                                 num_pushes_per_sample=num_pushes_per_sample)
 
             if push_vec_res is None:
                 return None
@@ -694,7 +698,8 @@ class TabletopExecutive:
     def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                          behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
                                          get_pose_only=False, learn_start_loc=False,
-                                         new_object=False, num_clusters=1, trial_id=''):
+                                         new_object=False, num_clusters=1, trial_id='',
+                                         num_sample_locs=1, num_pushes_per_sample=1):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -708,6 +713,8 @@ class TabletopExecutive:
         push_vector_req.new_object = new_object
         push_vector_req.trial_id = trial_id
         push_vector_req.num_start_loc_clusters = num_clusters
+        push_vector_req.num_start_loc_sample_locs = num_sample_locs
+        push_vector_req.num_start_loc_pushes_per_sample = num_pushes_per_sample
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)

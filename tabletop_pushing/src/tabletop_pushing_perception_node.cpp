@@ -1457,13 +1457,20 @@ class TabletopPushingPerceptionNode
     p.header.frame_id = workspace_frame_;
 
     // Choose a pushing location to test if we are learning good pushing locations
-    if (req.learn_start_loc && !start_loc_use_fixed_goal_)
+    if (req.learn_start_loc)
     {
-      timing_push_ = true;
-
       // Get the pushing location
-      ShapeLocation chosen_loc = choosePushStartLoc(cur_obj, cur_state, req.new_object,
-                                                    req.num_start_loc_clusters);
+      ShapeLocation chosen_loc;
+      if (start_loc_use_fixed_goal_)
+      {
+        chosen_loc = chooseFixedGoalPushStartLoc(cur_obj, cur_state, req.new_object, req.goal_pose,
+                                                 req.num_start_loc_pushes_per_sample,
+                                                 req.num_start_loc_sample_locs);
+      }
+      else
+      {
+        chosen_loc = choosePushStartLoc(cur_obj, cur_state, req.new_object, req.num_start_loc_clusters);
+      }
       ROS_INFO_STREAM("Chosen loc is: (" << chosen_loc.boundary_loc_.x << ", " << chosen_loc.boundary_loc_.y << ")");
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
       // Set goal for pushing and then get start location as usual below
@@ -1476,10 +1483,20 @@ class TabletopPushingPerceptionNode
       p.start_point.y = chosen_loc.boundary_loc_.y;
       p.start_point.z = chosen_loc.boundary_loc_.z;
       p.push_angle = new_push_angle;
+
+      timing_push_ = true;
+      // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
+      // change features in the future
+      std::stringstream cloud_file_name;
+      cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
+      std::stringstream color_file_name;
+      color_file_name << base_output_path_ << req.trial_id << "_color.png";
+      current_file_id_ = req.trial_id;
+      pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
+      cv::imwrite(color_file_name.str(), cur_color_frame_);
     }
     else
     {
-      timing_push_ = false;
       res.goal_pose.x = req.goal_pose.x;
       res.goal_pose.y = req.goal_pose.y;
 
@@ -1502,28 +1519,7 @@ class TabletopPushingPerceptionNode
       p.start_point.z = end_points[0].z;
       // Get push distance
       p.push_dist = hypot(res.centroid.x - res.goal_pose.x, res.centroid.y - res.goal_pose.y);
-      if (start_loc_use_fixed_goal_ && req.learn_start_loc)
-      {
-        timing_push_ = true;
-        // TODO: get feature associated with initial pushing location
-        ROS_INFO_STREAM("Getting start loc descriptor");
-        ShapeLocation loc = getStartLocDescriptor(cur_obj, cur_state, p.start_point);
-        res.shape_descriptor.assign(loc.descriptor_.begin(), loc.descriptor_.end());
-      }
-
-    }
-    tracker_goal_pose_ = res.goal_pose;
-    if (req.learn_start_loc)
-    {
-      // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
-      // change features in the future
-      std::stringstream cloud_file_name;
-      cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
-      std::stringstream color_file_name;
-      color_file_name << base_output_path_ << req.trial_id << "_color.png";
-      current_file_id_ = req.trial_id;
-      pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
-      cv::imwrite(color_file_name.str(), cur_color_frame_);
+      timing_push_ = false;
     }
     // Visualize push vector
     PointStamped start_point;
@@ -1541,8 +1537,8 @@ class TabletopPushingPerceptionNode
                     << p.start_point.y << ", " << p.start_point.z << ")");
     ROS_INFO_STREAM("Push dist: " << p.push_dist);
     ROS_INFO_STREAM("Push angle: " << p.push_angle << "\n");
-    start_centroid_ = cur_obj.centroid;
     res.push = p;
+    tracker_goal_pose_ = res.goal_pose;
     return res;
   }
 
@@ -1556,8 +1552,7 @@ class TabletopPushingPerceptionNode
    *
    * @return The the location and descriptor of the push location
    */
-  ShapeLocation choosePushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state,
-                                   bool new_object, int num_clusters)
+  ShapeLocation choosePushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object, int num_clusters)
   {
     if (new_object)
     {
@@ -1635,6 +1630,36 @@ class TabletopPushingPerceptionNode
                     locs[loc_idx].descriptor_);
     start_loc_history_.push_back(s);
     return locs[loc_idx];
+  }
+
+  ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
+                                            geometry_msgs::Pose2D goal_pose, int num_start_loc_pushes_per_sample,
+                                            int num_start_loc_sample_locs)
+  {
+    if (new_object)
+    {
+      // Set new object model
+      start_loc_obj_ = cur_obj;
+      // Reset boundary traversal data
+      start_loc_arc_length_percent_ = 0.0;
+      start_loc_push_sample_count_ = 0;
+    }
+    else
+    {
+      // TODO: Increment boundary location if necessary
+      if (start_loc_push_sample_count_ % num_start_loc_pushes_per_sample == 0)
+      {
+        start_loc_arc_length_percent_ += 1.0/num_start_loc_sample_locs;
+      }
+      // TODO: Align object to start_loc_object_
+      Eigen::Matrix4f t;
+      double icp_fitness = pcl_segmenter_->ICPProtoObjects(start_loc_obj_, cur_obj, t);
+    }
+
+    // TODO: Get location and descriptor and return
+
+    // TODO: Project desired outline to show where to place object before pushing?
+    return choosePushStartLoc(cur_obj, cur_state, new_object, num_start_loc_pushes_per_sample);
   }
 
   ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)
@@ -2363,7 +2388,6 @@ class TabletopPushingPerceptionNode
   int goal_out_count_;
   int goal_heading_count_;
   int frame_callback_count_;
-  Eigen::Vector4f start_centroid_;
   shared_ptr<ObjectTracker25D> obj_tracker_;
   Pose2D tracker_goal_pose_;
   std::string pushing_arm_;
@@ -2405,6 +2429,9 @@ class TabletopPushingPerceptionNode
   bool use_center_pointing_shape_context_;
   bool start_loc_use_fixed_goal_;
   std::string current_file_id_;
+  ProtoObject start_loc_obj_;
+  double start_loc_arc_length_percent_;
+  int start_loc_push_sample_count_;
 };
 
 int main(int argc, char ** argv)
