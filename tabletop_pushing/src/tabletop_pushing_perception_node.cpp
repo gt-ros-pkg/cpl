@@ -998,6 +998,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
+    n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1451,8 +1452,12 @@ class TabletopPushingPerceptionNode
     res.theta = cur_state.x.theta;
     res.tool_x = cur_state.tool_x;
 
+    // Set basic push information
+    PushVector p;
+    p.header.frame_id = workspace_frame_;
+
     // Choose a pushing location to test if we are learning good pushing locations
-    if (req.learn_start_loc)
+    if (req.learn_start_loc && !start_loc_use_fixed_goal_)
     {
       timing_push_ = true;
 
@@ -1464,9 +1469,52 @@ class TabletopPushingPerceptionNode
       // Set goal for pushing and then get start location as usual below
       float new_push_angle = atan2(res.centroid.y - chosen_loc.boundary_loc_.y,
                                    res.centroid.x - chosen_loc.boundary_loc_.x);
-      req.goal_pose.x = res.centroid.x+cos(new_push_angle)*start_loc_push_dist_;
-      req.goal_pose.y = res.centroid.y+sin(new_push_angle)*start_loc_push_dist_;
+      res.goal_pose.x = res.centroid.x+cos(new_push_angle)*start_loc_push_dist_;
+      res.goal_pose.y = res.centroid.y+sin(new_push_angle)*start_loc_push_dist_;
 
+      p.start_point.x = chosen_loc.boundary_loc_.x;
+      p.start_point.y = chosen_loc.boundary_loc_.y;
+      p.start_point.z = chosen_loc.boundary_loc_.z;
+      p.push_angle = new_push_angle;
+    }
+    else
+    {
+      timing_push_ = false;
+      res.goal_pose.x = req.goal_pose.x;
+      res.goal_pose.y = req.goal_pose.y;
+
+      // Get straight line from current location to goal pose as start
+      if (pull_start)
+      {
+        // NOTE: Want the opposite direction for pulling as pushing
+        p.push_angle = atan2(res.centroid.y - res.goal_pose.y, res.centroid.x - res.goal_pose.x);
+      }
+      else
+      {
+        p.push_angle = atan2(res.goal_pose.y - res.centroid.y, res.goal_pose.x - res.centroid.x);
+      }
+      // Get vector through centroid and determine start point and distance
+      Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
+      std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
+          cur_obj.cloud, push_unit_vec, cur_obj.centroid);
+      p.start_point.x = end_points[0].x;
+      p.start_point.y = end_points[0].y;
+      p.start_point.z = end_points[0].z;
+      // Get push distance
+      p.push_dist = hypot(res.centroid.x - res.goal_pose.x, res.centroid.y - res.goal_pose.y);
+      if (start_loc_use_fixed_goal_ && req.learn_start_loc)
+      {
+        timing_push_ = true;
+        // TODO: get feature associated with initial pushing location
+        ROS_INFO_STREAM("Getting start loc descriptor");
+        ShapeLocation loc = getStartLocDescriptor(cur_obj, cur_state, p.start_point);
+        res.shape_descriptor.assign(loc.descriptor_.begin(), loc.descriptor_.end());
+      }
+
+    }
+    tracker_goal_pose_ = res.goal_pose;
+    if (req.learn_start_loc)
+    {
       // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
       // change features in the future
       std::stringstream cloud_file_name;
@@ -1477,54 +1525,17 @@ class TabletopPushingPerceptionNode
       pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
       cv::imwrite(color_file_name.str(), cur_color_frame_);
     }
-    else
-    {
-      timing_push_ = false;
-    }
-    res.goal_pose.x = req.goal_pose.x;
-    res.goal_pose.y = req.goal_pose.y;
-    tracker_goal_pose_ = req.goal_pose;
-
-    // Set basic push information
-    PushVector p;
-    p.header.frame_id = workspace_frame_;
-    // Get straight line from current location to goal pose as start
-    if (pull_start)
-    {
-      // NOTE: Want the opposite direction for pulling as pushing
-      p.push_angle = atan2(res.centroid.y - req.goal_pose.y, res.centroid.x - req.goal_pose.x);
-    }
-    else
-    {
-      p.push_angle = atan2(req.goal_pose.y - res.centroid.y, req.goal_pose.x - res.centroid.x);
-    }
-    // Get vector through centroid and determine start point and distance
-    Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
-    std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
-        cur_obj.cloud, push_unit_vec, cur_obj.centroid);
-    p.start_point.x = end_points[0].x;
-    p.start_point.y = end_points[0].y;
-    p.start_point.z = end_points[0].z;
-
-    // Get push distance
-    p.push_dist = hypot(res.centroid.x - req.goal_pose.x, res.centroid.y - req.goal_pose.y);
-
     // Visualize push vector
     PointStamped start_point;
     start_point.header.frame_id = workspace_frame_;
     start_point.point = p.start_point;
     PointStamped end_point;
     end_point.header.frame_id = workspace_frame_;
-    end_point.point.x = req.goal_pose.x;
-    end_point.point.y = req.goal_pose.y;
+    end_point.point.x = res.goal_pose.x;
+    end_point.point.y = res.goal_pose.y;
     end_point.point.z = start_point.point.z;
     displayPushVector(cur_color_frame_, start_point, end_point);
     displayPushVector(cur_color_frame_, start_point, end_point, "initial_vector", true);
-
-    // PointStamped centroid;
-    // centroid.header.frame_id = cur_obj.cloud.header.frame_id;
-    // centroid.point = res.centroid;
-    // displayGoalHeading(cur_color_frame_, centroid, cur_state.x.theta, tracker_goal_pose_.theta);
     learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", "
                     << p.start_point.y << ", " << p.start_point.z << ")");
@@ -1623,6 +1634,26 @@ class TabletopPushingPerceptionNode
     ShapeLocation s(worldPointInObjectFrame(locs[loc_idx].boundary_loc_, cur_state),
                     locs[loc_idx].descriptor_);
     start_loc_history_.push_back(s);
+    return locs[loc_idx];
+  }
+
+  ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)
+  {
+    // Get shape features and associated locations
+    ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj, use_center_pointing_shape_context_);
+    // Find location closest to the chosen start point
+    float min_dist = FLT_MAX;
+    unsigned int loc_idx = locs.size();
+    for (unsigned int i = 0; i < locs.size(); ++i)
+    {
+      float loc_dist = pcl_segmenter_->dist(locs[i].boundary_loc_, start_pt);
+      if (loc_dist < min_dist)
+      {
+        min_dist = loc_dist;
+        loc_idx = i;
+      }
+    }
+    ROS_WARN_STREAM("Chose loc " << locs[loc_idx].boundary_loc_ << " with distance " << min_dist << "m");
     return locs[loc_idx];
   }
 
@@ -2372,6 +2403,7 @@ class TabletopPushingPerceptionNode
   double push_start_time_;
   bool timing_push_;
   bool use_center_pointing_shape_context_;
+  bool start_loc_use_fixed_goal_;
   std::string current_file_id_;
 };
 

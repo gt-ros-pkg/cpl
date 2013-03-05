@@ -191,6 +191,11 @@ class PointCloudSegmentation
     return std::sqrt(dx*dx+dy*dy+dz*dz);
   }
 
+  static inline double dist(geometry_msgs::Point b, pcl16::PointXYZ a)
+  {
+    return dist(a,b);
+  }
+
   static inline double dist(pcl16::PointXYZ a, geometry_msgs::Point b)
   {
     const double dx = a.x-b.x;

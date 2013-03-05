@@ -1,18 +1,19 @@
 <launch>
+  <param name="start_loc_use_fixed_goal" value="true" type="bool"/>
   <node name="push_learning_perception" pkg="tabletop_pushing" type="tabletop_pushing_perception_node" respawn="false" output="screen">
     <remap from="color_image_topic" to="/kinect_head/rgb/image_rect_color"/>
     <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
     <remap from="mask_image_topic" to="/kinect_head/rgb/image_rect_color/self_mask"/>
     <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>
 
-    <param name="start_loc_push_time_limit" value="4.0" type="double"/>
+    <param name="start_loc_push_time_limit" value="6.0" type="double"/>
     <param name="start_loc_push_dist" value="0.30" type="double"/>
     <param name="use_center_pointing_shape_context" value="true" type="bool"/>
     <param name="use_displays" value="true" type="bool"/>
     <param name="display_wait_ms" value="3" type="int"/>
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
     <param name="write_to_disk" value="false" type="bool"/>
-    <param name="write_input_to_disk" value="true" type="bool"/>
+    <param name="write_input_to_disk" value="false" type="bool"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
     <param name="camera_frame" value="head_mount_kinect_rgb_optical_frame" type="string"/>

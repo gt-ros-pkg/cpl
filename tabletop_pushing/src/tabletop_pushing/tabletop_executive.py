@@ -95,6 +95,9 @@ class TabletopExecutive:
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
         self.min_workspace_y = -self.max_workspace_y
 
+        self.goal_y_base_delta = 0.01
+        self.num_start_loc_clusters = 5
+        self.start_loc_use_fixed_goal = rospy.get_param('start_loc_use_fixed_goal', False)
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.learn_file_base = rospy.get_param('push_learn_file_base_path', '/u/thermans/data/new/aff_learn_out_')
 
@@ -303,13 +306,13 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_start_loc_learning(self, object_id, num_pushes):
+    def run_start_loc_learning(self, object_id, num_pushes_per_sample, num_sample_locs):
         self.push_loc_shape_features = []
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
-                        res = self.explore_push_start_locs(num_pushes, behavior_primitive,
+                        res = self.explore_push_start_locs(num_pushes_per_sample, num_sample_locs, behavior_primitive,
                                                            controller, proxy, object_id, arm)
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
@@ -410,7 +413,7 @@ class TabletopExecutive:
                 done_with_push = True
         return res
 
-    def explore_push_start_locs(self, num_pushes, behavior_primitive, controller_name, proxy_name,
+    def explore_push_start_locs(self, num_pushes_per_sample, num_sample_locs, behavior_primitive, controller_name, proxy_name,
                                 object_id, which_arm,
                                 precondition_method=CENTROID_PUSH_PRECONDITION):
         rospy.loginfo('Exploring push start locs for triple: (' + behavior_primitive + ', ' +
@@ -431,56 +434,69 @@ class TabletopExecutive:
 
 
         start_loc_trials = 0
-        # Doesn't matter what the goal_pose is, the start pose server picks it for us
-        goal_pose = Pose2D()
-        for i in xrange(num_pushes):
-            # NOTE: Get initial object pose here to make sure goal pose is far enough away
-            init_pose = self.get_feedback_push_initial_obj_pose()
-            while not _OFFLINE and self.out_of_workspace(init_pose):
-                rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
-                              str(init_pose.y) + ')')
-                code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
-                if code_in.lower().startswith('q'):
-                    return 'quit'
+        self.start_loc_goal_y_delta = 0
+        for i in xrange(num_sample_locs):
+            # TODO: update goal location based on sample location
+            # TODO: Make this actually do what we want to do in terms of sampling locations & density
+            self.start_loc_goal_y_delta = self.goal_y_base_delta*i
+            # Doesn't matter what the goal_pose is, the start pose server picks it for us
+            goal_pose = self.generate_random_table_pose()
+            for j in xrange(num_pushes_per_sample):
+                # NOTE: Get initial object pose here to make sure goal pose is far enough away
                 init_pose = self.get_feedback_push_initial_obj_pose()
+                if not _OFFLINE:
+                    if self.start_loc_use_fixed_goal:
+                        reset = False
+                        while not reset:
+                            code_in = raw_input('Move object to initial test pose and press <Enter> to continue: ')
+                            if code_in.lower().startswith('q'):
+                                return 'quit'
+                            reset = True
+                            init_pose = self.get_feedback_push_initial_obj_pose()
+                    else:
+                        while self.out_of_workspace(init_pose):
+                            rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
+                                          str(init_pose.y) + ')')
+                            code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
+                            if code_in.lower().startswith('q'):
+                                return 'quit'
+                            init_pose = self.get_feedback_push_initial_obj_pose()
 
-            trial_id = str(object_id) +'_'+ str(self.base_trial_id) + '_' + str(self.push_count)
-            self.push_count += 1
-            start_time = time.time()
-            push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
-                                                             proxy_name, behavior_primitive,
-                                                             learn_start_loc=True,
-                                                             new_object=(not start_loc_trials),
-                                                             num_clusters=num_pushes,
-                                                             trial_id=trial_id)
-            goal_pose = push_vec_res.goal_pose
-            shape_descriptor = push_vec_res.shape_descriptor[:]
-            self.push_loc_shape_features.append(shape_descriptor)
-            if push_vec_res is None:
-                return None
-            elif push_vec_res == 'quit':
-                return push_vec_res
+                trial_id = str(object_id) +'_'+ str(self.base_trial_id) + '_' + str(self.push_count)
+                self.push_count += 1
+                start_time = time.time()
+                push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name, proxy_name,
+                                                                 behavior_primitive, learn_start_loc=True,
+                                                                 new_object=(not start_loc_trials),
+                                                                 num_clusters=self.num_start_loc_clusters,
+                                                                 trial_id=trial_id)
+                goal_pose = push_vec_res.goal_pose
+                shape_descriptor = push_vec_res.shape_descriptor[:]
+                self.push_loc_shape_features.append(shape_descriptor)
+                if push_vec_res is None:
+                    return None
+                elif push_vec_res == 'quit':
+                    return push_vec_res
 
-            if _USE_LEARN_IO:
-                self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
-                                                  goal_pose, behavior_primitive, controller_name,
-                                                  proxy_name, which_arm, trial_id,
-                                                  precondition_method, shape_descriptor)
+                if _USE_LEARN_IO:
+                    self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
+                                                      goal_pose, behavior_primitive, controller_name,
+                                                      proxy_name, which_arm, trial_id,
+                                                      precondition_method, shape_descriptor)
 
-            res, push_res = self.perform_push(which_arm, behavior_primitive,
-                                              push_vec_res, goal_pose,
-                                              controller_name, proxy_name)
-            push_time = time.time() - start_time
+                res, push_res = self.perform_push(which_arm, behavior_primitive, push_vec_res, goal_pose,
+                                                  controller_name, proxy_name)
+                push_time = time.time() - start_time
 
-            self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                              push_vec_res, goal_pose, trial_id, precondition_method)
+                self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                                  push_vec_res, goal_pose, trial_id, precondition_method)
 
-            if res == 'quit':
-                return res
-            elif res == 'aborted' or res == 'done':
-                if self.servo_head_during_pushing:
-                    self.raise_and_look(point_head_only=True)
-                start_loc_trials += 1
+                if res == 'quit':
+                    return res
+                elif res == 'aborted' or res == 'done':
+                    if self.servo_head_during_pushing:
+                        self.raise_and_look(point_head_only=True)
+                    start_loc_trials += 1
         return res
 
     def get_feedback_push_initial_obj_pose(self):
@@ -1107,11 +1123,13 @@ class TabletopExecutive:
                 init_pose.y < self.min_workspace_y or init_pose.y > self.max_workspace_y)
 
     def generate_random_table_pose(self, init_pose=None):
-        if _USE_FIXED_GOAL:
+        if _USE_FIXED_GOAL or self.start_loc_use_fixed_goal:
             goal_pose = Pose2D()
-            goal_pose.x = 0.5
-            goal_pose.y = 0.2
-            goal_pose.theta = 3.01697971833
+            goal_pose.x = 0.65
+            goal_pose.y = -0.3
+            goal_pose.theta = 0
+            if self.start_loc_use_fixed_goal:
+                goal_pose.y += self.start_loc_goal_y_delta
             return goal_pose
         min_x = self.min_workspace_x
         max_x = self.max_workspace_x
@@ -1148,7 +1166,8 @@ class TabletopExecutive:
 if __name__ == '__main__':
     random.seed()
     learn_start_loc = True
-    num_start_loc_pushes = 5
+    num_start_loc_pushes_per_sample = 3
+    num_start_loc_sample_locs = 20 # Per side?
     use_singulation = False
     use_learning = True
     use_guided = True
@@ -1172,7 +1191,8 @@ if __name__ == '__main__':
             if code_in.lower().startswith('q'):
                 break
             if learn_start_loc:
-                clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes)
+                clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
+                                                                num_start_loc_sample_locs)
             else:
                 clean_exploration = node.run_push_exploration(object_id=code_in)
             if not clean_exploration:
