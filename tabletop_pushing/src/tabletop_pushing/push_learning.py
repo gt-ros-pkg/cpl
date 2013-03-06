@@ -417,7 +417,35 @@ class StartLocPerformanceAnalysis:
     def plot_svm_results(self, pred_file):
         self.Y_hat = self.plio.read_regression_prediction_file(pred_file)
 
-        Ys_ordered = zip(self.Y_test[:],self.Y_hat[:])
+        max_score = 0.0
+        Y_test_norm = self.Y_test[:]
+        Y_hat_norm = self.Y_hat[:]
+        Y_diffs = []
+        for i in xrange(len(Y_test_norm)):
+            # TODO: Get max and normalize
+            if self.Y_test[i] > max_score:
+                max_score = self.Y_test[i]
+            if self.Y_hat[i] > max_score:
+                max_score = self.Y_hat[i]
+            Y_diffs.append(fabs(self.Y_hat[i]-self.Y_test[i]))
+        for i in xrange(len(Y_test_norm)):
+            Y_test_norm[i] = self.Y_test[i]/max_score
+            Y_hat_norm[i] = self.Y_hat[i]/max_score
+        print 'Average error is', sum(Y_diffs)/len(Y_diffs)
+        print 'Max error is', max(Y_diffs)
+        print 'Min error is', min(Y_diffs)
+        p1, = plotter.plot(Y_test_norm, Y_hat_norm,'bx')
+        plotter.xlabel('True Score')
+        plotter.ylabel('Predicted score')
+        plotter.title('Push Scoring Evaluation')
+        plotter.xlim((0.0,1.0))
+        plotter.ylim((0.0,1.0))
+        plotter.show()
+
+    def plot_svm_results_old(self, pred_file):
+        self.Y_hat = self.plio.read_regression_prediction_file(pred_file)
+
+        Ys_ordered = zip(self.Y_test[:], self.Y_hat[:])
         Ys_ordered.sort(key=lambda test_value: test_value[0])
         Y_test_ordered = []
         Y_hat_ordered = []
@@ -480,6 +508,26 @@ class StartLocPerformanceAnalysis:
             # print 'Bad angle, returning max value'
             return pi
         return acos(a_dot_b/(norm_a*norm_b))
+
+    def show_data_affinity(self):
+        X = self.X_train[:]
+        X.extend(self.X_test[:])
+        Y = self.Y_train[:]
+        Y.extend(self.Y_test[:])
+        X_aff = np.zeros((len(X),len(X)))
+        Y_aff = np.zeros((len(Y),len(Y)))
+        for r in xrange(len(X)):
+            for c in range(r, len(X)):
+                X_aff[r,c] = sum(np.fabs(np.asarray(X[r]) - np.asarray(X[c])))
+                Y_aff[r,c] = fabs(Y[r] - Y[c])
+                print '(',r,',',c,'): ', X_aff[r,c], '\t', Y_aff[r,c]
+        plotter.imshow(X_aff, plotter.cm.gray,interpolation='nearest')
+        plotter.title('Xaff')
+        plotter.figure()
+        plotter.imshow(Y_aff, plotter.cm.gray, interpolation='nearest')
+        plotter.title('Yaff')
+        plotter.show()
+        return X_aff,Y_aff
 
 class BruteForceKNN:
     def __init__(self, data):
