@@ -487,9 +487,14 @@ class TabletopExecutive:
                 res, push_res = self.perform_push(which_arm, behavior_primitive, push_vec_res, goal_pose,
                                                   controller_name, proxy_name)
                 push_time = time.time() - start_time
-
-                self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                                  push_vec_res, goal_pose, trial_id, precondition_method)
+                # NOTE: Don't save unless s is pressed
+                # TODO: Will deal with no trials on reading in?
+                code_in = raw_input('Press [s] then <Enter> to save trial: ')
+                if code_in.lower().startswith('s'):
+                    self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                                      push_vec_res, goal_pose, trial_id, precondition_method)
+                else:
+                    self.learn_io.write_bad_trial_line()
 
                 if res == 'quit':
                     return res

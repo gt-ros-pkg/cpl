@@ -1666,10 +1666,10 @@ class TabletopPushingPerceptionNode
       Eigen::Matrix4f t;
       double icp_fitness = pcl_segmenter_->ICPProtoObjects(start_loc_obj_, cur_obj, t);
       Eigen::Matrix3f rot = t.block<3,3>(0,0);
-      // ROS_INFO_STREAM("ICP fitness: " << icp_fitness << " for object transform " << rot);
-      // cv::Mat start_loc_obj_img = pcl_segmenter_->projectProtoObjectIntoImage(
-      //     start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
-      // cv::imshow("start_loc_obj", start_loc_obj_img*255);
+      ROS_INFO_STREAM("ICP fitness: " << icp_fitness << " for object transform " << rot);
+      cv::Mat start_loc_obj_img = pcl_segmenter_->projectProtoObjectIntoImage(
+          start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
+      cv::imshow("start_loc_obj", start_loc_obj_img*255);
       // cv::waitKey();
 
       // Get initial object boundary location in the current world frame
