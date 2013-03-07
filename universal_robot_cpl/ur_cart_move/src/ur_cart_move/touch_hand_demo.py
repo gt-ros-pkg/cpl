@@ -93,6 +93,7 @@ def main():
             print x_cur
             #q_goal = kin.inverse(x_goal, q_cur,
             #                     q_min=q_cur-q_lwr_delta, q_max=q_cur+q_upr_delta)
+            arm.unlock_security_stop()
             q_goal = kin.inverse_rand_search(x_goal, q_cur, 
                                              pos_tol=0.02, 
                                              rot_tol=np.array([10,10,10])*np.pi/180.0,
@@ -102,8 +103,8 @@ def main():
                 print x_goal
                 print q_goal - q_cur
                 q_goal[5] = q_cur[5]
-                arm_behav.move_to_q(q_goal, velocity=0.05)
-                rospy.sleep(2.)
+                arm_behav.move_to_q(q_goal, velocity=0.05*4)
+                rospy.sleep(0.1)
             else:
                 pass
                 #print 'No solution'
