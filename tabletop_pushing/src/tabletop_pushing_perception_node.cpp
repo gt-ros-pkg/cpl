@@ -688,6 +688,16 @@ class ObjectTracker25D
     return paused_;
   }
 
+  bool getSwapState() const
+  {
+    return swap_orientation_;
+  }
+
+  void toggleSwap()
+  {
+    swap_orientation_ = !swap_orientation_;
+  }
+
  protected:
   //
   // I/O Functions
@@ -1415,6 +1425,10 @@ class TabletopPushingPerceptionNode
     }
     else
     {
+      if (req.learn_start_loc && obj_tracker_->getSwapState())
+      {
+        obj_tracker_->toggleSwap();
+      }
       cur_state = startTracking();
     }
     bool pull_start = (req.behavior_primitive == "gripper_pull");
