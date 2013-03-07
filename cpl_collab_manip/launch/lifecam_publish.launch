@@ -1,0 +1,28 @@
+<launch>
+    <arg name="name" default="lifecam1" />
+    <arg name="dev_ind" default="0" />
+    <node pkg="usb_cam" name="$(arg name)_publish" type="usb_cam_node" >
+        <param name="video_device" value="/dev/video$(arg dev_ind)" />
+        <param name="image_width" value="1280" />
+        <param name="image_height" value="720" />
+        <param name="camera_frame_id" value="$(arg name)_optical_frame" />
+        <param name="pixel_format" value="mjpeg" />
+        <!--<param name="pixel_format" value="yuyv" />-->
+        <param name="io_method" value="mmap" />
+        <remap from="/$(arg name)_publish/image_raw" to="/$(arg name)/image" />
+        <rosparam>
+            K: [1149.920960, 0.000000, 651.394890, 0.000000, 1149.884892, 358.428146, 0.000000, 0.000000, 1.000000]
+            D: [0.117122, -0.360291, 0.001274, -0.000320, 0.000000]
+            R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+            P: [1151.052734, 0.000000, 651.312921, 0.000000, 0.000000, 1159.340332, 358.469883, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000]
+        </rosparam>
+    </node>
+    <node pkg="tf" type="static_transform_publisher" name="$(arg name)_tf_calibration"
+               args="-1.012390 -0.629678 1.928165 -0.684517 0.721842 0.043636 0.092064 /base_link /$(arg name)_optical_frame 10" />
+    <!--
+    <node pkg="image_transport" name="$(arg name)_republish" type="republish" args="raw" >
+        <remap from="in" to="/$(arg name)/image_raw" />
+        <remap from="out" to="/$(arg name)/image" />
+    </node>
+    -->
+</launch>

@@ -1,0 +1,7 @@
+sudo uvcdynctrl -d video0 --set="Focus, Auto" 0
+sudo uvcdynctrl -d video0 --set="Focus (absolute)" 0
+                                                Can be 0-40
+sudo uvcdynctrl -d video0 -c
+
+Calibrate intrinsics:
+rosrun camera_calibration cameracalibrator.py -s 8x6 -q 0.0505 image:=/lifecam1/image camera:=/lifecam1 --no-service-check
