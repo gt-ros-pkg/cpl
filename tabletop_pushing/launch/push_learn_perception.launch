@@ -14,6 +14,10 @@
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
     <param name="write_to_disk" value="true" type="bool"/>
     <param name="write_input_to_disk" value="false" type="bool"/>
+    <param name="icp_max_iters" value="1000" type="int" />
+    <param name="icp_transform_eps" value="0.001" type="double"/>
+    <param name="icp_max_cor_dist" value="1.0" type="double"/>
+    <param name="icp_ransac_thresh" value="0.015" type="double"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
     <param name="camera_frame" value="head_mount_kinect_rgb_optical_frame" type="string"/>

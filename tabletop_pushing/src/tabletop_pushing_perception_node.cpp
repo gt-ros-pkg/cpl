@@ -1480,13 +1480,16 @@ class TabletopPushingPerceptionNode
 
       // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
       // change features in the future
-      std::stringstream cloud_file_name;
-      cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
-      std::stringstream color_file_name;
-      color_file_name << base_output_path_ << req.trial_id << "_color.png";
-      current_file_id_ = req.trial_id;
-      pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
-      cv::imwrite(color_file_name.str(), cur_color_frame_);
+      if (write_to_disk_)
+      {
+        std::stringstream cloud_file_name;
+        cloud_file_name << base_output_path_ << req.trial_id << "_obj_cloud.pcd";
+        std::stringstream color_file_name;
+        color_file_name << base_output_path_ << req.trial_id << "_color.png";
+        current_file_id_ = req.trial_id;
+        pcl16::io::savePCDFile(cloud_file_name.str(), cur_obj.cloud);
+        cv::imwrite(color_file_name.str(), cur_color_frame_);
+      }
     }
     else
     {
@@ -1641,11 +1644,12 @@ class TabletopPushingPerceptionNode
       start_loc_history_.clear();
 
       // NOTE: Initial start location is the dominant orientation
+      ROS_INFO_STREAM("Current state theta is: " << cur_state.x.theta);
       double min_angle_dist = FLT_MAX;
       for (int i = 0; i < hull_cloud.size(); ++i)
       {
         double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).y - cur_state.x.x);
-        double angle_dist_i = subPIAngle(theta_i - cur_state.x.theta);
+        double angle_dist_i = subPIAngle(theta_i - cur_state.x.theta)+M_PI;
         if (angle_dist_i < min_angle_dist)
         {
           min_angle_dist = angle_dist_i;
@@ -1663,31 +1667,53 @@ class TabletopPushingPerceptionNode
       }
 
       // Align object to start_loc_object_
-      Eigen::Matrix4f t;
-      double icp_fitness = pcl_segmenter_->ICPProtoObjects(start_loc_obj_, cur_obj, t);
-      Eigen::Matrix3f rot = t.block<3,3>(0,0);
-      ROS_INFO_STREAM("ICP fitness: " << icp_fitness << " for object transform " << rot);
-      cv::Mat start_loc_obj_img = pcl_segmenter_->projectProtoObjectIntoImage(
-          start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
-      cv::imshow("start_loc_obj", start_loc_obj_img*255);
-      // cv::waitKey();
+      // Eigen::Matrix4f t;
+      // double icp_fitness = pcl_segmenter_->ICPProtoObjects(start_loc_obj_, cur_obj, t);
+      // Eigen::Matrix3f rot = t.block<3,3>(0,0);
+      // ROS_INFO_STREAM("ICP fitness: " << icp_fitness << " for object transform " << rot);
+      // ROS_WARN_STREAM("Current state theta is: " << cur_state.x.theta);
+      // cv::Mat start_loc_obj_img = pcl_segmenter_->projectProtoObjectIntoImage(
+      //     start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
+      // cv::imshow("start_loc_obj", start_loc_obj_img*255);
+      // // cv::waitKey();
 
-      // Get initial object boundary location in the current world frame
-      Eigen::Vector3f init_loc_vec_obj(start_loc_history_[0].boundary_loc_.x,
-                                       start_loc_history_[0].boundary_loc_.y,
-                                       start_loc_history_[0].boundary_loc_.z);
-      Eigen::Vector3f init_loc_vec_world = rot.transpose()*init_loc_vec_obj;
+      // // Get initial object boundary location in the current world frame
+      // Eigen::Vector3f init_loc_vec_obj(start_loc_history_[0].boundary_loc_.x,
+      //                                  start_loc_history_[0].boundary_loc_.y,
+      //                                  start_loc_history_[0].boundary_loc_.z);
+      // Eigen::Vector3f init_loc_vec_world = rot*init_loc_vec_obj+Eigen::Vector3f(cur_state.x.x,
+      //                                                                           cur_state.x.y,
+      //                                                                           cur_state.z);
+      // Eigen::Vector3f init_loc_vec_world_t = rot.transpose()*init_loc_vec_obj+Eigen::Vector3f(cur_state.x.x,
+      //                                                                                       cur_state.x.y,
+      //                                                                                       cur_state.z);
+      // ROS_WARN_STREAM("init_obj_point: " << start_loc_history_[0].boundary_loc_);
+      // ROS_WARN_STREAM("init_loc_vec_world: " << init_loc_vec_world);
+      // ROS_WARN_STREAM("init_loc_vec_world_t: " << init_loc_vec_world_t);
+
+      pcl16::PointXYZ init_loc_point = objectPointInWorldFrame(start_loc_history_[0].boundary_loc_, cur_state);
+      ROS_INFO_STREAM("init_loc_point: " << init_loc_point);
       // Find index of closest point on current boundary to the initial pushing location
       double min_dist = FLT_MAX;
       for (int i = 0; i < hull_cloud.size(); ++i)
       {
-        double dist_i = pcl_segmenter_->sqrDist(init_loc_vec_world, hull_cloud.at(i));
+        double dist_i = pcl_segmenter_->sqrDist(init_loc_point, hull_cloud.at(i));
         if (dist_i < min_dist)
         {
           min_dist = dist_i;
           rot_idx = i;
         }
       }
+    }
+    // Test hull_cloud orientation, reverse iteration if it is negative
+    double pt0_theta = atan2(hull_cloud[rot_idx].y - cur_state.x.y, hull_cloud[rot_idx].x - cur_state.x.x);
+    int pt1_idx = (rot_idx+1) % hull_cloud.size();
+    double pt1_theta = atan2(hull_cloud[pt1_idx].y - cur_state.x.y, hull_cloud[pt1_idx].x - cur_state.x.x);
+    bool reverse_data = false;
+    if (subPIAngle(pt1_theta - pt0_theta) < 0)
+    {
+      reverse_data = true;
+      ROS_INFO_STREAM("Reversing data for boundaries");
     }
 
     // Compute cumulative distance around the boundary at each point
@@ -1696,14 +1722,17 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("rot_idx is " << rot_idx);
     for (int i = 1; i <= hull_cloud.size(); ++i)
     {
-      int idx0 = (rot_idx+i-1)%hull_cloud.size();
-      int idx1 = (rot_idx+i)%hull_cloud.size();
+      int idx0 = (rot_idx+i-1) % hull_cloud.size();
+      int idx1 = (rot_idx+i) % hull_cloud.size();
+      if (reverse_data)
+      {
+        idx0 = (hull_cloud.size()+rot_idx-i+1) % hull_cloud.size();
+        idx1 = (hull_cloud.size()+rot_idx-i) % hull_cloud.size();
+      }
       // NOTE: This makes boundary_dists[rot_idx] = 0.0, and we have no location at 100% the boundary_length
       boundary_dists[idx0] = boundary_length;
       double loc_dist = pcl_segmenter_->dist(hull_cloud[idx0], hull_cloud[idx1]);
       boundary_length += loc_dist;
-      // ROS_INFO_STREAM("Pt[" << idx1 << "] " << loc_dist << " further along total dist " <<
-      //                 boundary_length);
     }
 
     // Find location at start_loc_arc_length_percent_ around the boundary
@@ -1722,7 +1751,6 @@ class TabletopPushingPerceptionNode
       }
     }
     ROS_INFO_STREAM("Chose location at idx: " << boundary_loc_idx << " with diff " << min_boundary_dist_diff);
-
     // Get descriptor at the chosen location
     ShapeLocations locs = tabletop_pushing::extractShapeFeaturesFromSamples(hull_cloud, cur_obj,
                                                                             use_center_pointing_shape_context_);
