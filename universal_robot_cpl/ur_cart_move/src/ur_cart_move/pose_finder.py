@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import numpy as np
+
 import roslib
 roslib.load_manifest('rospy')
 roslib.load_manifest('interactive_markers')
@@ -19,25 +21,33 @@ from ur_cart_move.ur_cart_move import load_ur_robot
 
 rospy.init_node('pose_finder')
 arm, kin, arm_behav = load_ur_robot()
+test_prefix = rospy.get_param("~test_prefix", "")
+arm_test, kin_test, arm_behav_test = load_ur_robot(topic_prefix=test_prefix)
 
 def proc_fb(fb):
     pose = PoseConv.to_homo_mat(fb.pose)
     sol = kin.inverse(pose, arm.get_q())
     if sol is not None:
-        print 80*'-'
-        print pose
-        print sol
+        if True:
+            print 80*'-'
+            print pose
+            print sol
+        if False:
+            print np.linalg.cond(kin.jacobian(sol))
+        arm_test.cmd_pos_vel_acc(sol, [0.]*6, [0.]*6)
 
 def menu_press(fb):
     pose = PoseConv.to_homo_mat(fb.pose)
     sol = kin.inverse(pose, arm.get_q())
+    arm.unlock_security_stop()
     arm_behav.move_to_q(sol)
 
 
 def main():
     imkr_srv = InteractiveMarkerServer('pose_finder')
     pose_imkr = InteractiveMarker()
-    pose_imkr.header.frame_id = '/base_link'
+    tf_prefix = rospy.get_param("~tf_prefix", "")
+    pose_imkr.header.frame_id = tf_prefix + '/base_link'
     pose_imkr.name = 'pose_finder'
     pose_imkr.scale = 0.2
     mkr = Marker()
