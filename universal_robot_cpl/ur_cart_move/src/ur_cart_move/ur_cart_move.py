@@ -11,6 +11,8 @@ roslib.load_manifest("ur_cart_move")
 
 import rospy
 import roslaunch.substitution_args
+from sensor_msgs.msg import JointState
+
 from hrl_geom.pose_converter import PoseConv
 from hrl_geom.transformations import rotation_from_matrix as mat_to_ang_axis_point
 from hrl_geom.transformations import rotation_matrix as ang_axis_point_to_mat
@@ -28,10 +30,12 @@ class RAVEKinematics(object):
     #                         self.robot,iktype=IkParameterization.Type.Translation3D)
         self.ikmodel6d = databases.inversekinematics.InverseKinematicsModel(
                              self.robot,iktype=IkParameterization.Type.Transform6D)
-        self.options = (IkFilterOptions.IgnoreSelfCollisions |
-                        IkFilterOptions.IgnoreCustomFilters |
-                        IkFilterOptions.IgnoreEndEffectorCollisions |
-                        IkFilterOptions.IgnoreJointLimits)
+        if True:
+            self.ik_options = (IkFilterOptions.IgnoreCustomFilters |
+                               IkFilterOptions.IgnoreJointLimits)
+        else:
+            self.ik_options = IkFilterOptions.CheckEnvCollisions
+
         if load_ik:
             self.load_ik_model()
 
@@ -54,9 +58,11 @@ class RAVEKinematics(object):
         return np.mat(self.manip.GetEndEffectorTransform())
 
     def inverse(self, x, q_guess=None, restarts=3, 
-                q_min=6*[-999.0], q_max=6*[999.0], options=None):
+                q_min=6*[-999.0], q_max=6*[999.0], weights=6*[1.], options=None):
         if options is None:
-            options = self.options
+            ik_options = self.ik_options
+        else:
+            ik_options = options
         if q_guess is None:
             q_guess = np.zeros(6)
         q_wrapped, q_resid = self.wrap_angles(q_guess)
@@ -70,25 +76,36 @@ class RAVEKinematics(object):
                     # just keep trying random joint configs after initial guess
                     self.robot.SetDOFValues(2*(np.random.rand(6)-0.5)*(2*np.pi))
                 #ikparam = IkParameterization(x.A, self.ikmodel6d)
-                sols = self.manip.FindIKSolutions(x.A, options)
+                sols = self.manip.FindIKSolutions(x.A, ik_options)
                 valid_sols = []
                 for sol in sols:
-                    if np.all(sol + q_resid >= q_min) and np.all(sol + q_resid <= q_max):
-                        valid_sols.append(sol)
+                    test_sol = np.ones(6)*9999.
+                    for i in range(6):
+                        for add_ang in [-2.*np.pi, 0, 2.*np.pi]:
+                            test_ang = sol[i] + add_ang
+                            if (test_ang >= q_min[i] and test_ang <= q_max[i] and
+                                abs(test_ang) < 2.*np.pi and 
+                                abs(test_ang - q_guess[i]) < abs(test_sol[i] - q_guess[i])):
+                                test_sol[i] = test_ang
+                    if np.all(test_sol != 9999.):
+                        valid_sols.append(test_sol)
                 if len(valid_sols) > 0:
                     break
             if len(valid_sols) == 0:
                 return None
-            best_sols = np.argsort(np.sum((valid_sols - np.array(q_wrapped))**2,1))
-            for sol_ind in best_sols:
-                ret_sol = valid_sols[sol_ind] + q_resid
-                if np.all(np.fabs(ret_sol) < 2.0*np.pi):
-                    return ret_sol
-            return None
+            best_sol_ind = np.argmin(np.sum((weights*(valid_sols - np.array(q_guess)))**2,1))
+            best_sol = valid_sols[best_sol_ind]
+            if False:
+                print 'q_guess', q_guess
+                print 'q_resid', q_resid
+                print 'sols', sols 
+                print 'valid_sols', valid_sols 
+                print 'best_sol', best_sol 
+            return best_sol
 
     def inverse_rand_search(self, x, q_guess=None, pos_tol=0.01, rot_tol=20.0/180.0*np.pi, 
                             restarts=10, 
-                            q_min=6*[-999.0], q_max=6*[999.0], options=None):
+                            q_min=6*[-999.0], q_max=6*[999.0], weights=6*[1.], options=None):
         num_restart = 0
         while not rospy.is_shutdown():
             if num_restart == 0:
@@ -100,7 +117,7 @@ class RAVEKinematics(object):
                 x_try[:3,:3] = x_diff[:3,:3] * x_try[:3,:3]
                 x_try[:3,3] += x_diff[:3,3]
             sol = self.inverse(x_try, q_guess, restarts=1, 
-                               q_min=q_min, q_max=q_max, options=options)
+                               q_min=q_min, q_max=q_max, weights=weights, options=options)
             if sol is not None:
                 return sol
             if num_restart == restarts:
@@ -121,41 +138,31 @@ class RAVEKinematics(object):
             residues = np.mat([[0.]])
         return q_sol.A.T[0], residues[0,0]
 
-    #def inverse_pos(self, p, q_guess=None, options=None):
-    #    if options is None:
-    #        options = self.options
-    #    if q_guess is None:
-    #        q_guess = np.zeros(6)
-    #    q_wrapped, q_resid = self.wrap_angles(q_guess)
-    #    with self.robot:
-    #        self.robot.SetDOFValues(q_wrapped)
-    #        ikparam = IkParameterization(p.T.A[0], self.ikmodel3d)
-    #        sols = self.manip.FindIKSolutions(ikparam, options)
-    #        if len(sols) == 0:
-    #            return None
-    #        best_sols = np.argsort(np.sum((sols - np.array(q_wrapped))**2,1))
-    #        for sol_ind in best_sols:
-    #            ret_sol = sols[sol_ind] + q_resid
-    #            if np.all(np.fabs(ret_sol) < 2.0*np.pi):
-    #                return ret_sol
-    #        return None
-
     def wrap_angles(self, q):
         q_resid = 2.0*np.pi*(np.array(q) > np.pi) + -2.0*np.pi*(np.array(q) < -np.pi)
         q_wrapped = q - q_resid
         return q_wrapped, q_resid
 
+    def is_self_colliding(self, q):
+        self.robot.SetDOFValues(q)
+        return self.robot.CheckSelfCollision()
+
 class ArmInterface(object):
     CONTROL_RATE = 125
-    def __init__(self, timeout=3.):
+    JOINT_NAMES = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 
+                   'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
+    def __init__(self, timeout=3., topic_prefix=""):
+        self.joint_state_inds = None
         self.joint_states = None 
-        self.mode_states = None 
+        self.ur_joint_states = None 
+        self.ur_mode_states = None 
         self.message_history = []
 
-        rospy.Subscriber('/ur_joint_states', URJointStates, self._joint_states_cb)
-        rospy.Subscriber('/ur_mode_states', URModeStates, self._mode_states_cb)
-        self.joint_cmd_pub = rospy.Publisher("/ur_joint_command", URJointCommand)
-        self.mode_cmd_pub = rospy.Publisher("/ur_mode_command", URModeCommand)
+        rospy.Subscriber(topic_prefix+'/joint_states', JointState, self._joint_states_cb)
+        rospy.Subscriber(topic_prefix+'/ur_joint_states', URJointStates, self._ur_joint_states_cb)
+        rospy.Subscriber(topic_prefix+'/ur_mode_states', URModeStates, self._ur_mode_states_cb)
+        self.joint_cmd_pub = rospy.Publisher(topic_prefix+"/ur_joint_command", URJointCommand)
+        self.mode_cmd_pub = rospy.Publisher(topic_prefix+"/ur_mode_command", URModeCommand)
 
         self.wait_for_states(timeout)
 
@@ -163,23 +170,46 @@ class ArmInterface(object):
         start_time = rospy.get_time()
         timed_out = True
         while not rospy.is_shutdown() and rospy.get_time() - start_time < timeout:
-            if self.joint_states is not None and self.mode_states is not None:
+            if (self.joint_states is not None and 
+                self.ur_joint_states is not None and
+                self.ur_mode_states is not None):
                 timed_out = False
                 break
         return not timed_out
 
-    def _mode_states_cb(self, mode_states):
-        self.mode_states = mode_states
-        self.message_history.extend(mode_states.messages)
-
     def _joint_states_cb(self, joint_states):
         self.joint_states = joint_states
+        if self.joint_state_inds is None:
+            self.joint_state_inds = [joint_states.name.index(joint_name) for 
+                                     joint_name in ArmInterface.JOINT_NAMES]
+
+    def _ur_joint_states_cb(self, ur_joint_states):
+        self.ur_joint_states = ur_joint_states
+
+    def _ur_mode_states_cb(self, ur_mode_states):
+        self.ur_mode_states = ur_mode_states
+        self.message_history.extend(ur_mode_states.messages)
 
     def get_q(self):
-        return np.array(self.joint_states.q_act)
+        #return np.array(self.joint_states.q_act)
+        return np.array(self.joint_states.position)[self.joint_state_inds]
 
     def get_qd(self):
-        return np.array(self.joint_states.qd_act)
+        #return np.array(self.joint_states.qd_act)
+        return np.array(self.joint_states.velocity)[self.joint_state_inds]
+
+    def get_effort(self):
+        #return np.array(self.joint_states.qd_act)
+        return np.array(self.joint_states.effort)[self.joint_state_inds]
+
+    def get_q_des(self):
+        return np.array(self.ur_joint_states.q_des)
+
+    def get_qd_des(self):
+        return np.array(self.ur_joint_states.qd_des)
+
+    def get_qdd_des(self):
+        return np.array(self.ur_joint_states.qdd_des)
 
     def cmd_empty(self, qd):
         cmd = URJointCommand()
@@ -229,13 +259,13 @@ class ArmInterface(object):
         self.mode_cmd_pub.publish(cmd)
 
     def is_security_stopped(self):
-        return self.mode_states.is_security_stopped
+        return self.ur_mode_states.is_security_stopped
 
     def is_emergency_stopped(self):
-        return self.mode_states.is_emergency_stopped
+        return self.ur_mode_states.is_emergency_stopped
 
     def is_running_mode(self):
-        return self.mode_states.robot_mode_id == 0
+        return self.ur_mode_states.robot_mode_id == 0
 
 def min_jerk_traj(d, n, deriv=0):
     if deriv == 0:
@@ -268,6 +298,8 @@ class ArmBehaviors(object):
         #print x_init
         #print x_goal
         #print 'traj'
+        
+        #start_time = rospy.get_time()
         for s in s_traj:
             x_cur = x_init.copy()
             x_cur[:3,3] += s * pos_delta
@@ -281,6 +313,7 @@ class ArmBehaviors(object):
                 return None
             q_pts.append(q_pt)
             q_prev = q_pt
+        #print "ik_move_time:", rospy.get_time() - start_time
         q_pts = np.array(q_pts)
         return q_pts
 
@@ -318,7 +351,7 @@ class ArmBehaviors(object):
 
     def exec_parab_blend(self, q_pts, duration=5., blend_delta=0.2):
         t_traj = np.linspace(0.5*blend_delta, duration+0.5*blend_delta, len(q_pts))
-        k = 0
+        seg = 0
         r = rospy.Rate(self.arm.CONTROL_RATE)
         start_time = rospy.get_time()
         for t in np.linspace(0., duration+blend_delta, duration*self.arm.CONTROL_RATE):
@@ -339,19 +372,19 @@ class ArmBehaviors(object):
                 qdd = qdd_avg
             else:
                 # middle segments
-                while t > t_traj[k] + 0.5 * blend_delta:
-                    k += 1
-                qd_avg_prev = (q_pts[k] - q_pts[k-1]) / (t_traj[k] - t_traj[k-1])
-                t_i = t_traj[k] - 0.5 * blend_delta
+                while t > t_traj[seg] + 0.5 * blend_delta:
+                    seg += 1
+                qd_avg_prev = (q_pts[seg] - q_pts[seg-1]) / (t_traj[seg] - t_traj[seg-1])
+                t_i = t_traj[seg] - 0.5 * blend_delta
                 if t >= t_i:
-                    qd_avg_next = (q_pts[k+1] - q_pts[k]) / (t_traj[k+1] - t_traj[k])
+                    qd_avg_next = (q_pts[seg+1] - q_pts[seg]) / (t_traj[seg+1] - t_traj[seg])
                     qdd_avg = (qd_avg_next - qd_avg_prev) / blend_delta
-                    q_i = q_pts[k] - qd_avg_prev * 0.5 * blend_delta
+                    q_i = q_pts[seg] - qd_avg_prev * 0.5 * blend_delta
                     q = 0.5 * qdd_avg * (t - t_i)**2 + qd_avg_prev * (t - t_i) + q_i
                     qd = qdd_avg * (t - t_i) + qd_avg_prev
                     qdd = qdd_avg
                 else:
-                    q = qd_avg_prev * (t - t_traj[k-1]) + q_pts[k-1]
+                    q = qd_avg_prev * (t - t_traj[seg-1]) + q_pts[seg-1]
                     qd = qd_avg_prev
                     qdd = np.zeros(6)
             #print np.array([t]), q, qd, qdd
@@ -364,6 +397,47 @@ class ArmBehaviors(object):
             r.sleep()
         #print duration*self.arm.CONTROL_RATE / (rospy.get_time() - start_time) 
         return True
+
+    def parab_blend(self, q_pts, duration=5., blend_delta=0.2):
+        duration -= blend_delta # hack to make duration accurate
+        t_traj = np.linspace(0.5*blend_delta, duration+0.5*blend_delta, len(q_pts))
+        traj = []
+        seg = 0
+        for t in np.linspace(0., duration+blend_delta, duration*self.arm.CONTROL_RATE):
+            if t < blend_delta:
+                # first segment
+                qd_avg_next = (q_pts[1] - q_pts[0]) / (t_traj[1] - t_traj[0])
+                qdd_avg = qd_avg_next / blend_delta
+                q = 0.5 * qdd_avg * t**2 + q_pts[0]
+                qd = qdd_avg * t
+                qdd = qdd_avg
+            elif t >= duration:
+                # last segment
+                qd_avg_prev = (q_pts[-2] - q_pts[-1]) / (t_traj[-2] - t_traj[-1])
+                qdd_avg = - qd_avg_prev / blend_delta
+                t_f = duration + 0.5*blend_delta
+                q = 0.5 * qdd_avg * (t-t_f)**2 + qd_avg_prev * (t-t_f) + q_pts[-2]
+                qd = qdd_avg * (t-t_f) + qd_avg_prev
+                qdd = qdd_avg
+            else:
+                # middle segments
+                while t > t_traj[seg] + 0.5 * blend_delta:
+                    seg += 1
+                qd_avg_prev = (q_pts[seg] - q_pts[seg-1]) / (t_traj[seg] - t_traj[seg-1])
+                t_i = t_traj[seg] - 0.5 * blend_delta
+                if t >= t_i:
+                    qd_avg_next = (q_pts[seg+1] - q_pts[seg]) / (t_traj[seg+1] - t_traj[seg])
+                    qdd_avg = (qd_avg_next - qd_avg_prev) / blend_delta
+                    q_i = q_pts[seg] - qd_avg_prev * 0.5 * blend_delta
+                    q = 0.5 * qdd_avg * (t - t_i)**2 + qd_avg_prev * (t - t_i) + q_i
+                    qd = qdd_avg * (t - t_i) + qd_avg_prev
+                    qdd = qdd_avg
+                else:
+                    q = qd_avg_prev * (t - t_traj[seg-1]) + q_pts[seg-1]
+                    qd = qd_avg_prev
+                    qdd = np.zeros(6)
+            traj.append((q, qd, qdd))
+        return traj
 
     def move_to_q(self, q_final, velocity=0.1, blend_delta=0.2):
         q_init = self.arm.get_q()
@@ -378,14 +452,13 @@ class ArmBehaviors(object):
         q_final = self.kin.inverse(x_final, q_init)
         return self.move_to_q(q_final, velocity, blend_delta)
 
-def load_ur_robot(desc_filename='$(find ur10_description)/ur10_robot.dae'):
+def load_ur_robot(timeout=5., desc_filename='$(find ur10_description)/ur10_robot.dae',
+                  topic_prefix=""):
     robot_descr = roslaunch.substitution_args.resolve_args(desc_filename)
-    arm = ArmInterface(timeout=0.)
+    arm = ArmInterface(timeout=0., topic_prefix=topic_prefix)
     kin = RAVEKinematics(robot_descr)
-    if not arm.wait_for_states(timeout=5.):
+    if not arm.wait_for_states(timeout=timeout):
         print 'arm not connected!'
-        return
-    #print arm.get_q()
     arm_behav = ArmBehaviors(arm, kin)
     return arm, kin, arm_behav
 
