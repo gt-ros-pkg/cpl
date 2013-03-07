@@ -36,6 +36,38 @@
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
     </inertial>
   </link>
+  <joint name="cart_base_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="cart_base_link"/>
+    <origin rpy="0.0 0.0 0.0" xyz="0.08 -0.12 -0.915"/>
+  </joint>
+  <link name="cart_base_link">
+    <visual>
+      <!--
+      <geometry>
+          <box size="1.22 0.62 0.915" />
+      </geometry>
+      -->
+      <geometry>
+        <mesh filename="package://ur10_description/meshes/cube.dae" scale="1.22 0.62 0.915"/>
+      </geometry>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.61 0.31 0.458"/>
+      <material name="grey">
+        <color rgba="0.3 0.3 0.3 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="1.22 0.62 0.915"/>
+      </geometry>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.61 0.31 -0.458"/>
+    </collision>
+    <inertial>
+      <mass value="100"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.61 0.31 -0.458"/>
+    </inertial>
+  </link>
   <joint name="shoulder_pan_joint" type="revolute">
     <parent link="base_link"/>
     <child link="shoulder_link"/>
@@ -71,24 +103,6 @@
     <limit effort="10.0" lower="-6.2831853" upper="6.2831853" velocity="3.14159265"/>
     <dynamics damping="10" friction="0.1"/>
   </joint>
-  <joint name="upper_shoulder_joint" type="fixed">
-    <parent link="upper_arm_link"/>
-    <child link="upper_shoulder_link"/>
-    <origin rpy="-1.570796325 0.0 0.0" xyz="0.0 -0.053 0.0"/>
-  </joint>
-  <link name="upper_shoulder_link">
-    <collision>
-      <geometry>
-        <cylinder length="0.215" radius="0.075"/>
-      </geometry>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.1273"/>
-    </collision>
-    <inertial>
-      <mass value="0"/>
-      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
-    </inertial>
-  </link>
   <link name="upper_arm_link">
     <visual>
       <geometry>
@@ -96,16 +110,46 @@
       </geometry>
       <origin rpy="1.570796325 -0.0 0.0" xyz="0.0 -0.221 -0.127"/>
     </visual>
-    <collision>
-      <geometry>
-        <cylinder length="0.612" radius="0.054"/>
-      </geometry>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.306"/>
-    </collision>
     <inertial>
       <mass value="12.93"/>
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
       <origin rpy="0.0 0.0 0.0" xyz="0.00008 0.00244   0.38757"/>
+    </inertial>
+  </link>
+  <joint name="upper_shoulder_joint" type="fixed">
+    <parent link="upper_arm_link"/>
+    <child link="upper_shoulder_link"/>
+    <origin rpy="-1.570796325 3.14159265 0.0" xyz="0.0 -0.046 0.0"/>
+  </joint>
+  <link name="upper_shoulder_link">
+    <collision>
+      <geometry>
+        <cylinder length="0.175" radius="0.075"/>
+      </geometry>
+      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0025"/>
+    </collision>
+    <inertial>
+      <mass value="0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    </inertial>
+  </link>
+  <joint name="upper_arm_middle_joint" type="fixed">
+    <parent link="upper_arm_link"/>
+    <child link="upper_arm_middle_link"/>
+    <origin rpy="-1.570796325 3.14159265 0.0" xyz="0.0 -0.046 0.32"/>
+  </joint>
+  <link name="upper_arm_middle_link">
+    <collision>
+      <geometry>
+        <cylinder length="0.45" radius="0.0525"/>
+      </geometry>
+      <origin rpy="1.570796325 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    </collision>
+    <inertial>
+      <mass value="0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
     </inertial>
   </link>
   <joint name="elbow_joint" type="revolute">
@@ -125,14 +169,32 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.5723" radius="0.04"/>
+        <cylinder length="0.26" radius="0.06"/>
       </geometry>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.28615"/>
+      <origin rpy="1.570796325 0.0 0.0" xyz="0.0 0.065 0.0"/>
     </collision>
     <inertial>
       <mass value="3.87"/>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0265 0.11993"/>
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+  <joint name="forearm_middle_joint" type="fixed">
+    <parent link="forearm_link"/>
+    <child link="forearm_middle_link"/>
+    <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.295"/>
+  </joint>
+  <link name="forearm_middle_link">
+    <collision>
+      <geometry>
+        <cylinder length="0.45" radius="0.043"/>
+      </geometry>
+      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    </collision>
+    <inertial>
+      <mass value="0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
     </inertial>
   </link>
   <joint name="wrist_1_joint" type="revolute">
@@ -152,9 +214,9 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.18384" radius="0.045"/>
+        <cylinder length="0.123" radius="0.045"/>
       </geometry>
-      <origin rpy="-1.570796325 0.0 0.0" xyz="0.0 0.028725 0.0"/>
+      <origin rpy="-1.570796325 0.0 0.0" xyz="0.0 0.0045 0.0"/>
     </collision>
     <inertial>
       <mass value="1.96"/>
@@ -179,9 +241,9 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.18512" radius="0.045"/>
+        <cylinder length="0.123" radius="0.045"/>
       </geometry>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.028925"/>
+      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0045"/>
     </collision>
     <inertial>
       <mass value="1.96"/>
@@ -206,9 +268,9 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.15213" radius="0.045"/>
+        <cylinder length="0.148" radius="0.045"/>
       </geometry>
-      <origin rpy="-1.570796325 0.0 0.0" xyz="0.0 0.01383 0.0"/>
+      <origin rpy="-1.570796325 0.0 0.0" xyz="0.0 0.017 0.0"/>
     </collision>
     <inertial>
       <mass value="0.202"/>

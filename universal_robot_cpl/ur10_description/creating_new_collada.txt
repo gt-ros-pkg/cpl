@@ -1,0 +1,16 @@
+rosrun xacro xacro.py urdf/robot.urdf.xacro > ur10_robot.urdf
+rosrun collada_urdf urdf_to_collada ur10_robot.urdf ur10_robot.dae
+
+Add <extra> tag to collada (dae) file:
+
+		</articulated_system>
+		<articulated_system id="robot0_kinematics">
+            <extra type="manipulator" name="arm">
+                <technique profile="OpenRAVE">
+                    <frame_origin link="base_link" />
+                    <frame_tip link="ee_link" />
+                    <iksolver type="Transform6D" />
+                </technique>
+            </extra>
+			<kinematics>
+				<instance_kinematics_model url="#kmodel0" sid="kmodel0_inst">
