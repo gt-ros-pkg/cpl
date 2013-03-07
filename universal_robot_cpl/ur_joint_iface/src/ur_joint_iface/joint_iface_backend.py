@@ -7,11 +7,11 @@ import functools
 
 import roslib
 roslib.load_manifest("rospy")
-roslib.load_manifest("ur_demos")
+roslib.load_manifest("ur_joint_iface")
 import rospy
 
 from joint_iface_gui import Ui_Frame as QTJointIFaceGUIFrame
-from ur_demos.ur_robot import create_ur_robot
+from ur_cart_move.ur_cart_move import ArmInterface
 
 BUTTONS = {
     "shoulder_pan_left" : [0, -1.0],
@@ -65,56 +65,49 @@ class SingleJointController(object):
     def __init__(self):
         self.moving_joint = None
         self.moving_dir = None
-        self.ur_robot = create_ur_robot("base_link", "wrist_3_link")
         self.delta_x = 0.01
-        self.t_f = 0.2
-        self.v_f = 0.1
+        self.acc = 0.2
+        self.vel_f = 0.2
+        self.t_f = self.vel_f / self.acc
+        self.pos_f = 0.5*self.acc*(self.t_f**2)
         self.t = 0.0
+        self.arm = ArmInterface()
+        self.q_init = None
 
     def update(self):
         if self.moving_joint is not None:
-            q = self.ur_robot.get_joint_angles()
-            if self.t < self.t_f:
-                pos = np.polyval(self.p,self.t)
-                vel = np.polyval(self.pd,self.t)
-                acc = np.polyval(self.pdd,self.t)
-                q_cmd = q.copy()
-                qd_cmd = np.zeros(6)
-                qdd_cmd = np.zeros(6)
-                q_cmd[self.moving_joint] += self.moving_dir*pos
-                qd_cmd[self.moving_joint] += self.moving_dir*vel
-                qdd_cmd[self.moving_joint] += self.moving_dir*acc
-                #self.ur_robot.cmd_pos_vel_acc(q_cmd,qd_cmd,qdd_cmd)
-                self.ur_robot.cmd_vel(qd_cmd)
+            t, t_f, vel_f, acc, pos_f = self.t, self.t_f, self.vel_f, self.acc, self.pos_f
+            q_cmd = self.q_init.copy()
+            qd_cmd = np.zeros(6)
+            qdd_cmd = np.zeros(6)
+            if t < t_f:
+                q_cmd[self.moving_joint] += self.moving_dir*(0.5*acc*(t**2))
+                qd_cmd[self.moving_joint] += self.moving_dir*(acc*t)
+                qdd_cmd[self.moving_joint] += self.moving_dir*(acc)
+                self.arm.cmd_pos_vel_acc(q_cmd,qd_cmd,qdd_cmd)
             else:
-                qd_cmd = np.zeros(6)
-                qd_cmd[self.moving_joint] = self.moving_dir*self.v_f
-                self.ur_robot.cmd_vel(qd_cmd)
-            self.t += 1.0/self.ur_robot.CONTROL_RATE
+                q_cmd[self.moving_joint] += self.moving_dir*(vel_f*(t-t_f) + pos_f)
+                qd_cmd[self.moving_joint] = self.moving_dir*vel_f
+                self.arm.cmd_pos_vel_acc(q_cmd, qd_cmd, qdd_cmd)
+            print t
+            print q_cmd
+            print qd_cmd
+            print qdd_cmd
+            self.t += 1.0/self.arm.CONTROL_RATE
 
     def start_moving(self, joint_ind, direction):
         print "Down:", joint_ind, direction
+        self.arm.unlock_security_stop()
         self.moving_joint = joint_ind
         self.moving_dir = direction
-        p = min_jerk_accelerate(x_i=0., 
-                                x_f=self.delta_x, 
-                                t_f=self.t_f, v_f=self.v_f)
-        self.pd = (p * np.linspace(len(p)-1,0,len(p)))[0:-1]
-        self.pdd = (p * np.linspace(len(p)-1,0,len(p)) * np.linspace(len(p)-2,-1,len(p)))[0:-2]
-        self.p = p
         self.t = 0.0
+        self.q_init = np.array(self.arm.get_q())
+        print 'act', self.arm.get_q()
+        print 'des', self.arm.get_q_des()
 
     def stop_moving(self):
         print "Up", self.moving_joint, self.moving_dir
         self.moving_joint = None
-
-def min_jerk_accelerate(x_i, x_f, t_f, v_f):
-    A = np.matrix([[t_f**5,    t_f**4,    t_f**3   ], 
-                   [5*t_f**4,  4*t_f**3,  3*t_f**2 ],
-                   [20*t_f**3, 12*t_f**2, 6*t_f    ]])
-    b = np.matrix([x_f, v_f, 0]).T
-    x = np.linalg.solve(A,b)
-    return np.concatenate([x.T.A[0], np.array([0., 0., x_i])])
 
 def main():
     rospy.init_node("arm_cart_control_interface")
