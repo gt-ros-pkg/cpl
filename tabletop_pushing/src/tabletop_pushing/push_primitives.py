@@ -12,8 +12,8 @@
 #     need to add a string constant for the name in tabletop_pushing_perception_node.cpp
 
 ROBOT_ARMS = ['r', 'l']
-# ROBOT_ARMS = ['r']
-ROBOT_ARMS = ['l']
+ROBOT_ARMS = ['r']
+# ROBOT_ARMS = ['l']
 CENTROID_CONTROLLER ='centroid_controller'
 TOOL_CENTROID_CONTROLLER ='tool_centroid_controller'
 SPIN_COMPENSATION = 'spin_compensation'

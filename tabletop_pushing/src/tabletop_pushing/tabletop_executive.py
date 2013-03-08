@@ -77,9 +77,9 @@ class TabletopExecutive:
         self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.09)
         self.pincher_start_z = rospy.get_param('~pincher_push_start_z', -0.29)
 
-        self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
-        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.02)
-        self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
+        self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.03)
+        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.01)
+        self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.30)
 
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.29)
@@ -494,6 +494,8 @@ class TabletopExecutive:
                     if code_in.lower().startswith('s'):
                         self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
                                           push_vec_res, goal_pose, trial_id, precondition_method)
+                    elif code_in.lower().startswith('q'):
+                        return 'quit'
                     else:
                         self.learn_io.write_bad_trial_line()
 

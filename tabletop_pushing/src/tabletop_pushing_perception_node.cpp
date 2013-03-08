@@ -917,7 +917,7 @@ class TabletopPushingPerceptionNode
       just_spun_(false), major_axis_spin_pos_scale_(0.75), object_not_moving_thresh_(0),
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
-      gripper_not_moving_count_limit_(10), current_file_id_("")
+      gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false)
 
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
@@ -1426,25 +1426,27 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      cur_state = startTracking();
+      ROS_INFO_STREAM("Current swap state is: " << force_swap_);
+      cur_state = startTracking(force_swap_);
     }
 
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     if (req.learn_start_loc)
     {
       obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
-      ROS_INFO_STREAM("Pre swap theta: " << cur_state.x.theta);
+      ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
       ROS_INFO_STREAM("Presss 's' to swap orientation: ");
       char key_press = cv::waitKey(2000);
       if (key_press == 's')
       {
+        force_swap_ = !force_swap_;
         obj_tracker_->toggleSwap();
-        cur_state = startTracking(true);
+        cur_state = startTracking(force_swap_);
         obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
         // NOTE: Try and force redraw
         cv::waitKey(3);
+        ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
       }
-      ROS_INFO_STREAM("Post swap theta: " << cur_state.x.theta);
     }
 
     if (!start_tracking_on_push_call_)
@@ -1481,9 +1483,8 @@ class TabletopPushingPerceptionNode
       ShapeLocation chosen_loc;
       if (start_loc_use_fixed_goal_)
       {
-        chosen_loc = chooseFixedGoalPushStartLoc(cur_obj, cur_state, req.new_object, req.goal_pose,
-                                                 req.num_start_loc_pushes_per_sample,
-                                                 req.num_start_loc_sample_locs);
+        chosen_loc = chooseFixedGoalPushStartLoc(cur_obj, cur_state, req.new_object,
+                                                 req.num_start_loc_pushes_per_sample, req.num_start_loc_sample_locs);
       }
       else
       {
@@ -1656,9 +1657,20 @@ class TabletopPushingPerceptionNode
     return locs[loc_idx];
   }
 
+  /**
+   * Method to choose an initial pushing location at a specified percentage around the object boundary with 0 distance on the boundary at the
+   * dominatnt orientation of the object.
+   *
+   * @param cur_obj object model of current frame
+   * @param cur_state state estimate of object
+   * @param new_object switch if we are initialzing on a new object
+   * @param num_start_loc_pushes_per_sample The number of samples to attempt at each push locations
+   * @param num_start_loc_sample_locs The number of pushing locations on the boundary to sample
+   *
+   * @return The location and shape descriptor on the boundary to place the hand
+   */
   ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
-                                            geometry_msgs::Pose2D goal_pose, int num_start_loc_pushes_per_sample,
-                                            int num_start_loc_sample_locs)
+                                            int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs)
   {
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
     int rot_idx = -1;
@@ -1694,33 +1706,11 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Incrementing arc length percent based on: " << num_start_loc_pushes_per_sample);
       }
 
-      // Align object to start_loc_object_
-      // Eigen::Matrix4f t;
-      // double icp_fitness = pcl_segmenter_->ICPProtoObjects(start_loc_obj_, cur_obj, t);
-      // Eigen::Matrix3f rot = t.block<3,3>(0,0);
-      // ROS_INFO_STREAM("ICP fitness: " << icp_fitness << " for object transform " << rot);
-      // ROS_WARN_STREAM("Current state theta is: " << cur_state.x.theta);
-      // cv::Mat start_loc_obj_img = pcl_segmenter_->projectProtoObjectIntoImage(
-      //     start_loc_obj_, cur_color_frame_.size(), start_loc_obj_.cloud.header.frame_id);
-      // cv::imshow("start_loc_obj", start_loc_obj_img*255);
-      // // cv::waitKey();
-
-      // // Get initial object boundary location in the current world frame
-      // Eigen::Vector3f init_loc_vec_obj(start_loc_history_[0].boundary_loc_.x,
-      //                                  start_loc_history_[0].boundary_loc_.y,
-      //                                  start_loc_history_[0].boundary_loc_.z);
-      // Eigen::Vector3f init_loc_vec_world = rot*init_loc_vec_obj+Eigen::Vector3f(cur_state.x.x,
-      //                                                                           cur_state.x.y,
-      //                                                                           cur_state.z);
-      // Eigen::Vector3f init_loc_vec_world_t = rot.transpose()*init_loc_vec_obj+Eigen::Vector3f(cur_state.x.x,
-      //                                                                                       cur_state.x.y,
-      //                                                                                       cur_state.z);
-      // ROS_WARN_STREAM("init_obj_point: " << start_loc_history_[0].boundary_loc_);
-      // ROS_WARN_STREAM("init_loc_vec_world: " << init_loc_vec_world);
-      // ROS_WARN_STREAM("init_loc_vec_world_t: " << init_loc_vec_world_t);
-
+      // Get initial object boundary location in the current world frame
+      ROS_INFO_STREAM("init_obj_point: " << start_loc_history_[0].boundary_loc_);
       pcl16::PointXYZ init_loc_point = objectPointInWorldFrame(start_loc_history_[0].boundary_loc_, cur_state);
       ROS_INFO_STREAM("init_loc_point: " << init_loc_point);
+
       // Find index of closest point on current boundary to the initial pushing location
       double min_dist = FLT_MAX;
       for (int i = 0; i < hull_cloud.size(); ++i)
@@ -1823,8 +1813,8 @@ class TabletopPushingPerceptionNode
     double st = sin(cur_state.x.theta);
     // Rotate into correct frame
     pcl16::PointXYZ obj_pt;
-    obj_pt.x = ct*shifted_pt.x - st*shifted_pt.y;
-    obj_pt.y = st*shifted_pt.x + ct*shifted_pt.y;
+    obj_pt.x =  ct*shifted_pt.x + st*shifted_pt.y;
+    obj_pt.y = -st*shifted_pt.x + ct*shifted_pt.y;
     obj_pt.z = shifted_pt.z; // NOTE: Currently assume 2D motion
     return obj_pt;
   }
@@ -1835,8 +1825,8 @@ class TabletopPushingPerceptionNode
     pcl16::PointXYZ rotated_pt;
     double ct = cos(cur_state.x.theta);
     double st = sin(cur_state.x.theta);
-    rotated_pt.x =  ct*obj_pt.x + st*obj_pt.y;
-    rotated_pt.y = -st*obj_pt.x + ct*obj_pt.y;
+    rotated_pt.x = ct*obj_pt.x - st*obj_pt.y;
+    rotated_pt.y = st*obj_pt.x + ct*obj_pt.y;
     rotated_pt.z = obj_pt.z;  // NOTE: Currently assume 2D motion
     // Shift to world frame
     pcl16::PointXYZ world_pt;
@@ -2566,6 +2556,7 @@ class TabletopPushingPerceptionNode
   ProtoObject start_loc_obj_;
   double start_loc_arc_length_percent_;
   int start_loc_push_sample_count_;
+  bool force_swap_;
 };
 
 int main(int argc, char ** argv)
