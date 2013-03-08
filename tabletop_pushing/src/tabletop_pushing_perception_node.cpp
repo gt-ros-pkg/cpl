@@ -233,7 +233,8 @@ class ObjectTracker25D
   }
 
   PushTrackerState computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
-                                std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name, PoseStamped& arm_pose)
+                                std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
+                                PoseStamped& arm_pose, bool init_state=false)
   {
     PushTrackerState state;
     // TODO: Have each proxy create an image, and send that image to the trackerDisplay
@@ -256,7 +257,7 @@ class ObjectTracker25D
         else
           state.x.theta += M_PI;
       }
-      if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
+      if (!init_state && (state.x.theta > 0) != (previous_state_.x.theta > 0))
       {
         if ((fabs(state.x.theta) > M_PI*0.25 &&
              fabs(state.x.theta) < (M_PI*0.75 )) ||
@@ -507,12 +508,13 @@ class ObjectTracker25D
   }
 
   PushTrackerState initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                              std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name)
+                              std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
+                              bool start_swap=false)
   {
     paused_ = false;
     initialized_ = false;
     obj_saved_ = false;
-    swap_orientation_ = false;
+    swap_orientation_ = start_swap;
     bool no_objects = false;
     frame_count_ = 0;
     record_count_ = 0;
@@ -530,7 +532,7 @@ class ObjectTracker25D
     }
     else
     {
-      state = computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose);
+      state = computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose, true);
       state.header.seq = 0;
       state.header.stamp = cloud.header.stamp;
       state.header.frame_id = cloud.header.frame_id;
@@ -698,7 +700,6 @@ class ObjectTracker25D
     swap_orientation_ = !swap_orientation_;
   }
 
- protected:
   //
   // I/O Functions
   //
@@ -874,7 +875,7 @@ class ObjectTracker25D
       cv::imwrite(out_name.str(), centroid_frame);
     }
   }
-
+ protected:
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   int num_downsamples_;
   bool initialized_;
@@ -1425,14 +1426,26 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      if (req.learn_start_loc && obj_tracker_->getSwapState())
-      {
-        obj_tracker_->toggleSwap();
-      }
       cur_state = startTracking();
     }
-    bool pull_start = (req.behavior_primitive == "gripper_pull");
+
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+    if (req.learn_start_loc)
+    {
+      obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+      ROS_INFO_STREAM("Pre swap theta: " << cur_state.x.theta);
+      ROS_INFO_STREAM("Presss 's' to swap orientation: ");
+      char key_press = cv::waitKey(2000);
+      if (key_press == 's')
+      {
+        obj_tracker_->toggleSwap();
+        cur_state = startTracking(true);
+        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+        // NOTE: Try and force redraw
+        cv::waitKey(3);
+      }
+      ROS_INFO_STREAM("Post swap theta: " << cur_state.x.theta);
+    }
 
     if (!start_tracking_on_push_call_)
     {
@@ -1459,6 +1472,7 @@ class TabletopPushingPerceptionNode
     // Set basic push information
     PushVector p;
     p.header.frame_id = workspace_frame_;
+    bool pull_start = (req.behavior_primitive == "gripper_pull");
 
     // Choose a pushing location to test if we are learning good pushing locations
     if (req.learn_start_loc)
@@ -2044,7 +2058,7 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  PushTrackerState startTracking()
+  PushTrackerState startTracking(bool start_swap=false)
   {
     ROS_INFO_STREAM("Starting tracker");
     frame_set_count_++;
@@ -2061,7 +2075,7 @@ class TabletopPushingPerceptionNode
       arm_pose = r_arm_pose_;
     }
     return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                                    proxy_name_, arm_pose, tool_proxy_name_);
+                                    proxy_name_, arm_pose, tool_proxy_name_, start_swap);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)

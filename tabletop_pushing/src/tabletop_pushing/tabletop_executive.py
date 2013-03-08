@@ -488,7 +488,7 @@ class TabletopExecutive:
                                                   controller_name, proxy_name)
                 push_time = time.time() - start_time
                 # NOTE: Don't save unless s is pressed
-                if _USE_LEARN_IO:
+                if _USE_LEARN_IO and not _OFFLINE:
                     # TODO: Will deal with no trials on reading in?
                     code_in = raw_input('Press [s] then <Enter> to save trial: ')
                     if code_in.lower().startswith('s'):
