@@ -502,8 +502,8 @@ class ObjectTracker25D
     obj_ellipse.center.y = centroid[1];
     obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
     // NOTE: major axis is defined by height
-    obj_ellipse.size.height = std::max(eigen_values(0)*0.1, 0.07);
-    obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.07*eigen_values(1)/eigen_values(0));
+    obj_ellipse.size.height = eigen_values(0); //std::max(eigen_values(0)*0.1, 0.07);
+    obj_ellipse.size.width = eigen_values(1); //std::max(eigen_values(1)*0.1, 0.07*eigen_values(1)/eigen_values(0));
     return obj_ellipse;
   }
 
@@ -1689,7 +1689,7 @@ class TabletopPushingPerceptionNode
       for (int i = 0; i < hull_cloud.size(); ++i)
       {
         double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).y - cur_state.x.x);
-        double angle_dist_i = subPIAngle(theta_i - cur_state.x.theta)+M_PI;
+        double angle_dist_i = fabs(subPIAngle(theta_i - cur_state.x.theta));
         if (angle_dist_i < min_angle_dist)
         {
           min_angle_dist = angle_dist_i;
