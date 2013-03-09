@@ -441,6 +441,7 @@ class TabletopExecutive:
             # Doesn't matter what the goal_pose is, the start pose server picks it for us
             goal_pose = self.generate_random_table_pose()
             for j in xrange(num_pushes_per_sample):
+                rospy.loginfo('Performing push iteration: '+str(i*num_pushes_per_sample+j))
                 # NOTE: Get initial object pose here to make sure goal pose is far enough away
                 init_pose = self.get_feedback_push_initial_obj_pose()
                 if self.start_loc_use_fixed_goal:
