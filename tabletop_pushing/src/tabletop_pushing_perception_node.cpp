@@ -502,8 +502,8 @@ class ObjectTracker25D
     obj_ellipse.center.y = centroid[1];
     obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
     // NOTE: major axis is defined by height
-    obj_ellipse.size.height = eigen_values(0); //std::max(eigen_values(0)*0.1, 0.07);
-    obj_ellipse.size.width = eigen_values(1); //std::max(eigen_values(1)*0.1, 0.07*eigen_values(1)/eigen_values(0));
+    obj_ellipse.size.height = std::max(eigen_values(0)*0.1, 0.07);
+    obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
     return obj_ellipse;
   }
 
@@ -753,7 +753,7 @@ class ObjectTracker25D
     }
     if (write_to_disk_)
     {
-      ROS_INFO_STREAM("Writing ellipse to disk!");
+      // ROS_INFO_STREAM("Writing ellipse to disk!");
       std::stringstream out_name;
       out_name << base_output_path_ << "obj_state_" << frame_set_count_ << "_"
                << record_count_ << ".png";
@@ -1198,9 +1198,9 @@ class TabletopPushingPerceptionNode
       {
         std::stringstream cloud_out_name;
         out_name << base_output_path_ << current_file_id_ << "_input_" << record_count_ << ".png";
-        cloud_out_name << base_output_path_ << current_file_id_ << "_object_" << record_count_ << ".pcd";
-        ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-        pcl16::io::savePCDFile(cloud_out_name.str(), cur_obj.cloud);
+        // cloud_out_name << base_output_path_ << current_file_id_ << "_object_" << record_count_ << ".pcd";
+        // ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+        // pcl16::io::savePCDFile(cloud_out_name.str(), cur_obj.cloud);
       }
       else
       {
@@ -1755,8 +1755,8 @@ class TabletopPushingPerceptionNode
 
     // Find location at start_loc_arc_length_percent_ around the boundary
     double desired_boundary_dist = start_loc_arc_length_percent_*boundary_length;
-    ROS_INFO_STREAM("Finding location at dist " << desired_boundary_dist << " ~= " << start_loc_arc_length_percent_ <<
-                    " of " << boundary_length);
+    ROS_INFO_STREAM("Finding location at dist " << desired_boundary_dist << " ~= " << start_loc_arc_length_percent_*100 <<
+                    "\% of " << boundary_length);
     int boundary_loc_idx;
     double min_boundary_dist_diff = FLT_MAX;
     for (int i = 0; i < hull_cloud.size(); ++i)
