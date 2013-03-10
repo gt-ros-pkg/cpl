@@ -899,6 +899,63 @@ class ObjectTracker25D
   bool obj_saved_;
 };
 
+class ArmColorSegmentation
+{
+ public:
+  ArmColorSegmentation() : mean_blue_(255), mean_red_(0), mean_green_(0), thresh_blue_(0), thresh_red_(0),
+                           thresh_green_(0)
+  {
+  }
+
+  cv::Mat getColorMask(cv::Mat& img_in)
+  {
+    cv::Mat color_mask(img_in.size(), CV_8UC1, cv::Scalar(0));
+
+    for (int r = 0; r < color_mask.rows; ++r)
+    {
+      for (int c = 0; c < color_mask.cols; ++c)
+      {
+        bool good_blue = abs(img_in.at<cv::Vec3b>(r,c)[0] - mean_blue_) < thresh_blue_;
+        bool good_green = abs(img_in.at<cv::Vec3b>(r,c)[1] - mean_green_) < thresh_green_;
+        bool good_red = abs(img_in.at<cv::Vec3b>(r,c)[2] - mean_red_) < thresh_red_;
+        if (good_blue && good_green && good_red)
+        {
+          // TODO: Make multilevel threshold mask?
+          color_mask.at<uchar>(r,c) = 255;
+        }
+      }
+    }
+    // Perform close
+    cv::Mat kernel(5,5, CV_8UC1, 255);
+    cv::dilate(color_mask, color_mask, kernel);
+    cv::erode(color_mask, color_mask, kernel);
+    cv::dilate(color_mask, color_mask, kernel);
+
+    return color_mask;
+  }
+
+  void setMeans(int b, int g, int r)
+  {
+    mean_blue_ = b;
+    mean_green_ = g;
+    mean_red_ = r;
+  }
+
+  void setThreshes(int b, int g, int r)
+  {
+    thresh_blue_ = b;
+    thresh_green_ = g;
+    thresh_red_ = r;
+  }
+
+  int mean_blue_;
+  int mean_red_;
+  int mean_green_;
+  int thresh_blue_;
+  int thresh_red_;
+  int thresh_green_;
+};
+
 class TabletopPushingPerceptionNode
 {
  public:
@@ -921,8 +978,11 @@ class TabletopPushingPerceptionNode
 
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
-    pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
-        new PointCloudSegmentation(tf_));
+    pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(new PointCloudSegmentation(tf_));
+    arm_color_segmenter_ = shared_ptr<ArmColorSegmentation>(new ArmColorSegmentation());
+    arm_color_segmenter_->setMeans(239, 174, 107);
+    arm_color_segmenter_->setThreshes(79, 19, 16);
+
     // Get parameters from the server
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
     n_private_.param("use_displays", use_displays_, false);
@@ -1105,6 +1165,13 @@ class TabletopPushingPerceptionNode
     cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
     cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
+    cv::Mat color_mask =  arm_color_segmenter_->getColorMask(color_frame_down);
+    cv::Mat color_mask_inv = color_mask.clone();
+    cv::Mat arm_mask_crop;
+    cv::Mat color_mask_crop;
+    cv::bitwise_not(color_mask, color_mask_inv);
+    color_frame_down.copyTo(color_mask_crop, color_mask_inv);
+    color_frame_down.copyTo(arm_mask_crop, self_mask_down);
 
     // Save internally for use in the service callback
     prev_color_frame_ = cur_color_frame_.clone();
@@ -1189,6 +1256,15 @@ class TabletopPushingPerceptionNode
     {
       cv::imshow("color", cur_color_frame_);
       cv::imshow("self_mask", cur_self_mask_);
+      cv::imshow("color_mask", color_mask);
+      cv::createTrackbar("blue_thresh", "color_mask", &arm_color_segmenter_->thresh_blue_, 255);
+      cv::createTrackbar("green_thresh", "color_mask", &arm_color_segmenter_->thresh_green_, 255);
+      cv::createTrackbar("red_thresh", "color_mask", &arm_color_segmenter_->thresh_red_, 255);
+      cv::createTrackbar("blue_mean", "color_mask", &arm_color_segmenter_->mean_blue_, 255);
+      cv::createTrackbar("green_mean", "color_mask", &arm_color_segmenter_->mean_green_, 255);
+      cv::createTrackbar("red_mean", "color_mask", &arm_color_segmenter_->mean_red_, 255);
+      cv::imshow("color_mask_crop", color_mask_crop);
+      cv::imshow("arm_mask_crop", arm_mask_crop);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
@@ -2493,6 +2569,7 @@ class TabletopPushingPerceptionNode
   XYZPointCloud cur_point_cloud_;
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
+  shared_ptr<ArmColorSegmentation> arm_color_segmenter_;
   bool have_depth_data_;
   int display_wait_ms_;
   bool use_displays_;
