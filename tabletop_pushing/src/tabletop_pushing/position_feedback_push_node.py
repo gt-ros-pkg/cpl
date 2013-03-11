@@ -1582,8 +1582,9 @@ class PositionFeedbackPushNode:
         else:
             arm_error = self.r_arm_x_err
         error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
-                         arm_error.linear.z**2)
-        rospy.logdebug('Move cart gripper error dist: ' + str(error_dist)+'\n')
+                          arm_error.linear.z**2)
+        rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        rospy.loginfo('Move cart gripper error dist: ' + str(arm_error.linear)+'\n')
         return (arm_error, error_dist)
 
 

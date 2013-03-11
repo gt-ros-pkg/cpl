@@ -74,7 +74,7 @@ class TabletopExecutive:
         self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
-        self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.09)
+        self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.05)
         self.pincher_start_z = rospy.get_param('~pincher_push_start_z', -0.29)
 
         self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.03)
@@ -490,15 +490,17 @@ class TabletopExecutive:
                 push_time = time.time() - start_time
                 # NOTE: Don't save unless s is pressed
                 if _USE_LEARN_IO and not _OFFLINE:
+                    self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                                      push_vec_res, goal_pose, trial_id, precondition_method)
                     # TODO: Will deal with no trials on reading in?
-                    code_in = raw_input('Press [s] then <Enter> to save trial: ')
-                    if code_in.lower().startswith('s'):
-                        self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                                          push_vec_res, goal_pose, trial_id, precondition_method)
-                    elif code_in.lower().startswith('q'):
-                        return 'quit'
-                    else:
-                        self.learn_io.write_bad_trial_line()
+                    # code_in = raw_input('Press [s] then <Enter> to save trial: ')
+                    # if code_in.lower().startswith('s'):
+                    #     self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                    #                       push_vec_res, goal_pose, trial_id, precondition_method)
+                    # elif code_in.lower().startswith('q'):
+                    #     return 'quit'
+                    # else:
+                    #     self.learn_io.write_bad_trial_line()
 
                 if res == 'quit':
                     return res
@@ -868,6 +870,11 @@ class TabletopExecutive:
         else:
             offset_dist = self.gripper_offset_dist
             start_z = self.gripper_start_z
+
+        rospy.loginfo('Gripper push pre-augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
 
         push_req.start_point.point.x += -offset_dist*cos(wrist_yaw)
         push_req.start_point.point.y += -offset_dist*sin(wrist_yaw)

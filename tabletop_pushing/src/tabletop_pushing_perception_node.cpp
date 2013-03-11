@@ -1105,6 +1105,8 @@ class TabletopPushingPerceptionNode
     cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
     cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
+    cv::Mat arm_mask_crop;
+    color_frame_down.copyTo(arm_mask_crop, self_mask_down);
 
     // Save internally for use in the service callback
     prev_color_frame_ = cur_color_frame_.clone();
@@ -1189,6 +1191,7 @@ class TabletopPushingPerceptionNode
     {
       cv::imshow("color", cur_color_frame_);
       cv::imshow("self_mask", cur_self_mask_);
+      cv::imshow("arm_mask_crop", arm_mask_crop);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
