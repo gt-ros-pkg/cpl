@@ -1559,7 +1559,10 @@ class TabletopPushingPerceptionNode
     end_point.point.y = res.goal_pose.y;
     end_point.point.z = start_point.point.z;
     displayPushVector(cur_color_frame_, start_point, end_point);
-    displayPushVector(cur_color_frame_, start_point, end_point, "initial_vector", true);
+    PointStamped obj_centroid;
+    obj_centroid.header.frame_id = workspace_frame_;
+    obj_centroid.point = res.centroid;
+    displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
     learn_callback_count_++;
     ROS_INFO_STREAM("Chosen push start point: (" << p.start_point.x << ", " << p.start_point.y << ", " <<
                     p.start_point.z << ")");
@@ -2359,15 +2362,12 @@ class TabletopPushingPerceptionNode
     cv::Mat disp_img;
     img.copyTo(disp_img);
 
-    cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(
-        start_point);
-    cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(
-        end_point);
+    cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(start_point);
+    cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(end_point);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
-
     if (use_displays_)
     {
       cv::imshow(display_name, disp_img);
@@ -2381,6 +2381,24 @@ class TabletopPushingPerceptionNode
       cv::imwrite(push_out_name.str(), disp_img);
     }
   }
+
+  void displayInitialPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
+                                PointStamped& centroid)
+  {
+    cv::Mat disp_img;
+    img.copyTo(disp_img);
+
+    cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(start_point);
+    cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(end_point);
+    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
+    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
+    cv::Point img_centroid_point = pcl_segmenter_->projectPointIntoImage(centroid);
+    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,255));
+    cv::imshow("initial_vector", disp_img);
+  }
+
 
   void displayGoalHeading(cv::Mat& img, PointStamped& centroid, double theta, double goal_theta)
   {
