@@ -1,0 +1,34 @@
+<package>
+  <description brief="arm_3d_cb_calib">
+
+      Utility for calibrating cameras and RGB-D sensors to a robot arm
+      holding a checkerboard.  The optimization procedure takes a set of 
+      3D checkerboard corner detections and corresponding end effector
+      poses to find the both, the transformation between the end effector 
+      and the checkerboard frame, and the transformation between the /base_link
+      and the sensor's frame. The assumption is that the pose of the checkerboard
+      with respect to the end effector is fixed, and that enough samples are obtained
+      such that the checkerboard offset can be uniquely determined.  In practice,
+      having over 12 checkerboard captures is recommended such that all 6 degrees of 
+      freedom of its pose are expressed in the sensor.
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/arm_3d_cb_calib</url>
+  <depend package="roscpp"/>
+  <depend package="cv_bridge"/>
+  <depend package="opencv2"/>
+  <depend package="stereo_msgs"/>
+  <depend package="sensor_msgs"/>
+  <depend package="tf"/>
+  <depend package="camera_calibration"/>
+
+  <export>
+      <cpp cflags="-I${prefix}/include" 
+           lflags="-L${prefix}/lib -Wl,-rpath,${prefix}/lib -larm_3d_cb_calib"/>
+  </export>
+</package>
+
+
