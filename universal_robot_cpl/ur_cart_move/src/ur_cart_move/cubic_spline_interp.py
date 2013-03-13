@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#! /usr/bin/python
 
 import numpy as np
 
@@ -91,7 +91,9 @@ class CubicSpline(object):
 
     @staticmethod
     def generate(t, q, qd_i=0., qd_f=0., qdd_i=0., qdd_f=0.):
-        N = len(t)-1
+        N = len(t)+1
+        # add in knot placeholders
+        t = np.array([t[0]] + [(t[0]+t[1])/2.] + t[1:-1] + [(t[-2]+t[-1])/2.] + [t[-1]]).copy() 
         h = np.array(t[1:])-np.array(t[0:-1])
         q = np.array([q[0]] + [0] + q[1:-1] + [0] + [q[-1]]).copy() # add in knot placeholders
         a, b, c, d = make_tri(h, q)
