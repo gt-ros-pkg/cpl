@@ -1,0 +1,4 @@
+<launch>
+    <node name="bin_manager" type="bin_manager.py" pkg="ur_cart_move" output="screen" />
+    <node name="bin_manipulator" type="bin_manipulator.py" pkg="ur_cart_move" output="screen" />
+</launch>
