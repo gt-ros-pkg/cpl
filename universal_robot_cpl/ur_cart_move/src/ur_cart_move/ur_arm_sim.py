@@ -2,9 +2,6 @@
 
 from threading import Lock
 import numpy as np
-from openravepy import *
-from scipy.interpolate import PiecewisePolynomial
-import sys
 import wx
 import xml.dom.minidom
 from sensor_msgs.msg import JointState
@@ -44,25 +41,29 @@ class ArmSimulator(object):
         self.qd_des = [0.]*6
         self.qdd_des = [0.]*6
         self.free_joints = {}
+        self.lock = Lock()
         for joint_name in ArmSimulator.JOINT_NAMES:
             self.free_joints[joint_name] = {'min':-2.*np.pi, 'max':2.*np.pi, 'zero':0., 'value':0. }
         self.joint_states = self.make_joint_state()
 
-        use_gui = get_param("use_gui", True)
+        use_gui = get_param("~use_gui", True)
+        prefix = get_param("~prefix", "")
 
         if use_gui:
             app = wx.App()
-            self.gui = JointStatePublisherGui("UR Joint State Publisher", self)
+            self.gui = JointStatePublisherGui("%s UR JS Publisher" % prefix, self)
             self.gui.Show()
             Thread(target=app.MainLoop).start()
         else:
             self.gui = None
 
-        self.js_pub = rospy.Publisher('/joint_states', JointState)
-        self.ur_js_pub = rospy.Publisher('/ur_joint_states', URJointStates)
-        self.ur_ms_pub = rospy.Publisher('/ur_mode_states', URModeStates)
-        rospy.Subscriber("/ur_joint_command", URJointCommand, self._ur_joint_command_cb)
-        rospy.Subscriber("/ur_mode_command", URModeCommand, self._ur_mode_command_cb)
+        self.js_pub = rospy.Publisher(prefix+'/joint_states', JointState)
+        self.ur_js_pub = rospy.Publisher(prefix+'/ur_joint_states', URJointStates)
+        self.ur_ms_pub = rospy.Publisher(prefix+'/ur_mode_states', URModeStates)
+        self.ur_jc_sub = rospy.Subscriber(prefix+"/ur_joint_command", URJointCommand, 
+                                          self._ur_joint_command_cb)
+        self.ur_mc_sub = rospy.Subscriber(prefix+"/ur_mode_command", URModeCommand, 
+                                          self._ur_mode_command_cb)
 
     def make_joint_state(self, q=[0.]*6, qd=[0.]*6, effort=[0.]*6):
         js = JointState()
@@ -82,14 +83,15 @@ class ArmSimulator(object):
         return ms
 
     def _ur_joint_command_cb(self, cmd):
-        self.q_des = list(cmd.q_des)
-        self.qd_des = list(cmd.qd_des)
-        self.qdd_des = list(cmd.qdd_des)
-        for i, name in enumerate(ArmSimulator.JOINT_NAMES):
-            self.free_joints[name]['value'] = self.q_des[i]
-        if self.gui is not None:
-            wx.PostEvent(self.gui, ResultEvent(None))
-            #self.gui.update_sliders()
+        with self.lock:
+            self.q_des = list(cmd.q_des)
+            self.qd_des = list(cmd.qd_des)
+            self.qdd_des = list(cmd.qdd_des)
+            for i, name in enumerate(ArmSimulator.JOINT_NAMES):
+                self.free_joints[name]['value'] = self.q_des[i]
+            if self.gui is not None:
+                wx.PostEvent(self.gui, ResultEvent(None))
+                #self.gui.update_sliders()
 
     def _ur_mode_command_cb(self, msg):
         pass
@@ -97,13 +99,15 @@ class ArmSimulator(object):
     def control_loop(self):
         r = rospy.Rate(ArmSimulator.CONTROL_RATE)
         while not rospy.is_shutdown():
-            for i, name in enumerate(ArmSimulator.JOINT_NAMES):
-                self.q_des[i] = self.free_joints[name]['value']
-            self.js_pub.publish(self.make_joint_state(self.q_des, self.qd_des))
-            ur_js = URJointStates()
-            ur_js.q_act, ur_js.qd_act = self.q_des, self.qd_des
-            self.ur_js_pub.publish(ur_js)
-            self.ur_ms_pub.publish(self.make_ur_mode_state())
+            with self.lock:
+                for i, name in enumerate(ArmSimulator.JOINT_NAMES):
+                    self.q_des[i] = self.free_joints[name]['value']
+                js = self.make_joint_state(self.q_des, self.qd_des)
+                self.js_pub.publish(js)
+                ur_js = URJointStates()
+                ur_js.q_act, ur_js.qd_act = self.q_des, self.qd_des
+                self.ur_js_pub.publish(ur_js)
+                self.ur_ms_pub.publish(self.make_ur_mode_state())
             r.sleep()
 
 EVT_RESULT_ID = wx.NewId()
@@ -119,7 +123,6 @@ class ResultEvent(wx.PyEvent):
 class JointStatePublisherGui(wx.Frame):
     def __init__(self, title, arm_sim):
         wx.Frame.__init__(self, None, -1, title, (-1, -1));
-        self.lock = Lock()
         self.arm_sim = arm_sim
         self.joint_map = {}
         panel = wx.Panel(self, wx.ID_ANY);
@@ -178,12 +181,11 @@ class JointStatePublisherGui(wx.Frame):
         self.update_sliders()
 
     def update_sliders(self):
-        with self.lock:
-            for (name,joint_info) in self.joint_map.items():
-                joint = joint_info['joint']
-                joint_info['slidervalue'] = self.valueToSlider(joint['value'], joint)
-                joint_info['slider'].SetValue(joint_info['slidervalue'])
-                joint_info['display'].SetValue("%.2f"%joint['value'])
+        for (name,joint_info) in self.joint_map.items():
+            joint = joint_info['joint']
+            joint_info['slidervalue'] = self.valueToSlider(joint['value'], joint)
+            joint_info['slider'].SetValue(joint_info['slidervalue'])
+            joint_info['display'].SetValue("%.2f"%joint['value'])
 
     def center_event(self, event):
         self.center()
@@ -196,9 +198,8 @@ class JointStatePublisherGui(wx.Frame):
         self.update_values()
 
     def sliderUpdate(self, event):
-        with self.lock:
-            for (name,joint_info) in self.joint_map.items():
-                joint_info['slidervalue'] = joint_info['slider'].GetValue()
+        for (name,joint_info) in self.joint_map.items():
+            joint_info['slidervalue'] = joint_info['slider'].GetValue()
         self.update_values()
 
     def valueToSlider(self, value, joint):

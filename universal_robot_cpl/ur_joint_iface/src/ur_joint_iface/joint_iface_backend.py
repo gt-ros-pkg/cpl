@@ -90,12 +90,13 @@ class SingleJointController(object):
         self.moving_joint = None
         self.moving_dir = None
         self.delta_x = 0.01
-        self.acc = 0.2
         self.vel_f = 0.2
-        self.t_f = self.vel_f / self.acc
+        self.t_f = 0.5 
+        self.acc = self.vel_f / self.t_f
         self.pos_f = 0.5*self.acc*(self.t_f**2)
         self.t = 0.0
-        self.arm, self.kin, self.arm_behav = load_ur_robot()
+        prefix = rospy.get_param("~prefix", "")
+        self.arm, self.kin, self.arm_behav = load_ur_robot(topic_prefix=prefix)
         self.q_init = None
 
     def update(self):
@@ -121,7 +122,7 @@ class SingleJointController(object):
         self.moving_dir = direction
         self.t = 0.0
         self.vel_f = vel
-        self.t_f = self.vel_f / self.acc
+        self.acc = self.vel_f / self.t_f
         self.pos_f = 0.5*self.acc*(self.t_f**2)
         self.q_init = np.array(self.arm.get_q())
 
