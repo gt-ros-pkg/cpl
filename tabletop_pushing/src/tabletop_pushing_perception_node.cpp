@@ -2395,7 +2395,8 @@ class TabletopPushingPerceptionNode
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
     cv::Point img_centroid_point = pcl_segmenter_->projectPointIntoImage(centroid);
-    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,255));
+    cv::circle(disp_img, img_centroid_point, 4, cv::Scalar(0,0,0),3);
+    cv::circle(disp_img, img_centroid_point, 4, cv::Scalar(0,0,255));
     cv::imshow("initial_vector", disp_img);
   }
 
