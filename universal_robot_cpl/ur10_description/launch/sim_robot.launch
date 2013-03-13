@@ -1,16 +1,12 @@
 <launch>
   <include file="$(find ur10_description)/launch/load.launch" />
-  <param name="/use_gui" value="true"/>
   <!--
   <param name="/rate" value="125" />
   <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" ></node>
   -->
   <node name="ur_sim_sim1" pkg="ur_cart_move" type="ur_arm_sim.py"  output="screen">
-    <remap from="/joint_states" to="/sim1/joint_states" />
-    <remap from="/ur_joint_states" to="/sim1/ur_joint_states" />
-    <remap from="/ur_mode_states" to="/sim1/ur_mode_states" />
-    <remap from="/ur_joint_command" to="/sim1/ur_joint_command" />
-    <remap from="/ur_mode_command" to="/sim1/ur_mode_command" />
+    <param name="use_gui" value="true"/>
+    <param name="prefix" value="/sim1"/>
   </node>
   <node name="sim1_state_publisher" pkg="robot_state_publisher" type="state_publisher">
     <remap from="/joint_states" to="/sim1/joint_states" />
@@ -20,11 +16,8 @@
 
 
   <node name="ur_sim_sim2" pkg="ur_cart_move" type="ur_arm_sim.py" output="screen">
-    <remap from="/joint_states" to="/sim2/joint_states" />
-    <remap from="/ur_joint_states" to="/sim2/ur_joint_states" />
-    <remap from="/ur_mode_states" to="/sim2/ur_mode_states" />
-    <remap from="/ur_joint_command" to="/sim2/ur_joint_command" />
-    <remap from="/ur_mode_command" to="/sim2/ur_mode_command" />
+    <param name="use_gui" value="false"/>
+    <param name="prefix" value="/sim2"/>
   </node>
   <node name="sim2_state_publisher" pkg="robot_state_publisher" type="state_publisher">
     <remap from="/joint_states" to="/sim2/joint_states" />
@@ -34,11 +27,8 @@ j   <param name="tf_prefix" value="/sim2" />
 
 
   <node name="ur_sim_sim3" pkg="ur_cart_move" type="ur_arm_sim.py" output="screen">
-    <remap from="/joint_states" to="/sim3/joint_states" />
-    <remap from="/ur_joint_states" to="/sim3/ur_joint_states" />
-    <remap from="/ur_mode_states" to="/sim3/ur_mode_states" />
-    <remap from="/ur_joint_command" to="/sim3/ur_joint_command" />
-    <remap from="/ur_mode_command" to="/sim3/ur_mode_command" />
+    <param name="use_gui" value="false"/>
+    <param name="prefix" value="/sim3"/>
   </node>
   <node name="sim3_state_publisher" pkg="robot_state_publisher" type="state_publisher">
     <remap from="/joint_states" to="/sim3/joint_states" />
