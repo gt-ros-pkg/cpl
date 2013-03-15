@@ -1,0 +1,16 @@
+<package>
+  <description brief="ur_cart_move">
+
+     ur_cart_move
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/ur_cart_move</url>
+  <depend package="ur_demos"/>
+  <depend package="rospy"/>
+
+</package>
+
+

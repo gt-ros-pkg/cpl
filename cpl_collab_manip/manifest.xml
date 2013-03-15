@@ -1,0 +1,15 @@
+<package>
+  <description brief="cpl_collab_manip">
+
+     cpl_collab_manip
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/cpl_collab_manip</url>
+
+
+</package>
+
+

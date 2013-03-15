@@ -8,8 +8,6 @@
       <param name="use_jinv" type="bool" value="False"/>
       <param name="use_joint_posture" type="bool" value="True"/>
 
-      <param name="use_contact_pt_compensation_control" type="bool" value="True"/>
-
       <param name="push_control_goal_gain" type="double" value="0.1"/>
       <param name="push_control_spin_gain" type="double" value="0.1"/>
       <param name="push_control_position_spin_gain" type="double" value="0.15"/>
@@ -21,7 +19,16 @@
       <param name="push_control_in_heading_gain" type="double" value="0.001"/>
       <param name="max_heading_push_u_x" type="double" value="0.03"/>
 
+      <param name="push_control_direct_goal_gain" type="double" value="0.15"/>
+
       <param name="overhead_feedback_down_vel" type="double" value="0.0"/>
+      <param name="max_close_effort" type="double" value="50"/>
+
+      <param name="gripper_pull_reverse_dist" type="double" value="0.15"/>
+      <param name="gripper_pull_forward_dist" type="double" value="0.15"/>
+
+      <param name="gripper_push_reverse_dist" type="double" value="0.03"/>
+      <param name="gripper_raise_dist" type="double" value="0.05"/>
 
     </node>
 </launch>

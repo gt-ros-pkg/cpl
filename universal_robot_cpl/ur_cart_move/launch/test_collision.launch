@@ -1,0 +1,6 @@
+
+<launch>
+    <node name="test_collision" type="test_collision.py" pkg="ur_cart_move" output="screen">
+        <param name="test_prefix" value="/sim_test" />
+    </node>
+</launch>

@@ -65,7 +65,7 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
   <property name="shoulder_radius" value="0.075" />   <!-- manually measured -->
   <property name="upper_arm_radius" value="0.054" />  <!-- manually measured -->
   <property name="elbow_radius" value="0.060" />      <!-- manually measured -->
-  <property name="forearm_radius" value="0.040" />    <!-- manually measured -->
+  <property name="forearm_radius" value="0.043" />    <!-- manually measured -->
   <property name="wrist_radius" value="0.045" />      <!-- manually measured -->
 
 <!-- Collision model -->
@@ -89,6 +89,74 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     <inertial>
       <mass value="${base_mass}" />
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <joint name="${prefix}cart_base_joint" type="fixed">
+    <parent link="${prefix}base_link" />
+    <child link = "${prefix}cart_base_link" />
+    <origin xyz="0.08 -0.12 -0.915" rpy="0.0 0.0 0.0" />
+  </joint>
+  
+  <link name="${prefix}cart_base_link">
+    <visual>
+      <!--
+      <geometry>
+          <box size="1.22 0.62 0.915" />
+      </geometry>
+      -->
+      <geometry>
+        <mesh filename="package://ur10_description/meshes/cube.dae" scale="1.22 0.62 0.915"/>
+      </geometry>
+      <origin xyz="-0.61 0.31 0.458" rpy="0.0 0.0 0.0" />
+      <material name="grey">
+          <color rgba="0.3 0.3 0.3 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+          <box size="1.22 0.62 0.915" />
+      </geometry>
+      <origin xyz="-0.61 0.31 -0.458" rpy="0.0 0.0 0.0" />
+    </collision>
+    <inertial>
+      <mass value="100" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin xyz="-0.61 0.31 -0.458" rpy="0.0 0.0 0.0" />
+    </inertial>
+  </link>
+
+  <joint name="${prefix}work_table_joint" type="fixed">
+    <parent link="${prefix}cart_base_link" />
+    <child link = "${prefix}work_table_link" />
+    <origin xyz="0.0 0.0 0.715" rpy="0.0 0.0 ${-3.0*pi/4.0}" />
+  </joint>
+  
+  <link name="${prefix}work_table_link">
+      <!--
+    <visual>
+      <geometry>
+          <box size="1.22 0.62 0.915" />
+      </geometry>
+      <geometry>
+        <mesh filename="package://ur10_description/meshes/cube.dae" scale="1.22 0.62 0.915"/>
+      </geometry>
+      <origin xyz="-0.61 0.31 0.458" rpy="0.0 0.0 0.0" />
+      <material name="grey">
+          <color rgba="0.3 0.3 0.3 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+          <box size="1.22 0.62 0.915" />
+      </geometry>
+      <origin xyz="-0.61 0.31 -0.458" rpy="0.0 0.0 0.0" />
+    </collision>
+      -->
+    <inertial>
+      <mass value="100" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin xyz="-0.61 0.31 -0.458" rpy="0.0 0.0 0.0" />
     </inertial>
   </link>
 
@@ -130,18 +198,32 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     <dynamics damping="10" friction="0.1"/>
   </joint>
 
+  <link name="${prefix}upper_arm_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://ur10_description/meshes/UpperArm.dae" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <origin xyz="0.0 -0.221 -0.127" rpy="${pi / 2.0} -${0*pi / 2.0} 0.0" />
+    </visual>
+    <inertial>
+      <mass value="${upper_arm_mass}" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin xyz="${upper_arm_cog}" rpy="0.0 0.0 0.0" />
+    </inertial>
+  </link>
+
   <joint name="${prefix}upper_shoulder_joint" type="fixed">
     <parent link="${prefix}upper_arm_link" />
     <child link = "${prefix}upper_shoulder_link" />
-    <origin xyz="0.0 -0.053 0.0" rpy="${-pi/2.0} 0.0 0.0" />    
+    <origin xyz="0.0 -0.046 0.0" rpy="${-pi/2.0} ${pi} 0.0" />    
   </joint>
 
   <link name="${prefix}upper_shoulder_link">
     <collision>
       <geometry>
-        <cylinder length="${base_collision_length}" radius="${shoulder_radius}"/>
+        <cylinder length="0.175" radius="${shoulder_radius}"/>
       </geometry>
-      <origin xyz="0.0 0.0 ${shoulder_height}" rpy="0.0 0.0 0.0" />
+      <origin xyz="0.0 0.0 ${-(0.085-0.175/2.0)}" rpy="0.0 0.0 0.0" />
     </collision>
     <inertial>
       <mass value="0" />
@@ -150,23 +232,23 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     </inertial>
   </link>
 
-  <link name="${prefix}upper_arm_link">
-    <visual>
-      <geometry>
-        <mesh filename="package://ur10_description/meshes/UpperArm.dae" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <origin xyz="0.0 -0.221 -0.127" rpy="${pi / 2.0} -${0*pi / 2.0} 0.0" />
-    </visual>
+  <joint name="${prefix}upper_arm_middle_joint" type="fixed">
+    <parent link="${prefix}upper_arm_link" />
+    <child link = "${prefix}upper_arm_middle_link" />
+    <origin xyz="0.0 -0.046 ${0.45/2.0+0.17-shoulder_radius}" rpy="${-pi/2.0} ${pi} 0.0" />    
+  </joint>
+
+  <link name="${prefix}upper_arm_middle_link">
     <collision>
       <geometry>
-        <cylinder length="${upper_arm_length}" radius="${upper_arm_radius}"/>
+          <cylinder length="0.45" radius="${0.105/2.0}"/>
       </geometry>
-      <origin xyz="0.0 0.0 ${upper_arm_length/2.0}" rpy="0.0 0.0 0.0" />
+      <origin xyz="0.0 0.0 0.0" rpy="${pi/2.0} 0.0 0.0" />
     </collision>
     <inertial>
-      <mass value="${upper_arm_mass}" />
+      <mass value="0" />
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
-      <origin xyz="${upper_arm_cog}" rpy="0.0 0.0 0.0" />
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     </inertial>
   </link>
 
@@ -188,14 +270,34 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     </visual>
     <collision>
       <geometry>
-        <cylinder length="${forearm_length}" radius="${forearm_radius}"/>
+          <cylinder length="0.26" radius="${0.12/2.0}"/>
       </geometry>
-      <origin xyz="0.0 0.0 ${forearm_length/2.0}" rpy="0.0 0.0 0.0" />
+      <origin xyz="0.0 ${0.26/2.0-0.065} 0.0" rpy="${pi/2.0} 0.0 0.0" />
     </collision>
     <inertial>
       <mass value="${forearm_mass}" />
       <origin xyz="${forearm_cog}" rpy="0.0 0.0 0.0" />
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <joint name="${prefix}forearm_middle_joint" type="fixed">
+    <parent link="${prefix}forearm_link" />
+    <child link = "${prefix}forearm_middle_link" />
+    <origin xyz="0.0 0.0 ${0.57-0.45/2.0-0.12/2.0+0.01}" rpy="0.0 0.0 0.0" />    
+  </joint>
+
+  <link name="${prefix}forearm_middle_link">
+    <collision>
+      <geometry>
+          <cylinder length="0.45" radius="${forearm_radius}"/>
+      </geometry>
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    </collision>
+    <inertial>
+      <mass value="0" />
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     </inertial>
   </link>
 
@@ -217,9 +319,9 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     </visual>
     <collision>
       <geometry>
-        <cylinder length="${1.6*wrist_1_length}" radius="${wrist_radius}"/>
+        <cylinder length="${0.123}" radius="${wrist_radius}"/>
       </geometry>
-      <origin xyz="0.0 ${0.25*wrist_1_length} 0.0" rpy="${-pi/2.0} 0.0 0.0" />
+      <origin xyz="0.0 ${0.123/2.0-0.057} 0.0" rpy="${-pi/2.0} 0.0 0.0" />
     </collision>
     <inertial>
       <mass value="${wrist_1_mass}" />
@@ -246,9 +348,9 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     </visual>
     <collision>
       <geometry>
-        <cylinder length="${1.6*wrist_2_length}" radius="${wrist_radius}"/>
+        <cylinder length="0.123" radius="${wrist_radius}"/>
       </geometry>
-      <origin xyz="0.0 0.0 ${0.25*wrist_2_length}" rpy="0.0 0.0 0.0" />
+      <origin xyz="0.0 0.0 ${0.123/2.0-0.057}" rpy="0.0 0.0 0.0" />
     </collision>
     <inertial>
       <mass value="${wrist_2_mass}" />
@@ -275,9 +377,9 @@ center_of_mass = [ [0.00008, -0.037, 0.00244], [0.38757, 0.00001, 0.15061], [0.1
     </visual>
     <collision>
       <geometry>
-        <cylinder length="${1.65*wrist_3_length}" radius="${wrist_radius}"/>
+          <cylinder length="${0.123+0.025}" radius="${wrist_radius}"/>
       </geometry>
-      <origin xyz="0.0 ${0.15 * wrist_3_length} 0.0" rpy="${-pi/2.0} 0.0 0.0" />
+      <origin xyz="0.0 ${(0.123+0.025)/2.0-0.057} 0.0" rpy="${-pi/2.0} 0.0 0.0" />
     </collision>
     <inertial>
       <mass value="${wrist_3_mass}" />

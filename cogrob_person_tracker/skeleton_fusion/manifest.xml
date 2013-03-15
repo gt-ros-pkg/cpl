@@ -1,0 +1,18 @@
+<package>
+  <description brief="skeleton_fusion">
+
+     skeleton_fusion
+
+  </description>
+  <author>martin</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/skeleton_fusion</url>
+  <depend package="roscpp"/>
+  <depend package="openni_tracker_msgs"/>
+  <depend package="roslib"/>
+  <depend package="tf"/>
+  <depend package="pcl"/>
+</package>
+
+

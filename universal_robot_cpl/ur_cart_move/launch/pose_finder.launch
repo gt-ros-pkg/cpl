@@ -1,0 +1,11 @@
+<launch>
+    <node name="pose_finder" type="pose_finder.py" pkg="ur_cart_move" output="screen">
+        <param name="test_prefix" value="/sim2" />
+        <param name="tf_prefix" value="" />
+        <remap from="/joint_states" to="/joint_states" />
+        <remap from="/ur_joint_states" to="/ur_joint_states" />
+        <remap from="/ur_mode_states" to="/ur_mode_states" />
+        <remap from="/ur_joint_command" to="/ur_joint_command" />
+        <remap from="/ur_mode_command" to="/ur_mode_command" />
+    </node>
+</launch>

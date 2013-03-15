@@ -1,0 +1,29 @@
+<!-- Default frames for Kinect/PSDK5 devices
+     Places depth and RGB cameras in the same plane with 2.5cm baseline.
+     Calibration may improve results, but these defaults are reasonably accurate.
+-->
+<launch>
+  <arg name="camera" default="camera" />
+
+  <arg name="pi/2" value="1.5707963267948966" />
+  <arg name="optical_rotate" value="0 0 0 -$(arg pi/2) 0 -$(arg pi/2)" />
+
+  <node pkg="tf" type="static_transform_publisher" name="$(arg camera)_base_link"
+        args="0 -0.02  0 0 0 0  /kinect1_base_link /kinect1_camera_depth_frame 100" />  
+  <node pkg="tf" type="static_transform_publisher" name="$(arg camera)_base_link1"
+        args="0 -0.045 0 0 0 0  /kinect1_base_link /kinect1_rgb_frame 100" />  
+  <!--<node pkg="tf" type="static_transform_publisher" name="$(arg camera)_base_link2"
+        args="$(arg optical_rotate) /kinect1_camera_depth_frame /kinect1_camera_depth_optical_frame  100" />  
+        -->
+  <node pkg="tf" type="static_transform_publisher" name="kinect1_base_link3"
+        args="$(arg optical_rotate) /kinect1_rgb_frame /kinect1_rgb_optical_frame 100" />  
+  <node pkg="tf" type="static_transform_publisher" name="kinect1_base_link4"
+        args="-1.01303852, 0.366513316, 1.08871268 -0.258518 0.688857 -0.648220 -0.196102 /kinect1_rgb_optical_frame /base_link 100" />  
+  <!--<node pkg="tf" type="static_transform_publisher" name="kinect0_base_link1"
+        args="-1.839541851483059, -0.24589298524011111, 1.8819703548281486 2.396096541976241, 1.443774302883727, 2.5293746551337617 /kinect1_rgb_optical_frame /kinect0_rgb_optical_frame 100" />  
+        -->
+  <node pkg="tf" type="static_transform_publisher" name="kinect0_base_link1"
+        args="-1.775 -0.224 1.839 -0.018 0.74 0.072 0.668 /kinect1_rgb_optical_frame /kinect0_rgb_optical_frame 100" />  
+  <node pkg="tf" type="static_transform_publisher" name="kinect0_base_link0"
+        args="-0.025, 0.000, 0.000 0.500, -0.500, 0.500, 0.500 /kinect0_rgb_optical_frame /kinect0_camera_depth_frame 100" />  
+</launch>

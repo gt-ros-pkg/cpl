@@ -1,0 +1,32 @@
+<launch>
+<arg name="new_cam_ns"  default="/kinect1/rgb"/>
+<arg name="urdf_cam_ns"  default="/kinect2/rgb"/>
+<arg name="checker_rows" default="8" />
+<arg name="checker_cols" default="6" />
+<arg name="checker_size" default="0.05"/>
+<!--<arg name="headless" default="true" />-->
+
+  <include file="$(find openni_launch)/launch/openni.launch">
+    <arg name="camera" default="kinect1" />
+  <arg name="device_id" default="#1" />
+  </include>
+  <include file="$(find openni_launch)/launch/openni.launch">
+    <arg name="camera" default="kinect2" />
+  <arg name="device_id" default="#2" />
+  </include>
+
+  <include file="$(find camera_pose_calibration)/blocks/calibration_tf_publisher.launch">
+    <arg name="cache_file" value="/tmp/camera_pose_calibration_cache.bag" />
+  </include>
+
+  <!--<include file="$(find camera_pose_calibration)/launch_extrinsics/calibrate_2_camera.launch" >
+           <arg name="camera1_ns" value="$(arg urdf_cam_ns)" />
+           <arg name="camera2_ns" value="$(arg new_cam_ns)" />
+           <arg name="checker_rows" value="$(arg checker_rows)" />
+           <arg name="checker_cols" value="$(arg checker_cols)" />
+           <arg name="checker_size" value="$(arg checker_size)" />
+  </include>-->
+
+<!--<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="-1.6 -0.113 1.839 -2.904 1.277 -2.973 kinect1_rgb_optical_frame kinect2_rgb_optical_frame 100" />-->
+
+</launch>

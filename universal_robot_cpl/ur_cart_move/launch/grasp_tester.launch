@@ -1,0 +1,12 @@
+<launch>
+    <node name="grasp_tester" type="grasp_tester.py" pkg="ur_cart_move" output="screen">
+        <param name="grasp_prefix" value="/sim2" />
+        <param name="place_prefix" value="/sim3" />
+        <param name="tf_prefix" value="/sim1" />
+        <remap from="/joint_states" to="/sim1/joint_states" />
+        <remap from="/ur_joint_states" to="/sim1/ur_joint_states" />
+        <remap from="/ur_mode_states" to="/sim1/ur_mode_states" />
+        <remap from="/ur_joint_command" to="/sim1/ur_joint_command" />
+        <remap from="/ur_mode_command" to="/sim1/ur_mode_command" />
+    </node>
+</launch>

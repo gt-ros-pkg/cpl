@@ -36,6 +36,8 @@ struct Correspondence {
     cam1(_cam1), cam2(_cam2), ind1(_ind1), ind2(_ind2) {}
 };
 
+////////////////////////////////////////////////////////////////////////////
+// register point clouds taken from a kinect mounted on the arm from correspondances
 struct KAMProblem
 {
   vector<Pose3> base_Ts_ee;
@@ -54,14 +56,17 @@ struct KAMSolution
 void generateKAMProblem(int num_cameras, int num_points, int cameras_per_point, 
                            KAMProblem& prob, KAMSolution& sol);
 Pose3 solveKAMProblem(const KAMProblem& prob);
+////////////////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////////////////
+// Kinect is mounted on the arm's end effector and its pose is unknown
 struct CBCalibProblem
 {
   vector<Pose3> base_T_ee_poses;
   vector<Point3> cb_p_points;
   vector<vector<vector<Point3> > > kinect_p_points;
-  CBCalibProblem(int num_kinects, int num_ees, double cb_width, int num_cb_width, int num_cb_height) :
-    kinect_p_points(num_kinects, vector<vector<Point3> >(num_ees)) {
+  CBCalibProblem(int num_kinects, double cb_width, int num_cb_width, int num_cb_height) :
+    kinect_p_points(num_kinects, vector<vector<Point3> >()) {
     for(int i=0;i<num_cb_width;i++)
       for(int j=0;j<num_cb_height;j++)
         cb_p_points.push_back(Point3(i*cb_width,j*cb_width,0));
@@ -74,8 +79,34 @@ struct CBCalibSolution
   vector<Pose3> kinect_T_base_poses;
 };
 
-void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol);
+void generateCBCalibProblem(CBCalibProblem& prob, CBCalibSolution& sol, int num_ees);
 void solveCBCalibProblem(const CBCalibProblem& prob, CBCalibSolution& sol);
+////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////
+// Kinects in freespace seeing mutual checkerboards
+struct KinectCBCalibProblem
+{
+  vector<Point3> cb_p_points;
+  vector<vector<vector<Point3> > > kinect_p_points;
+  KinectCBCalibProblem(int num_kinects, int num_cbs, double cb_width, 
+                       int num_cb_width, int num_cb_height) :
+    kinect_p_points(num_cbs, vector<vector<Point3> >(num_kinects)) {
+    for(int i=0;i<num_cb_width;i++)
+      for(int j=0;j<num_cb_height;j++)
+        cb_p_points.push_back(Point3(i*cb_width,j*cb_width,0));
+  }
+};
+
+struct KinectCBCalibSolution
+{
+  vector<Pose3> kinect_T_world_poses;
+  vector<Pose3> cb_T_world_poses;
+};
+
+void generateKinectCBCalibProblem(KinectCBCalibProblem& prob, KinectCBCalibSolution& sol);
+void solveKinectCBCalibProblem(const KinectCBCalibProblem& prob, KinectCBCalibSolution& sol);
+////////////////////////////////////////////////////////////////////////////
 
 geometry_msgs::Pose gtsamPose3ToGeomPose(const gtsam::Pose3& pose_in);
 gtsam::Pose3 geomPoseToGtsamPose3(const geometry_msgs::Pose& pose_in);
