@@ -10,15 +10,12 @@ from threading import Thread
 
 import roslib
 roslib.load_manifest("ur_cart_move")
+roslib.load_manifest("ur_controller_manager")
 
 import rospy
 import roslaunch.substitution_args
 from sensor_msgs.msg import JointState
 
-from hrl_geom.pose_converter import PoseConv
-from hrl_geom.transformations import rotation_from_matrix as mat_to_ang_axis_point
-from hrl_geom.transformations import rotation_matrix as ang_axis_point_to_mat
-from hrl_geom.transformations import euler_matrix
 from ur_controller_manager.msg import URJointCommand, URModeStates, URJointStates, URModeCommand
 
 def get_param(name, value=None):
