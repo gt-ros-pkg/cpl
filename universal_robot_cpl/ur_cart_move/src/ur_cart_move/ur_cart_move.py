@@ -10,12 +10,17 @@ roslib.load_manifest("ur_cart_move")
 import rospy
 import roslaunch.substitution_args
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64
+from geometry_msgs.msg import Wrench, Twist
 
 from hrl_geom.pose_converter import PoseConv
 from hrl_geom.transformations import rotation_from_matrix as mat_to_ang_axis_point
 from hrl_geom.transformations import rotation_matrix as ang_axis_point_to_mat
 from hrl_geom.transformations import euler_matrix
 from ur_controller_manager.msg import URJointCommand, URModeStates, URJointStates, URModeCommand
+
+roslib.load_manifest("pykdl_utils")
+from pykdl_utils.kdl_kinematics import create_kdl_kin
 
 class RAVEKinematics(object):
     def __init__(self, robot_file='$(find ur10_description)/ur10_robot.dae', load_ik=True):
@@ -29,6 +34,9 @@ class RAVEKinematics(object):
     #                         self.robot,iktype=IkParameterization.Type.Translation3D)
         self.ikmodel6d = databases.inversekinematics.InverseKinematicsModel(
                              self.robot,iktype=IkParameterization.Type.Transform6D)
+        robot_urdf = roslaunch.substitution_args.resolve_args(
+                '$(find ur10_description)/ur10_robot.urdf')
+        self.kdl_kin = create_kdl_kin('/base_link', '/ee_link', robot_urdf)
         if True:
             self.ik_options = (IkFilterOptions.IgnoreCustomFilters |
                                IkFilterOptions.IgnoreJointLimits)
@@ -57,7 +65,7 @@ class RAVEKinematics(object):
         return np.mat(self.manip.GetEndEffectorTransform())
 
     def inverse(self, x, q_guess=None, restarts=3, 
-                q_min=6*[-999.0], q_max=6*[999.0], weights=6*[1.], options=None):
+                q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi], weights=6*[1.], options=None):
         if options is None:
             ik_options = self.ik_options
         else:
@@ -91,7 +99,8 @@ class RAVEKinematics(object):
                 if len(valid_sols) > 0:
                     break
             if len(valid_sols) == 0:
-                return None
+                return self.kdl_kin.inverse(x, q_guess, 10, q_min, q_max)
+                #return None
             best_sol_ind = np.argmin(np.sum((weights*(valid_sols - np.array(q_guess)))**2,1))
             best_sol = valid_sols[best_sol_ind]
             if False:
@@ -104,7 +113,7 @@ class RAVEKinematics(object):
 
     def inverse_rand_search(self, x, q_guess=None, pos_tol=0.01, rot_tol=20.0/180.0*np.pi, 
                             restarts=10, 
-                            q_min=6*[-999.0], q_max=6*[999.0], weights=6*[1.], options=None):
+                            q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi], weights=6*[1.], options=None):
         num_restart = 0
         while not rospy.is_shutdown():
             if num_restart == 0:
@@ -162,6 +171,9 @@ class ArmInterface(object):
         rospy.Subscriber(topic_prefix+'/ur_mode_states', URModeStates, self._ur_mode_states_cb)
         self.joint_cmd_pub = rospy.Publisher(topic_prefix+"/ur_joint_command", URJointCommand)
         self.mode_cmd_pub = rospy.Publisher(topic_prefix+"/ur_mode_command", URModeCommand)
+        self.tcp_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp", Twist)
+        self.tcp_payload_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp_payload", Float64)
+        self.tcp_wrench_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp_wrench", Wrench)
 
         self.wait_for_states(timeout)
 
@@ -209,6 +221,21 @@ class ArmInterface(object):
 
     def get_qdd_des(self):
         return np.array(self.ur_joint_states.qdd_des)
+
+    # pose of the payload in the end link
+    # payload in kg
+    def set_payload(self, pose=None, payload=None):
+        if pose is not None:
+            self.tcp_pub.publish(PoseConv.to_twist_msg(pose))
+        if payload is not None:
+            self.tcp_payload_pub.publish(Float64(payload))
+
+    # wrench felt by the end effector in the base link
+    def set_felt_wrench(self, wrench):
+        w = Wrench()
+        w.linear.x, w.linear.y, w.linear.z  = wrench[0], wrench[1], wrench[2]
+        w.angular.x, w.angular.y, w.angular.z  = wrench[3], wrench[4], wrench[5]
+        self.tcp_wrench_pub.publish(w)
 
     def cmd_empty(self, qd):
         cmd = URJointCommand()

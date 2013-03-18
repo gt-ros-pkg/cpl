@@ -21,6 +21,17 @@ def pose_diff(x_a, x_b):
     ang_delta, axis_delta, point_delta = mat_to_ang_axis_point(rot_delta_homo)
     return pos_delta, ang_delta, axis_delta, point_delta
 
+##
+# Returns x_cur, linearly interpolated from x_init to x_final 
+# according to position and axis-angle interpolation.
+# s = [0,1]
+def pose_interp(x_init, x_final, s):
+    x_cur = x_init.copy()
+    pos_delta, ang_delta, axis_delta, point_delta = pose_diff(x_final, x_init)
+    x_cur[:3,3] += s * pos_delta
+    x_cur[:3,:3] *= ang_axis_point_to_mat(s * ang_delta, axis_delta, point_delta)[:3,:3]
+    return x_cur
+
 # returns an offset pose using delta values
 # For rotations: if in base frame: R = b_O_fe = b_O_f * (b_O_e).T,
 #                if in ee frame:   R = e_O_fe = (b_O_e).T * b_O_e * e_O_f
@@ -45,15 +56,13 @@ class TrajPlanner(object):
 
     def interpolate_ik(self, q_init, x_goal, s_knots):
         x_init = self.kin.forward(q_init)
-        pos_delta, ang_delta, axis_delta, point_delta = pose_diff(x_goal, x_init)
-
         q_pts = []
         q_prev = q_init
         for s in s_knots:
-            x_cur = x_init.copy()
-            x_cur[:3,3] += s * pos_delta
-            x_cur[:3,:3] *= ang_axis_point_to_mat(s * ang_delta, axis_delta, point_delta)[:3,:3]
-            q_pt = self.kin.inverse(x_cur, q_prev)
+            x_cur = pose_interp(x_init, x_goal, s)
+            #q_pt = self.kin.inverse(x_cur, q_prev)
+            q_pt = self.kin.inverse_rand_search(x_cur, q_prev,
+                                                pos_tol=0.001, rot_tol=np.deg2rad(1.))
             if q_pt is None:
                 print x_init
                 print "IK failed", q_pts, x_cur
