@@ -396,7 +396,7 @@ class PositionFeedbackPushNode:
 
     def init_head_pose(self, camera_frame):
         look_pt = np.asmatrix([self.look_pt_x, 0.0, -self.torso_z_offset])
-        rospy.loginfo('Point head at ' + str(look_pt))
+        rospy.loginfo('Point head at ' + str(look_pt)+ ' in frame ' + camera_frame)
         head_res = self.robot.head.look_at(look_pt,
                                            'torso_lift_link',
                                            camera_frame, wait=True)
@@ -1584,7 +1584,7 @@ class PositionFeedbackPushNode:
         error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
                           arm_error.linear.z**2)
         rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
-        rospy.loginfo('Move cart gripper error dist: ' + str(arm_error.linear)+'\n')
+        rospy.loginfo('Move cart gripper error: ' + str(arm_error.linear)+'\n'+str(arm_error.angular))
         return (arm_error, error_dist)
 
 

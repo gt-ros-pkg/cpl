@@ -33,6 +33,7 @@
 
       <param name="gripper_push_reverse_dist" type="double" value="0.03"/>
       <param name="gripper_raise_dist" type="double" value="0.05"/>
+      <param name="head_pose_cam_frame" type="string" value="/head_mount_kinect_ir_link"/>
 
     </node>
 </launch>
