@@ -25,6 +25,8 @@
   <depend package="actionlib"/>
   <depend package="actionlib_msgs"/>
   <depend package="pr2_controllers_msgs"/>
+  <depend package="pr2_arm_kinematics"/>
+  <depend package="kinematics_msgs"/>
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
   <depend package="pr2_camera_self_filter"/>

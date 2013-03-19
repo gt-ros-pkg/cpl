@@ -39,6 +39,7 @@ import hrl_pr2_lib.pressure_listener as pl
 import hrl_lib.tf_utils as tfu
 from hrl_pr2_arms.pr2_controller_switcher import ControllerSwitcher
 from geometry_msgs.msg import PoseStamped, TwistStamped
+from kinematics_msgs.srv import *
 from std_msgs.msg import Float64MultiArray
 from pr2_controllers_msgs.msg import *
 from pr2_manipulation_controllers.msg import *
@@ -180,7 +181,7 @@ class PositionFeedbackPushNode:
         self.gripper_push_reverse_dist = rospy.get_param('~gripper_push_reverse_dist',
                                                          0.03)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
-        self.lower_arm_init_z = rospy.get_param('~high_arm_start_z', -0.20)
+        self.lower_arm_init_z = rospy.get_param('~lower_arm_start_z', -0.15)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
@@ -246,51 +247,43 @@ class PositionFeedbackPushNode:
         # Setup arms
         self.tf_listener = tf.TransformListener()
         rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False,
-                             use_kinematics=False)#, use_projector=False)
+        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, use_kinematics=False)#, use_projector=False)
 
-        self.l_arm_cart_pub = rospy.Publisher(
-            '/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)
-        self.r_arm_cart_pub = rospy.Publisher(
-            '/r'+self.base_cart_controller_name+'/command_pose', PoseStamped)
-        self.l_arm_cart_posture_pub = rospy.Publisher(
-            '/l'+self.base_cart_controller_name+'/command_posture',
-            Float64MultiArray)
-        self.r_arm_cart_posture_pub = rospy.Publisher(
-            '/r'+self.base_cart_controller_name+'/command_posture',
-            Float64MultiArray)
-        self.l_arm_cart_vel_pub = rospy.Publisher(
-            '/l'+self.base_vel_controller_name+'/command_twist', TwistStamped)
-        self.r_arm_cart_vel_pub = rospy.Publisher(
-            '/r'+self.base_vel_controller_name+'/command_twist', TwistStamped)
-        self.l_arm_vel_posture_pub = rospy.Publisher(
-            '/l'+self.base_vel_controller_name+'/command_posture',
-            Float64MultiArray)
-        self.r_arm_vel_posture_pub = rospy.Publisher(
-            '/r'+self.base_vel_controller_name+'/command_posture',
-            Float64MultiArray)
+        self.l_arm_cart_pub = rospy.Publisher('/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)
+        self.r_arm_cart_pub = rospy.Publisher('/r'+self.base_cart_controller_name+'/command_pose', PoseStamped)
+        self.l_arm_cart_posture_pub = rospy.Publisher('/l'+self.base_cart_controller_name+'/command_posture',
+                                                      Float64MultiArray)
+        self.r_arm_cart_posture_pub = rospy.Publisher('/r'+self.base_cart_controller_name+'/command_posture',
+                                                      Float64MultiArray)
+        self.l_arm_cart_vel_pub = rospy.Publisher('/l'+self.base_vel_controller_name+'/command_twist', TwistStamped)
+        self.r_arm_cart_vel_pub = rospy.Publisher('/r'+self.base_vel_controller_name+'/command_twist', TwistStamped)
+        self.l_arm_vel_posture_pub = rospy.Publisher('/l'+self.base_vel_controller_name+'/command_posture',
+                                                     Float64MultiArray)
+        self.r_arm_vel_posture_pub = rospy.Publisher('/r'+self.base_vel_controller_name+'/command_posture',
+                                                     Float64MultiArray)
 
-        rospy.Subscriber('/l'+self.base_cart_controller_name+'/state',
-                         self.controller_state_msg,
+        rospy.Subscriber('/l'+self.base_cart_controller_name+'/state', self.controller_state_msg,
                          self.l_arm_cart_state_callback)
-        rospy.Subscriber('/r'+self.base_cart_controller_name+'/state',
-                         self.controller_state_msg,
+        rospy.Subscriber('/r'+self.base_cart_controller_name+'/state', self.controller_state_msg,
                          self.r_arm_cart_state_callback)
 
-        rospy.Subscriber('/l'+self.base_vel_controller_name+'/state',
-                         self.vel_controller_state_msg,
+        rospy.Subscriber('/l'+self.base_vel_controller_name+'/state', self.vel_controller_state_msg,
                          self.l_arm_vel_state_callback)
-        rospy.Subscriber('/r'+self.base_vel_controller_name+'/state',
-                         self.vel_controller_state_msg,
+        rospy.Subscriber('/r'+self.base_vel_controller_name+'/state', self.vel_controller_state_msg,
                          self.r_arm_vel_state_callback)
 
-        self.l_pressure_listener = pl.PressureListener(
-            '/pressure/l_gripper_motor', self.pressure_safety_limit)
-        self.r_pressure_listener = pl.PressureListener(
-            '/pressure/r_gripper_motor', self.pressure_safety_limit)
+        self.l_pressure_listener = pl.PressureListener('/pressure/l_gripper_motor', self.pressure_safety_limit)
+        self.r_pressure_listener = pl.PressureListener('/pressure/r_gripper_motor', self.pressure_safety_limit)
 
+        # Arm Inverse Kinematics
+        self.l_arm_ik_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik', GetPositionIK)
+        self.r_arm_ik_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik', GetPositionIK)
+        self.l_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik_solver_info',
+                                                        GetKinematicSolverInfo)
+        self.r_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik_solver_info',
+                                                        GetKinematicSolverInfo)
 
-        # State Info
+        # state Info
         self.l_arm_pose = None
         self.l_arm_x_err = None
         self.l_arm_x_d = None
@@ -1059,7 +1052,9 @@ class PositionFeedbackPushNode:
             # self.move_down_until_contact(which_arm)
 
         # Move to start pose
-        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+        if not self.move_to_cart_pose_ik(start_pose, which_arm):
+            self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+
         rospy.loginfo('Done moving to start point')
         self.use_gripper_place_joint_posture = False
         if is_pull:
@@ -1133,8 +1128,7 @@ class PositionFeedbackPushNode:
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
 
-        self.move_to_cart_pose(start_pose, which_arm,
-                               self.pre_push_count_thresh)
+        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
         rospy.loginfo('Done moving to start point')
 
         return response
@@ -1587,6 +1581,63 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Move cart gripper error: ' + str(arm_error.linear)+'\n'+str(arm_error.angular))
         return (arm_error, error_dist)
 
+    def move_to_cart_pose_ik(self, pose, which_arm, pressure=1000, nsecs=2.0):
+        if which_arm == 'l':
+            ik_proxy = self.l_arm_ik_proxy
+            solver_proxy = self.l_arm_ik_solver_proxy
+        else:
+            ik_proxy = self.r_arm_ik_proxy
+            solver_proxy = self.r_arm_ik_solver_proxy
+        wrist_name = which_arm + '_wrist_roll_link'
+        tool_name  = which_arm + '_gripper_tool_frame'
+
+        # rospy.loginfo('Getting solver info')
+        solver_req = GetKinematicSolverInfoRequest()
+        solver_res = solver_proxy(solver_req)
+
+        # Convert tool tip pose to wrist pose
+        rospy.loginfo('Requested pose for tool link is: ' + str(pose.pose))
+        R_wrist_to_tool = np.asmatrix(tf.transformations.quaternion_matrix(np.asarray([pose.pose.orientation.x,
+                                                                                       pose.pose.orientation.y,
+                                                                                       pose.pose.orientation.z,
+                                                                                       pose.pose.orientation.w])))
+        # NOTE: Gripper is 18cm long
+        tool_to_wrist_vec = R_wrist_to_tool * np.asmatrix([[-0.18, 0.0, 0.0, 1.0]]).T
+        pose.pose.position.x += tool_to_wrist_vec[0]
+        pose.pose.position.y += tool_to_wrist_vec[1]
+        pose.pose.position.z += tool_to_wrist_vec[2]
+        rospy.loginfo('Requested pose for wrist link is: ' + str(pose.pose))
+
+        # Get IK of desired wrist pose
+        ik_req = GetPositionIKRequest()
+        ik_req.timeout = rospy.Duration(5) # 5 Secs
+        ik_req.ik_request.pose_stamped = pose
+        ik_req.ik_request.ik_link_name = wrist_name
+        # Seed the solution with the current arm state
+        arm_pose = self.get_arm_joint_pose(which_arm)
+        # rospy.loginfo('Current arm pose is: ' + str(arm_pose))
+        # current_state = self.arm_pose_to_robot_state(arm_pose, which_arm)
+        # rospy.loginfo('Converting current arm pose to robot state')
+        ik_req.ik_request.ik_seed_state.joint_state.position = []
+        ik_req.ik_request.ik_seed_state.joint_state.name = []
+        for i in xrange(len(solver_res.kinematic_solver_info.joint_names)):
+            ik_req.ik_request.ik_seed_state.joint_state.position.append(arm_pose[i,0])
+            ik_req.ik_request.ik_seed_state.joint_state.name.append(solver_res.kinematic_solver_info.joint_names[i])
+            # rospy.loginfo('State ' + str(ik_req.ik_request.ik_seed_state.joint_state.name[i]) + ' has state ' +
+            #               str(ik_req.ik_request.ik_seed_state.joint_state.position[i]))
+        # rospy.loginfo('Requesting ik solution')
+        ik_res = ik_proxy(ik_req)
+        # Check that we got a solution
+        rospy.loginfo(ik_res.error_code)
+        if ik_res.error_code.val != ik_res.error_code.SUCCESS:
+            rospy.logwarn('IK failed with error code: ' + str(ik_res.error_code.val))
+            return False
+        # Move to IK joint pose
+        # rospy.loginfo('Converting IK result')
+        joint_pose = self.ik_robot_state_to_arm_pose(ik_res.solution)
+        # rospy.loginfo('Desired joint pose from IK is: ' + str(joint_pose))
+        self.set_arm_joint_pose(joint_pose, which_arm, nsecs=nsecs)
+        return True
 
     def arm_moving_cart(self, which_arm):
         if which_arm == 'l':
@@ -1935,6 +1986,13 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = state_msg.xd
         self.r_arm_F = state_msg.F
 
+    def ik_robot_state_to_arm_pose(self, robot_state):
+        # HACK: Assumes the state is from the ik solver
+        joint_pose = np.asmatrix(np.zeros((len(robot_state.joint_state.position), 1)))
+        for i in xrange(len(robot_state.joint_state.position)):
+            joint_pose[i,0] = robot_state.joint_state.position[i]
+
+        return joint_pose
     #
     # Controller setup methods
     #
