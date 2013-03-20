@@ -490,17 +490,20 @@ class TabletopExecutive:
                 push_time = time.time() - start_time
                 # NOTE: Don't save unless s is pressed
                 if _USE_LEARN_IO and not _OFFLINE:
-                    self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                                      push_vec_res, goal_pose, trial_id, precondition_method)
-                    # TODO: Will deal with no trials on reading in?
-                    # code_in = raw_input('Press [s] then <Enter> to save trial: ')
-                    # if code_in.lower().startswith('s'):
-                    #     self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                    #                       push_vec_res, goal_pose, trial_id, precondition_method)
-                    # elif code_in.lower().startswith('q'):
-                    #     return 'quit'
-                    # else:
-                    #     self.learn_io.write_bad_trial_line()
+                    timeout = 2
+                    rospy.loginfo("Enter something to not save the previous push trial: ")
+                    rlist, _, _ = select([sys.stdin], [], [], timeout)
+                    if rlist:
+                        self.learn_io.write_bad_trial_line()
+                        s = sys.stdin.readline()
+                        rospy.loginfo('Not saving previous trial.')
+                        if s.lower().startswith('q'):
+                            return 'quit'
+                    else:
+                        rospy.loginfo("No input. Saving trial data")
+                        self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                                          push_vec_res, goal_pose, trial_id, precondition_method)
+
 
                 if res == 'quit':
                     return res

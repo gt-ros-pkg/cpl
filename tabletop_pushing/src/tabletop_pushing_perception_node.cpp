@@ -751,7 +751,7 @@ class ObjectTracker25D
     {
       cv::imshow("Object State", centroid_frame);
     }
-    if (write_to_disk_)
+    if (write_to_disk_ && !isPaused())
     {
       // ROS_INFO_STREAM("Writing ellipse to disk!");
       std::stringstream out_name;
@@ -817,7 +817,7 @@ class ObjectTracker25D
     {
       cv::imshow("Object State", centroid_frame);
     }
-    if (write_to_disk_)
+    if (write_to_disk_ && !isPaused())
     {
       std::stringstream out_name;
       out_name << base_output_path_ << "obj_state_" << frame_set_count_ << "_"
@@ -867,7 +867,7 @@ class ObjectTracker25D
     {
       cv::imshow("Object State", centroid_frame);
     }
-    if (write_to_disk_)
+    if (write_to_disk_ && !isPaused())
     {
       std::stringstream out_name;
       out_name << base_output_path_ << "obj_state_" << frame_set_count_ << "_"
@@ -1000,6 +1000,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
 
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
+    n_.param("self_mask_dilate_size", mask_dilate_size_, 5);
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1061,6 +1062,11 @@ class TabletopPushingPerceptionNode
     depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
 
+    // TODO: Grow arm mask a bit
+    cv::Mat morph_element(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
+    // cv::imshow("Self mask pre filter", self_mask);
+    cv::erode(self_mask, self_mask, morph_element);
+    // cv::imshow("Self mask post filter", self_mask);
     // Swap kinect color channel order
     // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
@@ -1179,7 +1185,7 @@ class TabletopPushingPerceptionNode
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
-      displayPushVector(cur_color_frame_, start_point, end_point);
+      displayPushVector(cur_color_frame_, start_point, end_point, "goal_vector", true);
       // displayRobotGripperPoses(cur_color_frame_);
       // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
       //                    tracker_goal_pose_.theta);
@@ -1381,6 +1387,7 @@ class TabletopPushingPerceptionNode
         res = getObjectPose();
         res.no_push = true;
         recording_input_ = false;
+        obj_tracker_->stopTracking();
       }
       // NOTE: Swith based on proxy or controller
       else if (req.controller_name == "spin_to_heading")
@@ -2579,6 +2586,7 @@ class TabletopPushingPerceptionNode
   double start_loc_arc_length_percent_;
   int start_loc_push_sample_count_;
   bool force_swap_;
+  int mask_dilate_size_;
 };
 
 int main(int argc, char ** argv)

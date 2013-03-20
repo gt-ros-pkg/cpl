@@ -27,7 +27,7 @@
     <param name="max_workspace_z" value="0.6" type="double"/>
     <param name="min_table_z" value="-1.0" type="double"/>
     <param name="max_table_z" value="1.0" type="double"/>
-
+    <param name="self_mask_dilate_size" value="21" type="int"/>
     <param name="num_downsamples" value="1" type="int"/>
 
     <param name="pcl_cluster_tolerance" value="0.03" type="double"/>
