@@ -427,11 +427,12 @@ class PositionFeedbackPushNode:
         rospy.logdebug('Moved %s_arm to setup pose' % which_arm)
 
     def init_head_pose(self, camera_frame):
+        # (trans, rot) = self.tf_listener.lookupTransform('torso_lift_link', camera_frame, rospy.Time(0))
+        # rospy.loginfo('Transform from torso_lift_link to ' + camera_frame + ' is ' + str(trans) + '\t' + str(rot))
+
         look_pt = np.asmatrix([self.look_pt_x, 0.0, -self.torso_z_offset])
         rospy.loginfo('Point head at ' + str(look_pt)+ ' in frame ' + camera_frame)
-        head_res = self.robot.head.look_at(look_pt,
-                                           'torso_lift_link',
-                                           camera_frame, wait=True)
+        head_res = self.robot.head.look_at(look_pt, 'torso_lift_link', camera_frame, wait=True)
         if head_res:
             rospy.loginfo('Succeeded in pointing head')
             return True
@@ -1494,15 +1495,12 @@ class PositionFeedbackPushNode:
             return response
 
         # Get torso_lift_link position in base_link frame
-        (trans, rot) = self.tf_listener.lookupTransform('base_link',
-                                                        'torso_lift_link',
-                                                        rospy.Time(0))
+        (trans, rot) = self.tf_listener.lookupTransform('base_link', 'torso_lift_link', rospy.Time(0))
         lift_link_z = trans[2]
 
         # tabletop position in base_link frame
         request.table_centroid.header.stamp = rospy.Time(0)
-        table_base = self.tf_listener.transformPose('base_link',
-                                                    request.table_centroid)
+        table_base = self.tf_listener.transformPose('base_link', request.table_centroid)
         table_z = table_base.pose.position.z
         goal_lift_link_z = table_z + self.torso_z_offset
         lift_link_delta_z = goal_lift_link_z - lift_link_z
