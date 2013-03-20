@@ -998,9 +998,10 @@ class TabletopPushingPerceptionNode
     n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
+    n_private_.param("self_mask_dilate_size", mask_dilate_size_, 5);
 
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
-    n_.param("self_mask_dilate_size", mask_dilate_size_, 5);
+
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
@@ -1062,13 +1063,12 @@ class TabletopPushingPerceptionNode
     depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
 
-    // TODO: Grow arm mask a bit
-    cv::Mat morph_element(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
-    // cv::imshow("Self mask pre filter", self_mask);
-    cv::erode(self_mask, self_mask, morph_element);
-    // cv::imshow("Self mask post filter", self_mask);
-    // Swap kinect color channel order
-    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
+    // Grow arm mask if requested
+    if (mask_dilate_size_ > 0)
+    {
+      cv::Mat morph_element(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
+      cv::erode(self_mask, self_mask, morph_element);
+    }
 
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
@@ -1700,7 +1700,7 @@ class TabletopPushingPerceptionNode
       double min_angle_dist = FLT_MAX;
       for (int i = 0; i < hull_cloud.size(); ++i)
       {
-        double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).y - cur_state.x.x);
+        double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).x - cur_state.x.x);
         double angle_dist_i = fabs(subPIAngle(theta_i - cur_state.x.theta));
         if (angle_dist_i < min_angle_dist)
         {
