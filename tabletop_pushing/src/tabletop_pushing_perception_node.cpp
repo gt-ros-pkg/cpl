@@ -1073,8 +1073,7 @@ class TabletopPushingPerceptionNode
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
     pcl16::fromROSMsg(*cloud_msg, cloud);
-    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id,
-                          cloud.header.stamp, ros::Duration(0.5));
+    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id, cloud.header.stamp, ros::Duration(0.5));
     pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
 
     // Convert nans to zeros
