@@ -165,7 +165,6 @@ class TabletopExecutive:
             'get_singulation_push_vector', SingulationPush)
 
     def init_learning(self):
-        self.init_loc_learning()
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
         # Get table height and raise to that before anything else
@@ -1212,7 +1211,6 @@ if __name__ == '__main__':
             need_object_id = True
             while need_object_id:
                 code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
-                node.init_loc_learning()
                 if len(code_in) > 0:
                     need_object_id = False
                 else:
@@ -1220,8 +1218,10 @@ if __name__ == '__main__':
             if code_in.lower().startswith('q'):
                 break
             if learn_start_loc:
+                node.init_loc_learning()
                 clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
                                                                 num_start_loc_sample_locs)
+                node.finish_learning()
             else:
                 clean_exploration = node.run_push_exploration(object_id=code_in)
             if not clean_exploration:
