@@ -1493,7 +1493,8 @@ class TabletopPushingPerceptionNode
       if (start_loc_use_fixed_goal_)
       {
         chosen_loc = chooseFixedGoalPushStartLoc(cur_obj, cur_state, req.new_object,
-                                                 req.num_start_loc_pushes_per_sample, req.num_start_loc_sample_locs);
+                                                 req.num_start_loc_pushes_per_sample, req.num_start_loc_sample_locs,
+                                                 req.trial_id);
       }
       else
       {
@@ -1682,9 +1683,11 @@ class TabletopPushingPerceptionNode
    * @return The location and shape descriptor on the boundary to place the hand
    */
   ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
-                                            int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs)
+                                            int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs,
+                                            std::string trial_id)
   {
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
+
     int rot_idx = -1;
     if (new_object)
     {
@@ -1790,7 +1793,27 @@ class TabletopPushingPerceptionNode
     start_loc_history_.push_back(s);
 
     // TODO: Project desired outline to show where to place object before pushing?
-
+    cv::Mat hull_img(cur_color_frame_.size(), CV_8UC1, cv::Scalar(0));
+    pcl_segmenter_->projectPointCloudIntoImage(hull_cloud, hull_img);
+    hull_img*=255;
+    cv::Mat hull_disp_img(hull_img.size(), CV_8UC3, cv::Scalar(0,0,0));
+    cv::cvtColor(hull_img, hull_disp_img, CV_GRAY2BGR);
+    cv::Point2f img_rot_idx = pcl_segmenter_->projectPointIntoImage(hull_cloud[rot_idx], hull_cloud.header.frame_id,
+                                                                    camera_frame_);
+    cv::circle(hull_disp_img, img_rot_idx, 4, cv::Scalar(0,255,0), 3);
+    cv::Point2f img_loc_idx = pcl_segmenter_->projectPointIntoImage(locs[boundary_loc_idx].boundary_loc_,
+                                                                    hull_cloud.header.frame_id, camera_frame_);
+    cv::circle(hull_disp_img, img_loc_idx, 4, cv::Scalar(0,0, 255));
+    cv::imshow("object hull", hull_disp_img);
+    if (write_to_disk_)
+    {
+      std::stringstream hull_file_name;
+      hull_file_name << base_output_path_ << trial_id << "_obj_hull.png";
+      std::stringstream hull_disp_file_name;
+      hull_disp_file_name << base_output_path_ << trial_id << "_obj_hull_disp.png";
+      cv::imwrite(hull_file_name.str(), hull_img);
+      cv::imwrite(hull_disp_file_name.str(), hull_disp_img);
+    }
     return locs[boundary_loc_idx];
   }
 

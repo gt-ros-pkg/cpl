@@ -21,11 +21,13 @@ inline int worldLocToIdx(double val, double min_val, double max_val)
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj)
 {
   // Get 2D projection of object
+  // TODO: Remove the z, then add it back after finding the hull... how do we do this?
   XYZPointCloud footprint_cloud(cur_obj.cloud);
-  // for (int i = 0; i < footprint_cloud.size(); ++i)
-  // {
-  //   footprint_cloud.at(i).z = 0.0;
-  // }
+  for (int i = 0; i < footprint_cloud.size(); ++i)
+  {
+    // HACK: This is a complete hack, based on the current table height used in pushing.
+    footprint_cloud.at(i).z = -0.3;
+  }
 
   // TODO: Examine sensitivity of hull_alpha...
   double hull_alpha = 0.01;
@@ -36,7 +38,6 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj)
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
 
-  // TODO: Visualize the above boundary
   return hull_cloud;
 }
 

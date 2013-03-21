@@ -435,9 +435,10 @@ class TabletopExecutive:
 
         start_loc_trials = 0
         self.start_loc_goal_y_delta = 0
-        for i in xrange(num_sample_locs):
-            # TODO: update goal location based on sample location
-            # TODO: Make this actually do what we want to do in terms of sampling locations & density
+        # HACK: Currently quit after half the locations, assuming pushing on symmetric objects
+        N_PUSH = num_sample_locs/2+1
+        # N_PUSH = num_sample_locs
+        for i in xrange(N_PUSH):
             # Doesn't matter what the goal_pose is, the start pose server picks it for us
             goal_pose = self.generate_random_table_pose()
             for j in xrange(num_pushes_per_sample):
@@ -511,6 +512,7 @@ class TabletopExecutive:
                     if self.servo_head_during_pushing:
                         self.raise_and_look(point_head_only=True)
                     start_loc_trials += 1
+        rospy.loginfo('Done performing push loc exploration!')
         return res
 
     def get_feedback_push_initial_obj_pose(self):
@@ -1191,7 +1193,7 @@ if __name__ == '__main__':
     random.seed()
     learn_start_loc = True
     num_start_loc_pushes_per_sample = 3
-    num_start_loc_sample_locs = 20 # Per side?
+    num_start_loc_sample_locs = 16
     use_singulation = False
     use_learning = True
     use_guided = True

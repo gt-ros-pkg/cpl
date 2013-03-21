@@ -1059,8 +1059,8 @@ class PositionFeedbackPushNode:
             which_arm = 'r'
             robot_gripper = self.robot.right_gripper
 
-        # self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
-        # rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
+        self.set_arm_joint_pose(ready_joints, which_arm, nsecs=1.5)
+        rospy.logdebug('Moving %s_arm to ready pose' % which_arm)
 
         start_pose = PoseStamped()
         start_pose.header = request.start_point.header
