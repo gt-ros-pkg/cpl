@@ -165,18 +165,7 @@ class TabletopExecutive:
             'get_singulation_push_vector', SingulationPush)
 
     def init_learning(self):
-        # Start loc learning stuff
-        self.push_loc_shape_features = []
-        self.push_count = 0
-        self.base_trial_id = str(rospy.get_time())
-
-        if _USE_LEARN_IO:
-            self.learn_io = PushLearningIO()
-            learn_file_name = self.learn_file_base+str(self.base_trial_id)+'.txt'
-            self.learn_out_file_name = learn_file_name
-            rospy.loginfo('Opening learn file: '+learn_file_name)
-            self.learn_io.open_out_file(learn_file_name)
-
+        self.init_loc_learning()
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
         # Get table height and raise to that before anything else
@@ -189,6 +178,19 @@ class TabletopExecutive:
             initialized = self.initialize_learning_push()
             r.sleep()
         rospy.loginfo('Done initializing learning')
+
+    def init_loc_learning(self):
+        # Start loc learning stuff
+        self.push_loc_shape_features = []
+        self.push_count = 0
+        self.base_trial_id = str(rospy.get_time())
+
+        if _USE_LEARN_IO:
+            self.learn_io = PushLearningIO()
+            learn_file_name = self.learn_file_base+str(self.base_trial_id)+'.txt'
+            self.learn_out_file_name = learn_file_name
+            rospy.loginfo('Opening learn file: '+learn_file_name)
+            self.learn_io.open_out_file(learn_file_name)
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
@@ -1210,6 +1212,7 @@ if __name__ == '__main__':
             need_object_id = True
             while need_object_id:
                 code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+                node.init_loc_learning()
                 if len(code_in) > 0:
                     need_object_id = False
                 else:

@@ -379,7 +379,6 @@ class CombinedPushLearnControlIO:
         return Y_hat
 
 class StartLocPerformanceAnalysis:
-
     def get_trial_features(self, file_name):
         self.plio = CombinedPushLearnControlIO()
         self.plio.read_in_data_file(file_name)
@@ -500,6 +499,8 @@ class StartLocPerformanceAnalysis:
                 theta_prev = push_trial.trial_trajectory[i-1].x.theta
             angle_errs.append(fabs(subPIAngle(pt.x.theta - theta_prev)))
 
+        if len(angle_errs) < 1:
+            return pi
         mean_angle_errs = sum(angle_errs)/len(angle_errs)
         print mean_angle_errs, 'rad'
 
