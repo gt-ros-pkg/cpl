@@ -44,6 +44,7 @@ from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos, isnan
 #from pylab import *
 import matplotlib.pyplot as plotter
 import random
+import os
 
 _VERSION_LINE = '# v0.4'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
@@ -345,7 +346,7 @@ class CombinedPushLearnControlIO:
 
     def write_example_file(self, file_name, X, Y, normalize=False, debug=False):
         data_out = file(file_name, 'w')
-        print 'Normalize:', normalize
+        # print 'Normalize:', normalize
         i = 0
         for x,y in zip(X,Y):
             i += 1
@@ -386,6 +387,8 @@ class StartLocPerformanceAnalysis:
         X = []
         for i, p in enumerate(self.plio.push_trials):
             y = self.analyze_straight_line_push(p)
+            if y < 0:
+                continue
             x = p.trial_start.shape_descriptor
             Y.append(y)
             X.append(x)
@@ -497,12 +500,12 @@ class StartLocPerformanceAnalysis:
                 theta_prev = init_theta
             else:
                 theta_prev = push_trial.trial_trajectory[i-1].x.theta
-            angle_errs.append(fabs(subPIAngle(pt.x.theta - theta_prev)))
+            angle_errs.append(abs(subPIAngle(pt.x.theta - theta_prev)))
 
         if len(angle_errs) < 1:
-            return pi
+            return -1
         mean_angle_errs = sum(angle_errs)/len(angle_errs)
-        print mean_angle_errs, 'rad'
+        # print mean_angle_errs, 'rad'
 
         return mean_angle_errs
 
@@ -1365,7 +1368,7 @@ def plot_controller_results(file_name, spin=False):
     plotter.savefig('/home/thermans/sandbox/theta-err.png')
     plotter.show()
 
-if __name__ == '__main__':
+def plot_junk():
     # plot_controller_results(sys.argv[1])
     req_object_id = None
     thresh = 1.0
@@ -1393,3 +1396,25 @@ if __name__ == '__main__':
     # pla.object_ranking()
     # pla.object_proxy_ranking()
     print 'Num trials: ' + str(len(pla.all_trials))
+
+if __name__ == '__main__':
+    s = StartLocPerformanceAnalysis()
+    base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/'
+    class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
+    out_dir = base_dir+'examples_avg_rotation/'
+
+    for c in class_dirs:
+        files = os.listdir(base_dir+c)
+        data_file = None
+        for f in files:
+            if f.startswith('aff_learn_out'):
+                data_file = f
+        if data_file is None:
+            print 'ERROR: No data file in directory:', c
+            continue
+        input_file_name = base_dir+c+'/'+data_file
+        print 'data file is:', input_file_name
+        output_file_name0 = out_dir+c[:-1]+'.txt'
+        s.generate_example_file(input_file_name, output_file_name0, normalize=False)
+        output_file_name1 = out_dir+c[:-1]+'_normalized.txt'
+        s.generate_example_file(input_file_name, output_file_name1, normalize=True)
