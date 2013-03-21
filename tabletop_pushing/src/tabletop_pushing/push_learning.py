@@ -51,6 +51,13 @@ _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
 
+def subPIAngle(theta):
+    while theta < -pi:
+        theta += 2.0*pi
+    while theta > pi:
+        theta -= 2.0*pi
+    return theta
+
 class PushTrial:
     def __init__(self):
         self.object_id = ''
@@ -304,6 +311,12 @@ class CombinedPushLearnControlIO:
                 if _DEBUG_IO:
                     print 'Read control header'
                 read_ctrl_line = True
+            elif line.startswith(_BAD_TRIAL_HEADER_LINE):
+                if _DEBUG_IO:
+                    print 'BAD TRIAL: not adding current trial to list'
+                # Reset trial and switch to read next pl_trial_line as start trial
+                current_trial = PushCtrlTrial()
+                trial_is_start = True
             elif read_pl_trial_line:
                 if _DEBUG_IO:
                     print 'Reading trial'
@@ -366,26 +379,33 @@ class CombinedPushLearnControlIO:
         return Y_hat
 
 class StartLocPerformanceAnalysis:
-    def generate_train_and_test_files(self, file_in, file_out, normalize=False, train_percent=0.6,
-                                      must_move_epsilon=0.05):
+
+    def get_trial_features(self, file_name):
         self.plio = CombinedPushLearnControlIO()
-        self.plio.read_in_data_file(file_in)
+        self.plio.read_in_data_file(file_name)
         Y = []
         X = []
         for i, p in enumerate(self.plio.push_trials):
             y = self.analyze_straight_line_push(p)
-            if p.trial_start.object_id.startswith('tv_remote'):
-                print 'Skipping tv_remote trial'
-                continue
-
-            if y[2] < must_move_epsilon:
-                print 'Not adding trial', i, 'beacuse object only moved', y[2], 'meters.'
-                continue
-            else:
-                print 'Trial', i, 'moved', y[2], 'meters.'
             x = p.trial_start.shape_descriptor
-            Y.append(y[0])
+            Y.append(y)
             X.append(x)
+        return (X,Y)
+
+    def generate_example_file(self, file_in_name, file_out_name, normalize=False, set_train=False, set_test=False):
+        (X, Y) = self.get_trial_features(file_in_name)
+        print 'Read in', len(X), 'sample locations'
+        self.plio.write_example_file(file_out_name, X, Y, normalize)
+        if set_train:
+            self.X_train = X[:]
+            self.Y_train = Y[:]
+        if set_test:
+            self.X_test = X[:]
+            self.Y_test = Y[:]
+
+    def generate_train_and_test_files(self, file_in, file_out, normalize=False, train_percent=0.6,
+                                      must_move_epsilon=0.05):
+        (X,Y) = self.get_trial_features(file_in)
         Z = zip(X,Y)
         # random.shuffle(Z)
         if file_out.endswith('.txt'):
@@ -470,7 +490,22 @@ class StartLocPerformanceAnalysis:
         plotter.legend([p1,p2],['True Score', 'Predicted Score'], loc=2)
         plotter.show()
 
-    def analyze_straight_line_push(self, push_trial, normalize_score=False):
+    def analyze_straight_line_push(self, push_trial):
+        init_theta = push_trial.trial_start.init_orientation
+        angle_errs = []
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            if i == 0:
+                theta_prev = init_theta
+            else:
+                theta_prev = push_trial.trial_trajectory[i-1].x.theta
+            angle_errs.append(fabs(subPIAngle(pt.x.theta - theta_prev)))
+
+        mean_angle_errs = sum(angle_errs)/len(angle_errs)
+        print mean_angle_errs, 'rad'
+
+        return mean_angle_errs
+
+    def analyze_straight_line_push_goal_vector_diff(self, push_trial, normalize_score=False):
         init_pose = push_trial.trial_start.init_centroid
         goal_pose = push_trial.trial_start.goal_pose
         final_pose = push_trial.trial_end.final_centroid
