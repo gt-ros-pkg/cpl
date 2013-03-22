@@ -213,6 +213,10 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
       }
     }
   }
+  else
+  {
+    max_radius *= scale;
+  }
   // std::cout << "max_radius is: " << max_radius << std::endl;
   max_radius = log(max_radius);
   // std::cout << "log(max_radius) is: " << max_radius << std::endl;

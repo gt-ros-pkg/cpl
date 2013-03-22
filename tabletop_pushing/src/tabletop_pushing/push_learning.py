@@ -45,6 +45,7 @@ from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos, isnan
 import matplotlib.pyplot as plotter
 import random
 import os
+import subprocess
 
 _VERSION_LINE = '# v0.4'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
@@ -1533,16 +1534,35 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     X = read_feature_file(feat_file_name)
     write_example_file(out_file_name, X, Y, normalize, debug)
 
+def extract_shape_features_batch():
+  base_dir = '/home/thermans/sandbox/fake_iros/'
+  class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
+  out_dir = base_dir+'examples_line_dist/'
+  feat_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/examples_line_dist/'
+  out_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/examples_line_dist_feats_fixed_05/'
+  subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
+
+  for c in class_dirs:
+      class_dir = base_dir+c+'/'
+      files = os.listdir(class_dir)
+      data_file = None
+      for f in files:
+          if f.startswith('aff_learn_out'):
+              data_file = f
+              if data_file is None:
+                  print 'ERROR: No data file in directory:', c
+                  continue
+      aff_file = class_dir+data_file
+      feat_file = c[:-1]+'_fixed_0.5.txt'
+      p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file,
+                            class_dir, feat_file])
+      p.wait()
+      feat_file = class_dir + feat_file
+      original_file_name = feat_dir+c[:-1] + '.txt'
+      output_file_name0 = out_dir + c[:-1] + '.txt'
+      rewrite_example_file_features(original_file_name, feat_file, output_file_name0, normalize=False)
+      output_file_name1 = out_dir + c[:-1] + '_normalized.txt'
+      rewrite_example_file_features(original_file_name, feat_file, output_file_name1, normalize=True)
+
 if __name__ == '__main__':
-    base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/examples_line_dist/'
-    out_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/corrected_feats_examples_line_dist/'
-    class_names = ['camcorder', 'food_box', 'large_brush', 'shampoo', 'small_brush','soap_box', 'teddy_bear', 'toothpaste']
-
-    for c in class_names:
-        original_file_name = base_dir + c + '.txt'
-        feat_file_name = base_dir + c + '_new_raw.txt'
-
-        output_file_name0 = out_dir + c + '.txt'
-        rewrite_example_file_features(original_file_name, feat_file_name, output_file_name0, normalize=False)
-        output_file_name1 = out_dir + c + '_normalized.txt'
-        rewrite_example_file_features(original_file_name, feat_file_name, output_file_name1, normalize=True)
+    extract_shape_features_batch()
