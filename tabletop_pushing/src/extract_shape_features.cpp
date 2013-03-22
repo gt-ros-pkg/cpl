@@ -308,11 +308,9 @@ std::vector<TrialStuff> getTrialsFromFile(std::string aff_file_name)
   return trials;
 }
 
-void writeNewFile(std::string in_file_name, std::vector<TrialStuff> trials, ShapeDescriptors descriptors)
+void writeNewFile(std::string out_file_name, std::vector<TrialStuff> trials, ShapeDescriptors descriptors)
 {
-  std::stringstream out_file_name;
-  out_file_name << in_file_name << "_new_raw.txt";
-  std::ofstream out_file(out_file_name.str().c_str());
+  std::ofstream out_file(out_file_name.c_str());
   for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
     for (unsigned int j = 0; j < descriptors[i].size(); ++j)
@@ -329,6 +327,7 @@ int main(int argc, char** argv)
   // TODO: Get the aff_file and the directory as input
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
+  std::string out_file_name(argv[3]);
   std::vector<TrialStuff> trials = getTrialsFromFile(aff_file_path);
 
   ShapeDescriptors descriptors;
@@ -356,7 +355,8 @@ int main(int argc, char** argv)
     ROS_INFO_STREAM("Sd is: " << descriptor.str() << "\n");
     descriptors.push_back(sd);
   }
-
-  writeNewFile(aff_file_path, trials, descriptors);
+  std::stringstream out_file;
+  out_file << data_directory_path << out_file_name;
+  writeNewFile(out_file.str(), trials, descriptors);
   return 0;
 }

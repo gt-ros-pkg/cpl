@@ -386,6 +386,7 @@ class CombinedPushLearnControlIO:
     def read_example_file(self, file_name):
         data_in = file(file_name, 'r')
         lines = [l.split() for l in data_in.readlines()]
+        data_in.close()
         Y = []
         X = []
         for line in lines:
@@ -405,6 +406,7 @@ class CombinedPushLearnControlIO:
     def read_regression_prediction_file(self, file_name):
         data_in = file(file_name, 'r')
         Y_hat = [float(y.strip()) for y in data_in.readlines()]
+        data_in.close()
         return Y_hat
 
 class StartLocPerformanceAnalysis:
@@ -1467,24 +1469,80 @@ def plot_junk():
     # pla.object_proxy_ranking()
     print 'Num trials: ' + str(len(pla.all_trials))
 
-if __name__ == '__main__':
-    s = StartLocPerformanceAnalysis()
-    base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/'
-    class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
-    out_dir = base_dir+'examples_line_dist/'
+def read_example_file(file_name):
+    data_in = file(file_name, 'r')
+    lines = [l.split() for l in data_in.readlines()]
+    data_in.close()
+    Y = []
+    X = []
+    for line in lines:
+        y = float(line.pop(0))
+        Y.append(y)
+        x = []
+        for pair in line:
+            idx, val = pair.split(':')
+            idx = int(idx) - 1
+            val = float(val)
+            while len(x) < idx:
+                x.append(0)
+            x.append(val)
+        X.append(x)
+    return (X,Y)
 
-    for c in class_dirs:
-        files = os.listdir(base_dir+c)
-        data_file = None
-        for f in files:
-            if f.startswith('aff_learn_out'):
-                data_file = f
-        if data_file is None:
-            print 'ERROR: No data file in directory:', c
+def read_feature_file(file_name):
+    data_in = file(file_name, 'r')
+    lines = [l.split() for l in data_in.readlines()]
+    data_in.close()
+    X = []
+    for line in lines:
+        x = []
+        for val in line:
+            x.append(float(val))
+        X.append(x)
+    return X
+
+def write_example_file(file_name, X, Y, normalize=False, debug=False):
+    data_out = file(file_name, 'w')
+    # print 'Normalize:', normalize
+    i = 0
+    for x,y in zip(X,Y):
+        i += 1
+        if debug:
+            print y, x
+        if isnan(y):
+            print 'Skipping writing example: ', i
             continue
-        input_file_name = base_dir+c+'/'+data_file
-        print 'Getting features for class:', c[:-1]
-        output_file_name0 = out_dir+c[:-1]+'.txt'
-        s.generate_example_file(input_file_name, output_file_name0, normalize=False)
-        output_file_name1 = out_dir+c[:-1]+'_normalized.txt'
-        s.generate_example_file(input_file_name, output_file_name1, normalize=True)
+        data_line = str(y)
+        if normalize:
+            feature_sum = 0.0
+            for xi in x:
+                feature_sum += xi
+            for i, xi in enumerate(x):
+                if xi > 0:
+                    data_line += ' ' + str(i+1)+':'+str(sqrt(xi/float(feature_sum)))
+        else:
+            for i, xi in enumerate(x):
+                if xi > 0:
+                    data_line += ' ' + str(i+1)+':'+str(xi)
+        data_line +='\n'
+        data_out.write(data_line)
+    data_out.close()
+
+def rewrite_example_file_features(original_file_name, feat_file_name, out_file_name, normalize=False, debug=False):
+    old_X, Y = read_example_file(original_file_name)
+    X = read_feature_file(feat_file_name)
+    write_example_file(out_file_name, X, Y, normalize, debug)
+
+if __name__ == '__main__':
+    base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/examples_line_dist/'
+    out_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/corrected_feats_examples_line_dist/'
+    class_names = ['camcorder', 'food_box', 'large_brush', 'shampoo', 'small_brush','soap_box', 'teddy_bear', 'toothpaste']
+
+    for c in class_names:
+        original_file_name = base_dir + c + '.txt'
+        feat_file_name = base_dir + c + '_new_raw.txt'
+
+        output_file_name0 = out_dir + c + '.txt'
+        rewrite_example_file_features(original_file_name, feat_file_name, output_file_name0, normalize=False)
+        output_file_name1 = out_dir + c + '_normalized.txt'
+        rewrite_example_file_features(original_file_name, feat_file_name, output_file_name1, normalize=True)
