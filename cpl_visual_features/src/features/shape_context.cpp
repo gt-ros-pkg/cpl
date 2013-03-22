@@ -247,7 +247,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
           theta = cpl_visual_features::subPIAngle(theta-center_angle);
         }
         // Get in range [0,2pi]
-        theta += M_PI/2;
+        theta += M_PI;
         // Get theta in range [0,1]
         theta /= 2*M_PI;
         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);

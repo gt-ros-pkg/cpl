@@ -384,7 +384,23 @@ class CombinedPushLearnControlIO:
         data_out.close()
 
     def read_example_file(self, file_name):
-        pass
+        data_in = file(file_name, 'r')
+        lines = [l.split() for l in data_in.readlines()]
+        Y = []
+        X = []
+        for line in lines:
+            y = float(line.pop(0))
+            Y.append(y)
+            x = []
+            for pair in line:
+                idx, val = pair.split(':')
+                idx = int(idx) - 1
+                val = float(val)
+                while len(x) < idx:
+                    x.append(0)
+                x.append(val)
+            X.append(x)
+        return (X,Y)
 
     def read_regression_prediction_file(self, file_name):
         data_in = file(file_name, 'r')
@@ -507,6 +523,17 @@ class StartLocPerformanceAnalysis:
         plotter.title('Push Scoring Evaluation')
         plotter.legend([p1,p2],['True Score', 'Predicted Score'], loc=2)
         plotter.show()
+
+    def lookup_push_trial_by_shape_descriptor(self, trials, descriptor):
+        for t in trials:
+            match = True
+            for a,b in zip(t.trial_start.shape_descriptor, descriptor):
+                if a != b:
+                    match = False
+            if match:
+                print t
+                return t
+        return None
 
     def analyze_straight_line_push_delta_theta(self, push_trial):
         '''
