@@ -167,6 +167,8 @@ Samples samplePoints(cv::Mat& edge_image, double percentage)
 
 int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bins)
 {
+  if (theta > 1.0) std::cout << "theta is too big: " << theta << std::endl;
+  if (theta < 0.0) std::cout << "theta is too big: " << theta << std::endl;
   int radius_idx = std::max(std::min((int)std::floor(radius*radius_bins), radius_bins-1), 0);
   int theta_idx = std::max(std::min((int)std::floor(theta*theta_bins), theta_bins-1),0);
   int idx = theta_idx*radius_bins+radius_idx;
@@ -321,7 +323,7 @@ ShapeDescriptors constructDescriptors(Samples& samples,
         radius = log(radius);
         radius /= max_radius;
         theta = atan(fabs(y1-y2) / fabs(x1-x2));
-        theta += M_PI/2;
+        theta += M_PI;
         if (y1-y2 < 0)
         {
           theta += M_PI;

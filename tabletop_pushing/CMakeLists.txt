@@ -54,3 +54,4 @@ target_link_libraries(save_kinect_data ${OpenCV_LIBRARIES})
 rosbuild_link_boost(save_kinect_data signals)
 
 rosbuild_add_executable(extract_shape_features src/extract_shape_features.cpp)
+target_link_libraries(extract_shape_features shape_features)
