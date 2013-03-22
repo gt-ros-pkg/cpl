@@ -59,6 +59,18 @@ def subPIAngle(theta):
         theta -= 2.0*pi
     return theta
 
+def point_line_dist(pt, a, b):
+    '''
+    Get the perpendicular distance from pt to the line defined through (a,b)
+    '''
+    A = np.asarray(a)
+    B = np.asarray(b)
+    P = np.asarray(pt)
+    q = A - P
+    n = B-A
+    n_hat = n / np.linalg.norm(n)
+    return np.linalg.norm(q-np.dot(q,n_hat)*n_hat)
+
 class PushTrial:
     def __init__(self):
         self.object_id = ''
@@ -380,6 +392,10 @@ class CombinedPushLearnControlIO:
         return Y_hat
 
 class StartLocPerformanceAnalysis:
+
+    def __init__(self):
+        self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
+
     def get_trial_features(self, file_name):
         self.plio = CombinedPushLearnControlIO()
         self.plio.read_in_data_file(file_name)
@@ -492,7 +508,10 @@ class StartLocPerformanceAnalysis:
         plotter.legend([p1,p2],['True Score', 'Predicted Score'], loc=2)
         plotter.show()
 
-    def analyze_straight_line_push(self, push_trial):
+    def analyze_straight_line_push_delta_theta(self, push_trial):
+        '''
+        Compute the average frame to frame change in orientation while pushing
+        '''
         init_theta = push_trial.trial_start.init_orientation
         angle_errs = []
         for i, pt in enumerate(push_trial.trial_trajectory):
@@ -509,7 +528,31 @@ class StartLocPerformanceAnalysis:
 
         return mean_angle_errs
 
+    def analyze_straight_line_push_line_dist(self, push_trial):
+        '''
+        Get the average distance of the current point to the desired straight line path
+        '''
+        init_pose = push_trial.trial_start.init_centroid
+        goal_pose = push_trial.trial_start.goal_pose
+        init_loc = (init_pose.x, init_pose.y)
+        goal_loc = (goal_pose.x, goal_pose.y)
+
+        line_dists = []
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            cur_pt = (pt.x.x, pt.x.y)
+            line_dist = point_line_dist(cur_pt, init_loc, goal_loc)
+            line_dists.append(line_dist)
+
+        if len(line_dists) < 1:
+            return -1
+        mean_line_dist = sum(line_dists)/len(line_dists)
+        return mean_line_dist
+
     def analyze_straight_line_push_goal_vector_diff(self, push_trial, normalize_score=False):
+        '''
+        Get the average angler error between the instantaneous velocity direction of the object and the
+        direction towards the goal
+        '''
         init_pose = push_trial.trial_start.init_centroid
         goal_pose = push_trial.trial_start.goal_pose
         final_pose = push_trial.trial_end.final_centroid
@@ -1401,7 +1444,7 @@ if __name__ == '__main__':
     s = StartLocPerformanceAnalysis()
     base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/'
     class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
-    out_dir = base_dir+'examples_avg_rotation/'
+    out_dir = base_dir+'examples_line_dist/'
 
     for c in class_dirs:
         files = os.listdir(base_dir+c)
@@ -1413,7 +1456,7 @@ if __name__ == '__main__':
             print 'ERROR: No data file in directory:', c
             continue
         input_file_name = base_dir+c+'/'+data_file
-        print 'data file is:', input_file_name
+        print 'Getting features for class:', c[:-1]
         output_file_name0 = out_dir+c[:-1]+'.txt'
         s.generate_example_file(input_file_name, output_file_name0, normalize=False)
         output_file_name1 = out_dir+c[:-1]+'_normalized.txt'
