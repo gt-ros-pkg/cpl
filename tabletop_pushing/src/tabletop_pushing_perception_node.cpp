@@ -2311,9 +2311,9 @@ class TabletopPushingPerceptionNode
     const float b_y = x2.y - x1.y;
     const float a_dot_b = a_x*b_x + a_y*b_y;
     const float b_dot_b = b_x*b_x + b_y*b_y;
+    const float a_onto_b = a_dot_b/b_dot_b;
 
     // If the (squared) distance of the projection is less than the vector from x1->x2 then it is between them
-    const float a_onto_b = a_dot_b/b_dot_b;
     const float d_1_x = a_onto_b*b_x;
     const float d_1_y = a_onto_b*b_y;
     const float d_1 = d_1_x*d_1_x + d_1_y*d_1_y;
