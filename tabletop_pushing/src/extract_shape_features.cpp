@@ -17,9 +17,13 @@ using namespace tabletop_pushing;
 
 typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 
+#define XY_RES 0.001
+
 ShapeLocations start_loc_history_;
 double start_loc_arc_length_percent_;
 int start_loc_push_sample_count_;
+XYZPointCloud hull_cloud_;
+PushTrackerState cur_state_;
 
 // cpl_visual_features::ShapeDescriptor getShapeDescriptor(ProtoObject& cur_obj, pcl16::PointXYZ& start_point)
 // {
@@ -46,6 +50,11 @@ int start_loc_push_sample_count_;
 // {
 //   // TODO: Get start point using push_angle, init_centroid, and obj_cloud
 // }
+
+inline int objLocToIdx(double val, double min_val, double max_val)
+{
+  return round((val-min_val)/XY_RES);
+}
 
 pcl16::PointXYZ worldPointInObjectFrame(pcl16::PointXYZ world_pt, PushTrackerState& cur_state)
 {
@@ -102,6 +111,8 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
                                           int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs)
 {
   XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
+  hull_cloud_ = hull_cloud;
+  cur_state_ = cur_state;
 
   int rot_idx = -1;
   if (new_object)
@@ -112,7 +123,7 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
     start_loc_history_.clear();
 
     // NOTE: Initial start location is the dominant orientation
-    ROS_INFO_STREAM("Current state theta is: " << cur_state.x.theta);
+    // ROS_INFO_STREAM("Current state theta is: " << cur_state.x.theta);
     double min_angle_dist = FLT_MAX;
     for (int i = 0; i < hull_cloud.size(); ++i)
     {
@@ -131,13 +142,13 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
     if (start_loc_history_.size() % num_start_loc_pushes_per_sample == 0)
     {
       start_loc_arc_length_percent_ += 1.0/num_start_loc_sample_locs;
-      ROS_INFO_STREAM("Incrementing arc length percent based on: " << num_start_loc_pushes_per_sample);
+      // ROS_INFO_STREAM("Incrementing arc length percent based on: " << num_start_loc_pushes_per_sample);
     }
 
     // Get initial object boundary location in the current world frame
-    ROS_INFO_STREAM("init_obj_point: " << start_loc_history_[0].boundary_loc_);
+    // ROS_INFO_STREAM("init_obj_point: " << start_loc_history_[0].boundary_loc_);
     pcl16::PointXYZ init_loc_point = objectPointInWorldFrame(start_loc_history_[0].boundary_loc_, cur_state);
-    ROS_INFO_STREAM("init_loc_point: " << init_loc_point);
+    // ROS_INFO_STREAM("init_loc_point: " << init_loc_point);
 
     // Find index of closest point on current boundary to the initial pushing location
     double min_dist = FLT_MAX;
@@ -159,13 +170,13 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   if (subPIAngle(pt1_theta - pt0_theta) < 0)
   {
     reverse_data = true;
-    ROS_INFO_STREAM("Reversing data for boundaries");
+    // ROS_INFO_STREAM("Reversing data for boundaries");
   }
 
   // Compute cumulative distance around the boundary at each point
   std::vector<double> boundary_dists(hull_cloud.size(), 0.0);
   double boundary_length = 0.0;
-  ROS_INFO_STREAM("rot_idx is " << rot_idx);
+  // ROS_INFO_STREAM("rot_idx is " << rot_idx);
   for (int i = 1; i <= hull_cloud.size(); ++i)
   {
     int idx0 = (rot_idx+i-1) % hull_cloud.size();
@@ -183,8 +194,7 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
 
   // Find location at start_loc_arc_length_percent_ around the boundary
   double desired_boundary_dist = start_loc_arc_length_percent_*boundary_length;
-  ROS_INFO_STREAM("Finding location at dist " << desired_boundary_dist << " ~= " << start_loc_arc_length_percent_*100 <<
-                  "\% of " << boundary_length);
+  // ROS_INFO_STREAM("Finding location at dist " << desired_boundary_dist << " ~= " << start_loc_arc_length_percent_*100 << "\% of " << boundary_length);
   int boundary_loc_idx;
   double min_boundary_dist_diff = FLT_MAX;
   for (int i = 0; i < hull_cloud.size(); ++i)
@@ -302,9 +312,9 @@ std::vector<TrialStuff> getTrialsFromFile(std::string aff_file_name)
     }
   }
   trials_in.close();
-  ROS_INFO_STREAM("Read in: " << line_count << " lines");
-  ROS_INFO_STREAM("Read in: " << object_comment << " trial headers");
-  ROS_INFO_STREAM("Read in: " << trials.size() << " trials");
+  // ROS_INFO_STREAM("Read in: " << line_count << " lines");
+  // ROS_INFO_STREAM("Read in: " << object_comment << " trial headers");
+  // ROS_INFO_STREAM("Read in: " << trials.size() << " trials");
   return trials;
 }
 
@@ -357,6 +367,7 @@ int main(int argc, char** argv)
     push_scores = readScoreFile(score_file);
   }
 
+  double max_score = -100.0;
   ShapeDescriptors descriptors;
   for (unsigned int i = 0; i < trials.size(); ++i)
   {
@@ -364,9 +375,9 @@ int main(int argc, char** argv)
     pcl16::PointXYZ init_loc = trials[i].init_loc;
     float init_theta = trials[i].init_theta;
     bool new_object = trials[i].new_object;
-    ROS_INFO_STREAM("trial_id: " << trial_id);
-    ROS_INFO_STREAM("init_loc: " << init_loc);
-    ROS_INFO_STREAM("init_theta: " << init_theta);
+    // ROS_INFO_STREAM("trial_id: " << trial_id);
+    // ROS_INFO_STREAM("init_loc: " << init_loc);
+    // ROS_INFO_STREAM("init_theta: " << init_theta);
     // ROS_INFO_STREAM("new object: " << new_object);
     std::stringstream cloud_path;
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
@@ -376,6 +387,10 @@ int main(int argc, char** argv)
     descriptor << "[";
     for (unsigned int i = 0; i < sd.size(); ++i)
     {
+      if (i % 5 == 0)
+      {
+        descriptor << "\n";
+      }
       descriptor << " " << sd[i];
     }
     descriptor << "]";
@@ -383,7 +398,7 @@ int main(int argc, char** argv)
     {
       descriptor << "\n";
     }
-    ROS_INFO_STREAM("Descriptor: " << descriptor.str());
+    // ROS_INFO_STREAM("Descriptor: " << descriptor.str());
     descriptors.push_back(sd);
     if (draw_scores)
     {
@@ -391,17 +406,66 @@ int main(int argc, char** argv)
       // TODO: Get projection matrix
       std::stringstream hull_img_path;
       hull_img_path << data_directory_path << trial_id << "_obj_hull_disp.png";
-      ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
+      // ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
       cv::Mat disp_img;
       disp_img = cv::imread(hull_img_path.str());
-      ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
-      cv::imshow("hull", disp_img);
-      cv::waitKey();
+      // ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
+      // cv::imshow("hull", disp_img);
+      // cv::waitKey();
+      if (push_scores[i] > max_score)
+      {
+        max_score = push_scores[i];
+      }
     }
-
   }
+
   std::stringstream out_file;
   out_file << data_directory_path << out_file_name;
   writeNewFile(out_file.str(), trials, descriptors);
+  if (!draw_scores)
+  {
+    return 0;
+  }
+
+  double max_y = 0.3;
+  double min_y = -0.3;
+  double max_x = 0.3;
+  double min_x = -0.3;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
+
+  for (int i = 0; i < hull_cloud_.size(); ++i)
+  {
+    pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud_[i], cur_state_);
+    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
+    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    cv::Scalar color(128, 0, 0);
+    cv::circle(footprint, cv::Point(img_x, img_y), 1, color);
+  }
+  double score_mean = 0.0;
+  // HACK: Normalize across object classes
+  max_score = 0.0602445;
+  for (int i = 0; i < start_loc_history_.size(); ++i)
+  {
+    score_mean += push_scores[i];
+    int x = objLocToIdx(start_loc_history_[i].boundary_loc_.x, min_x, max_x);
+    int y = objLocToIdx(start_loc_history_[i].boundary_loc_.y, min_y, max_y);
+    double score = -log(push_scores[i])/10;
+    cv::Scalar color(0, score*255, (1-score)*255);
+    // color[0] = 0.5;
+    // color[1] = score;
+    // color[2] = 0.5;
+    // footprint.at<cv::Vec3f>(r,c) = color;
+    cv::circle(footprint, cv::Point(x,y), 3, color);
+  }
+  score_mean /= push_scores.size();
+  // ROS_INFO_STREAM("Max score is: " << max_score);
+  // ROS_INFO_STREAM("Writing image: " << out_file_path);
+  // cv::imwrite(out_file_path, footprint);
+
+  cv::imshow("Push score", footprint);
+  cv::waitKey();
+
   return 0;
 }

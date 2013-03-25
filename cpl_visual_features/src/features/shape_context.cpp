@@ -171,6 +171,7 @@ int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bi
   if (theta < 0.0) std::cout << "theta is too big: " << theta << std::endl;
   int radius_idx = std::max(std::min((int)std::floor(radius*radius_bins), radius_bins-1), 0);
   int theta_idx = std::max(std::min((int)std::floor(theta*theta_bins), theta_bins-1),0);
+  // std::cout << "theta_idx: " << theta_idx << std::endl;
   int idx = theta_idx*radius_bins+radius_idx;
   return idx;
 }
@@ -247,16 +248,21 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
         radius = log(radius);
         radius /= max_radius;
         theta = atan2(y1-y2,x1-x2);
+        // std::cout << "Theta raw: " << theta << std::endl;
         if (use_center)
         {
           // Rotate theta so that center orientation is 0
           theta = cpl_visual_features::subPIAngle(theta-center_angle);
+          // std::cout << "Theta shifted: " << theta << std::endl;
         }
         // Get in range [0,2pi]
         theta += M_PI;
+        // std::cout << "Theta [0,2pi]: " << theta << std::endl;
         // Get theta in range [0,1]
         theta /= 2*M_PI;
+        // std::cout << "Theta [0,1]: " << theta << std::endl;
         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
+        // std::cout << "idx: " << idx << std::endl;
         descriptor[idx]++;
       }
     }
