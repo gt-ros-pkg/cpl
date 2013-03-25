@@ -473,15 +473,17 @@ class TabletopExecutive:
                                                                  trial_id=trial_id,
                                                                  num_sample_locs=num_sample_locs,
                                                                  num_pushes_per_sample=num_pushes_per_sample)
-                goal_pose = push_vec_res.goal_pose
-                shape_descriptor = push_vec_res.shape_descriptor[:]
-                self.push_loc_shape_features.append(shape_descriptor)
                 if push_vec_res is None:
                     return None
                 elif push_vec_res == 'quit':
                     return push_vec_res
 
+                goal_pose = push_vec_res.goal_pose
+                shape_descriptor = push_vec_res.shape_descriptor[:]
+                self.push_loc_shape_features.append(shape_descriptor)
+
                 if _USE_LEARN_IO:
+                    # TODO: Write this to disk! push_vector_res.push.start_point
                     self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
                                                       goal_pose, behavior_primitive, controller_name,
                                                       proxy_name, which_arm, trial_id,
