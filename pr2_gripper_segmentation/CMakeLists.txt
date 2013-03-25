@@ -26,13 +26,21 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_genmsg()
 rosbuild_gensrv()
 
+#find_package(OpenCV REQUIRED)
+#rosbuild_add_boost_directories()
+#find_library(LOG4CXX_LIB log4cxx REQUIRED)
+#rosbuild_add_executable(collector src/gripper_segmentation_collect.cpp)
+##rosbuild_add_executable(tester src/test.cpp)
+#rosbuild_link_boost(collector signals)
+#target_link_libraries(collector ${LOG4CXX_LIB})
+
+
 find_package(OpenCV REQUIRED)
 rosbuild_add_boost_directories()
 find_library(LOG4CXX_LIB log4cxx REQUIRED)
-rosbuild_add_executable(collector src/gripper_segmentation_collect.cpp)
+rosbuild_add_executable(gpu src/GPUTest.cpp)
 #rosbuild_add_executable(tester src/test.cpp)
-rosbuild_link_boost(collector signals)
-target_link_libraries(collector ${LOG4CXX_LIB})
-
+rosbuild_link_boost(gpu signals)
+target_link_libraries(gpu ${LOG4CXX_LIB})
 
 
