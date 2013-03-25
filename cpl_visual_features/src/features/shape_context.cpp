@@ -232,7 +232,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
     }
 
     // Orient descriptor towards center
-    double center_angle = atan2(center.y-samples[i].y, center.x-samples[i].x);
+    double center_angle = atan2(samples[i].y - center.y, samples[i].x- center.x);
     x1 = samples.at(i).x;
     y1 = samples.at(i).y;
 
