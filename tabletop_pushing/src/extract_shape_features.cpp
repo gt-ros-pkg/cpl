@@ -322,6 +322,24 @@ void writeNewFile(std::string out_file_name, std::vector<TrialStuff> trials, Sha
   out_file.close();
 }
 
+std::vector<float> readScoreFile(std::string file_path)
+{
+  std::ifstream data_in(file_path.c_str());
+  std::vector<float> scores;
+  while (data_in.good())
+  {
+    char c_line[1024];
+    data_in.getline(c_line, 1024);
+    std::stringstream line;
+    line << c_line;
+    float y;
+    line >> y;
+    scores.push_back(y);
+  }
+  data_in.close();
+  return scores;
+}
+
 int main(int argc, char** argv)
 {
   // TODO: Get the aff_file and the directory as input
@@ -330,8 +348,16 @@ int main(int argc, char** argv)
   std::string out_file_name(argv[3]);
   std::vector<TrialStuff> trials = getTrialsFromFile(aff_file_path);
 
+  std::string score_file = "";
+  bool draw_scores = argc > 4;
+  std::vector<float> push_scores;
+  if (draw_scores)
+  {
+    score_file = argv[4];
+    push_scores = readScoreFile(score_file);
+  }
+
   ShapeDescriptors descriptors;
-  // TODO: Read in data file, parse for the below info, then write out new one
   for (unsigned int i = 0; i < trials.size(); ++i)
   {
     std::string trial_id = trials[i].trial_id;
@@ -339,12 +365,13 @@ int main(int argc, char** argv)
     float init_theta = trials[i].init_theta;
     bool new_object = trials[i].new_object;
     ROS_INFO_STREAM("trial_id: " << trial_id);
-    ROS_INFO_STREAM("init_theta: " << init_theta);
     ROS_INFO_STREAM("init_loc: " << init_loc);
-    ROS_INFO_STREAM("new object: " << new_object);
+    ROS_INFO_STREAM("init_theta: " << init_theta);
+    // ROS_INFO_STREAM("new object: " << new_object);
     std::stringstream cloud_path;
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
     ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, new_object);
+
     std::stringstream descriptor;
     descriptor << "[";
     for (unsigned int i = 0; i < sd.size(); ++i)
@@ -352,8 +379,26 @@ int main(int argc, char** argv)
       descriptor << " " << sd[i];
     }
     descriptor << "]";
-    ROS_INFO_STREAM("Sd is: " << descriptor.str() << "\n");
+    if (!draw_scores)
+    {
+      descriptor << "\n";
+    }
+    ROS_INFO_STREAM("Descriptor: " << descriptor.str());
     descriptors.push_back(sd);
+    if (draw_scores)
+    {
+      // TODO: Get the image, draw the shape context, highlight score color
+      // TODO: Get projection matrix
+      std::stringstream hull_img_path;
+      hull_img_path << data_directory_path << trial_id << "_obj_hull_disp.png";
+      ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
+      cv::Mat disp_img;
+      disp_img = cv::imread(hull_img_path.str());
+      ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
+      cv::imshow("hull", disp_img);
+      cv::waitKey();
+    }
+
   }
   std::stringstream out_file;
   out_file << data_directory_path << out_file_name;

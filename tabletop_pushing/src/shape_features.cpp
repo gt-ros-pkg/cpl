@@ -121,8 +121,9 @@ ShapeLocations extractShapeFeaturesFromSamples(XYZPointCloud& samples_pcl, Proto
   }
   int radius_bins = 5;
   int theta_bins = 12;
+  double max_radius = 0.5;
   cv::Point2f center(cur_obj.centroid[0], cur_obj.centroid[1]);
-  ShapeDescriptors descriptors = constructDescriptors(samples, center, use_center, radius_bins, theta_bins);
+  ShapeDescriptors descriptors = constructDescriptors(samples, center, use_center, radius_bins, theta_bins, max_radius);
   ShapeLocations locs;
   for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
