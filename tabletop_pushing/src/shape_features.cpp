@@ -9,6 +9,7 @@
 #include <iostream>
 
 #define XY_RES 0.00075
+#define DRAW_LR_LIMITS 1
 using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
 namespace tabletop_pushing
@@ -25,6 +26,18 @@ cv::Point worldPtToImgPt(pcl16::PointXYZ world_pt, double min_x, double max_x,
   cv::Point img_pt(worldLocToIdx(world_pt.x, min_x, max_x),
                    worldLocToIdx(world_pt.y, min_y, max_y));
   return img_pt;
+}
+std::vector<int> getJumpIndices(XYZPointCloud& concave_hull, float alpha)
+{
+  std::vector<int> jump_indices;
+  for (int i = 0; i < concave_hull.size(); i++)
+  {
+    if (dist(concave_hull[i], concave_hull[(i+1)%concave_hull.size()]) > 2.0*alpha)
+    {
+      jump_indices.push_back(i);
+    }
+  }
+  return jump_indices;
 }
 
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
@@ -203,8 +216,105 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
   cv::waitKey();
 }
 
-XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
+XYZPointCloud getLocalSamplesNew(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
                               float sample_spread, float alpha)
+{
+  // TODO: This is going to get all points in front of the gripper, not only those on the close boundary
+  float radius = sample_spread / 2.0;
+  pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
+  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  float approach_dist = 0.15;
+  pcl16::PointXYZ approach_pt(sample_pt.x - std::cos(center_angle)*approach_dist,
+                              sample_pt.y - std::sin(center_angle)*approach_dist, 0.0);
+  pcl16::PointXYZ e_vect(std::cos(center_angle+M_PI/2.0)*radius,
+                         std::sin(center_angle+M_PI/2.0)*radius, 0.0);
+  pcl16::PointXYZ e_left(approach_pt.x + e_vect.x, approach_pt.y + e_vect.y, 0.0);
+  pcl16::PointXYZ e_right(approach_pt.x - e_vect.x, approach_pt.y - e_vect.y, 0.0);
+  pcl16::PointXYZ c_left(center_pt.x + std::cos(center_angle)*approach_dist + e_vect.x,
+                         center_pt.y + std::sin(center_angle)*approach_dist + e_vect.y, 0.0);
+  pcl16::PointXYZ c_right(center_pt.x + std::cos(center_angle)*approach_dist - e_vect.x,
+                          center_pt.y + std::sin(center_angle)*approach_dist - e_vect.y, 0.0);
+  std::vector<int> jump_indices = getJumpIndices(hull, alpha);
+
+  std::vector<int> inside_indices;
+  for (int i = 0; i < cur_obj.cloud.size(); i++)
+  {
+    double dist_r = pointLineDistance2D(cur_obj.cloud[i], e_right, c_right);
+    double dist_l = pointLineDistance2D(cur_obj.cloud[i], e_left, c_left);
+    if (dist_r > sample_spread  || dist_l > sample_spread)
+    {
+      // pcl16::PointXYZ intersection;
+      // bool intersects_l = lineSegmentIntersection2D(hull[i], hull[(i+1)%hull.size()], e_left, c_left,
+      //                                               intersection);
+      // bool intersects_r = lineSegmentIntersection2D(hull[i], hull[(i+1)%hull.size()], e_right, c_right,
+      //                                               intersection);
+      // if (intersects_l || intersects_r)
+      // {
+      //   inside_indices.push_back(i);
+      // }
+    }
+    else
+    {
+      inside_indices.push_back(i);
+    }
+  }
+
+  std::vector<int> local_indices;
+  for (int i = 0; i < inside_indices.size(); ++i)
+  {
+    const int idx = inside_indices[i];
+    // Get projection of this point in gripper y
+    double dist_l = pointLineDistance2D(cur_obj.cloud[idx], e_left, c_left);
+    pcl16::PointXYZ e_vect_scaled(std::cos(center_angle+M_PI/2.0)*radius-dist_l,
+                                  std::sin(center_angle+M_PI/2.0)*radius-dist_l, 0.0);
+    pcl16::PointXYZ e_pt(approach_pt.x + e_vect.x, approach_pt.y + e_vect.y, 0.0);
+
+    // Check if the line segment between the gripper and this point intersects any other line segment
+    bool intersects = false;
+    for (int j = 0; j < hull.size(); ++j)
+    {
+      bool j_is_jump = false;
+      for (int k = 0; k < jump_indices.size(); ++k)
+      {
+        if (jump_indices[k] == j)
+        {
+          j_is_jump = true;
+        }
+      }
+      // Don't test jump indices for blocking, or ourself
+      // if (j_is_jump || j == idx || j == idx-1 || j == (idx+1)%hull.size())
+      // {
+      //   continue;
+      // }
+
+      // Do the line test
+      pcl16::PointXYZ intersection;
+      if (lineSegmentIntersection2D(e_pt, cur_obj.cloud[idx], hull[j], hull[(j+1)%hull.size()], intersection))
+      {
+        intersects = true;
+      }
+    }
+    if (!intersects)
+    {
+      local_indices.push_back(idx);
+      // local_indices.push_back((idx+1)%hull.size());
+    }
+  }
+
+  // Copy to new cloud and return
+  XYZPointCloud local_samples;
+  pcl16::copyPointCloud(cur_obj.cloud, local_indices, local_samples);
+  int min_l_idx = 0;
+  int min_r_idx = 0;
+  // drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
+  //                  c_left, c_right);
+
+  // TODO: Transform samples into sample_loc frame
+  return local_samples;
+}
+
+XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
+                                 float sample_spread, float alpha)
 {
   // TODO: This is going to get all points in front of the gripper, not only those on the close boundary
   float radius = sample_spread / 2.0;
@@ -336,7 +446,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
 
   double sample_pt_dist = dist(approach_pt, sample_pt);
   // Default to smaple_pt if no intersection also
-  if (min_c_idx == -1 || sample_pt_dist <= min_c_dist)
+  if (true || min_c_idx == -1 || sample_pt_dist <= min_c_dist)
   {
     min_c_idx = sample_pt_idx;
     min_c_dist = sample_pt_dist;
@@ -411,16 +521,13 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // Walk from one intersection to the other through the centroid
   for (int i = start_idx; i != end_idx; i = (i+1) % hull.size())
   {
-    // if (cur_chunk == start_chunk || cur_chunk == end_chunk || cur_chunk == center_chunk)
-    if (cur_chunk == center_chunk)
+    double dist_r = pointLineDistance2D(hull[i], e_right, c_right);
+    double dist_l = pointLineDistance2D(hull[i], e_left, c_left);
+    // Thorw out points outside the gripper channel
+    if (dist_r > sample_spread  || dist_l > sample_spread)
     {
-      indices.push_back(i);
     }
-    else if (cur_chunk == start_chunk && i > start_idx)
-    {
-      indices.push_back(i);
-    }
-    else if (cur_chunk == end_chunk && i < end_idx)
+    else if (cur_chunk == start_chunk || cur_chunk == end_chunk || cur_chunk == center_chunk)
     {
       indices.push_back(i);
     }

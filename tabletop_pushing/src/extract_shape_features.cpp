@@ -83,7 +83,7 @@ static inline double sqrDist(pcl16::PointXYZ a, pcl16::PointXYZ b)
 ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
                                           int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs)
 {
-  float hull_alpha = 0.005;
+  float hull_alpha = 0.01;
   XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
   hull_cloud_ = hull_cloud;
   cur_state_ = cur_state;
