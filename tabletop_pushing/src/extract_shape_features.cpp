@@ -83,7 +83,8 @@ static inline double sqrDist(pcl16::PointXYZ a, pcl16::PointXYZ b)
 ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
                                           int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs)
 {
-  XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
+  float hull_alpha = 0.005;
+  XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
   hull_cloud_ = hull_cloud;
   cur_state_ = cur_state;
 
@@ -184,7 +185,8 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   // ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj, true);
   float gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
-  ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread);
+  ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread,
+                                                                   hull_alpha);
   // Add into pushing history in object frame
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
@@ -403,10 +405,11 @@ int main(int argc, char** argv)
       std::stringstream hull_img_path;
       hull_img_path << data_directory_path << trial_id << "_obj_hull_disp.png";
       // ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
-      cv::Mat disp_img;
-      disp_img = cv::imread(hull_img_path.str());
+      // cv::Mat disp_img;
+      // ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
+      // disp_img = cv::imread(hull_img_path.str());
       ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
-      cv::imshow("hull", disp_img);
+      // cv::imshow("hull", disp_img);
       // cv::waitKey();
       if (push_scores[i] > max_score)
       {

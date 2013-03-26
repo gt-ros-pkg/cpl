@@ -39,10 +39,12 @@ ShapeLocations extractShapeContextFromSamples(pcl16::PointCloud<pcl16::PointXYZ>
                                               bool use_center);
 
 pcl16::PointCloud<pcl16::PointXYZ> getLocalSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
-                                                   ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s);
+                                                   ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s,
+                                                   float hull_alpha);
 
-cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(
-    pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl, ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s);
+cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
+                                                               ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
+                                                               float s, float hull_alpha);
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 

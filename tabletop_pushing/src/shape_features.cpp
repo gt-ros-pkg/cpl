@@ -45,7 +45,6 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
   hull.setInputCloud(footprint_cloud.makeShared());
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
-
   return hull_cloud;
 }
 
@@ -205,7 +204,7 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
 }
 
 XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
-                              float sample_spread)
+                              float sample_spread, float alpha)
 {
   // TODO: This is going to get all points in front of the gripper, not only those on the close boundary
   float radius = sample_spread / 2.0;
@@ -222,16 +221,33 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
                          center_pt.y + std::sin(center_angle)*approach_dist + e_vect.y, 0.0);
   pcl16::PointXYZ c_right(center_pt.x + std::cos(center_angle)*approach_dist - e_vect.x,
                           center_pt.y + std::sin(center_angle)*approach_dist - e_vect.y, 0.0);
-  ROS_INFO_STREAM("center_pt: " << center_pt);
-  ROS_INFO_STREAM("sample_pt: " << sample_pt);
-  ROS_INFO_STREAM("approach_pt: " << approach_pt);
-  ROS_INFO_STREAM("e_vect: " << e_vect);
-  ROS_INFO_STREAM("e_left: " << e_left);
-  ROS_INFO_STREAM("e_right: " << e_right);
+  // ROS_INFO_STREAM("center_pt: " << center_pt);
+  // ROS_INFO_STREAM("sample_pt: " << sample_pt);
+  // ROS_INFO_STREAM("approach_pt: " << approach_pt);
+  // ROS_INFO_STREAM("e_vect: " << e_vect);
+  // ROS_INFO_STREAM("e_left: " << e_left);
+  // ROS_INFO_STREAM("e_right: " << e_right);
 
-  // Test intersection of gripper end point rays and all line segments on the object boundary
   double min_sample_pt_dist = FLT_MAX;
   int sample_pt_idx = -1;
+  std::vector<int> jump_indices;
+  for (int i = 0; i < hull.size(); i++)
+  {
+    // SAMPLE PT
+    double sample_pt_dist = dist(sample_pt, hull[i]);
+    if (sample_pt_dist < min_sample_pt_dist)
+    {
+      min_sample_pt_dist = sample_pt_dist;
+      sample_pt_idx = i;
+    }
+    if (dist(hull[i], hull[(i+1)%hull.size()]) > 2.0*alpha)
+    {
+      jump_indices.push_back(i);
+      ROS_INFO_STREAM("Jump from " << i << " to " << (i+1)%hull.size());
+    }
+  }
+
+  // Test intersection of gripper end point rays and all line segments on the object boundary
   pcl16::PointXYZ l_intersection;
   pcl16::PointXYZ r_intersection;
   pcl16::PointXYZ c_intersection;
@@ -246,7 +262,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   double min_far_r_dist = FLT_MAX;
   int far_l_idx = -1;
   int far_r_idx = -1;
-
+  // TODO: Break this up into a couple of functions
   for (int i = 0; i < hull.size(); i++)
   {
     int idx0 = i;
@@ -264,8 +280,21 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     double far_r_dist = pointLineDistance2D(hull[idx0], e_right, c_right);
     if (far_r_dist < min_far_r_dist)
     {
-      far_r_idx = i;
+      far_r_idx = idx0;
       min_far_r_dist = far_r_dist;
+    }
+
+    bool is_jump = false;
+    for (int j = 0; j < jump_indices.size(); ++j)
+    {
+      if (jump_indices[j] == idx0)
+      {
+        is_jump = true;
+      }
+    }
+    if (is_jump)
+    {
+      continue;
     }
 
     pcl16::PointXYZ intersection;
@@ -302,48 +331,34 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
         c_intersection = intersection;
       }
     }
-    // SAMPLE PT
-    double sample_pt_dist = dist(sample_pt, hull[i]);
-    if (sample_pt_dist < min_sample_pt_dist)
-    {
-      min_sample_pt_dist = sample_pt_dist;
-      sample_pt_idx = i;
-    }
   }
 
-  // Default to smaple_pt if no intersection also
-  double sample_pt_dist = dist(approach_pt, sample_pt);
-  ROS_INFO_STREAM("far_l_dist is: " << min_far_l_dist << " at " << far_l_idx);
-  ROS_INFO_STREAM("far_r_dist is: " << min_far_r_dist << " at " << far_r_idx);
-  ROS_INFO_STREAM("min_l_dist is: " << min_l_dist << " at " << min_l_idx);
-  ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
-  ROS_INFO_STREAM("min_c_dist is: " << min_c_dist << " at " << min_c_idx);
-  ROS_INFO_STREAM("sample_pt_dist is : " << sample_pt_dist << " at " << sample_pt_idx);
 
+  double sample_pt_dist = dist(approach_pt, sample_pt);
+  // Default to smaple_pt if no intersection also
   if (min_c_idx == -1 || sample_pt_dist <= min_c_dist)
   {
     min_c_idx = sample_pt_idx;
     min_c_dist = sample_pt_dist;
   }
-
+  // Default far left if no left intersection
   if (min_l_idx == -1)
   {
-    ROS_WARN_STREAM("No left intersection");
     min_l_idx = far_l_idx;
     min_l_dist = min_far_l_dist;
   }
+  // Default far right if no right intersection
   if (min_r_idx == -1)
   {
-    ROS_WARN_STREAM("No right intersection");
     min_r_idx = far_r_idx;
     min_r_dist = min_far_r_dist;
   }
 
   std::vector<int> indices;
-  indices.push_back(min_l_idx);
-  indices.push_back((min_l_idx+1) % hull.size());
-  indices.push_back(min_r_idx);
-  indices.push_back((min_r_idx+1) % hull.size());
+  // indices.push_back(min_l_idx);
+  // indices.push_back((min_l_idx+1) % hull.size());
+  // indices.push_back(min_r_idx);
+  // indices.push_back((min_r_idx+1) % hull.size());
 
   int start_idx = min_l_idx < min_r_idx ? min_l_idx : min_r_idx;
   int end_idx = min_l_idx < min_r_idx ? min_r_idx : min_l_idx;
@@ -359,7 +374,37 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     start_idx = end_idx;
     end_idx = tmp_idx;
   }
+  int start_chunk = jump_indices.size();
+  int center_chunk = jump_indices.size();
+  int end_chunk = jump_indices.size();
+  for (int i = jump_indices.size()-1; i >= 0; --i)
+  {
+    if (start_idx <= jump_indices[i])
+    {
+      start_chunk = i;
+    }
+    if (min_c_idx <= jump_indices[i])
+    {
+      center_chunk = i;
+    }
+    if (end_idx <= jump_indices[i])
+    {
+      end_chunk = i;
+    }
+  }
+  // TODO: Dont walk through unimportant chunks
+  ROS_INFO_STREAM("Start chunk is: " << start_chunk);
+  ROS_INFO_STREAM("Center chunk is: " << center_chunk);
+  ROS_INFO_STREAM("End chunk is: " << end_chunk);
+
+  // ROS_INFO_STREAM("far_l_dist is: " << min_far_l_dist << " at " << far_l_idx);
+  // ROS_INFO_STREAM("far_r_dist is: " << min_far_r_dist << " at " << far_r_idx);
+  // ROS_INFO_STREAM("min_l_dist is: " << min_l_dist << " at " << min_l_idx);
+  // ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
+  // ROS_INFO_STREAM("min_c_dist is: " << min_c_dist << " at " << min_c_idx);
+  // ROS_INFO_STREAM("sample_pt_dist is : " << sample_pt_dist << " at " << sample_pt_idx);
   ROS_INFO_STREAM("start idx: " << start_idx);
+  ROS_INFO_STREAM("center idx: " << min_c_idx);
   ROS_INFO_STREAM("end idx: " << end_idx);
 
   // Walk from one intersection to the other through the centroid
@@ -373,13 +418,18 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   pcl16::copyPointCloud(hull, indices, local_samples);
   drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
                    c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
+  // TODO: Transform samples into sample_loc frame
   return local_samples;
 }
 
 ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
-                                          pcl16::PointXYZ sample_pt, float sample_spread)
+                                          pcl16::PointXYZ sample_pt, float sample_spread, float hull_alpha)
 {
-  XYZPointCloud local_samples = getLocalSamples(hull, cur_obj, sample_pt, sample_spread);
+  XYZPointCloud local_samples = getLocalSamples(hull, cur_obj, sample_pt, sample_spread, hull_alpha);
+  // TODO: Transform points into sample_pt frame
+  // TODO: Get range of points
+  // TODO: Get variance of points
+
   ShapeDescriptor sd;
   return sd;
 }
