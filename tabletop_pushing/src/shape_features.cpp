@@ -27,7 +27,7 @@ cv::Point worldPtToImgPt(pcl16::PointXYZ world_pt, double min_x, double max_x,
   return img_pt;
 }
 
-XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj)
+XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
 {
   // Get 2D projection of object
   // TODO: Remove the z, then add it back after finding the hull... how do we do this?
@@ -39,7 +39,6 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj)
   }
 
   // TODO: Examine sensitivity of hull_alpha...
-  double hull_alpha = 0.01;
   XYZPointCloud hull_cloud;
   pcl16::ConcaveHull<pcl16::PointXYZ> hull;
   hull.setDimension(2);  // NOTE: Get 2D projection of object
@@ -146,12 +145,13 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl, ProtoO
 void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointXYZ& center_pt,
                       pcl16::PointXYZ& sample_pt, pcl16::PointXYZ& approach_pt,
                       pcl16::PointXYZ e_left, pcl16::PointXYZ e_right,
-                      pcl16::PointXYZ c_left, pcl16::PointXYZ c_right)
+                      pcl16::PointXYZ c_left, pcl16::PointXYZ c_right,
+                      pcl16::PointXYZ i_left, pcl16::PointXYZ i_right)
 {
   double max_y = 0.5;
-  double min_y = -0.5;
+  double min_y = -0.2;
   double max_x = 1.0;
-  double min_x = 0.0;
+  double min_x = 0.2;
   // TODO: Make function to get cv::Size from (max_x, min_x, max_y, min_y, XY_RES)
   // TODO: Make sure everything is getting drawn
   int rows = ceil((max_y-min_y)/XY_RES);
@@ -160,10 +160,14 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
 
   for (int i = 0; i < hull.size(); ++i)
   {
-    pcl16::PointXYZ obj_pt = hull[i];
-    cv::Point img_pt = worldPtToImgPt(obj_pt, min_x, max_x, min_y, max_y);
+    int j = (i+1) % hull.size();
+    pcl16::PointXYZ obj_pt0 = hull[i];
+    pcl16::PointXYZ obj_pt1 = hull[j];
+    cv::Point img_pt0 = worldPtToImgPt(obj_pt0, min_x, max_x, min_y, max_y);
+    cv::Point img_pt1 = worldPtToImgPt(obj_pt1, min_x, max_x, min_y, max_y);
     cv::Scalar color(0, 0, 128);
-    cv::circle(footprint, img_pt, 1, color);
+    cv::circle(footprint, img_pt0, 1, color);
+    cv::line(footprint, img_pt0, img_pt1, color);
   }
   for (int i = 0; i < samples.size(); ++i)
   {
@@ -178,19 +182,23 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
   cv::Point e_right_img = worldPtToImgPt(e_right, min_x, max_x, min_y, max_y);
   cv::Point c_left_img = worldPtToImgPt(c_left, min_x, max_x, min_y, max_y);
   cv::Point c_right_img = worldPtToImgPt(c_right, min_x, max_x, min_y, max_y);
+  cv::Point i_left_img = worldPtToImgPt(i_left, min_x, max_x, min_y, max_y);
+  cv::Point i_right_img = worldPtToImgPt(i_right, min_x, max_x, min_y, max_y);
 
-  cv::circle(footprint, img_center, 3, cv::Scalar(0,255,255));
-  cv::circle(footprint, img_approach_pt, 3, cv::Scalar(0,255,255));
-  cv::circle(footprint, e_left_img, 3, cv::Scalar(0,255,255));
-  cv::circle(footprint, e_right_img, 3, cv::Scalar(0,255,255));
   cv::line(footprint, img_approach_pt, img_center, cv::Scalar(0,255,255));
   cv::line(footprint, e_left_img, e_right_img, cv::Scalar(0,255,255));
-  cv::line(footprint, e_left_img, c_left_img, cv::Scalar(0,255,255));
+  cv::line(footprint, e_left_img, c_left_img, cv::Scalar(255,0,255));
   cv::line(footprint, e_right_img, c_right_img, cv::Scalar(0,255,255));
-  
+  cv::circle(footprint, img_center, 3, cv::Scalar(0,255,255));
+  cv::circle(footprint, img_approach_pt, 3, cv::Scalar(0,255,255));
+  cv::circle(footprint, e_left_img, 3, cv::Scalar(255,0,255));
+  cv::circle(footprint, e_right_img, 3, cv::Scalar(0,255,255));
+
   // Draw sample point last
   cv::line(footprint, img_sample_pt, img_center, cv::Scalar(255,255,255));
   cv::circle(footprint, img_sample_pt, 3, cv::Scalar(255,255,255));
+  cv::circle(footprint, i_left_img, 3, cv::Scalar(255,0,255));
+  cv::circle(footprint, i_right_img, 3, cv::Scalar(0,255,255));
 
   cv::imshow("local samples", footprint);
   cv::waitKey();
@@ -210,8 +218,10 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
                          std::sin(center_angle+M_PI/2.0)*radius, 0.0);
   pcl16::PointXYZ e_left(approach_pt.x + e_vect.x, approach_pt.y + e_vect.y, 0.0);
   pcl16::PointXYZ e_right(approach_pt.x - e_vect.x, approach_pt.y - e_vect.y, 0.0);
-  pcl16::PointXYZ c_left(center_pt.x + e_vect.x, center_pt.y + e_vect.y, 0.0);
-  pcl16::PointXYZ c_right(center_pt.x - e_vect.x, center_pt.y - e_vect.y, 0.0);
+  pcl16::PointXYZ c_left(center_pt.x + std::cos(center_angle)*approach_dist + e_vect.x,
+                         center_pt.y + std::sin(center_angle)*approach_dist + e_vect.y, 0.0);
+  pcl16::PointXYZ c_right(center_pt.x + std::cos(center_angle)*approach_dist - e_vect.x,
+                          center_pt.y + std::sin(center_angle)*approach_dist - e_vect.y, 0.0);
   // ROS_INFO_STREAM("center_pt: " << center_pt);
   // ROS_INFO_STREAM("sample_pt: " << sample_pt);
   // ROS_INFO_STREAM("approach_pt: " << approach_pt);
@@ -219,30 +229,59 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // ROS_INFO_STREAM("e_left: " << e_left);
   // ROS_INFO_STREAM("e_right: " << e_right);
 
-  std::vector<pcl16::PointXYZ> left_segments;
-  std::vector<pcl16::PointXYZ> right_segments;
-  std::vector<int> left_segment_idx;
-  std::vector<int> right_segment_idx;
-
   // Test intersection of gripper end point rays and all line segments on the object boundary
   double min_sample_pt_dist = FLT_MAX;
   int sample_pt_idx = -1;
+  pcl16::PointXYZ l_intersection;
+  pcl16::PointXYZ r_intersection;
+  pcl16::PointXYZ c_intersection;
+  double min_l_dist = FLT_MAX;
+  double min_r_dist = FLT_MAX;
+  double min_c_dist = FLT_MAX;
+  int min_l_idx = -1;
+  int min_r_idx = -1;
+  int min_c_idx = -1;
+
   for (int i = 0; i < hull.size(); i++)
   {
     int idx0 = i;
     int idx1 = (i+1) % hull.size();
-    pcl16::PointXYZ l_intersection;
-    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_left, c_left, l_intersection))
+    // TODO: Make sure the lineSegmentIntersection works correctly
+    pcl16::PointXYZ intersection;
+    // LEFT
+    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_left, c_left, intersection))
     {
-      left_segments.push_back(l_intersection);
-      left_segment_idx.push_back(i);
+      double pt_dist = dist(intersection, e_left);
+      if (pt_dist < min_l_dist)
+      {
+        min_l_dist = pt_dist;
+        min_l_idx = i;
+        l_intersection = intersection;
+      }
     }
-    pcl16::PointXYZ r_intersection;
-    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_right, c_right, r_intersection))
+    // RIGHT
+    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_right, c_right, intersection))
     {
-      right_segments.push_back(r_intersection);
-      right_segment_idx.push_back(i);
+      double pt_dist = dist(intersection, e_right);
+      if (pt_dist < min_r_dist)
+      {
+        min_r_dist = pt_dist;
+        min_r_idx = i;
+        r_intersection = intersection;
+      }
     }
+    // CENTER
+    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], approach_pt, center_pt, intersection))
+    {
+      double pt_dist = dist(intersection, approach_pt);
+      if (pt_dist < min_c_dist)
+      {
+        min_c_dist = pt_dist;
+        min_c_idx = i;
+        c_intersection = intersection;
+      }
+    }
+    // SAMPLE PT
     double sample_pt_dist = dist(sample_pt, hull[i]);
     if (sample_pt_dist < min_sample_pt_dist)
     {
@@ -250,34 +289,37 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
       sample_pt_idx = i;
     }
   }
-  ROS_INFO_STREAM("left intersects with " << left_segment_idx.size() << " segments");
-  ROS_INFO_STREAM("right intersects with " << right_segment_idx.size() << " segments");
-  // Determine which intersection is closest
-  double min_l_dist = FLT_MAX;
-  int min_l_idx = -1;
-  for (int i = 0; i < left_segments.size(); ++i)
+
+  // Default to smaple_pt if no intersection also
+  double sample_pt_dist = dist(approach_pt, sample_pt);
+  if (min_c_idx == -1)
   {
-    double pt_dist = dist(left_segments[i], e_left);
-    if (pt_dist < min_l_dist)
+    min_c_idx = sample_pt_idx;
+  }
+  else
+  {
+    if (sample_pt_dist <= min_c_dist)
     {
-      min_l_dist = pt_dist;
-      min_l_idx = left_segment_idx[i];
+      min_c_idx = sample_pt_idx;
     }
   }
-  double min_r_dist = FLT_MAX;
-  int min_r_idx = -1;
-  for (int i = 0; i < right_segments.size(); ++i)
+
+  // TODO: Deal with no intersections
+  // TODO: Find farthest point left before moving back towards center
+  if (min_l_idx == -1)
   {
-    double pt_dist = dist(right_segments[i], e_right);
-    if (pt_dist < min_r_dist)
-    {
-      min_r_dist = pt_dist;
-      min_r_idx = right_segment_idx[i];
-    }
+    ROS_WARN_STREAM("No left intersection");
+    min_l_idx = sample_pt_idx;
+  }
+  if (min_r_idx == -1)
+  {
+    ROS_WARN_STREAM("No right intersection");
+    min_r_idx = sample_pt_idx;
   }
   ROS_INFO_STREAM("min_l_dist is: " << min_l_dist << " at " << min_l_idx);
   ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
-  ROS_INFO_STREAM("sample_idx: " << sample_pt_idx);
+  ROS_INFO_STREAM("min_c_dist is: " << min_c_dist << " at " << min_c_idx);
+  ROS_INFO_STREAM("sample_pt_dist is : " << sample_pt_dist << " at " << sample_pt_idx);
 
   std::vector<int> indices;
   indices.push_back(min_l_idx);
@@ -287,7 +329,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
 
   int start_idx = min_l_idx < min_r_idx ? min_l_idx : min_r_idx;
   int end_idx = min_l_idx < min_r_idx ? min_r_idx : min_l_idx;
-  if (sample_pt_idx >= start_idx && sample_pt_idx <= end_idx)
+  if (min_c_idx >= start_idx && min_c_idx <= end_idx)
   {
     // Good:
     ROS_INFO_STREAM("Walking inside");
@@ -301,7 +343,8 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   }
   ROS_INFO_STREAM("start idx: " << start_idx);
   ROS_INFO_STREAM("end idx: " << end_idx);
-  // TODO: Walk from left intersection to right intersection
+
+  // Walk from one intersection to the other through the centroid
   for (int i = start_idx; i != end_idx; i = (i+1) % hull.size())
   {
     indices.push_back(i);
@@ -311,7 +354,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   XYZPointCloud local_samples;
   pcl16::copyPointCloud(hull, indices, local_samples);
   drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
-                   c_left, c_right);
+                   c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
   return local_samples;
 }
 
