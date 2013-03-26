@@ -31,7 +31,7 @@ typedef std::vector<ShapeLocation> ShapeLocations;
 
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud);
 
-pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj);
+pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
 
 ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center = true);
 
