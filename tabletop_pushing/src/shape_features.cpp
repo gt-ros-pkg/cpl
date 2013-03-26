@@ -13,6 +13,19 @@ using tabletop_pushing::ProtoObject;
 namespace tabletop_pushing
 {
 
+cv::Point lineLineIntersection(cv::Point a1, cv::Point a2, cv::Point b1, cv::Point b2)
+{
+  float denom = (a1.x-a2.x)*(b1.y-b2.y)-(a1.y-a2.y)*(b1.x-b2.x);
+  if (denom == 0) // Parrallel lines, return somethign else
+  {
+  }
+  cv::Point intersection( ((a1.x*a2.y - a1.y*a2.x)*(b1.x-b2.x) -
+                           (a1.x - a2.x)*(b1.x*b2.y - b1.y*b2.x))/denom,
+                          ((a1.x*a2.y - a1.y*a2.x)*(b1.y-b2.y) -
+                           (a1.y - a2.y)*(b1.x*b2.y - b1.y*b2.x))/denom);
+  return intersection;
+}
+
 inline int worldLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
@@ -237,19 +250,10 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   ROS_INFO_STREAM("e_left: " << e_left);
   ROS_INFO_STREAM("e_right: " << e_right);
 
-  // TODO: Find intersection of gripper ends and object boundary
-  
-  // TODO: Find index of sample_pt in hull
-  std::vector<int> indices;
-  for (int i = 0; i < hull.size(); ++i)
-  {
-    if (pointIsBetweenOthers(hull[i], approach_pt, e_left) ||
-        pointIsBetweenOthers(hull[i], approach_pt, e_right))
-    {
-      indices.push_back(i);
-    }
-  }
-
+  std::vector<pcl16::PointXYZ> left_segments;
+  std::vector<pcl16::PointXYZ> right_segments;
+  // TODO: Test intersection of gripper end point rays and all line segments on the object boundary
+  // TODO: Determine which intersection is closest
 
   // TODO: Walk from left intersection to right intersection
   bool sample_in_walk = false;
