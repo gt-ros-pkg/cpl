@@ -5,6 +5,7 @@
 #include <pcl16_ros/transforms.h>
 #include <pcl16/ros/conversions.h>
 #include <pcl16/surface/concave_hull.h>
+#include <cpl_visual_features/comp_geometry.h>
 #include <iostream>
 
 #define XY_RES 0.00075
@@ -12,19 +13,6 @@ using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
 namespace tabletop_pushing
 {
-
-cv::Point lineLineIntersection(cv::Point a1, cv::Point a2, cv::Point b1, cv::Point b2)
-{
-  float denom = (a1.x-a2.x)*(b1.y-b2.y)-(a1.y-a2.y)*(b1.x-b2.x);
-  if (denom == 0) // Parrallel lines, return somethign else
-  {
-  }
-  cv::Point intersection( ((a1.x*a2.y - a1.y*a2.x)*(b1.x-b2.x) -
-                           (a1.x - a2.x)*(b1.x*b2.y - b1.y*b2.x))/denom,
-                          ((a1.x*a2.y - a1.y*a2.x)*(b1.y-b2.y) -
-                           (a1.y - a2.y)*(b1.x*b2.y - b1.y*b2.x))/denom);
-  return intersection;
-}
 
 inline int worldLocToIdx(double val, double min_val, double max_val)
 {
@@ -155,26 +143,6 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl, ProtoO
   return locs;
 }
 
-bool pointIsBetweenOthers(pcl16::PointXYZ& pt, pcl16::PointXYZ& x1, pcl16::PointXYZ& x2)
-{
-  // Project the vector pt->x2 onto the vector x1->x2
-  const float a_x = x2.x - pt.x;
-  const float a_y = x2.y - pt.y;
-  const float b_x = x2.x - x1.x;
-  const float b_y = x2.y - x1.y;
-  const float a_dot_b = a_x*b_x + a_y*b_y;
-  const float b_dot_b = b_x*b_x + b_y*b_y;
-  const float a_onto_b = a_dot_b/b_dot_b;
-
-  // If the (squared) distance of the projection is less than the vector from x1->x2 then it is between them
-  const float d_1_x = a_onto_b*b_x;
-  const float d_1_y = a_onto_b*b_y;
-  const float d_1 = std::sqrt(d_1_x*d_1_x + d_1_y*d_1_y);
-  const float d_2 = std::sqrt(b_x*b_x + b_y*b_y);
-
-  return d_1 < d_2;
-}
-
 void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointXYZ& center_pt,
                       pcl16::PointXYZ& sample_pt, pcl16::PointXYZ& approach_pt,
                       pcl16::PointXYZ e_left, pcl16::PointXYZ e_right,
@@ -252,12 +220,62 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
 
   std::vector<pcl16::PointXYZ> left_segments;
   std::vector<pcl16::PointXYZ> right_segments;
-  // TODO: Test intersection of gripper end point rays and all line segments on the object boundary
-  // TODO: Determine which intersection is closest
+  std::vector<int> left_segment_idx;
+  std::vector<int> right_segment_idx;
 
+  // Test intersection of gripper end point rays and all line segments on the object boundary
+  for (int i = 0; i < hull.size(); i++)
+  {
+    int idx0 = i;
+    int idx1 = (i+1) % hull.size();
+    pcl16::PointXYZ l_intersection;
+    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_left, c_left, l_intersection))
+    {
+      left_segments.push_back(l_intersection);
+      left_segment_idx.push_back(i);
+    }
+    pcl16::PointXYZ r_intersection;
+    if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_right, c_right, r_intersection))
+    {
+      right_segments.push_back(r_intersection);
+      right_segment_idx.push_back(i);
+    }
+  }
+  ROS_INFO_STREAM("left intersects with " << left_segment_idx.size() << " segments");
+  ROS_INFO_STREAM("right intersects with " << right_segment_idx.size() << " segments");
+  // Determine which intersection is closest
+  double min_l_dist = FLT_MAX;
+  int min_l_idx = -1;
+  for (int i = 0; i < left_segments.size(); ++i)
+  {
+    double pt_dist = dist(left_segments[i], e_left);
+    if (pt_dist < min_l_dist)
+    {
+      min_l_dist = pt_dist;
+      min_l_idx = left_segment_idx[i];
+    }
+  }
+  double min_r_dist = FLT_MAX;
+  int min_r_idx = -1;
+  for (int i = 0; i < right_segments.size(); ++i)
+  {
+    double pt_dist = dist(right_segments[i], e_right);
+    if (pt_dist < min_r_dist)
+    {
+      min_r_dist = pt_dist;
+      min_r_idx = right_segment_idx[i];
+    }
+  }
+  ROS_INFO_STREAM("min_l_dist is: " << min_l_dist << " at " << min_l_idx);
+  ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
+
+  std::vector<int> indices;
+  indices.push_back(min_l_idx);
+  indices.push_back((min_l_idx+1) % hull.size());
+  indices.push_back(min_r_idx);
+  indices.push_back((min_r_idx+1) % hull.size());
   // TODO: Walk from left intersection to right intersection
   bool sample_in_walk = false;
-  std::vector<int> indices;
   for (int i = 0; i < hull.size(); ++i)
   {
     // TODO: Test if sample_pt is in the outside

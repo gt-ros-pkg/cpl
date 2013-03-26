@@ -8,6 +8,7 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/tabletop_pushing</url>
+
   <depend package="roscpp"/>
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
@@ -30,8 +31,9 @@
   <depend package="hrl_pr2_arms"/>
   <depend package="robot_mechanism_controllers"/>
   <depend package="pr2_camera_self_filter"/>
+
   <export>
-    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lpoint_cloud_segmentation" />
+    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lpoint_cloud_segmentation -lshape_features" />
   </export>
 
   <rosdep name="opencv2"/>

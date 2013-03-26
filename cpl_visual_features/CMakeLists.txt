@@ -28,6 +28,7 @@ rosbuild_add_library(cpl_visual_features_base
 rosbuild_add_library(cpl_visual_features_motion src/motion/dense_lk.cpp src/motion/feature_tracker.cpp)
 
 rosbuild_add_library(cpl_lap_cpp include/cpl_visual_features/extern/lap_cpp/lap.cpp)
+rosbuild_add_library(cpl_comp_geometry include/cpl_visual_features/comp_geometry.h src/comp_geometry.cpp)
 
 # Link the libraries
 target_link_libraries(cpl_visual_features_base ${OpenCV_LIBRARIES})
