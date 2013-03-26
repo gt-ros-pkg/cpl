@@ -212,12 +212,12 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   pcl16::PointXYZ e_right(approach_pt.x - e_vect.x, approach_pt.y - e_vect.y, 0.0);
   pcl16::PointXYZ c_left(center_pt.x + e_vect.x, center_pt.y + e_vect.y, 0.0);
   pcl16::PointXYZ c_right(center_pt.x - e_vect.x, center_pt.y - e_vect.y, 0.0);
-  ROS_INFO_STREAM("center_pt: " << center_pt);
-  ROS_INFO_STREAM("sample_pt: " << sample_pt);
-  ROS_INFO_STREAM("approach_pt: " << approach_pt);
-  ROS_INFO_STREAM("e_vect: " << e_vect);
-  ROS_INFO_STREAM("e_left: " << e_left);
-  ROS_INFO_STREAM("e_right: " << e_right);
+  // ROS_INFO_STREAM("center_pt: " << center_pt);
+  // ROS_INFO_STREAM("sample_pt: " << sample_pt);
+  // ROS_INFO_STREAM("approach_pt: " << approach_pt);
+  // ROS_INFO_STREAM("e_vect: " << e_vect);
+  // ROS_INFO_STREAM("e_left: " << e_left);
+  // ROS_INFO_STREAM("e_right: " << e_right);
 
   std::vector<pcl16::PointXYZ> left_segments;
   std::vector<pcl16::PointXYZ> right_segments;
@@ -287,7 +287,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
 
   int start_idx = min_l_idx < min_r_idx ? min_l_idx : min_r_idx;
   int end_idx = min_l_idx < min_r_idx ? min_r_idx : min_l_idx;
-  if ( sample_pt_idx > start_idx)
+  if (sample_pt_idx >= start_idx && sample_pt_idx <= end_idx)
   {
     // Good:
     ROS_INFO_STREAM("Walking inside");
@@ -299,6 +299,8 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     start_idx = end_idx;
     end_idx = tmp_idx;
   }
+  ROS_INFO_STREAM("start idx: " << start_idx);
+  ROS_INFO_STREAM("end idx: " << end_idx);
   // TODO: Walk from left intersection to right intersection
   for (int i = start_idx; i != end_idx; i = (i+1) % hull.size())
   {
