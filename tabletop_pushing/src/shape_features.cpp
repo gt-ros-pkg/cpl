@@ -153,6 +153,7 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
   double max_x = 1.0;
   double min_x = 0.0;
   // TODO: Make function to get cv::Size from (max_x, min_x, max_y, min_y, XY_RES)
+  // TODO: Make sure everything is getting drawn
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
@@ -224,6 +225,8 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   std::vector<int> right_segment_idx;
 
   // Test intersection of gripper end point rays and all line segments on the object boundary
+  double min_sample_pt_dist = FLT_MAX;
+  int sample_pt_idx = -1;
   for (int i = 0; i < hull.size(); i++)
   {
     int idx0 = i;
@@ -239,6 +242,12 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     {
       right_segments.push_back(r_intersection);
       right_segment_idx.push_back(i);
+    }
+    double sample_pt_dist = dist(sample_pt, hull[i]);
+    if (sample_pt_dist < min_sample_pt_dist)
+    {
+      min_sample_pt_dist = sample_pt_dist;
+      sample_pt_idx = i;
     }
   }
   ROS_INFO_STREAM("left intersects with " << left_segment_idx.size() << " segments");
@@ -268,17 +277,32 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   }
   ROS_INFO_STREAM("min_l_dist is: " << min_l_dist << " at " << min_l_idx);
   ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
+  ROS_INFO_STREAM("sample_idx: " << sample_pt_idx);
 
   std::vector<int> indices;
   indices.push_back(min_l_idx);
   indices.push_back((min_l_idx+1) % hull.size());
   indices.push_back(min_r_idx);
   indices.push_back((min_r_idx+1) % hull.size());
-  // TODO: Walk from left intersection to right intersection
-  bool sample_in_walk = false;
-  for (int i = 0; i < hull.size(); ++i)
+
+  int start_idx = min_l_idx < min_r_idx ? min_l_idx : min_r_idx;
+  int end_idx = min_l_idx < min_r_idx ? min_r_idx : min_l_idx;
+  if ( sample_pt_idx > start_idx)
   {
-    // TODO: Test if sample_pt is in the outside
+    // Good:
+    ROS_INFO_STREAM("Walking inside");
+  }
+  else
+  {
+    ROS_INFO_STREAM("Walking outside");
+    int tmp_idx = start_idx;
+    start_idx = end_idx;
+    end_idx = tmp_idx;
+  }
+  // TODO: Walk from left intersection to right intersection
+  for (int i = start_idx; i != end_idx; i = (i+1) % hull.size())
+  {
+    indices.push_back(i);
   }
 
   // Copy to new cloud and return
