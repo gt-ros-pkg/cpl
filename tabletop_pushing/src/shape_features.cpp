@@ -407,10 +407,31 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   ROS_INFO_STREAM("center idx: " << min_c_idx);
   ROS_INFO_STREAM("end idx: " << end_idx);
 
+  int cur_chunk = start_chunk;
   // Walk from one intersection to the other through the centroid
   for (int i = start_idx; i != end_idx; i = (i+1) % hull.size())
   {
-    indices.push_back(i);
+    // if (cur_chunk == start_chunk || cur_chunk == end_chunk || cur_chunk == center_chunk)
+    if (cur_chunk == center_chunk)
+    {
+      indices.push_back(i);
+    }
+    else if (cur_chunk == start_chunk && i > start_idx)
+    {
+      indices.push_back(i);
+    }
+    else if (cur_chunk == end_chunk && i < end_idx)
+    {
+      indices.push_back(i);
+    }
+    for (int j = 0; j < jump_indices.size(); ++j)
+    {
+      if(jump_indices[j] == i)
+      {
+        cur_chunk += 1;
+        cur_chunk = cur_chunk % jump_indices.size();
+      }
+    }
   }
 
   // Copy to new cloud and return
