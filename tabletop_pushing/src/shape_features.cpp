@@ -213,7 +213,6 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
   cv::circle(footprint, i_right_img, 3, cv::Scalar(0,255,255));
 
   cv::imshow("local samples", footprint);
-  cv::waitKey();
 }
 
 XYZPointCloud getLocalSamplesNew(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
@@ -443,7 +442,6 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     }
   }
 
-
   double sample_pt_dist = dist(approach_pt, sample_pt);
   // Default to smaple_pt if no intersection also
   if (true || min_c_idx == -1 || sample_pt_dist <= min_c_dist)
@@ -546,8 +544,27 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   pcl16::copyPointCloud(hull, indices, local_samples);
   drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
                    c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
-  // TODO: Transform samples into sample_loc frame
   return local_samples;
+}
+
+XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoObject& cur_obj,
+                                                 pcl16::PointXYZ sample_pt)
+{
+  XYZPointCloud samples_transformed(samples);
+  pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
+  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  for (int i = 0; i < samples.size(); ++i)
+  {
+    // TODO: Remove mean and rotate based on pushing_direction
+    pcl16::PointXYZ demeaned(samples[i].x - sample_pt.x, samples[i].y - sample_pt.y, samples[i].z);
+    double ct = std::cos(center_angle);
+    double st = std::sin(center_angle);
+    samples_transformed[i].x =  ct*demeaned.x + st*demeaned.y;
+    samples_transformed[i].y = -st*demeaned.x + ct*demeaned.y;
+    samples_transformed[i].z = demeaned.z;
+  }
+  // TODO: Display these to check them
+  return samples_transformed;
 }
 
 ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
@@ -555,10 +572,22 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
 {
   XYZPointCloud local_samples = getLocalSamples(hull, cur_obj, sample_pt, sample_spread, hull_alpha);
   // TODO: Transform points into sample_pt frame
+  XYZPointCloud transformed_local_pts = transformSamplesIntoSampleLocFrame(local_samples, cur_obj, sample_pt);
+  XYZPointCloud transformed_global_pts = transformSamplesIntoSampleLocFrame(cur_obj.cloud, cur_obj, sample_pt);
   // TODO: Get range of points
   // TODO: Get variance of points
 
   ShapeDescriptor sd;
+
+  // Append the local points to the thing
+  for (int i = 0; i < transformed_local_pts.size(); ++i)
+  {
+    ROS_INFO_STREAM("local_pt[" << i << "] = (" << transformed_local_pts[i].x << ", " <<
+                    transformed_local_pts[i].y << ")");
+    sd.push_back(transformed_local_pts[i].x);
+    sd.push_back(transformed_local_pts[i].y);
+  }
+  cv::waitKey();
   return sd;
 }
 
