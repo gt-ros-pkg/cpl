@@ -32,6 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 #include <cpl_visual_features/comp_geometry.h>
+#include <cmath>
 
 namespace cpl_visual_features
 {
@@ -65,6 +66,18 @@ bool pointIsBetweenOthers(pcl16::PointXYZ& pt, pcl16::PointXYZ& x1, pcl16::Point
 {
   return (pt.x >= std::min(x1.x, x2.x) && pt.x <= std::max(x1.x, x2.x) &&
           pt.y >= std::min(x1.y, x2.y) && pt.y <= std::max(x1.y, x2.y));
+}
+
+double pointLineDistance2D(pcl16::PointXYZ& pt, pcl16::PointXYZ& a, pcl16::PointXYZ& b)
+{
+  pcl16::PointXYZ q(a.x - pt.x, a.y - pt.y, 0.0);
+  pcl16::PointXYZ n(b.x - a.x, b.y - a.y, 0.0);
+  double norm_n = hypot(n.x, n.y);
+  n.x /= norm_n;
+  n.y /= norm_n;
+  double q_dot_n = q.x*n.x+q.y*n.y;
+  pcl16::PointXYZ l(q.x - q_dot_n*n.x, q.y - q_dot_n*n.y, 0.0);
+  return hypot(l.x, l.y);
 }
 
 };

@@ -50,6 +50,8 @@ bool lineLineIntersection2D(pcl16::PointXYZ a1, pcl16::PointXYZ a2, pcl16::Point
 
 bool pointIsBetweenOthers(pcl16::PointXYZ& pt, pcl16::PointXYZ& x1, pcl16::PointXYZ& x2);
 
+double pointLineDistance2D(pcl16::PointXYZ& pt, pcl16::PointXYZ& a, pcl16::PointXYZ& b);
+
 static inline double dist(pcl16::PointXYZ a, pcl16::PointXYZ b)
 {
   const double dx = a.x-b.x;

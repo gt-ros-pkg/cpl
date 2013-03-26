@@ -222,12 +222,12 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
                          center_pt.y + std::sin(center_angle)*approach_dist + e_vect.y, 0.0);
   pcl16::PointXYZ c_right(center_pt.x + std::cos(center_angle)*approach_dist - e_vect.x,
                           center_pt.y + std::sin(center_angle)*approach_dist - e_vect.y, 0.0);
-  // ROS_INFO_STREAM("center_pt: " << center_pt);
-  // ROS_INFO_STREAM("sample_pt: " << sample_pt);
-  // ROS_INFO_STREAM("approach_pt: " << approach_pt);
-  // ROS_INFO_STREAM("e_vect: " << e_vect);
-  // ROS_INFO_STREAM("e_left: " << e_left);
-  // ROS_INFO_STREAM("e_right: " << e_right);
+  ROS_INFO_STREAM("center_pt: " << center_pt);
+  ROS_INFO_STREAM("sample_pt: " << sample_pt);
+  ROS_INFO_STREAM("approach_pt: " << approach_pt);
+  ROS_INFO_STREAM("e_vect: " << e_vect);
+  ROS_INFO_STREAM("e_left: " << e_left);
+  ROS_INFO_STREAM("e_right: " << e_right);
 
   // Test intersection of gripper end point rays and all line segments on the object boundary
   double min_sample_pt_dist = FLT_MAX;
@@ -242,13 +242,34 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   int min_r_idx = -1;
   int min_c_idx = -1;
 
+  double min_far_l_dist = FLT_MAX;
+  double min_far_r_dist = FLT_MAX;
+  int far_l_idx = -1;
+  int far_r_idx = -1;
+
   for (int i = 0; i < hull.size(); i++)
   {
     int idx0 = i;
     int idx1 = (i+1) % hull.size();
-    // TODO: Make sure the lineSegmentIntersection works correctly
+
+    // FAR LEFT PT
+    double far_l_dist = pointLineDistance2D(hull[idx0], e_left, c_left);
+    if (far_l_dist < min_far_l_dist)
+    {
+      far_l_idx = idx0;
+      min_far_l_dist = far_l_dist;
+    }
+
+    // FAR RIGHT PT
+    double far_r_dist = pointLineDistance2D(hull[idx0], e_right, c_right);
+    if (far_r_dist < min_far_r_dist)
+    {
+      far_r_idx = i;
+      min_far_r_dist = far_r_dist;
+    }
+
     pcl16::PointXYZ intersection;
-    // LEFT
+    // LEFT INTERSECTION
     if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_left, c_left, intersection))
     {
       double pt_dist = dist(intersection, e_left);
@@ -259,7 +280,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
         l_intersection = intersection;
       }
     }
-    // RIGHT
+    // RIGHT INTERSECTION
     if (lineSegmentIntersection2D(hull[idx0], hull[idx1], e_right, c_right, intersection))
     {
       double pt_dist = dist(intersection, e_right);
@@ -270,7 +291,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
         r_intersection = intersection;
       }
     }
-    // CENTER
+    // CENTER INTERSECTION
     if (lineSegmentIntersection2D(hull[idx0], hull[idx1], approach_pt, center_pt, intersection))
     {
       double pt_dist = dist(intersection, approach_pt);
@@ -292,34 +313,31 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
 
   // Default to smaple_pt if no intersection also
   double sample_pt_dist = dist(approach_pt, sample_pt);
-  if (min_c_idx == -1)
-  {
-    min_c_idx = sample_pt_idx;
-  }
-  else
-  {
-    if (sample_pt_dist <= min_c_dist)
-    {
-      min_c_idx = sample_pt_idx;
-    }
-  }
-
-  // TODO: Deal with no intersections
-  // TODO: Find farthest point left before moving back towards center
-  if (min_l_idx == -1)
-  {
-    ROS_WARN_STREAM("No left intersection");
-    min_l_idx = sample_pt_idx;
-  }
-  if (min_r_idx == -1)
-  {
-    ROS_WARN_STREAM("No right intersection");
-    min_r_idx = sample_pt_idx;
-  }
+  ROS_INFO_STREAM("far_l_dist is: " << min_far_l_dist << " at " << far_l_idx);
+  ROS_INFO_STREAM("far_r_dist is: " << min_far_r_dist << " at " << far_r_idx);
   ROS_INFO_STREAM("min_l_dist is: " << min_l_dist << " at " << min_l_idx);
   ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
   ROS_INFO_STREAM("min_c_dist is: " << min_c_dist << " at " << min_c_idx);
   ROS_INFO_STREAM("sample_pt_dist is : " << sample_pt_dist << " at " << sample_pt_idx);
+
+  if (min_c_idx == -1 || sample_pt_dist <= min_c_dist)
+  {
+    min_c_idx = sample_pt_idx;
+    min_c_dist = sample_pt_dist;
+  }
+
+  if (min_l_idx == -1)
+  {
+    ROS_WARN_STREAM("No left intersection");
+    min_l_idx = far_l_idx;
+    min_l_dist = min_far_l_dist;
+  }
+  if (min_r_idx == -1)
+  {
+    ROS_WARN_STREAM("No right intersection");
+    min_r_idx = far_r_idx;
+    min_r_dist = min_far_r_dist;
+  }
 
   std::vector<int> indices;
   indices.push_back(min_l_idx);
