@@ -257,6 +257,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
 
   // TODO: Walk from left intersection to right intersection
   bool sample_in_walk = false;
+  std::vector<int> indices;
   for (int i = 0; i < hull.size(); ++i)
   {
     // TODO: Test if sample_pt is in the outside
