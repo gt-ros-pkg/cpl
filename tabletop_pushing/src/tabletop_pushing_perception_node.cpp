@@ -1597,8 +1597,8 @@ class TabletopPushingPerceptionNode
       start_loc_history_.clear();
     }
     // Get shape features and associated locations
-    ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj, use_center_pointing_shape_context_);
-    // tabletop_pushing::extractObjectShapeFeatures(cur_obj, !use_center_pointing_shape_context_);
+    ShapeLocations locs = tabletop_pushing::extractObjectShapeContext(cur_obj, use_center_pointing_shape_context_);
+    // tabletop_pushing::extractObjectShapeContext(cur_obj, !use_center_pointing_shape_context_);
 
     // Choose location index from features and history
     int loc_idx = 0;
@@ -1785,7 +1785,7 @@ class TabletopPushingPerceptionNode
     }
     ROS_INFO_STREAM("Chose location at idx: " << boundary_loc_idx << " with diff " << min_boundary_dist_diff);
     // Get descriptor at the chosen location
-    ShapeLocations locs = tabletop_pushing::extractShapeFeaturesFromSamples(hull_cloud, cur_obj,
+    ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj,
                                                                             use_center_pointing_shape_context_);
     // Add into pushing history in object frame
     ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
@@ -1820,7 +1820,7 @@ class TabletopPushingPerceptionNode
   ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)
   {
     // Get shape features and associated locations
-    ShapeLocations locs = tabletop_pushing::extractObjectShapeFeatures(cur_obj, use_center_pointing_shape_context_);
+    ShapeLocations locs = tabletop_pushing::extractObjectShapeContext(cur_obj, use_center_pointing_shape_context_);
     // Find location closest to the chosen start point
     float min_dist = FLT_MAX;
     unsigned int loc_idx = locs.size();

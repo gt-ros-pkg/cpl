@@ -25,32 +25,6 @@ int start_loc_push_sample_count_;
 XYZPointCloud hull_cloud_;
 PushTrackerState cur_state_;
 
-// cpl_visual_features::ShapeDescriptor getShapeDescriptor(ProtoObject& cur_obj, pcl16::PointXYZ& start_point)
-// {
-//   // Get hull_cloud from object_cloud
-//   XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
-//   ShapeLocations locs = tabletop_pushing::extractShapeFeaturesFromSamples(hull_cloud, cur_obj,
-//                                                                           true);
-//   // TODO: Run through locs and find closest one to push_start_loc, return that descriptor
-//   int boundary_loc_idx;
-//   double min_dist = FLT_MAX;
-//   for (unsigned int i = 0; i < locs.size(); ++i)
-//   {
-//     double dist_i = pcl_segmenter_->sqrDist(start_point, locs[i].boundary_loc_);
-//     if (dist_i < min_dist)
-//     {
-//       min_dist = dist_i;
-//       boundary_loc_idx = i;
-//     }
-//   }
-//   return locs[boundary_loc_idx].descriptor_;
-// }
-
-// pcl16::PointXYZ getStartPoint(ProtoObject& cur_obj, float push_angle)
-// {
-//   // TODO: Get start point using push_angle, init_centroid, and obj_cloud
-// }
-
 inline int objLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
@@ -105,7 +79,6 @@ static inline double sqrDist(pcl16::PointXYZ a, pcl16::PointXYZ b)
   const double dz = a.z-b.z;
   return dx*dx+dy*dy+dz*dz;
 }
-
 
 ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool new_object,
                                           int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs)
@@ -208,14 +181,15 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   }
 
   // Get descriptor at the chosen location
-  ShapeLocations locs = tabletop_pushing::extractShapeFeaturesFromSamples(hull_cloud, cur_obj,
-                                                                          true);
+  // ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj, true);
+  float gripper_spread = 0.05;
+  pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
+  ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread);
   // Add into pushing history in object frame
-  ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
-                  locs[boundary_loc_idx].descriptor_);
-  start_loc_history_.push_back(s);
-
-  return locs[boundary_loc_idx];
+  ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
+  start_loc_history_.push_back(s_obj);
+  ShapeLocation s_world(boundary_loc, sd);
+  return s_world;
 }
 
 ShapeDescriptor getTrialDescriptor(std::string cloud_path, pcl16::PointXYZ init_loc, float init_theta, bool new_object)
@@ -350,6 +324,46 @@ std::vector<float> readScoreFile(std::string file_path)
   return scores;
 }
 
+void drawScores(std::vector<float>& push_scores)
+{
+  double max_y = 0.3;
+  double min_y = -0.3;
+  double max_x = 0.3;
+  double min_x = -0.3;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
+
+  for (int i = 0; i < hull_cloud_.size(); ++i)
+  {
+    pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud_[i], cur_state_);
+    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
+    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    cv::Scalar color(128, 0, 0);
+    cv::circle(footprint, cv::Point(img_x, img_y), 1, color);
+  }
+  // HACK: Normalize across object classes
+  double max_score = 0.0602445;
+  for (int i = 0; i < start_loc_history_.size(); ++i)
+  {
+    int x = objLocToIdx(start_loc_history_[i].boundary_loc_.x, min_x, max_x);
+    int y = objLocToIdx(start_loc_history_[i].boundary_loc_.y, min_y, max_y);
+    double score = -log(push_scores[i])/10;
+    cv::Scalar color(0, score*255, (1-score)*255);
+    // color[0] = 0.5;
+    // color[1] = score;
+    // color[2] = 0.5;
+    // footprint.at<cv::Vec3f>(r,c) = color;
+    cv::circle(footprint, cv::Point(x,y), 3, color);
+  }
+  // ROS_INFO_STREAM("Max score is: " << max_score);
+  // ROS_INFO_STREAM("Writing image: " << out_file_path);
+  // cv::imwrite(out_file_path, footprint);
+
+  cv::imshow("Push score", footprint);
+  cv::waitKey();
+}
+
 int main(int argc, char** argv)
 {
   // TODO: Get the aff_file and the directory as input
@@ -381,25 +395,7 @@ int main(int argc, char** argv)
     // ROS_INFO_STREAM("new object: " << new_object);
     std::stringstream cloud_path;
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
-    ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, new_object);
 
-    std::stringstream descriptor;
-    descriptor << "[";
-    for (unsigned int i = 0; i < sd.size(); ++i)
-    {
-      if (i % 5 == 0)
-      {
-        descriptor << "\n";
-      }
-      descriptor << " " << sd[i];
-    }
-    descriptor << "]";
-    if (!draw_scores)
-    {
-      descriptor << "\n";
-    }
-    // ROS_INFO_STREAM("Descriptor: " << descriptor.str());
-    descriptors.push_back(sd);
     if (draw_scores)
     {
       // TODO: Get the image, draw the shape context, highlight score color
@@ -409,63 +405,43 @@ int main(int argc, char** argv)
       // ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
       cv::Mat disp_img;
       disp_img = cv::imread(hull_img_path.str());
-      // ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
-      // cv::imshow("hull", disp_img);
+      ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
+      cv::imshow("hull", disp_img);
       // cv::waitKey();
       if (push_scores[i] > max_score)
       {
         max_score = push_scores[i];
       }
     }
+
+    ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, new_object);
+
+    std::stringstream descriptor;
+    descriptor << "[";
+    for (unsigned int i = 0; i < sd.size(); ++i)
+    {
+      // if (i % 5 == 0)
+      // {
+      //   descriptor << "\n";
+      // }
+      descriptor << " " << sd[i];
+    }
+    descriptor << "]";
+    if (!draw_scores)
+    {
+      descriptor << "\n";
+    }
+    ROS_INFO_STREAM("Descriptor: " << descriptor.str());
+    descriptors.push_back(sd);
   }
 
   std::stringstream out_file;
   out_file << data_directory_path << out_file_name;
   writeNewFile(out_file.str(), trials, descriptors);
-  if (!draw_scores)
+  if (draw_scores)
   {
-    return 0;
+    // TODO: Pass in info to write these to disk again?
+    drawScores(push_scores);
   }
-
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
-  int rows = ceil((max_y-min_y)/XY_RES);
-  int cols = ceil((max_x-min_x)/XY_RES);
-  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
-
-  for (int i = 0; i < hull_cloud_.size(); ++i)
-  {
-    pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud_[i], cur_state_);
-    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
-    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
-    cv::Scalar color(128, 0, 0);
-    cv::circle(footprint, cv::Point(img_x, img_y), 1, color);
-  }
-  double score_mean = 0.0;
-  // HACK: Normalize across object classes
-  max_score = 0.0602445;
-  for (int i = 0; i < start_loc_history_.size(); ++i)
-  {
-    score_mean += push_scores[i];
-    int x = objLocToIdx(start_loc_history_[i].boundary_loc_.x, min_x, max_x);
-    int y = objLocToIdx(start_loc_history_[i].boundary_loc_.y, min_y, max_y);
-    double score = -log(push_scores[i])/10;
-    cv::Scalar color(0, score*255, (1-score)*255);
-    // color[0] = 0.5;
-    // color[1] = score;
-    // color[2] = 0.5;
-    // footprint.at<cv::Vec3f>(r,c) = color;
-    cv::circle(footprint, cv::Point(x,y), 3, color);
-  }
-  score_mean /= push_scores.size();
-  // ROS_INFO_STREAM("Max score is: " << max_score);
-  // ROS_INFO_STREAM("Writing image: " << out_file_path);
-  // cv::imwrite(out_file_path, footprint);
-
-  cv::imshow("Push score", footprint);
-  cv::waitKey();
-
   return 0;
 }

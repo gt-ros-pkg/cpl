@@ -18,6 +18,14 @@ inline int worldLocToIdx(double val, double min_val, double max_val)
   return round((val-min_val)/XY_RES);
 }
 
+cv::Point worldPtToImgPt(pcl16::PointXYZ world_pt, double min_x, double max_x,
+                         double min_y, double max_y)
+{
+  cv::Point img_pt(worldLocToIdx(world_pt.x, min_x, max_x),
+                   worldLocToIdx(world_pt.y, min_y, max_y));
+  return img_pt;
+}
+
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj)
 {
   // Get 2D projection of object
@@ -105,13 +113,13 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
   return footprint;
 }
 
-ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center)
+ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center)
 {
   XYZPointCloud samples_pcl = getObjectBoundarySamples(cur_obj);
-  return extractShapeFeaturesFromSamples(samples_pcl, cur_obj, use_center);
+  return extractShapeContextFromSamples(samples_pcl, cur_obj, use_center);
 }
 
-ShapeLocations extractShapeFeaturesFromSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, bool use_center)
+ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, bool use_center)
 {
   Samples2f samples;
   for (unsigned int i = 0; i < samples_pcl.size(); ++i)
@@ -133,6 +141,144 @@ ShapeLocations extractShapeFeaturesFromSamples(XYZPointCloud& samples_pcl, Proto
   computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
+
+bool pointIsBetweenOthers(pcl16::PointXYZ& pt, pcl16::PointXYZ& x1, pcl16::PointXYZ& x2)
+{
+  // Project the vector pt->x2 onto the vector x1->x2
+  const float a_x = x2.x - pt.x;
+  const float a_y = x2.y - pt.y;
+  const float b_x = x2.x - x1.x;
+  const float b_y = x2.y - x1.y;
+  const float a_dot_b = a_x*b_x + a_y*b_y;
+  const float b_dot_b = b_x*b_x + b_y*b_y;
+  const float a_onto_b = a_dot_b/b_dot_b;
+
+  // If the (squared) distance of the projection is less than the vector from x1->x2 then it is between them
+  const float d_1_x = a_onto_b*b_x;
+  const float d_1_y = a_onto_b*b_y;
+  const float d_1 = std::sqrt(d_1_x*d_1_x + d_1_y*d_1_y);
+  const float d_2 = std::sqrt(b_x*b_x + b_y*b_y);
+
+  return d_1 < d_2;
+}
+
+void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointXYZ& center_pt,
+                      pcl16::PointXYZ& sample_pt, pcl16::PointXYZ& approach_pt,
+                      pcl16::PointXYZ e_left, pcl16::PointXYZ e_right,
+                      pcl16::PointXYZ c_left, pcl16::PointXYZ c_right)
+{
+  double max_y = 0.5;
+  double min_y = -0.5;
+  double max_x = 1.0;
+  double min_x = 0.0;
+  // TODO: Make function to get cv::Size from (max_x, min_x, max_y, min_y, XY_RES)
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
+
+  for (int i = 0; i < hull.size(); ++i)
+  {
+    pcl16::PointXYZ obj_pt = hull[i];
+    cv::Point img_pt = worldPtToImgPt(obj_pt, min_x, max_x, min_y, max_y);
+    cv::Scalar color(0, 0, 128);
+    cv::circle(footprint, img_pt, 1, color);
+  }
+  for (int i = 0; i < samples.size(); ++i)
+  {
+    cv::Point img_pt = worldPtToImgPt(samples[i], min_x, max_x, min_y, max_y);
+    cv::Scalar color(0, 255, 0);
+    cv::circle(footprint, img_pt, 3, color);
+  }
+  cv::Point img_center = worldPtToImgPt(center_pt, min_x, max_x, min_y, max_y);
+  cv::Point img_approach_pt = worldPtToImgPt(approach_pt, min_x, max_x, min_y, max_y);
+  cv::Point img_sample_pt = worldPtToImgPt(sample_pt, min_x, max_x, min_y, max_y);
+  cv::Point e_left_img = worldPtToImgPt(e_left, min_x, max_x, min_y, max_y);
+  cv::Point e_right_img = worldPtToImgPt(e_right, min_x, max_x, min_y, max_y);
+  cv::Point c_left_img = worldPtToImgPt(c_left, min_x, max_x, min_y, max_y);
+  cv::Point c_right_img = worldPtToImgPt(c_right, min_x, max_x, min_y, max_y);
+
+  cv::circle(footprint, img_center, 3, cv::Scalar(0,255,255));
+  cv::circle(footprint, img_approach_pt, 3, cv::Scalar(0,255,255));
+  cv::circle(footprint, e_left_img, 3, cv::Scalar(0,255,255));
+  cv::circle(footprint, e_right_img, 3, cv::Scalar(0,255,255));
+  cv::line(footprint, img_approach_pt, img_center, cv::Scalar(0,255,255));
+  cv::line(footprint, e_left_img, e_right_img, cv::Scalar(0,255,255));
+  cv::line(footprint, e_left_img, c_left_img, cv::Scalar(0,255,255));
+  cv::line(footprint, e_right_img, c_right_img, cv::Scalar(0,255,255));
+  
+  // Draw sample point last
+  cv::line(footprint, img_sample_pt, img_center, cv::Scalar(255,255,255));
+  cv::circle(footprint, img_sample_pt, 3, cv::Scalar(255,255,255));
+
+  cv::imshow("local samples", footprint);
+  cv::waitKey();
+}
+
+XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
+                              float sample_spread)
+{
+  // TODO: This is going to get all points in front of the gripper, not only those on the close boundary
+  float radius = sample_spread / 2.0;
+  pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
+  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  float approach_dist = 0.15;
+  pcl16::PointXYZ approach_pt(sample_pt.x - std::cos(center_angle)*approach_dist,
+                              sample_pt.y - std::sin(center_angle)*approach_dist, 0.0);
+  pcl16::PointXYZ e_vect(std::cos(center_angle+M_PI/2.0)*radius,
+                         std::sin(center_angle+M_PI/2.0)*radius, 0.0);
+  pcl16::PointXYZ e_left(approach_pt.x + e_vect.x, approach_pt.y + e_vect.y, 0.0);
+  pcl16::PointXYZ e_right(approach_pt.x - e_vect.x, approach_pt.y - e_vect.y, 0.0);
+  pcl16::PointXYZ c_left(center_pt.x + e_vect.x, center_pt.y + e_vect.y, 0.0);
+  pcl16::PointXYZ c_right(center_pt.x - e_vect.x, center_pt.y - e_vect.y, 0.0);
+  ROS_INFO_STREAM("center_pt: " << center_pt);
+  ROS_INFO_STREAM("sample_pt: " << sample_pt);
+  ROS_INFO_STREAM("approach_pt: " << approach_pt);
+  ROS_INFO_STREAM("e_vect: " << e_vect);
+  ROS_INFO_STREAM("e_left: " << e_left);
+  ROS_INFO_STREAM("e_right: " << e_right);
+
+  // TODO: Find intersection of gripper ends and object boundary
+  
+  // TODO: Find index of sample_pt in hull
+  std::vector<int> indices;
+  for (int i = 0; i < hull.size(); ++i)
+  {
+    if (pointIsBetweenOthers(hull[i], approach_pt, e_left) ||
+        pointIsBetweenOthers(hull[i], approach_pt, e_right))
+    {
+      indices.push_back(i);
+    }
+  }
+
+
+  // TODO: Walk from left intersection to right intersection
+  bool sample_in_walk = false;
+  for (int i = 0; i < hull.size(); ++i)
+  {
+    // TODO: Test if sample_pt is in the outside
+  }
+
+  // Copy to new cloud and return
+  XYZPointCloud local_samples;
+  pcl16::copyPointCloud(hull, indices, local_samples);
+  drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
+                   c_left, c_right);
+  return local_samples;
+}
+
+ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                          pcl16::PointXYZ sample_pt, float sample_spread)
+{
+  XYZPointCloud local_samples = getLocalSamples(hull, cur_obj, sample_pt, sample_spread);
+  ShapeDescriptor sd;
+  return sd;
+}
+
+// ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& samples_pcl, ProtoObject& cur_obj,
+//                                            pcl16::PointXYZ sample_loc, float sample_spread)
+// {
+// }
+
 
 /**
  * Create an affinity matrix for a set of ShapeLocations

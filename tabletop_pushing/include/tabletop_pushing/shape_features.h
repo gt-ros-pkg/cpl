@@ -33,10 +33,16 @@ cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>&
 
 pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj);
 
-ShapeLocations extractObjectShapeFeatures(ProtoObject& cur_obj, bool use_center = true);
+ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center = true);
 
-ShapeLocations extractShapeFeaturesFromSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl, ProtoObject& cur_obj,
-                                               bool use_center);
+ShapeLocations extractShapeContextFromSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl, ProtoObject& cur_obj,
+                                              bool use_center);
+
+pcl16::PointCloud<pcl16::PointXYZ> getLocalSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
+                                                   ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s);
+
+cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(
+    pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl, ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s);
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 
