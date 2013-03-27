@@ -201,7 +201,8 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Opening controller output file: '+out_file_name)
         if _USE_CONTROLLER_IO:
             self.controller_io.open_out_file(out_file_name)
-
+        if _USE_LEARN_IO:
+            self.learn_io = None
         # Setup parameters
         self.learned_controller_base_path = rospy.get_param('~learned_controller_base_path',
                                                             '/u/thermans/cfg/controllers/')
@@ -2110,7 +2111,8 @@ class PositionFeedbackPushNode:
         if _USE_CONTROLLER_IO:
             self.controller_io.close_out_file()
         if _USE_LEARN_IO:
-            self.learn_io.close_out_file()
+            if self.learn_io is not None:
+                self.learn_io.close_out_file()
         # TODO: stop moving the arms on shutdown
 
     #

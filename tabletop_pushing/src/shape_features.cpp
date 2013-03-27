@@ -542,8 +542,8 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // Copy to new cloud and return
   XYZPointCloud local_samples;
   pcl16::copyPointCloud(hull, indices, local_samples);
-  drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
-                   c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
+  // drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
+  //                  c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
   return local_samples;
 }
 
@@ -588,7 +588,7 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
     sd.push_back(transformed_local_pts[i].x);
     sd.push_back(transformed_local_pts[i].y);
   }
-  cv::waitKey();
+  // cv::waitKey();
   return sd;
 }
 
