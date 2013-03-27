@@ -136,6 +136,7 @@ using cpl_visual_features::upSample;
 using cpl_visual_features::downSample;
 using cpl_visual_features::subPIAngle;
 using cpl_visual_features::ShapeDescriptors;
+using cpl_visual_features::ShapeDescriptor;
 
 typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
@@ -1686,7 +1687,8 @@ class TabletopPushingPerceptionNode
                                             int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs,
                                             std::string trial_id)
   {
-    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj);
+    float hull_alpha = 0.01;
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
 
     int rot_idx = -1;
     if (new_object)
@@ -1785,12 +1787,18 @@ class TabletopPushingPerceptionNode
     }
     ROS_INFO_STREAM("Chose location at idx: " << boundary_loc_idx << " with diff " << min_boundary_dist_diff);
     // Get descriptor at the chosen location
-    ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj,
-                                                                            use_center_pointing_shape_context_);
+    // ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj,
+    //                                                                         use_center_pointing_shape_context_);
+    float gripper_spread = 0.05;
+    pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
+    ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread,
+                                                                     hull_alpha);
     // Add into pushing history in object frame
-    ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
-                    locs[boundary_loc_idx].descriptor_);
-    start_loc_history_.push_back(s);
+    // ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
+    //                 locs[boundary_loc_idx].descriptor_);
+    // start_loc_history_.push_back(s);
+    ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
+    start_loc_history_.push_back(s_obj);
 
     // TODO: Project desired outline to show where to place object before pushing?
     cv::Mat hull_img(cur_color_frame_.size(), CV_8UC1, cv::Scalar(0));
@@ -1801,7 +1809,7 @@ class TabletopPushingPerceptionNode
     cv::Point2f img_rot_idx = pcl_segmenter_->projectPointIntoImage(hull_cloud[rot_idx], hull_cloud.header.frame_id,
                                                                     camera_frame_);
     cv::circle(hull_disp_img, img_rot_idx, 4, cv::Scalar(0,255,0), 3);
-    cv::Point2f img_loc_idx = pcl_segmenter_->projectPointIntoImage(locs[boundary_loc_idx].boundary_loc_,
+    cv::Point2f img_loc_idx = pcl_segmenter_->projectPointIntoImage(boundary_loc,
                                                                     hull_cloud.header.frame_id, camera_frame_);
     cv::circle(hull_disp_img, img_loc_idx, 4, cv::Scalar(0,0, 255));
     cv::imshow("object hull", hull_disp_img);
@@ -1814,7 +1822,9 @@ class TabletopPushingPerceptionNode
       cv::imwrite(hull_file_name.str(), hull_img);
       cv::imwrite(hull_disp_file_name.str(), hull_disp_img);
     }
-    return locs[boundary_loc_idx];
+    ShapeLocation s_world(boundary_loc, sd);
+    return s_world;
+    // return locs[boundary_loc_idx];
   }
 
   ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)

@@ -47,8 +47,8 @@ import random
 import os
 import subprocess
 
-_VERSION_LINE = '# v0.4'
-_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
+_VERSION_LINE = '# v0.5'
+_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
@@ -127,9 +127,9 @@ class PushLearningIO:
         self.data_in = None
 
     def write_line(self, init_centroid, init_orientation, final_centroid,
-                   final_orientation, goal_pose, behavior_primitive,
+                   final_orientation, goal_pose, push_start_point, behavior_primitive,
                    controller, proxy, which_arm, push_time, object_id,
-                   precondition_method='centroid_push'):
+                   push_point, precondition_method='centroid_push'):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -138,6 +138,7 @@ class PushLearningIO:
             str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
         self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
@@ -183,7 +184,7 @@ class PushLearningIO:
             print 'Greater than 1.0 x: ', str(push)
         return push
 
-    def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, behavior_primitive,
+    def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, push_start_point, behavior_primitive,
                             controller, proxy, which_arm, object_id, precondition_method,
                             shape_descriptor=None):
         if self.data_out is None:
@@ -194,6 +195,7 @@ class PushLearningIO:
             str(init_orientation)+' '+str(0.0)+' '+str(0.0)+' '+\
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method
         if shape_descriptor is not None:
             for s in shape_descriptor:

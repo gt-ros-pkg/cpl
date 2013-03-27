@@ -387,7 +387,8 @@ class TabletopExecutive:
 
             if _USE_LEARN_IO:
                 self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
-                                                  goal_pose, behavior_primitive, controller_name,
+                                                  goal_pose, push_vec_res.push.start_point,
+                                                  behavior_primitive, controller_name,
                                                   proxy_name, which_arm, object_id, precondition_method)
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
@@ -437,8 +438,8 @@ class TabletopExecutive:
         start_loc_trials = 0
         self.start_loc_goal_y_delta = 0
         # HACK: Currently quit after half the locations, assuming pushing on symmetric objects
-        # N_PUSH = num_sample_locs/2+1
-        N_PUSH = num_sample_locs
+        N_PUSH = num_sample_locs/2+1
+        # N_PUSH = num_sample_locs
         for i in xrange(N_PUSH):
             # Doesn't matter what the goal_pose is, the start pose server picks it for us
             goal_pose = self.generate_random_table_pose()
@@ -485,7 +486,7 @@ class TabletopExecutive:
                 if _USE_LEARN_IO:
                     # TODO: Write this to disk! push_vector_res.push.start_point
                     self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
-                                                      goal_pose, behavior_primitive, controller_name,
+                                                      goal_pose, push_vec_res.push.start_point, behavior_primitive, controller_name,
                                                       proxy_name, which_arm, trial_id,
                                                       precondition_method, shape_descriptor)
 
@@ -696,7 +697,7 @@ class TabletopExecutive:
             self.learn_io.write_line(
                 push_vector_res.centroid, push_vector_res.theta,
                 analysis_res.centroid, analysis_res.theta,
-                goal_pose, behavior_primitive, controller_name, proxy_name,
+                goal_pose, push_vector_res.push.start_point, behavior_primitive, controller_name, proxy_name,
                 which_arm, push_time, object_id, precondition_method)
 
     def request_singulation_push(self, use_guided=True):
