@@ -85,6 +85,7 @@ class PushTrial:
         self.final_centroid = Point()
         self.final_orientation = 0.0
         self.goal_pose = Pose2D()
+        self.start_point = Point()
         self.push_time = 0.0
         # NOTE: Everything below not saved to disk, just computed for convenience
         self.push_angle = 0.0
@@ -163,6 +164,9 @@ class PushLearningIO:
         push.goal_pose.x = float(l.pop())
         push.goal_pose.y = float(l.pop())
         push.goal_pose.theta = float(l.pop())
+        push.start_point.x = float(l.pop())
+        push.start_point.y = float(l.pop())
+        push.start_point.z = float(l.pop())
         push.behavior_primitive = l.pop()
         push.controller = l.pop()
         push.proxy = l.pop()
@@ -1566,5 +1570,25 @@ def extract_shape_features_batch():
       output_file_name1 = out_dir + c[:-1] + '_normalized.txt'
       rewrite_example_file_features(original_file_name, feat_file, output_file_name1, normalize=True)
 
+def read_and_score_raw_files():
+  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  out_dir = base_dir+'examples_line_dist/'
+  for c in class_dirs:
+      in_dir = base_dir+c+'/'
+      files = os.listdir(in_dir)
+      file_name = None
+      for f in files:
+          if f.startswith('aff_learn_out'):
+              file_name = f
+      if file_name is None:
+          continue
+      file_in = in_dir+file_name
+      file_out = out_dir+c[:-1]+'.txt'
+      print file_out
+      slp = StartLocPerformanceAnalysis()
+      slp.generate_example_file(file_in, file_out)
+
 if __name__ == '__main__':
-    extract_shape_features_batch()
+    read_and_score_raw_files()
+    # extract_shape_features_batch()
