@@ -438,8 +438,8 @@ class TabletopExecutive:
         start_loc_trials = 0
         self.start_loc_goal_y_delta = 0
         # HACK: Currently quit after half the locations, assuming pushing on symmetric objects
-        N_PUSH = num_sample_locs/2+1
-        # N_PUSH = num_sample_locs
+        # N_PUSH = num_sample_locs/2+1
+        N_PUSH = num_sample_locs
         for i in xrange(N_PUSH):
             # Doesn't matter what the goal_pose is, the start pose server picks it for us
             goal_pose = self.generate_random_table_pose()

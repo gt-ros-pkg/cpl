@@ -221,7 +221,7 @@ class PositionFeedbackPushNode:
         self.gripper_push_reverse_dist = rospy.get_param('~gripper_push_reverse_dist',
                                                          0.03)
         self.high_arm_init_z = rospy.get_param('~high_arm_start_z', 0.15)
-        self.lower_arm_init_z = rospy.get_param('~lower_arm_start_z', -0.12)
+        self.lower_arm_init_z = rospy.get_param('~lower_arm_start_z', -0.10)
         self.post_controller_switch_sleep = rospy.get_param(
             '~arm_switch_sleep_time', 0.5)
         self.move_cart_check_hz = rospy.get_param('~move_cart_check_hz', 100)
