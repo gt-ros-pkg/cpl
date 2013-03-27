@@ -583,8 +583,8 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
   sd.push_back(transformed_local_pts.size());
   for (int i = 0; i < transformed_local_pts.size(); ++i)
   {
-    ROS_INFO_STREAM("local_pt[" << i << "] = (" << transformed_local_pts[i].x << ", " <<
-                    transformed_local_pts[i].y << ")");
+    // ROS_INFO_STREAM("local_pt[" << i << "] = (" << transformed_local_pts[i].x << ", " <<
+    //                 transformed_local_pts[i].y << ")");
     sd.push_back(transformed_local_pts[i].x);
     sd.push_back(transformed_local_pts[i].y);
   }

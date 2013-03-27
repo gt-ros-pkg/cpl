@@ -315,6 +315,12 @@ class CombinedPushLearnControlIO:
         read_pl_trial_line = False
         read_ctrl_line = False
         trial_is_start = True
+
+        trial_starts = 0
+        bad_stops = 0
+        object_comments = 0
+        control_headers = 0
+
         self.push_trials = []
         current_trial = PushCtrlTrial()
         for line in  data_in.readlines():
@@ -323,15 +329,21 @@ class CombinedPushLearnControlIO:
                     print 'Ignoring version line'
                 continue
             elif line.startswith(_LEARN_TRIAL_HEADER_LINE):
+                object_comments += 1
+
                 if _DEBUG_IO:
                     print 'Read learn trial header'
+                if trial_is_start:
+                    trial_starts += 1
                 read_pl_trial_line = True
                 read_ctrl_line = False
             elif line.startswith(_CONTROL_HEADER_LINE):
                 if _DEBUG_IO:
                     print 'Read control header'
+                control_headers += 1
                 read_ctrl_line = True
             elif line.startswith(_BAD_TRIAL_HEADER_LINE):
+                bad_stops += 1
                 if _DEBUG_IO:
                     print 'BAD TRIAL: not adding current trial to list'
                 # Reset trial and switch to read next pl_trial_line as start trial
@@ -362,17 +374,21 @@ class CombinedPushLearnControlIO:
                 if _DEBUG_IO:
                     print 'None of these?'
         data_in.close()
+        print 'object_comments',object_comments
+        print 'trial_starts',trial_starts
+        print 'bad_stops',bad_stops
+        print 'control_headers',control_headers
 
     def write_example_file(self, file_name, X, Y, normalize=False, debug=False):
         data_out = file(file_name, 'w')
         # print 'Normalize:', normalize
-        i = 0
+        k = 0
         for x,y in zip(X,Y):
-            i += 1
+            k += 1
             if debug:
                 print y, x
             if isnan(y):
-                print 'Skipping writing example: ', i
+                print 'Skipping writing example: ', k
                 continue
             data_line = str(y)
             if normalize:
@@ -388,6 +404,7 @@ class CombinedPushLearnControlIO:
                         data_line += ' ' + str(i+1)+':'+str(xi)
             data_line +='\n'
             data_out.write(data_line)
+        print 'Wrote', k, 'examples'
         data_out.close()
 
     def read_example_file(self, file_name):
@@ -1541,34 +1558,42 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     write_example_file(out_file_name, X, Y, normalize, debug)
 
 def extract_shape_features_batch():
-  base_dir = '/home/thermans/sandbox/fake_iros/'
-  class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
+  # base_dir = '/home/thermans/sandbox/fake_iros/'
+  # class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
+  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  # class_dirs = ['toothpaste3']
   out_dir = base_dir+'examples_line_dist/'
-  feat_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/examples_line_dist/'
-  out_dir = '/home/thermans/Dropbox/Data/start_loc_learning/for_iros/examples_line_dist_feats_fixed_05/'
-  subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
+  feat_dir = base_dir+'examples_line_dist/'
+  out_dir = base_dir+'examples_line_dist_feats_fixed_05/'
+  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
 
   for c in class_dirs:
+      print 'Class:', c
       class_dir = base_dir+c+'/'
       files = os.listdir(class_dir)
       data_file = None
       for f in files:
           if f.startswith('aff_learn_out'):
               data_file = f
-              if data_file is None:
-                  print 'ERROR: No data file in directory:', c
-                  continue
+      if data_file is None:
+          print 'ERROR: No data file in directory:', c
+          continue
       aff_file = class_dir+data_file
-      feat_file = c[:-1]+'_fixed_0.5.txt'
-      p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file,
-                            class_dir, feat_file])
+      feat_file = c[:-1]+'.txt'
+      score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
+      file_out = base_dir+c[:-1]+'_push_scores.png'
+      print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
+          class_dir, file_out, score_file
+      p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',
+                            aff_file, class_dir, file_out, score_file], shell=False)
       p.wait()
-      feat_file = class_dir + feat_file
-      original_file_name = feat_dir+c[:-1] + '.txt'
-      output_file_name0 = out_dir + c[:-1] + '.txt'
-      rewrite_example_file_features(original_file_name, feat_file, output_file_name0, normalize=False)
-      output_file_name1 = out_dir + c[:-1] + '_normalized.txt'
-      rewrite_example_file_features(original_file_name, feat_file, output_file_name1, normalize=True)
+      # feat_file = class_dir + feat_file
+      # original_file_name = feat_dir+c[:-1] + '.txt'
+      # output_file_name0 = out_dir + c[:-1] + '.txt'
+      # rewrite_example_file_features(original_file_name, feat_file, output_file_name0, normalize=False)
+      # output_file_name1 = out_dir + c[:-1] + '_normalized.txt'
+      # rewrite_example_file_features(original_file_name, feat_file, output_file_name1, normalize=True)
 
 def read_and_score_raw_files():
   base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
@@ -1590,5 +1615,5 @@ def read_and_score_raw_files():
       slp.generate_example_file(file_in, file_out)
 
 if __name__ == '__main__':
-    read_and_score_raw_files()
-    # extract_shape_features_batch()
+    # read_and_score_raw_files()
+    extract_shape_features_batch()

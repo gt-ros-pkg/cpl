@@ -210,10 +210,12 @@ ShapeDescriptor getTrialDescriptor(std::string cloud_path, pcl16::PointXYZ init_
   cur_obj.centroid[0] = cur_state.x.x;
   cur_obj.centroid[1] = cur_state.x.y;
   cur_obj.centroid[2] = cur_state.z;
+  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
   if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
   {
     ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
   }
+  ROS_INFO_STREAM("Got cloud: " << cloud_path);
   ShapeLocation sl = chooseFixedGoalPushStartLoc(cur_obj, cur_state, new_object, num_start_loc_pushes_per_sample,
                                                  num_start_loc_sample_locs);
   return sl.descriptor_;
@@ -234,7 +236,6 @@ class TrialStuff
 
 std::vector<TrialStuff> getTrialsFromFile(std::string aff_file_name)
 {
-  const std::string trial_header_start = "# object_id/trial_id";
   std::vector<TrialStuff> trials;
   std::ifstream trials_in(aff_file_name.c_str());
 
@@ -242,55 +243,78 @@ std::vector<TrialStuff> getTrialsFromFile(std::string aff_file_name)
   bool trial_is_start = true;
   int line_count = 0;
   int object_comment = 0;
+  int trial_starts = 0;
+  int bad_stops = 0;
+  int good_stops = 0;
+  int control_headers = 0;
   bool new_object = true;
   while(trials_in.good())
   {
-    char c_line[1024];
-    trials_in.getline(c_line, 1024);
+    char c_line[4096];
+    trials_in.getline(c_line, 4096);
     line_count++;
     if (next_line_trial)
     {
       // ROS_INFO_STREAM("Parsing trial_line: ");
       next_line_trial = false;
+
       // TODO: Parse this line!
       std::stringstream trial_line;
       trial_line << c_line;
-      char trial_id_c[256];
-      trial_line.getline(trial_id_c, 256, ' ');
+      char trial_id_c[4096];
+      trial_line.getline(trial_id_c, 4096, ' ');
       std::stringstream trial_id;
       trial_id << trial_id_c;
       // ROS_INFO_STREAM("Read trial_id: " << trial_id.str());
-      float x, y, z, theta;
-      trial_line >> x >> y >> z >> theta;
-      // ROS_INFO_STREAM("Init pose (" << x << ", " << y << ", " << z << ", " << theta << ")");
-      TrialStuff trial(x, y, z, theta, trial_id.str(), new_object);
+      float init_x, init_y, init_z, init_theta;
+      trial_line >> init_x >> init_y >> init_z >> init_theta;
+      // ROS_INFO_STREAM("Init pose (" << init_x << ", " << init_y << ", " << init_z << ", " << init_theta << ")");
+      // TODO: Read in start_point?!?
+      new_object = !trials.size();
+      TrialStuff trial(init_x, init_y, init_z, init_theta, trial_id.str(), new_object);
       trials.push_back(trial);
-
-      new_object = false;
     }
     if (c_line[0] == '#')
     {
       if (c_line[2] == 'o')
       {
+        object_comment++;
         if (trial_is_start)
         {
           next_line_trial = true;
-          object_comment++;
+          trial_starts += 1;
+          // ROS_INFO_STREAM("Read in start line");
+        }
+        else
+        {
+          // ROS_INFO_STREAM("Read in end line");
+          good_stops++;
         }
         // Switch state
         trial_is_start = !trial_is_start;
       }
+      else if (c_line[2] == 'x')
+      {
+        control_headers += 1;
+      }
       else if (c_line[1] == 'B')
       {
+        // ROS_WARN_STREAM("Read in bad line" << c_line);
         trial_is_start = true;
         trials.pop_back();
+        bad_stops += 1;
       }
     }
   }
   trials_in.close();
-  // ROS_INFO_STREAM("Read in: " << line_count << " lines");
-  // ROS_INFO_STREAM("Read in: " << object_comment << " trial headers");
-  // ROS_INFO_STREAM("Read in: " << trials.size() << " trials");
+
+  ROS_INFO_STREAM("Read in: " << line_count << " lines");
+  ROS_INFO_STREAM("Read in: " << control_headers << " control headers");
+  ROS_INFO_STREAM("Read in: " << object_comment << " trial headers");
+  ROS_INFO_STREAM("Classified: " << trial_starts << " as starts");
+  ROS_INFO_STREAM("Classified: " << bad_stops << " as bad");
+  ROS_INFO_STREAM("Classified: " << good_stops << " as good");
+  ROS_INFO_STREAM("Read in: " << trials.size() << " trials");
   return trials;
 }
 
@@ -314,19 +338,22 @@ std::vector<float> readScoreFile(std::string file_path)
   std::vector<float> scores;
   while (data_in.good())
   {
-    char c_line[1024];
-    data_in.getline(c_line, 1024);
+    char c_line[4096];
+    data_in.getline(c_line, 4096);
     std::stringstream line;
     line << c_line;
     float y;
     line >> y;
-    scores.push_back(y);
+    if (!data_in.eof())
+    {
+      scores.push_back(y);
+    }
   }
   data_in.close();
   return scores;
 }
 
-void drawScores(std::vector<float>& push_scores)
+void drawScores(std::vector<float>& push_scores, std::string out_file_path)
 {
   double max_y = 0.3;
   double min_y = -0.3;
@@ -359,8 +386,8 @@ void drawScores(std::vector<float>& push_scores)
     cv::circle(footprint, cv::Point(x,y), 3, color);
   }
   // ROS_INFO_STREAM("Max score is: " << max_score);
-  // ROS_INFO_STREAM("Writing image: " << out_file_path);
-  // cv::imwrite(out_file_path, footprint);
+  ROS_INFO_STREAM("Writing image: " << out_file_path);
+  cv::imwrite(out_file_path, footprint);
 
   cv::imshow("Push score", footprint);
   cv::waitKey();
@@ -373,14 +400,16 @@ int main(int argc, char** argv)
   std::string data_directory_path(argv[2]);
   std::string out_file_name(argv[3]);
   std::vector<TrialStuff> trials = getTrialsFromFile(aff_file_path);
-
+  ROS_INFO_STREAM("Running: " << argv[0]);
   std::string score_file = "";
   bool draw_scores = argc > 4;
+  ROS_INFO_STREAM("trials.size(): " << trials.size());
   std::vector<float> push_scores;
   if (draw_scores)
   {
     score_file = argv[4];
     push_scores = readScoreFile(score_file);
+    ROS_INFO_STREAM("scores.size(): " << push_scores.size());
   }
 
   double max_score = -100.0;
@@ -391,10 +420,10 @@ int main(int argc, char** argv)
     pcl16::PointXYZ init_loc = trials[i].init_loc;
     float init_theta = trials[i].init_theta;
     bool new_object = trials[i].new_object;
-    // ROS_INFO_STREAM("trial_id: " << trial_id);
-    // ROS_INFO_STREAM("init_loc: " << init_loc);
-    // ROS_INFO_STREAM("init_theta: " << init_theta);
-    // ROS_INFO_STREAM("new object: " << new_object);
+    ROS_INFO_STREAM("trial_id: " << trial_id);
+    ROS_INFO_STREAM("init_loc: " << init_loc);
+    ROS_INFO_STREAM("init_theta: " << init_theta);
+    ROS_INFO_STREAM("new object: " << new_object);
     std::stringstream cloud_path;
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
 
@@ -404,12 +433,11 @@ int main(int argc, char** argv)
       // TODO: Get projection matrix
       std::stringstream hull_img_path;
       hull_img_path << data_directory_path << trial_id << "_obj_hull_disp.png";
-      // ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
-      // cv::Mat disp_img;
-      // ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
-      // disp_img = cv::imread(hull_img_path.str());
+      cv::Mat disp_img;
+      ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
+      disp_img = cv::imread(hull_img_path.str());
       ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
-      // cv::imshow("hull", disp_img);
+      cv::imshow("hull", disp_img);
       // cv::waitKey();
       if (push_scores[i] > max_score)
       {
@@ -434,17 +462,17 @@ int main(int argc, char** argv)
     {
       descriptor << "\n";
     }
-    ROS_INFO_STREAM("Descriptor: " << descriptor.str());
+    // ROS_INFO_STREAM("Descriptor: " << descriptor.str());
     descriptors.push_back(sd);
   }
 
-  std::stringstream out_file;
-  out_file << data_directory_path << out_file_name;
-  writeNewFile(out_file.str(), trials, descriptors);
+  // std::stringstream out_file;
+  // out_file << data_directory_path << out_file_name;
+  // writeNewFile(out_file.str(), trials, descriptors);
   if (draw_scores)
   {
     // TODO: Pass in info to write these to disk again?
-    drawScores(push_scores);
+    drawScores(push_scores, out_file_name);
   }
   return 0;
 }
