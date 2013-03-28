@@ -29,14 +29,23 @@ class ShapeLocation
 
 typedef std::vector<ShapeLocation> ShapeLocations;
 
+// int getHistBinIdx(int x_idx, int y_idx, int n_x_bins, int n_y_bins);
+
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud);
+
+void getPointRangesXY(XYZPointCloud& samples, cpl_visual_features::ShapeDescriptor& sd);
+
+void getCovarianceXYFromPoints(XYZPointCloud& pts, cpl_visual_features::ShapeDescriptor& sd);
 
 pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
 
 ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center = true);
 
-ShapeLocations extractShapeContextFromSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl, ProtoObject& cur_obj,
-                                              bool use_center);
+ShapeLocations extractShapeContextFromSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
+                                              ProtoObject& cur_obj, bool use_center);
+
+cpl_visual_features::ShapeDescriptor extractPointHistogramXY(pcl16::PointCloud<pcl16::PointXYZ>& samples,
+                                                             float x_res, float y_res);
 
 pcl16::PointCloud<pcl16::PointXYZ> getLocalSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
                                                    ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s,
@@ -44,7 +53,7 @@ pcl16::PointCloud<pcl16::PointXYZ> getLocalSamples(pcl16::PointCloud<pcl16::Poin
 
 cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
                                                                ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
-                                                               float s, float hull_alpha);
+                                                               float s, float hull_alpha, float hist_res);
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 

@@ -14,6 +14,10 @@ using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
 namespace tabletop_pushing
 {
+inline int getHistBinIdx(int x_idx, int y_idx, int n_x_bins, int n_y_bins)
+{
+  return x_idx*n_y_bins+y_idx;
+}
 
 inline int worldLocToIdx(double val, double min_val, double max_val)
 {
@@ -542,8 +546,8 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // Copy to new cloud and return
   XYZPointCloud local_samples;
   pcl16::copyPointCloud(hull, indices, local_samples);
-  // drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
-  //                  c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
+  drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
+                   c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
   return local_samples;
 }
 
@@ -567,35 +571,151 @@ XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoOb
   return samples_transformed;
 }
 
+ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, float y_res, float x_range,
+                                        float y_range)
+{
+  int n_x_bins = ceil(x_range/x_res);
+  int n_y_bins = ceil(y_range/y_res);
+  ShapeDescriptor hist(n_y_bins*n_x_bins, 0);
+  // TODO: Get x and y
+  // Assume demeaned
+  for (int i = 0; i < samples.size(); ++i)
+  {
+    float x_norm = (samples[i].x+x_range*0.5)/ x_range;
+    float y_norm = (samples[i].y+y_range*0.5)/ y_range;
+    if (x_norm  > 1.0 || x_norm < 0 || y_norm > 1.0 || y_norm <0)
+    {
+      continue;
+    }
+    int x_idx = (int)floor(x_norm*n_x_bins);
+    int y_idx = (int)floor(y_norm*n_y_bins);
+    int idx =  getHistBinIdx(x_idx, y_idx, n_x_bins, n_y_bins);
+    hist[idx] += 1;
+  }
+  // std::stringstream descriptor;
+  // int feat_sum = 0;
+  // for (int i = 0; i < n_x_bins; ++i)
+  // {
+  //   for (int j = 0; j < n_y_bins; ++j)
+  //   {
+  //     int idx = getHistBinIdx(i, j, n_x_bins, n_y_bins);
+  //     descriptor << hist[idx] << " ";
+  //     feat_sum += hist[idx];
+  //   }
+  //   descriptor << "\n";
+  // }
+  // ROS_INFO_STREAM("Descriptor: \n" << descriptor.str());
+  // ROS_INFO_STREAM("Descriptor size: " << feat_sum << "\tsample size: " << samples.size());
+  return hist;
+}
+
+void getPointRangesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
+{
+  float x_min = FLT_MAX;
+  float x_max = FLT_MIN;
+  float y_min = FLT_MAX;
+  float y_max = FLT_MIN;
+  for (int i = 0; i < samples.size(); ++i)
+  {
+    if (samples[i].x > x_max)
+    {
+      x_max = samples[i].x;
+    }
+    if (samples[i].x < x_min)
+    {
+      x_min = samples[i].x;
+    }
+    if (samples[i].y > y_max)
+    {
+      y_max = samples[i].y;
+    }
+    if (samples[i].y < y_min)
+    {
+      y_min = samples[i].y;
+    }
+  }
+  float x_range = x_max - x_min;
+  float y_range = y_max - y_min;
+  // ROS_INFO_STREAM("x_range: " << x_range << " : (" << x_min << ", " << x_max << ")");
+  // ROS_INFO_STREAM("y_range: " << y_range << " : (" << y_min << ", " << y_max << ")");
+  sd.push_back(x_range);
+  sd.push_back(y_range);
+}
+
+void getCovarianceXYFromPoints(XYZPointCloud& pts, ShapeDescriptor& sd)
+{
+  Eigen::Matrix<float, 4, 1> centroid;
+  if(pcl16::compute3DCentroid(pts, centroid) != 0)
+  {
+    Eigen::Matrix3f covariance;
+    if(pcl16::computeCovarianceMatrix(pts, centroid, covariance) != 0)
+    {
+      std::stringstream disp_stream;
+      for (int i = 0; i < 2; ++i)
+      {
+        for (int j = 0; j < 2; ++j)
+        {
+          sd.push_back(covariance(i,j));
+          disp_stream << covariance(i,j) << " ";
+        }
+        disp_stream << "\n";
+      }
+      ROS_INFO_STREAM("Covariance: \n" << disp_stream.str());
+    }
+    else
+    {
+      ROS_WARN_STREAM("Failed to get covariance matrix");
+      for (int i = 0; i < 4; ++i)
+      {
+        sd.push_back(0);
+      }
+    }
+  }
+  else
+  {
+    ROS_WARN_STREAM("Failed to get centroid");
+    for (int i = 0; i < 4; ++i)
+    {
+      sd.push_back(0);
+    }
+  }
+}
+
 ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
-                                          pcl16::PointXYZ sample_pt, float sample_spread, float hull_alpha)
+                                          pcl16::PointXYZ sample_pt, float sample_spread, float hull_alpha,
+                                          float hist_res)
 {
   XYZPointCloud local_samples = getLocalSamples(hull, cur_obj, sample_pt, sample_spread, hull_alpha);
-  // TODO: Transform points into sample_pt frame
-  XYZPointCloud transformed_local_pts = transformSamplesIntoSampleLocFrame(local_samples, cur_obj, sample_pt);
-  XYZPointCloud transformed_global_pts = transformSamplesIntoSampleLocFrame(cur_obj.cloud, cur_obj, sample_pt);
-  // TODO: Get range of points
-  // TODO: Get variance of points
+  // Transform points into sample_pt frame
+  XYZPointCloud transformed_pts = transformSamplesIntoSampleLocFrame(local_samples, cur_obj, sample_pt);
 
+  // Compute features and populate the descriptor
   ShapeDescriptor sd;
+  getPointRangesXY(transformed_pts, sd);
+  getCovarianceXYFromPoints(transformed_pts, sd);
+  // TODO: Get inertia of points
+  // TODO: major axis angle
+  // TODO: lambda0 / lambda1 (ellipse)
+  // TODO: l / w (bounding box)
 
+  // Get histogram to describe local distribution
+  // Figure out the correct range for this
+  ShapeDescriptor histogram = extractPointHistogramXY(transformed_pts, hist_res, hist_res,
+                                                      sample_spread*2, sample_spread*2);
   // Append the local points to the thing
-  sd.push_back(transformed_local_pts.size());
-  for (int i = 0; i < transformed_local_pts.size(); ++i)
+  for (int i = 0; i < histogram.size(); ++i)
   {
-    // ROS_INFO_STREAM("local_pt[" << i << "] = (" << transformed_local_pts[i].x << ", " <<
-    //                 transformed_local_pts[i].y << ")");
-    sd.push_back(transformed_local_pts[i].x);
-    sd.push_back(transformed_local_pts[i].y);
+    sd.push_back(histogram[i]);
   }
-  // cv::waitKey();
   return sd;
 }
 
-// ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& samples_pcl, ProtoObject& cur_obj,
-//                                            pcl16::PointXYZ sample_loc, float sample_spread)
-// {
-// }
+ShapeDescriptor extractGlobalShapeFeatures(ProtoObject& cur_obj, pcl16::PointXYZ sample_pt, float sample_spread)
+{
+  XYZPointCloud transformed_pts = transformSamplesIntoSampleLocFrame(cur_obj.cloud, cur_obj, sample_pt);
+  ShapeDescriptor sd;
+  return sd;
+}
 
 
 /**

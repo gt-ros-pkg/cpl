@@ -24,7 +24,7 @@ double start_loc_arc_length_percent_;
 int start_loc_push_sample_count_;
 XYZPointCloud hull_cloud_;
 PushTrackerState cur_state_;
-
+float point_cloud_hist_res_ = 0.005;
 inline int objLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
@@ -186,10 +186,41 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   float gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
   ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread,
-                                                                   hull_alpha);
+                                                                   hull_alpha, point_cloud_hist_res_);
   // Add into pushing history in object frame
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
+  ShapeLocation s_world(boundary_loc, sd);
+  return s_world;
+}
+
+ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state,
+                                          pcl16::PointXYZ start_pt)
+
+{
+  float hull_alpha = 0.01;
+  XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+  hull_cloud_ = hull_cloud;
+  cur_state_ = cur_state;
+  double min_dist = FLT_MAX;
+  int min_dist_idx = 0;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    double pt_dist = dist(hull_cloud[i], start_pt);
+    if (pt_dist < min_dist)
+    {
+      min_dist = pt_dist;
+      min_dist_idx = i;
+    }
+  }
+  float gripper_spread = 0.05;
+  pcl16::PointXYZ boundary_loc = hull_cloud[min_dist_idx];
+  ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj,
+                                                                   boundary_loc, gripper_spread,
+                                                                   hull_alpha, point_cloud_hist_res_);
+  ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
+  start_loc_history_.push_back(s_obj);
+
   ShapeLocation s_world(boundary_loc, sd);
   return s_world;
 }
@@ -221,17 +252,47 @@ ShapeDescriptor getTrialDescriptor(std::string cloud_path, pcl16::PointXYZ init_
   return sl.descriptor_;
 }
 
+ShapeDescriptor getTrialDescriptor(std::string cloud_path, pcl16::PointXYZ init_loc, float init_theta,
+                                   pcl16::PointXYZ start_pt)
+{
+  int num_start_loc_pushes_per_sample = 3;
+  int num_start_loc_sample_locs = 16;
+
+  // pcl16::PointCloud<pcl16::PointXYZ>::Ptr cloud(new pcl16::PointCloud<pcl16::PointXYZ>);
+  ProtoObject cur_obj;
+  //.cloud = ; // TODO: COPY from read in one?
+  PushTrackerState cur_state;
+  cur_state.x.x = init_loc.x;
+  cur_state.x.y = init_loc.y;
+  cur_state.x.theta = init_theta;
+  cur_state.z = init_loc.z;
+  cur_obj.centroid[0] = cur_state.x.x;
+  cur_obj.centroid[1] = cur_state.x.y;
+  cur_obj.centroid[2] = cur_state.z;
+  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
+  if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
+  {
+    ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
+  }
+  ROS_INFO_STREAM("Got cloud: " << cloud_path);
+  ShapeLocation sl = chooseFixedGoalPushStartLoc(cur_obj, cur_state, start_pt);
+  return sl.descriptor_;
+}
+
 class TrialStuff
 {
  public:
-  TrialStuff(float init_x_, float init_y_, float init_z_, float init_theta_, std::string trial_id_, bool new_object_) :
-      init_loc(init_x_, init_y_, init_z_), init_theta(init_theta_), trial_id(trial_id_), new_object(new_object_)
+  TrialStuff(float init_x_, float init_y_, float init_z_, float init_theta_, std::string trial_id_, bool new_object_,
+             float push_x_, float push_y_, float push_z_) :
+      init_loc(init_x_, init_y_, init_z_), init_theta(init_theta_), trial_id(trial_id_), new_object(new_object_),
+      start_pt(push_x_, push_y_, push_z_)
   {
   }
   pcl16::PointXYZ init_loc;
   float init_theta;
   std::string trial_id;
   bool new_object;
+  pcl16::PointXYZ start_pt;
 };
 
 std::vector<TrialStuff> getTrialsFromFile(std::string aff_file_name)
@@ -268,10 +329,18 @@ std::vector<TrialStuff> getTrialsFromFile(std::string aff_file_name)
       // ROS_INFO_STREAM("Read trial_id: " << trial_id.str());
       float init_x, init_y, init_z, init_theta;
       trial_line >> init_x >> init_y >> init_z >> init_theta;
+      float final_x, final_y, final_z, final_theta;
+      trial_line >> final_x >> final_y >> final_z >> final_theta;
+      float goal_x, goal_y, goal_theta;
+      trial_line >> goal_x >> goal_y >> goal_theta;
+      float push_start_x, push_start_y, push_start_z, push_start_theta;
+      trial_line >> push_start_x >> push_start_y >> push_start_z;
+
       // ROS_INFO_STREAM("Init pose (" << init_x << ", " << init_y << ", " << init_z << ", " << init_theta << ")");
       // TODO: Read in start_point?!?
       new_object = !trials.size();
-      TrialStuff trial(init_x, init_y, init_z, init_theta, trial_id.str(), new_object);
+      TrialStuff trial(init_x, init_y, init_z, init_theta, trial_id.str(), new_object,
+                       push_start_x, push_start_y, push_start_z);
       trials.push_back(trial);
     }
     if (c_line[0] == '#')
@@ -424,9 +493,11 @@ int main(int argc, char** argv)
     ROS_INFO_STREAM("init_loc: " << init_loc);
     ROS_INFO_STREAM("init_theta: " << init_theta);
     ROS_INFO_STREAM("new object: " << new_object);
+    ROS_INFO_STREAM("start_pt: " << trials[i].start_pt);
     std::stringstream cloud_path;
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
 
+    ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, trials[i].start_pt);
     if (draw_scores)
     {
       // TODO: Get the image, draw the shape context, highlight score color
@@ -436,16 +507,33 @@ int main(int argc, char** argv)
       cv::Mat disp_img;
       ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
       disp_img = cv::imread(hull_img_path.str());
+      double score = -log(push_scores[i])/10;
+      cv::Vec3b score_color(0, score*255, (1-score)*255);
+      for (int r = 0; r < disp_img.rows; ++r)
+      {
+        for (int c = 0; c < disp_img.cols; ++c)
+        {
+          if (disp_img.at<cv::Vec3b>(r,c)[0] == 0 && disp_img.at<cv::Vec3b>(r,c)[1] == 0 &&
+              disp_img.at<cv::Vec3b>(r,c)[2] == 255)
+          {
+            disp_img.at<cv::Vec3b>(r,c) = score_color;
+          }
+          else if (disp_img.at<cv::Vec3b>(r,c)[0] == 0 && disp_img.at<cv::Vec3b>(r,c)[1] == 255 &&
+                   disp_img.at<cv::Vec3b>(r,c)[2] == 0)
+          {
+            disp_img.at<cv::Vec3b>(r,c) = cv::Vec3b(255,0,0);
+          }
+
+        }
+      }
       ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
       cv::imshow("hull", disp_img);
-      // cv::waitKey();
+      cv::waitKey();
       if (push_scores[i] > max_score)
       {
         max_score = push_scores[i];
       }
     }
-
-    ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, new_object);
 
     std::stringstream descriptor;
     descriptor << "[";

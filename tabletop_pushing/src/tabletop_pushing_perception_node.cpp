@@ -1000,6 +1000,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
     n_private_.param("self_mask_dilate_size", mask_dilate_size_, 5);
+    n_private_.param("point_cloud_hist_res", point_cloud_hist_res_, 0.005);
 
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
 
@@ -1792,7 +1793,7 @@ class TabletopPushingPerceptionNode
     float gripper_spread = 0.05;
     pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
     ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread,
-                                                                     hull_alpha);
+                                                                     hull_alpha, point_cloud_hist_res_);
     // Add into pushing history in object frame
     // ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
     //                 locs[boundary_loc_idx].descriptor_);
@@ -2619,6 +2620,7 @@ class TabletopPushingPerceptionNode
   int start_loc_push_sample_count_;
   bool force_swap_;
   int mask_dilate_size_;
+  double point_cloud_hist_res_;
 };
 
 int main(int argc, char ** argv)
