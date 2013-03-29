@@ -482,7 +482,7 @@ void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
   // cv::imwrite(out_file_path, footprint);
 
   cv::imshow("Push score", footprint);
-  // cv::waitKey();
+  cv::waitKey();
 }
 
 int main(int argc, char** argv)
@@ -550,7 +550,7 @@ int main(int argc, char** argv)
       }
       ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
       cv::imshow("hull", disp_img);
-      // cv::waitKey();
+      cv::waitKey();
       if (push_scores[i] > max_score)
       {
         max_score = push_scores[i];
