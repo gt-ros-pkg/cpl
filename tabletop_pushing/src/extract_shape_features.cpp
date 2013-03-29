@@ -24,7 +24,7 @@ double start_loc_arc_length_percent_;
 int start_loc_push_sample_count_;
 XYZPointCloud hull_cloud_;
 PushTrackerState cur_state_;
-float point_cloud_hist_res_ = 0.005;
+float point_cloud_hist_res_ = 0.01;
 inline int objLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
@@ -185,8 +185,10 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   // ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj, true);
   float gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
-  ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread,
-                                                                   hull_alpha, point_cloud_hist_res_);
+  ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                            boundary_loc, boundary_loc_idx,
+                                                                            gripper_spread, hull_alpha,
+                                                                            point_cloud_hist_res_);
   // Add into pushing history in object frame
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
@@ -215,9 +217,10 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   }
   float gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[min_dist_idx];
-  ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj,
-                                                                   boundary_loc, gripper_spread,
-                                                                   hull_alpha, point_cloud_hist_res_);
+  ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                            boundary_loc, min_dist_idx,
+                                                                            gripper_spread,
+                                                                            hull_alpha, point_cloud_hist_res_);
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
 
@@ -401,6 +404,26 @@ void writeNewFile(std::string out_file_name, std::vector<TrialStuff> trials, Sha
   out_file.close();
 }
 
+void writeNewExampleFile(std::string out_file_name, std::vector<TrialStuff> trials, ShapeDescriptors descriptors,
+                         std::vector<float>& push_scores)
+{
+  ROS_INFO_STREAM("Writing example file: " << out_file_name);
+  std::ofstream out_file(out_file_name.c_str());
+  for (unsigned int i = 0; i < descriptors.size(); ++i)
+  {
+    out_file << push_scores[i] << " ";
+    for (unsigned int j = 0; j < descriptors[i].size(); ++j)
+    {
+      if (descriptors[i][j] != 0.0)
+      {
+        out_file << (j+1) << ":" << descriptors[i][j] << " ";
+      }
+    }
+    out_file << "\n";
+  }
+  out_file.close();
+}
+
 std::vector<float> readScoreFile(std::string file_path)
 {
   std::ifstream data_in(file_path.c_str());
@@ -422,7 +445,7 @@ std::vector<float> readScoreFile(std::string file_path)
   return scores;
 }
 
-void drawScores(std::vector<float>& push_scores, std::string out_file_path)
+void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
 {
   double max_y = 0.3;
   double min_y = -0.3;
@@ -455,11 +478,11 @@ void drawScores(std::vector<float>& push_scores, std::string out_file_path)
     cv::circle(footprint, cv::Point(x,y), 3, color);
   }
   // ROS_INFO_STREAM("Max score is: " << max_score);
-  ROS_INFO_STREAM("Writing image: " << out_file_path);
-  cv::imwrite(out_file_path, footprint);
+  // ROS_INFO_STREAM("Writing image: " << out_file_path);
+  // cv::imwrite(out_file_path, footprint);
 
   cv::imshow("Push score", footprint);
-  cv::waitKey();
+  // cv::waitKey();
 }
 
 int main(int argc, char** argv)
@@ -467,9 +490,8 @@ int main(int argc, char** argv)
   // TODO: Get the aff_file and the directory as input
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
-  std::string out_file_name(argv[3]);
+  std::string out_file_path(argv[3]);
   std::vector<TrialStuff> trials = getTrialsFromFile(aff_file_path);
-  ROS_INFO_STREAM("Running: " << argv[0]);
   std::string score_file = "";
   bool draw_scores = argc > 4;
   ROS_INFO_STREAM("trials.size(): " << trials.size());
@@ -528,39 +550,22 @@ int main(int argc, char** argv)
       }
       ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
       cv::imshow("hull", disp_img);
-      cv::waitKey();
+      // cv::waitKey();
       if (push_scores[i] > max_score)
       {
         max_score = push_scores[i];
       }
     }
-
-    std::stringstream descriptor;
-    descriptor << "[";
-    for (unsigned int i = 0; i < sd.size(); ++i)
-    {
-      // if (i % 5 == 0)
-      // {
-      //   descriptor << "\n";
-      // }
-      descriptor << " " << sd[i];
-    }
-    descriptor << "]";
-    if (!draw_scores)
-    {
-      descriptor << "\n";
-    }
-    // ROS_INFO_STREAM("Descriptor: " << descriptor.str());
     descriptors.push_back(sd);
   }
 
   // std::stringstream out_file;
-  // out_file << data_directory_path << out_file_name;
-  // writeNewFile(out_file.str(), trials, descriptors);
+  // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
   if (draw_scores)
   {
     // TODO: Pass in info to write these to disk again?
-    drawScores(push_scores, out_file_name);
+    // drawScores(push_scores, out_file_path);
+    drawScores(push_scores);
   }
   return 0;
 }

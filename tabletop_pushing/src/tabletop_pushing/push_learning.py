@@ -1558,14 +1558,11 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     write_example_file(out_file_name, X, Y, normalize, debug)
 
 def extract_shape_features_batch():
-  # base_dir = '/home/thermans/sandbox/fake_iros/'
-  # class_dirs = ['camcorder1', 'food_box1', 'large_brush2', 'shampoo1', 'small_brush2','soap_box1', 'teddy_bear1', 'toothpaste2']
   base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
   class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
   # class_dirs = ['toothpaste3']
   out_dir = base_dir+'examples_line_dist/'
   feat_dir = base_dir+'examples_line_dist/'
-  out_dir = base_dir+'examples_line_dist_feats_fixed_05/'
   # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
 
   for c in class_dirs:
@@ -1580,20 +1577,13 @@ def extract_shape_features_batch():
           print 'ERROR: No data file in directory:', c
           continue
       aff_file = class_dir+data_file
-      feat_file = c[:-1]+'.txt'
       score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
-      file_out = base_dir+c[:-1]+'_push_scores.png'
+      file_out = out_dir+c[:-1]+'_local_and_global100.txt'
       print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
           class_dir, file_out, score_file
       p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',
                             aff_file, class_dir, file_out, score_file], shell=False)
       p.wait()
-      # feat_file = class_dir + feat_file
-      # original_file_name = feat_dir+c[:-1] + '.txt'
-      # output_file_name0 = out_dir + c[:-1] + '.txt'
-      # rewrite_example_file_features(original_file_name, feat_file, output_file_name0, normalize=False)
-      # output_file_name1 = out_dir + c[:-1] + '_normalized.txt'
-      # rewrite_example_file_features(original_file_name, feat_file, output_file_name1, normalize=True)
 
 def read_and_score_raw_files():
   base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'

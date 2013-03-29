@@ -5,6 +5,7 @@
 #include <pcl16_ros/transforms.h>
 #include <pcl16/ros/conversions.h>
 #include <pcl16/surface/concave_hull.h>
+#include <pcl16/common/pca.h>
 #include <cpl_visual_features/comp_geometry.h>
 #include <iostream>
 
@@ -154,7 +155,7 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl, ProtoO
     ShapeLocation loc(samples_pcl[i], descriptors[i]);
     locs.push_back(loc);
   }
-  computeShapeFeatureAffinityMatrix(locs, use_center);
+  // computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
 
@@ -356,7 +357,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     if (dist(hull[i], hull[(i+1)%hull.size()]) > 2.0*alpha)
     {
       jump_indices.push_back(i);
-      ROS_INFO_STREAM("Jump from " << i << " to " << (i+1)%hull.size());
+      // ROS_INFO_STREAM("Jump from " << i << " to " << (i+1)%hull.size());
     }
   }
 
@@ -477,11 +478,11 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   if (min_c_idx >= start_idx && min_c_idx <= end_idx)
   {
     // Good:
-    ROS_INFO_STREAM("Walking inside");
+    // ROS_INFO_STREAM("Walking inside");
   }
   else
   {
-    ROS_INFO_STREAM("Walking outside");
+    // ROS_INFO_STREAM("Walking outside");
     int tmp_idx = start_idx;
     start_idx = end_idx;
     end_idx = tmp_idx;
@@ -505,9 +506,9 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
     }
   }
   // TODO: Dont walk through unimportant chunks
-  ROS_INFO_STREAM("Start chunk is: " << start_chunk);
-  ROS_INFO_STREAM("Center chunk is: " << center_chunk);
-  ROS_INFO_STREAM("End chunk is: " << end_chunk);
+  // ROS_INFO_STREAM("Start chunk is: " << start_chunk);
+  // ROS_INFO_STREAM("Center chunk is: " << center_chunk);
+  // ROS_INFO_STREAM("End chunk is: " << end_chunk);
 
   // ROS_INFO_STREAM("far_l_dist is: " << min_far_l_dist << " at " << far_l_idx);
   // ROS_INFO_STREAM("far_r_dist is: " << min_far_r_dist << " at " << far_r_idx);
@@ -515,9 +516,9 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // ROS_INFO_STREAM("min_r_dist is: " << min_r_dist << " at " << min_r_idx);
   // ROS_INFO_STREAM("min_c_dist is: " << min_c_dist << " at " << min_c_idx);
   // ROS_INFO_STREAM("sample_pt_dist is : " << sample_pt_dist << " at " << sample_pt_idx);
-  ROS_INFO_STREAM("start idx: " << start_idx);
-  ROS_INFO_STREAM("center idx: " << min_c_idx);
-  ROS_INFO_STREAM("end idx: " << end_idx);
+  // ROS_INFO_STREAM("start idx: " << start_idx);
+  // ROS_INFO_STREAM("center idx: " << min_c_idx);
+  // ROS_INFO_STREAM("end idx: " << end_idx);
 
   int cur_chunk = start_chunk;
   // Walk from one intersection to the other through the centroid
@@ -592,19 +593,19 @@ ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, flo
     int idx =  getHistBinIdx(x_idx, y_idx, n_x_bins, n_y_bins);
     hist[idx] += 1;
   }
-  // std::stringstream descriptor;
-  // int feat_sum = 0;
-  // for (int i = 0; i < n_x_bins; ++i)
-  // {
-  //   for (int j = 0; j < n_y_bins; ++j)
-  //   {
-  //     int idx = getHistBinIdx(i, j, n_x_bins, n_y_bins);
-  //     descriptor << hist[idx] << " ";
-  //     feat_sum += hist[idx];
-  //   }
-  //   descriptor << "\n";
-  // }
-  // ROS_INFO_STREAM("Descriptor: \n" << descriptor.str());
+  std::stringstream descriptor;
+  int feat_sum = 0;
+  for (int i = 0; i < n_x_bins; ++i)
+  {
+    for (int j = 0; j < n_y_bins; ++j)
+    {
+      int idx = getHistBinIdx(i, j, n_x_bins, n_y_bins);
+      descriptor << hist[idx] << " ";
+      feat_sum += hist[idx];
+    }
+    descriptor << "\n";
+  }
+  ROS_INFO_STREAM("Descriptor: \n" << descriptor.str());
   // ROS_INFO_STREAM("Descriptor size: " << feat_sum << "\tsample size: " << samples.size());
   return hist;
 }
@@ -636,8 +637,8 @@ void getPointRangesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
   }
   float x_range = x_max - x_min;
   float y_range = y_max - y_min;
-  // ROS_INFO_STREAM("x_range: " << x_range << " : (" << x_min << ", " << x_max << ")");
-  // ROS_INFO_STREAM("y_range: " << y_range << " : (" << y_min << ", " << y_max << ")");
+  ROS_INFO_STREAM("x_range: " << x_range << " : (" << x_min << ", " << x_max << ")");
+  ROS_INFO_STREAM("y_range: " << y_range << " : (" << y_min << ", " << y_max << ")");
   sd.push_back(x_range);
   sd.push_back(y_range);
 }
@@ -653,19 +654,18 @@ void getCovarianceXYFromPoints(XYZPointCloud& pts, ShapeDescriptor& sd)
       std::stringstream disp_stream;
       for (int i = 0; i < 2; ++i)
       {
-        for (int j = 0; j < 2; ++j)
+        for (int j = i; j < 2; ++j)
         {
           sd.push_back(covariance(i,j));
           disp_stream << covariance(i,j) << " ";
         }
-        disp_stream << "\n";
       }
-      ROS_INFO_STREAM("Covariance: \n" << disp_stream.str());
+      ROS_INFO_STREAM("Covariance: " << disp_stream.str());
     }
     else
     {
       ROS_WARN_STREAM("Failed to get covariance matrix");
-      for (int i = 0; i < 4; ++i)
+      for (int i = 0; i < 3; ++i)
       {
         sd.push_back(0);
       }
@@ -674,11 +674,51 @@ void getCovarianceXYFromPoints(XYZPointCloud& pts, ShapeDescriptor& sd)
   else
   {
     ROS_WARN_STREAM("Failed to get centroid");
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 3; ++i)
     {
       sd.push_back(0);
     }
   }
+}
+
+void extractPCAFeaturesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
+{
+  pcl16::PCA<pcl16::PointXYZ> pca;
+  pca.setInputCloud(samples.makeShared());
+  Eigen::Vector3f eigen_values = pca.getEigenValues();
+  Eigen::Matrix3f eigen_vectors = pca.getEigenVectors();
+  Eigen::Vector4f centroid = pca.getMean();
+  float lambda0 = eigen_values(0);
+  float lambda1 = eigen_values(1);
+  ROS_INFO_STREAM("Lambda: " << lambda0 << ", " << lambda1 << ", " << eigen_values(2));
+  ROS_INFO_STREAM("lambda0/lambda1: " << lambda0/lambda1);
+  // ROS_INFO_STREAM("Eigen vectors: \n" << eigen_vectors);
+  // Get inertia of points
+  sd.push_back(lambda0);
+  sd.push_back(lambda1);
+  sd.push_back(lambda0/lambda1);
+  // Get angls of eigen vectors
+  float theta0 = atan2(eigen_vectors(1,0), eigen_vectors(0,0));
+  float theta1 = atan2(eigen_vectors(1,1), eigen_vectors(0,1));
+  ROS_INFO_STREAM("theta: " << theta0 << ", " << theta1);
+  sd.push_back(theta0);
+  sd.push_back(theta1);
+}
+
+void extractBoundingBoxFeatures(XYZPointCloud& samples, ShapeDescriptor& sd)
+{
+  std::vector<cv::Point2f> obj_pts;
+  for (unsigned int i = 0; i < samples.size(); ++i)
+  {
+    obj_pts.push_back(cv::Point2f(samples[i].x, samples[i].y));
+  }
+  cv::RotatedRect box = cv::minAreaRect(obj_pts);
+  float l = std::max(box.size.width, box.size.height);
+  float w = std::min(box.size.width, box.size.height);
+  ROS_INFO_STREAM("(l,w): " << l << ", " << w << ") l/w: " << l/w);
+  sd.push_back(l);
+  sd.push_back(w);
+  sd.push_back(l/w);
 }
 
 ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
@@ -693,28 +733,61 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
   ShapeDescriptor sd;
   getPointRangesXY(transformed_pts, sd);
   getCovarianceXYFromPoints(transformed_pts, sd);
-  // TODO: Get inertia of points
-  // TODO: major axis angle
-  // TODO: lambda0 / lambda1 (ellipse)
-  // TODO: l / w (bounding box)
+  extractPCAFeaturesXY(transformed_pts, sd);
+  extractBoundingBoxFeatures(transformed_pts, sd);
 
   // Get histogram to describe local distribution
-  // Figure out the correct range for this
+  // TODO: Figure out the correct range and resolution
   ShapeDescriptor histogram = extractPointHistogramXY(transformed_pts, hist_res, hist_res,
                                                       sample_spread*2, sample_spread*2);
-  // Append the local points to the thing
-  for (int i = 0; i < histogram.size(); ++i)
-  {
-    sd.push_back(histogram[i]);
-  }
+  sd.insert(sd.end(), histogram.begin(), histogram.end());
   return sd;
 }
 
-ShapeDescriptor extractGlobalShapeFeatures(ProtoObject& cur_obj, pcl16::PointXYZ sample_pt, float sample_spread)
+ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
+                                           int sample_pt_idx, float sample_spread)
 {
   XYZPointCloud transformed_pts = transformSamplesIntoSampleLocFrame(cur_obj.cloud, cur_obj, sample_pt);
   ShapeDescriptor sd;
+  // Get the general features describing the point cloud in the local object frame
+  getPointRangesXY(transformed_pts, sd);
+  getCovarianceXYFromPoints(transformed_pts, sd);
+  extractPCAFeaturesXY(transformed_pts, sd);
+  extractBoundingBoxFeatures(transformed_pts, sd);
+
+  // Get shape context
+  ShapeLocations sc = extractShapeContextFromSamples(hull, cur_obj, true);
+  ShapeDescriptor histogram = sc[sample_pt_idx].descriptor_;
+  sd.insert(sd.end(), histogram.begin(), histogram.end());
+  std::stringstream descriptor;
+  descriptor << "";
+  for (unsigned int i = 0; i < histogram.size(); ++i)
+  {
+    if (i % 5 == 0)
+    {
+      descriptor << "\n";
+    }
+    descriptor << " " << histogram[i];
+  }
+  ROS_INFO_STREAM("Shape context: " << descriptor.str());
+
+
   return sd;
+}
+
+ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                                   pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                                   float sample_spread, float hull_alpha, float hist_res)
+{
+  ROS_INFO_STREAM("Local");
+  ShapeDescriptor local = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
+  ROS_INFO_STREAM("Global");
+  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+  ROS_INFO_STREAM("local.size() << " << local.size());
+  ROS_INFO_STREAM("global.size() << " << global.size());
+  local.insert(local.end(), global.begin(), global.end());
+  ROS_INFO_STREAM("local.size() << " << local.size());
+  return local;
 }
 
 

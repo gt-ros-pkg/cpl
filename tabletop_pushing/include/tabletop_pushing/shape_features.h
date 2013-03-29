@@ -31,27 +31,36 @@ typedef std::vector<ShapeLocation> ShapeLocations;
 
 // int getHistBinIdx(int x_idx, int y_idx, int n_x_bins, int n_y_bins);
 
-cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud);
+cv::Mat getObjectFootprint(cv::Mat obj_mask, XYZPointCloud& cloud);
 
 void getPointRangesXY(XYZPointCloud& samples, cpl_visual_features::ShapeDescriptor& sd);
 
 void getCovarianceXYFromPoints(XYZPointCloud& pts, cpl_visual_features::ShapeDescriptor& sd);
 
-pcl16::PointCloud<pcl16::PointXYZ> getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
+void extractPCAFeaturesXY(XYZPointCloud& samples, cpl_visual_features::ShapeDescriptor& sd);
+
+void extractBoundingBoxFeatures(XYZPointCloud& samples, cpl_visual_features::ShapeDescriptor& sd);
+
+XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
 
 ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center = true);
 
-ShapeLocations extractShapeContextFromSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
+ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl,
                                               ProtoObject& cur_obj, bool use_center);
 
-cpl_visual_features::ShapeDescriptor extractPointHistogramXY(pcl16::PointCloud<pcl16::PointXYZ>& samples,
+cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples,
                                                              float x_res, float y_res);
 
-pcl16::PointCloud<pcl16::PointXYZ> getLocalSamples(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
-                                                   ProtoObject& cur_obj, pcl16::PointXYZ sample_loc, float s,
-                                                   float hull_alpha);
 
-cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(pcl16::PointCloud<pcl16::PointXYZ>& samples_pcl,
+XYZPointCloud getLocalSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
+                              float s, float hull_alpha);
+
+cpl_visual_features::ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                                                   pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                                                   float sample_spread, float hull_alpha,
+                                                                   float hist_res);
+
+cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& samples_pcl,
                                                                ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
                                                                float s, float hull_alpha, float hist_res);
 
