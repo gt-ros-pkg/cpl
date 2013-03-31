@@ -11,6 +11,7 @@
 #include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
 #include <tabletop_pushing/point_cloud_segmentation.h>
 #include <cpl_visual_features/helpers.h>
+#include <time.h> // for srand(time(NULL))
 
 using namespace cpl_visual_features;
 using namespace tabletop_pushing;
@@ -445,7 +446,7 @@ std::vector<float> readScoreFile(std::string file_path)
   return scores;
 }
 
-void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
+void drawScores(std::vector<float>& push_scores, std::string out_file_path)
 {
   double max_y = 0.3;
   double min_y = -0.3;
@@ -453,7 +454,7 @@ void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
   double min_x = -0.3;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
-  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
 
   for (int i = 0; i < hull_cloud_.size(); ++i)
   {
@@ -461,7 +462,7 @@ void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
     int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
     int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
     cv::Scalar color(128, 0, 0);
-    cv::circle(footprint, cv::Point(img_x, img_y), 1, color);
+    cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
   }
   // HACK: Normalize across object classes
   double max_score = 0.0602445;
@@ -475,11 +476,13 @@ void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
     // color[1] = score;
     // color[2] = 0.5;
     // footprint.at<cv::Vec3f>(r,c) = color;
-    cv::circle(footprint, cv::Point(x,y), 3, color);
+    cv::circle(footprint, cv::Point(x,y), 1, color, 3);
+    cv::circle(footprint, cv::Point(x,y), 2, color, 3);
+    cv::circle(footprint, cv::Point(x,y), 3, color, 3);
   }
   // ROS_INFO_STREAM("Max score is: " << max_score);
   // ROS_INFO_STREAM("Writing image: " << out_file_path);
-  // cv::imwrite(out_file_path, footprint);
+  cv::imwrite(out_file_path, footprint);
 
   cv::imshow("Push score", footprint);
   cv::waitKey();
@@ -487,6 +490,9 @@ void drawScores(std::vector<float>& push_scores/*, std::string out_file_path*/)
 
 int main(int argc, char** argv)
 {
+  int seed = time(NULL);
+  srand(seed);
+
   // TODO: Get the aff_file and the directory as input
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
@@ -565,7 +571,7 @@ int main(int argc, char** argv)
   {
     // TODO: Pass in info to write these to disk again?
     // drawScores(push_scores, out_file_path);
-    drawScores(push_scores);
+    // drawScores(push_scores);
   }
   return 0;
 }

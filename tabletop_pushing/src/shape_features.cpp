@@ -158,12 +158,53 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl, ProtoO
   // computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
-
-void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointXYZ& center_pt,
+cv::Mat makeHistogramImage(ShapeDescriptor histogram, int n_x_bins, int n_y_bins, int bin_width_pixels)
+{
+  cv::Mat hist_img(n_x_bins*bin_width_pixels+1, n_y_bins*bin_width_pixels+1, CV_8UC1, cv::Scalar(255));
+  int max_count = 10;
+  for (int i = 0; i < histogram.size(); ++i)
+  {
+    if (histogram[i] == 0) continue;
+    int pix_val = (1 - histogram[i]/max_count)*255;
+    int start_x = (i%n_x_bins)*bin_width_pixels;
+    int start_y = (i/n_x_bins)*bin_width_pixels;;
+    ROS_INFO_STREAM("(start_x, start_y): (" << start_x << ", " << start_y << ")");
+    for (int x = start_x; x < start_x+bin_width_pixels; ++x)
+    {
+      for (int y = start_y; y < start_y+bin_width_pixels; ++y)
+      {
+        hist_img.at<uchar>(y, x) = pix_val;
+      }
+    }
+  }
+  // Draw hist bin columns
+  for (int i = 0; i <= n_x_bins; ++i)
+  {
+    int x = i*bin_width_pixels;
+    for (int y = 0; y < hist_img.rows; ++y)
+    {
+      hist_img.at<uchar>(y,x) = 0;
+    }
+  }
+  // Draw hist bin rows
+  for (int i = 0; i <= n_y_bins; ++i)
+  {
+    int y = i*bin_width_pixels;
+    for (int x = 0; x < hist_img.cols; ++x)
+    {
+      hist_img.at<uchar>(y,x) = 0;
+    }
+  }
+  cv::imshow("local_hist_img", hist_img);
+  // cv::waitKey();
+  return hist_img;
+}
+void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, float alpha, pcl16::PointXYZ& center_pt,
                       pcl16::PointXYZ& sample_pt, pcl16::PointXYZ& approach_pt,
                       pcl16::PointXYZ e_left, pcl16::PointXYZ e_right,
                       pcl16::PointXYZ c_left, pcl16::PointXYZ c_right,
-                      pcl16::PointXYZ i_left, pcl16::PointXYZ i_right)
+                      pcl16::PointXYZ i_left, pcl16::PointXYZ i_right,
+                      float x_res, float y_res, float x_range, float y_range, ProtoObject& cur_obj)
 {
   double max_y = 0.5;
   double min_y = -0.2;
@@ -173,24 +214,37 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
   // TODO: Make sure everything is getting drawn
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
-  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(0.0,0.0,0.0));
-
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+  std::vector<int> jump_indices = getJumpIndices(hull, alpha);
   for (int i = 0; i < hull.size(); ++i)
   {
     int j = (i+1) % hull.size();
+    bool is_jump = false;
+    for (int k = 0; k < jump_indices.size(); ++k)
+    {
+      if (i == jump_indices[k])
+      {
+        is_jump = true;
+      }
+    }
+    if (is_jump)
+    {
+      continue;
+    }
     pcl16::PointXYZ obj_pt0 = hull[i];
     pcl16::PointXYZ obj_pt1 = hull[j];
     cv::Point img_pt0 = worldPtToImgPt(obj_pt0, min_x, max_x, min_y, max_y);
     cv::Point img_pt1 = worldPtToImgPt(obj_pt1, min_x, max_x, min_y, max_y);
     cv::Scalar color(0, 0, 128);
-    cv::circle(footprint, img_pt0, 1, color);
-    cv::line(footprint, img_pt0, img_pt1, color);
+    cv::circle(footprint, img_pt0, 1, color, 3);
+    cv::line(footprint, img_pt0, img_pt1, color, 1);
   }
   for (int i = 0; i < samples.size(); ++i)
   {
     cv::Point img_pt = worldPtToImgPt(samples[i], min_x, max_x, min_y, max_y);
     cv::Scalar color(0, 255, 0);
-    cv::circle(footprint, img_pt, 3, color);
+    cv::circle(footprint, img_pt, 1, color,3);
+    cv::circle(footprint, img_pt, 3, color,3);
   }
   cv::Point img_center = worldPtToImgPt(center_pt, min_x, max_x, min_y, max_y);
   cv::Point img_approach_pt = worldPtToImgPt(approach_pt, min_x, max_x, min_y, max_y);
@@ -202,22 +256,90 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, pcl16::PointX
   cv::Point i_left_img = worldPtToImgPt(i_left, min_x, max_x, min_y, max_y);
   cv::Point i_right_img = worldPtToImgPt(i_right, min_x, max_x, min_y, max_y);
 
-  cv::line(footprint, img_approach_pt, img_center, cv::Scalar(0,255,255));
-  cv::line(footprint, e_left_img, e_right_img, cv::Scalar(0,255,255));
-  cv::line(footprint, e_left_img, c_left_img, cv::Scalar(255,0,255));
-  cv::line(footprint, e_right_img, c_right_img, cv::Scalar(0,255,255));
-  cv::circle(footprint, img_center, 3, cv::Scalar(0,255,255));
-  cv::circle(footprint, img_approach_pt, 3, cv::Scalar(0,255,255));
-  cv::circle(footprint, e_left_img, 3, cv::Scalar(255,0,255));
-  cv::circle(footprint, e_right_img, 3, cv::Scalar(0,255,255));
+  cv::Mat footprint_hist;
+  footprint.copyTo(footprint_hist);
+
+  cv::line(footprint, img_sample_pt, img_center, cv::Scalar(255,0,0), 2);
+  cv::line(footprint, e_left_img, e_right_img, cv::Scalar(255,0,0), 2);
+  // cv::line(footprint, e_left_img, c_left_img, cv::Scalar(255,0,255));
+  // cv::line(footprint, e_right_img, c_right_img, cv::Scalar(0,255,255));
+  cv::circle(footprint, img_center, 3, cv::Scalar(255,0,0), 2);
+  // cv::circle(footprint, img_approach_pt, 3, cv::Scalar(255,0,0),2);
+  // cv::circle(footprint, e_left_img, 3, cv::Scalar(255,0,255));
+  // cv::circle(footprint, e_right_img, 3, cv::Scalar(0,255,255));
+
 
   // Draw sample point last
-  cv::line(footprint, img_sample_pt, img_center, cv::Scalar(255,255,255));
-  cv::circle(footprint, img_sample_pt, 3, cv::Scalar(255,255,255));
-  cv::circle(footprint, i_left_img, 3, cv::Scalar(255,0,255));
-  cv::circle(footprint, i_right_img, 3, cv::Scalar(0,255,255));
+  // cv::line(footprint, img_sample_pt, img_center, cv::Scalar(255,255,255));
+  cv::circle(footprint, img_sample_pt, 1, cv::Scalar(255,0,255),3);
+  cv::circle(footprint, img_sample_pt, 3, cv::Scalar(255,0,255),3);
+  // cv::circle(footprint, i_left_img, 3, cv::Scalar(255,0,255));
+  // cv::circle(footprint, i_right_img, 3, cv::Scalar(0,255,255));
+
+  int n_x_bins = ceil(x_range/x_res);
+  int n_y_bins = ceil(y_range/y_res);
+  float min_hist_x = -x_range*0.5;
+  float min_hist_y = -y_range*0.5;
+  std::vector<std::vector<cv::Point> > hist_corners;
+  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  double ct = std::cos(center_angle);
+  double st = std::sin(center_angle);
+  for (int i = 0; i <= n_x_bins; ++i)
+  {
+    float local_x = min_hist_x+x_res*i;
+    std::vector<cv::Point> hist_row;
+    hist_corners.push_back(hist_row);
+    for (int j = 0; j <= n_y_bins; ++j)
+    {
+      float local_y = min_hist_y+y_res*j;
+
+      // Transform into world frame
+      pcl16::PointXYZ corner_in_world;
+      corner_in_world.x = (local_x*ct - local_y*st ) + sample_pt.x;
+      corner_in_world.y = (local_x*st + local_y*ct ) + sample_pt.y;
+      // Transform into image frame
+      cv::Point corner_in_img = worldPtToImgPt(corner_in_world, min_x, max_x, min_y, max_y);
+      // draw point
+      cv::Scalar color(0,0,0);
+      cv::circle(footprint_hist, corner_in_img, 1, color);
+      // Draw grid lines
+      if (i > 0)
+      {
+        cv::line(footprint_hist, corner_in_img, hist_corners[i-1][j], color);
+      }
+      if (j > 0)
+      {
+        cv::line(footprint_hist, corner_in_img, hist_corners[i][j-1], color);
+      }
+      hist_corners[i].push_back(corner_in_img);
+    }
+  }
 
   cv::imshow("local samples", footprint);
+  cv::imshow("local hist", footprint_hist);
+  // char c = cv::waitKey();
+  // if (c == 'w')
+  // {
+  //   std::stringstream boundary_img_write_path;
+  //   std::stringstream hist_img_write_path;
+  //   int rand_int = rand();
+  //   boundary_img_write_path << "/home/thermans/Desktop/" << rand_int << "_boundary_img_.png";
+  //   hist_img_write_path << "/home/thermans/Desktop/" << rand_int << "_boundary_hist_img.png";
+  //   std::cout << "Writing " << boundary_img_write_path.str() << " to disk";
+  //   cv::imwrite(boundary_img_write_path.str(), footprint);
+  //   std::cout << "Writing " << hist_img_write_path.str() << " to disk";
+  //   cv::imwrite(hist_img_write_path.str(), footprint_hist);
+
+  //   // HACK: Huge hack just recompute descriptor to write to disk like others
+  //   XYZPointCloud transformed_pts = transformSamplesIntoSampleLocFrame(samples, cur_obj, sample_pt);
+  //   ShapeDescriptor histogram = extractPointHistogramXY(transformed_pts, x_res, y_res, x_range, y_range);
+  //   int bin_width_pixels = 10;
+  //   cv::Mat hist_img = makeHistogramImage(histogram, n_x_bins, n_y_bins, bin_width_pixels);
+  //   std::stringstream out_file_name;
+  //   out_file_name << "/home/thermans/Desktop/" << rand_int << "_local_hist_img.png";
+  //   cv::imwrite(out_file_name.str(), hist_img);
+  // }
+
 }
 
 XYZPointCloud getLocalSamplesNew(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
@@ -227,7 +349,7 @@ XYZPointCloud getLocalSamplesNew(XYZPointCloud& hull, ProtoObject& cur_obj, pcl1
   float radius = sample_spread / 2.0;
   pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
   float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
-  float approach_dist = 0.15;
+  float approach_dist = 0.05;
   pcl16::PointXYZ approach_pt(sample_pt.x - std::cos(center_angle)*approach_dist,
                               sample_pt.y - std::sin(center_angle)*approach_dist, 0.0);
   pcl16::PointXYZ e_vect(std::cos(center_angle+M_PI/2.0)*radius,
@@ -324,13 +446,13 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   float radius = sample_spread / 2.0;
   pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
   float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
-  float approach_dist = 0.15;
+  float approach_dist = 0.05;
   pcl16::PointXYZ approach_pt(sample_pt.x - std::cos(center_angle)*approach_dist,
                               sample_pt.y - std::sin(center_angle)*approach_dist, 0.0);
   pcl16::PointXYZ e_vect(std::cos(center_angle+M_PI/2.0)*radius,
                          std::sin(center_angle+M_PI/2.0)*radius, 0.0);
-  pcl16::PointXYZ e_left(approach_pt.x + e_vect.x, approach_pt.y + e_vect.y, 0.0);
-  pcl16::PointXYZ e_right(approach_pt.x - e_vect.x, approach_pt.y - e_vect.y, 0.0);
+  pcl16::PointXYZ e_left(sample_pt.x + e_vect.x, sample_pt.y + e_vect.y, 0.0);
+  pcl16::PointXYZ e_right(sample_pt.x - e_vect.x, sample_pt.y - e_vect.y, 0.0);
   pcl16::PointXYZ c_left(center_pt.x + std::cos(center_angle)*approach_dist + e_vect.x,
                          center_pt.y + std::sin(center_angle)*approach_dist + e_vect.y, 0.0);
   pcl16::PointXYZ c_right(center_pt.x + std::cos(center_angle)*approach_dist - e_vect.x,
@@ -547,8 +669,9 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // Copy to new cloud and return
   XYZPointCloud local_samples;
   pcl16::copyPointCloud(hull, indices, local_samples);
-  drawSamplePoints(hull, local_samples, center_pt, sample_pt, approach_pt, e_left, e_right,
-                   c_left, c_right, hull[min_l_idx], hull[min_r_idx]);
+  float x_res = 0.01, y_res=0.01, x_range=2.0*sample_spread, y_range=2.0*sample_spread;
+  drawSamplePoints(hull, local_samples, alpha, center_pt, sample_pt, approach_pt, e_left, e_right,
+                   c_left, c_right, hull[min_l_idx], hull[min_r_idx], x_res, y_res, x_range, y_range, cur_obj);
   return local_samples;
 }
 
@@ -560,7 +683,7 @@ XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoOb
   float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
   for (int i = 0; i < samples.size(); ++i)
   {
-    // TODO: Remove mean and rotate based on pushing_direction
+    // Remove mean and rotate based on pushing_direction
     pcl16::PointXYZ demeaned(samples[i].x - sample_pt.x, samples[i].y - sample_pt.y, samples[i].z);
     double ct = std::cos(center_angle);
     double st = std::sin(center_angle);
@@ -568,7 +691,6 @@ XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoOb
     samples_transformed[i].y = -st*demeaned.x + ct*demeaned.y;
     samples_transformed[i].z = demeaned.z;
   }
-  // TODO: Display these to check them
   return samples_transformed;
 }
 
@@ -578,7 +700,6 @@ ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, flo
   int n_x_bins = ceil(x_range/x_res);
   int n_y_bins = ceil(y_range/y_res);
   ShapeDescriptor hist(n_y_bins*n_x_bins, 0);
-  // TODO: Get x and y
   // Assume demeaned
   for (int i = 0; i < samples.size(); ++i)
   {
@@ -737,7 +858,6 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
   extractBoundingBoxFeatures(transformed_pts, sd);
 
   // Get histogram to describe local distribution
-  // TODO: Figure out the correct range and resolution
   ShapeDescriptor histogram = extractPointHistogramXY(transformed_pts, hist_res, hist_res,
                                                       sample_spread*2, sample_spread*2);
   sd.insert(sd.end(), histogram.begin(), histogram.end());

@@ -48,8 +48,11 @@ ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center =
 ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl,
                                               ProtoObject& cur_obj, bool use_center);
 
-cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples,
-                                                             float x_res, float y_res);
+XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoObject& cur_obj,
+                                                 pcl16::PointXYZ sample_pt);
+
+cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, float y_res, float x_range,
+                                                             float y_range);
 
 
 XYZPointCloud getLocalSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
