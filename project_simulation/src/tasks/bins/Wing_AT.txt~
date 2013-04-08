@@ -1,0 +1,6 @@
+#bin_id
+6
+#parts sequence: <part name> <mean> <std-dev>
+wing_at1 3.8333 0.17321
+wing_at2 3.6 0.20276
+wing_at3 9.7889 1.3509

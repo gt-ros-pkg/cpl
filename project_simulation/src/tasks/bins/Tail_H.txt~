@@ -1,0 +1,9 @@
+#bin_id
+4
+#parts sequence: <part name> <mean> <std-dev>
+tail_h1 4.5111 1.2509
+tail_h2 3.9778 0.69469
+tail_h3 8.1889 1.9979
+tail_h4 2.3111 0.22194
+tail_h5 2.5889 0.31505
+tail_h6 6.1333 0.55076
