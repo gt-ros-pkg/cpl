@@ -1,0 +1,8 @@
+<launch>
+    <node pkg="arm_3d_cb_calib" name="grab_cbs" type="grab_cb_data.py"
+          args="$(find cpl_collab_manip)/config/large_cb_config.yaml $(find cpl_collab_manip)/cbs.bag" output="screen" >
+        <param name="is_kinect" value="True" />
+        <remap from="/camera" to="/kinect0/rgb/image_mono" />
+        <remap from="/pc" to="/kinect0/depth_registered/points" />
+    </node>
+</launch>

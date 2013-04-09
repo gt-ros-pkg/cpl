@@ -21,6 +21,10 @@ class SplineTraj(object):
         qsamp = np.array([self.splines[i].sample(t) for i in range(6)])
         return qsamp[:,0], qsamp[:,1], qsamp[:,2]
 
+    def max_values(self):
+        max_vals = np.array([self.splines[i].max_values() for i in range(6)])
+        return max_vals[:,0], max_vals[:,1], max_vals[:,2], max_vals[:,3] 
+
     def to_trajectory_msg(self):
         msg = JointTrajectory()
         msg.header.stamp = rospy.Time.now()

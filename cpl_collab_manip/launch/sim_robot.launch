@@ -1,12 +1,13 @@
 <launch>
   <include file="$(find cpl_collab_manip)/launch/load_urdf.launch" />
   <!--
+  <include file="$(find cpl_collab_manip)/launch/load_sensors.launch" />
   <param name="/rate" value="125" />
   <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" ></node>
   -->
 
   <node name="ur_sim_sim1" pkg="ur_cart_move" type="ur_arm_sim.py"  output="screen">
-    <param name="use_gui" value="true"/>
+    <param name="use_gui" value="false"/>
     <param name="prefix" value="/sim1"/>
   </node>
   <node name="sim1_state_publisher" pkg="robot_state_publisher" type="state_publisher">

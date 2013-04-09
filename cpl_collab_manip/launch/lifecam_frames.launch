@@ -1,0 +1,5 @@
+<launch>
+    <arg name="name" default="lifecam1" />
+    <node pkg="tf" type="static_transform_publisher" name="$(arg name)_tf_calibration"
+               args="0.260675 0.037183 1.903672 0.543750 0.819747 -0.141930 -0.110487 /base_link /$(arg name)_optical_frame 10" />
+</launch>
