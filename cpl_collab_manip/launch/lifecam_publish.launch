@@ -1,9 +1,10 @@
 <launch>
     <!--<include file="$(find cpl_collab_manip)/launch/lifecam_frames.launch" />-->
-    <machine name="snail" address="snail" env-loader="/home/corob/env_loader.sh" user="corob" />
+    <!--<machine name="snail" address="snail" env-loader="/home/corob/env_loader.sh" user="corob" />-->
     <arg name="name" default="lifecam1" />
     <arg name="dev_ind" default="0" />
-    <node machine="snail" pkg="usb_cam" name="$(arg name)_publish" type="usb_cam_node" >
+    <!--<node machine="snail" pkg="usb_cam" name="$(arg name)_publish" type="usb_cam_node" >-->
+    <node pkg="usb_cam" name="$(arg name)_publish" type="usb_cam_node" >
         <param name="video_device" value="/dev/video$(arg dev_ind)" />
         <param name="image_width" value="1280" />
         <param name="image_height" value="720" />
