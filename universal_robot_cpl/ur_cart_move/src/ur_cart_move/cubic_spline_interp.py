@@ -82,6 +82,8 @@ class CubicSpline(object):
     def view(self):
         y, yd, ydd = np.zeros(3000), np.zeros(3000), np.zeros(3000)
         ts = np.linspace(self.tk[0],self.tk[-1],3000)
+        my, myd, mydd, myddd = self.max_values()
+        print 'Max y: %4f, Max yd: %4f, Max ydd: %4f, Max yddd: %4f' % (my, myd, mydd, myddd)
         for i, t in enumerate(ts):
             y[i], yd[i], ydd[i] = self.sample(t)
         import matplotlib.pyplot as plt
@@ -89,13 +91,45 @@ class CubicSpline(object):
         plt.subplot(311)
         plt.plot(ts,ydd)
         plt.plot(self.tk,self.qdd,'go')
+        plt.plot([ts[0],ts[-1]],[mydd,mydd],'r')
+        plt.plot([ts[0],ts[-1]],[-mydd,-mydd],'r')
         plt.subplot(312)
         plt.plot(ts,yd)
         plt.plot(self.tk,self.qd,'go')
+        plt.plot([ts[0],ts[-1]],[myd,myd],'r')
+        plt.plot([ts[0],ts[-1]],[-myd,-myd],'r')
         plt.subplot(313)
         plt.plot(ts,y)
         plt.plot(self.tk,self.q,'go')
+        plt.plot([ts[0],ts[-1]],[my,my],'r')
+        plt.plot([ts[0],ts[-1]],[-my,-my],'r')
         plt.show()
+
+    def max_values(self):
+        tk = self.tk
+        max_y, max_yd, max_ydd, max_yddd = 0., 0., 0., 0.
+        for k in range(len(tk)-2):
+            A, B, C, D = self.A[k], self.B[k], self.C[k], self.D[k]
+            dtk = tk[k+1]-tk[k]
+            max_yddd = np.max([max_yddd, abs(B - A)])
+            max_ydd = np.max([max_ydd, abs(A*dtk), abs(B*dtk)])
+            if np.allclose(B - A, 0.) or np.sign(B) == np.sign(A):
+                tmid = tk[k]
+            else:
+                tmid = (B*tk[k] - A*tk[k+1]) / (B - A)
+            max_yd = np.max([max_yd] + [abs(-A/2*(tk[k+1]-t)**2 + B/2*(t-tk[k])**2 + C) 
+                                        for t in [tk[k], tmid, tk[k+1]]])
+            det = A*B*tk[k]**2 - 2*A*B*tk[k]*tk[k+1] + A*B*tk[k+1]**2 + 2*A*C - 2*B*C
+            if det >= 0.:
+                t1 = (A*tk[k+1] - B*tk[k] + np.sqrt(det))/(A - B)
+                t2 = (A*tk[k+1] - B*tk[k] - np.sqrt(det))/(A - B)
+            else:
+                t1, t2 = tk[k], tk[k+1]
+            for t in [tk[k], t1, t2, tk[k+1]]:
+                t = np.clip(t, tk[k], tk[k+1])
+                y = A/6*(tk[k+1]-t)**3 + B/6*(t-tk[k])**3 + C*t + D
+                max_y = max(max_y, abs(y))
+        return max_y, max_yd, max_ydd, max_yddd
 
     @staticmethod
     def generate(t, q, qd_i=0., qd_f=0., qdd_i=0., qdd_f=0.):

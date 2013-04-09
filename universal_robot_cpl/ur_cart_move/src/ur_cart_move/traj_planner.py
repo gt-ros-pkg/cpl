@@ -54,18 +54,26 @@ class TrajPlanner(object):
     def __init__(self, kin):
         self.kin = kin
 
-    def interpolate_ik(self, q_init, x_goal, s_knots):
+    def interpolate_ik(self, q_init, x_goal, s_knots, 
+                       qd_max=[1.]*6, q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi]):
         x_init = self.kin.forward(q_init)
         q_pts = []
         q_prev = q_init
         for s in s_knots:
             x_cur = pose_interp(x_init, x_goal, s)
-            #q_pt = self.kin.inverse(x_cur, q_prev)
-            q_pt = self.kin.inverse_rand_search(x_cur, q_prev,
-                                                pos_tol=0.001, rot_tol=np.deg2rad(1.))
+            q_pt = self.kin.inverse(x_cur, q_prev, q_min=q_min, q_max=q_max)
+            #q_pt = self.kin.inverse_rand_search(x_cur, q_prev,
+            #                                    pos_tol=0.001, rot_tol=np.deg2rad(1.))
             if q_pt is None:
-                print x_init
-                print "IK failed", q_pts, x_cur
+                print "IK failed, no solution found"
+                print 'q_pts', q_pts
+                print 'x_cur', x_cur
+                return None
+            if np.any(np.abs(q_pt - q_prev) > qd_max):
+                print "IK failed, joint difference too high"
+                print 'q_pt', q_pt
+                print 'q_pts', q_pts
+                print 'x_cur', x_cur
                 return None
             q_pts.append(q_pt)
             q_prev = q_pt
@@ -73,7 +81,8 @@ class TrajPlanner(object):
         return q_pts
 
     def min_jerk_interp_ik(self, q_init, x_goal, dur, 
-                           vel_i=0., vel_f=0., max_dx=0.03, min_dt=0.2, rot_bias=0.15):
+                           vel_i=0., vel_f=0., max_dx=0.03, min_dt=0.2, rot_bias=0.15,
+                           qd_max=[1.]*6, q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi]):
         s_i, s_f, sdd_i, sdd_f = 0., 1., 0., 0.
         x_init = self.kin.forward(q_init)
         pos_delta, ang_delta, axis_delta, point_delta = pose_diff(x_goal, x_init)
@@ -103,6 +112,31 @@ class TrajPlanner(object):
         t_knots, s_knots = sample_min_jerk_knots(s_i, sd_i, sdd_i, s_f, sd_f, sdd_f, 
                                                  dur, max_dx, min_dt)
         #print s_knots, 'snots'*10
-        q_waypts = self.interpolate_ik(q_init, x_goal, s_knots)
+        q_waypts = self.interpolate_ik(q_init, x_goal, s_knots, 
+                                       qd_max=qd_max, q_min=q_min, q_max=q_max)
+        if q_waypts is None:
+            return None, None
         return np.array(t_knots), np.array(q_waypts)
+
+    def min_jerk_interp_q(self, q_init, q_goal, dur,
+                          vel_i=0., vel_f=0., max_dq=0.01, min_dt=0.2):
+        t_knots, s_knots = sample_min_jerk_knots(0., vel_i, 0., 1., vel_f, 0., 
+                                                 dur, max_dq, min_dt)
+        q_waypts = self.interpolate_q(q_init, q_goal, s_knots)
+        return np.array(t_knots), np.array(q_waypts)
+
+    # muliplies weights times joint differences to find maximum scaled joint difference
+    # finds the duration from the average velocity and joint difference
+    def min_jerk_interp_q_vel(self, q_init, q_goal, vel,
+                              q_weights=[0.8, 1.0, 0.8, 0.3, 0.2, 0.1], 
+                              vel_i=0., vel_f=0., max_dq=0.01, min_dt=0.2):
+        dur = np.max(np.abs((q_goal - q_init)*q_weights)) / vel
+        return self.min_jerk_interp_q(q_init, q_goal, dur,
+                                      vel_i=vel_i, vel_f=vel_f, max_dq=max_dq, min_dt=min_dt)
+
+    def interpolate_q(self, q_init, q_final, s_knots):
+        q_init, q_final = np.array(q_init), np.array(q_final)
+        print 'yo '*50
+        print q_init, q_final
+        return np.array([q_init + (q_final - q_init)*s for s in s_knots])
 

@@ -6,6 +6,8 @@ from openravepy import *
 
 import roslib
 roslib.load_manifest("ur_cart_move")
+roslib.load_manifest("ur_controller_manager")
+roslib.load_manifest("hrl_geom")
 
 import rospy
 import roslaunch.substitution_args
@@ -21,6 +23,8 @@ from ur_controller_manager.msg import URJointCommand, URModeStates, URJointState
 
 roslib.load_manifest("pykdl_utils")
 from pykdl_utils.kdl_kinematics import create_kdl_kin
+
+from ur_analytical_ik import inverse_kin, UR10_A, UR10_D, UR10_L
 
 class RAVEKinematics(object):
     def __init__(self, robot_file='$(find ur10_description)/ur10_robot.dae', load_ik=True):
@@ -83,7 +87,13 @@ class RAVEKinematics(object):
                     # just keep trying random joint configs after initial guess
                     self.robot.SetDOFValues(2*(np.random.rand(6)-0.5)*(2*np.pi))
                 #ikparam = IkParameterization(x.A, self.ikmodel6d)
-                sols = self.manip.FindIKSolutions(x.A, ik_options)
+                if False:
+                    # use OpenRave
+                    sols = self.manip.FindIKSolutions(x.A, ik_options)
+                else:
+                    # use analytic
+                    sols = inverse_kin(x, UR10_A, UR10_D, UR10_L, q_guess[5])
+                    #print sols
                 valid_sols = []
                 for sol in sols:
                     test_sol = np.ones(6)*9999.
@@ -95,7 +105,12 @@ class RAVEKinematics(object):
                                 abs(test_ang - q_guess[i]) < abs(test_sol[i] - q_guess[i])):
                                 test_sol[i] = test_ang
                     if np.all(test_sol != 9999.):
-                        valid_sols.append(test_sol)
+                        if True:
+                            # sanity check for inverse_kin stuff
+                            if np.allclose(np.linalg.inv(self.forward(test_sol)) * x, np.eye(4)):
+                                valid_sols.append(test_sol)
+                        else:
+                            valid_sols.append(test_sol)
                 if len(valid_sols) > 0:
                     break
             if len(valid_sols) == 0:
@@ -160,6 +175,12 @@ class ArmInterface(object):
     JOINT_NAMES = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 
                    'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
     def __init__(self, timeout=3., topic_prefix=""):
+        if topic_prefix == '/':
+            topic_prefix = ''
+        if topic_prefix == '':
+            print_prefix = '/'
+        else:
+            print_prefix = topic_prefix
         self.joint_state_inds = None
         self.joint_states = None 
         self.ur_joint_states = None 
@@ -175,7 +196,11 @@ class ArmInterface(object):
         self.tcp_payload_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp_payload", Float64)
         self.tcp_wrench_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp_wrench", Wrench)
 
-        self.wait_for_states(timeout)
+        print "%s UR arm: Connecting interface" % print_prefix
+        if not self.wait_for_states(timeout) and timeout > 0.:
+            print "%s UR arm: Unable to connect" % print_prefix
+        else:
+            print "%s UR arm: Succesfully connected" % print_prefix
 
     def wait_for_states(self, timeout=10.):
         start_time = rospy.get_time()
@@ -233,23 +258,26 @@ class ArmInterface(object):
     # wrench felt by the end effector in the base link
     def set_felt_wrench(self, wrench):
         w = Wrench()
-        w.linear.x, w.linear.y, w.linear.z  = wrench[0], wrench[1], wrench[2]
-        w.angular.x, w.angular.y, w.angular.z  = wrench[3], wrench[4], wrench[5]
+        w.force.x, w.force.y, w.force.z  = wrench[0], wrench[1], wrench[2]
+        w.torque.x, w.torque.y, w.torque.z  = wrench[3], wrench[4], wrench[5]
         self.tcp_wrench_pub.publish(w)
 
     def cmd_empty(self, qd):
         cmd = URJointCommand()
+        cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_EMPTY
         self.joint_cmd_pub.publish(cmd)
 
     def cmd_vel(self, qd):
         cmd = URJointCommand()
+        cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_VELOCITY
         cmd.qd_des = qd
         self.joint_cmd_pub.publish(cmd)
 
     def cmd_pos_vel_acc(self, q, qd, qdd):
         cmd = URJointCommand()
+        cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_POS_VEL_ACC
         cmd.q_des = np.array(q).tolist()
         cmd.qd_des = np.array(qd).tolist()

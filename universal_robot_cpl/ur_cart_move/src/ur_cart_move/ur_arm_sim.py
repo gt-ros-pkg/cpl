@@ -81,11 +81,14 @@ class ArmSimulator(object):
 
     def _ur_joint_command_cb(self, cmd):
         with self.lock:
-            self.q_des = list(cmd.q_des)
-            self.qd_des = list(cmd.qd_des)
-            self.qdd_des = list(cmd.qdd_des)
-            for i, name in enumerate(ArmSimulator.JOINT_NAMES):
-                self.free_joints[name]['value'] = self.q_des[i]
+            if not np.any(np.isnan(cmd.q_des)):
+                self.q_des = list(cmd.q_des)
+                for i, name in enumerate(ArmSimulator.JOINT_NAMES):
+                    self.free_joints[name]['value'] = self.q_des[i]
+            if not np.any(np.isnan(cmd.qd_des)):
+                self.qd_des = list(cmd.qd_des)
+            if not np.any(np.isnan(cmd.qdd_des)):
+                self.qdd_des = list(cmd.qdd_des)
             if self.gui is not None:
                 wx.PostEvent(self.gui, ResultEvent(None))
                 #self.gui.update_sliders()
