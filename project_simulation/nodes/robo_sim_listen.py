@@ -30,6 +30,9 @@ task_done = False
 task_cnt =0
 frame_of_reference = '/lifecam1_optical_frame'
 
+#work-space
+work_space = ['L0', 'L1', 'L2']
+
 #possible locations
 slocations = [ 
          { 'name' : 'L5' , 'position' : (-0.694954464364,0.264302079631,1.99317972681) , 'orientation' : (0.0864803654147,0.979654035105,-0.178136413992,0.0326578614002)},
@@ -92,8 +95,11 @@ endfactor_rest = [0.226263331563,0.225740063166,1.17398472964]
 endfactor_cur_pos = [0.226263331563,0.225740063166,1.17398472964]
 endfactor_cur_bin = -1 #bin held by endfactor, -1 denotes none
 
+performing_task = False
+
 endfactor_fix_orientation = [0.0, 1.0, 0.0, 0.0]
 
+#populate bin lists and empty lists
 def listen_bin_loc(bin_loc_msg):
     global cur_bin_list, empty_locations, slocations
 
@@ -112,45 +118,8 @@ def listen_bin_loc(bin_loc_msg):
         else:
             empty_locations.append(temp_bin_msg.location.data)
     
-
-    '''#populate empty locations
-    empty_locations = []
-    for slocation in slocations:
-        bin_in_loc = False
-        for cur_bin in cur_bin_list:
-            if cur_bin['location'] == slocation['name']:
-                bin_in_loc = True
-                break
-        if not bin_in_loc:
-            empty_locations.append(slocation['name'])'''
-
     return
 
-    '''
-    #debug
-    print "******BINS********"
-    for t_bin in cur_bin_list:
-        print "bin, loc" + str(t_bin['id']) + ' , ' + str(t_bin['location']) 
-        
-    print "******EMPTY********"
-    for e_loc in empty_locations:
-        print "loc  : " + e_loc 
-    '''
-
-#check whether position received matches to stored location within 15 percent
-def check_pos_match(pos_tup, pos_point):
-    perc_x = 5*abs(pos_point.x/100)
-    perc_y = 5*abs(pos_point.y/100)
-    perc_z = 5*abs(pos_point.z/100)
-    
-    if (abs(pos_tup[0]-pos_point.x) > perc_x):
-        return False
-    if (abs(pos_tup[1]-pos_point.y) > perc_y):
-        return False
-    if (abs(pos_tup[2]-pos_point.z) > perc_z):
-        return False
-    
-    return True
 
 #perform tasks in list
 def do_tasks():
@@ -302,28 +271,6 @@ def pub_add_bin(bin_to_add, bin_location):
     
     pub_bin_adder.publish(msg)
 
-    '''bin_position = get_location(bin_location)
-
-    temp_msg = proj_simul.msg.AlvarMarker()
-    temp_msg.id = bin_to_add
-    temp_msg.header.frame_id = frame_of_reference
-    temp_msg.pose.header.frame_id = frame_of_reference
-
-
-    temp_msg.pose.pose.orientation.x = endfactor_fix_orientation[0]
-    temp_msg.pose.pose.orientation.y = endfactor_fix_orientation[1]
-    temp_msg.pose.pose.orientation.z = endfactor_fix_orientation[2]
-    temp_msg.pose.pose.orientation.w = endfactor_fix_orientation[3]
-
-    temp_msg.pose.pose.position.x = bin_position[0]
-    temp_msg.pose.pose.position.y = bin_position[1]
-    temp_msg.pose.pose.position.z = bin_position[2]   
-
-    #debug
-    print 'The message'
-    print temp_msg
-    time.sleep(100)
-    pub_bin_adder.publish(temp_msg)'''
 
 #move the endfactor, no bin to move
 def move_endf(target_loc_name, to_rest=False):
@@ -378,7 +325,7 @@ def calc_euclid(vec_one, vec_two):
 
 #publish current endfactor position
 def pub_endfactor():
-    global endfactor_cur_pos, endfactor_fix_orientation, endf_pub
+    global endfactor_cur_pos, endfactor_fix_orientation, endf_pub, endfactor_cur_bin
 
     temp_msg = geometry_msgs.msg.PoseStamped()
     temp_msg.header.frame_id = frame_of_reference
@@ -450,7 +397,7 @@ def listen_tasks(task_msg):
                               'bin_id' : task_msg.bin_id})
     
     return
-        
+
 
 if __name__=='__main__':
     
@@ -467,32 +414,53 @@ if __name__=='__main__':
     
     endf_viz_pub = rospy.Publisher('endfactor_visual', visualization_msgs.msg.Marker)
     
-    task_listen = rospy.Subscriber('move_bin', project_simulation.msg.move_bin, listen_tasks)
+    task_listen_sub = rospy.Subscriber('move_bin', project_simulation.msg.move_bin, listen_tasks)
     
-    #input tasks
-    keep_doing = True
+    loop_rate = rospy.Rate(PUB_RATE)
     
-    while(keep_doing):
-        more = False
-        inps = raw_input('Add Task: <bin_id> <location> <delay>')
-        inps = inps.rsplit(' ')
-        #TODO: take inputs proper
-        task_list.append({'bin_id':int(inps[0]), 'location':inps[1], 'delay':float(inps[2])})
-        
-        inps = raw_input('Add more(y/n)')
-        if inps[0] == 'y':
-            more = True
-        
-        done = False
-        #do tasks in list
-        if not more:
-            while ((not rospy.is_shutdown()) and (not done)):
-                done = do_tasks()
-            inps = raw_input('Do more tasks?(y/n)')
-            if not inps == 'y':
-                keep_doing = False
+    while not rospy.shutdown():
+        #no task to do publish current pos
+        if task_list.__len__() == 0:
+            pub_endf()
+        else:
+            cur_task = task_list[0]
+            if performing_task and not (endfactor_cur_bin == cur_task['bin_id']):
+                task_list.pop(0)
+                pub_endf()
+                loop_rate.sleep()
+                
             else:
-                task_list = []
-                task_cnt = 0
-    
-    #TODO: listen to hand positions
+                if not performing_task:
+                    performing_task = True
+                    
+                    targ_bin_cur_loc
+                    bin_not_found = True
+
+                    #find bin
+                    for cur_bin in cur_bin_list:
+                        if cur_bin['id'] == cur_task['bin_id']:
+                            targ_bin_cur_loc = cur_bin['location']
+                            bin_not_found = False
+                            break
+                        
+                    if bin_not_found:
+                        if endfactor_cur_bin >-1:
+                            continue
+                        else:
+                            performing_task = False
+                            continue
+
+                    #move endfactor to bin
+                    move_endf(targ_bin_cur_loc)
+                    
+                    if cur_task['move_workspace']:
+                        #check if empty work-space
+                        empty_work, target_loc = find_work_spot()
+#find 
+                        
+
+
+
+
+
+
