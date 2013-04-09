@@ -3,6 +3,9 @@
 #include <ros/ros.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <sensor_msgs/JointState.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Wrench.h>
+#include <std_msgs/Float64.h>
 #include "ur_ctrl_iface/robotinterface.h"
 #include "ur_ctrl_iface/Configuration.h"
 #include "ur_ctrl_iface/microprocessor_commands.h"
@@ -73,7 +76,7 @@ int wait_robot_mode(int mode, int retries);
 // returns 0 if successful
 int powerup_robot(int max_attempts, int retries);
 // returns 0 if successful
-int initialize_joints(double delta_move);
+int initialize_joints(double* delta_move);
 
 const double zero_vector[6] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
 
@@ -86,9 +89,15 @@ class URController
     realtime_tools::RealtimePublisher<ur_controller_manager::URModeStates> mode_pub;
     ros::Subscriber cmd_joint_sub;
     ros::Subscriber cmd_mode_sub;
+    ros::Subscriber set_tcp_sub;
+    ros::Subscriber set_tcp_payload_sub;
+    ros::Subscriber set_tcp_wrench_sub;
     int64_t loop_counter;
     int64_t latest_cmd_loop;
     bool was_emergency_stopped;
+    bool change_tcp;
+    bool change_tcp_payload;
+    bool change_tcp_wrench;
 
     /////////////////////////// Robot Joint States ////////////////////////////
     double q_act[6];
@@ -108,6 +117,8 @@ class URController
     double i_des[6];
     double moment_des[6];
     double tcp_wrench[6];
+    double tcp_pose[6];
+    double tcp_payload;
     ///////////////////////////////////////////////////////////////////////////
 
     //////////////////////////// Robot Mode States ////////////////////////////
@@ -143,7 +154,12 @@ class URController
     char joint_code;
     int error_state;
     int error_argument;
+    double set_tcp[6];
+    double set_tcp_payload;
+    double set_tcp_wrench[6];
     ///////////////////////////////////////////////////////////////////////////
+
+    double last_q_cmd[6];
 
   public:
     URController(ros::NodeHandle* _nh);
@@ -154,9 +170,12 @@ class URController
     void commandJoints();
     void commandModes();
     void resetModes();
-    void initializeJoints(double joint_delta);
+    void initializeJoints(double* joint_delta);
     void cmdJointCallback(const URJointCommand::ConstPtr& cmd);
     void cmdModeCallback(const URModeCommand::ConstPtr& cmd);
+    void setTCPCallback(const geometry_msgs::Twist::ConstPtr& tcp_msg);
+    void setTCPPayloadCallback(const std_msgs::Float64::ConstPtr& tcp_payload_msg);
+    void setTCPWrench(const geometry_msgs::Wrench::ConstPtr& tcp_wrench_msg);
     void startRobot();
     void controlLoop();
 };
@@ -168,7 +187,10 @@ URController::URController(ros::NodeHandle* _nh) :
   mode_pub(*_nh, "/ur_mode_states", 1),
   loop_counter(0),
   latest_cmd_loop(-10000),
-  was_emergency_stopped(false)
+  was_emergency_stopped(false),
+  change_tcp(false),
+  change_tcp_payload(false),
+  change_tcp_wrench(false)
 {
   js_pub.msg_.name.resize(6);
   js_pub.msg_.position.resize(6,-9999.0);
@@ -181,6 +203,12 @@ URController::URController(ros::NodeHandle* _nh) :
                                            &URController::cmdJointCallback, this);
   cmd_mode_sub = _nh->subscribe<URModeCommand>("/ur_mode_command", 10, 
                                            &URController::cmdModeCallback, this);
+  set_tcp_sub = _nh->subscribe<geometry_msgs::Twist>("/ur_set_tcp", 1, 
+                                           &URController::setTCPCallback, this);
+  set_tcp_payload_sub = _nh->subscribe<std_msgs::Float64>("/ur_set_tcp_payload", 1, 
+                                           &URController::setTCPPayloadCallback, this);
+  set_tcp_wrench_sub = _nh->subscribe<geometry_msgs::Wrench>("/ur_set_tcp_wrench", 1, 
+                                           &URController::setTCPWrench, this);
   cmd_mode = 20;
 
   printf("Loading robot configuration...");
@@ -208,6 +236,8 @@ void URController::getRobotStates()
   robotinterface_get_target_current(i_des);
   robotinterface_get_target_moment(moment_des);
   robotinterface_get_tcp_wrench(tcp_wrench);
+  robotinterface_get_tcp(tcp_pose);
+  tcp_payload = robotinterface_get_tcp_payload();
 
   // mode states
   robot_mode_id = robotinterface_get_robot_mode();
@@ -260,12 +290,14 @@ void URController::pubRobotStates()
       state_pub.msg_.qdd_des[i] = qdd_des[i];
       state_pub.msg_.i_des[i] = i_des[i];
       state_pub.msg_.tcp_wrench[i] = tcp_wrench[i];
+      state_pub.msg_.tcp_pose[i] = tcp_pose[i];
       state_pub.msg_.acc_x[i] = acc_x[i];
       state_pub.msg_.acc_y[i] = acc_y[i];
       state_pub.msg_.acc_z[i] = acc_z[i];
       state_pub.msg_.moment_des[i] = moment_des[i];
     }
     state_pub.msg_.tcp_force_scalar = tcp_force_scalar;
+    state_pub.msg_.tcp_payload = tcp_payload;
     state_pub.msg_.power = power;
 
     state_pub.msg_.header.stamp = now;
@@ -298,7 +330,7 @@ void URController::pubRobotStates()
   }
 }
 
-void URController::initializeJoints(double joint_delta)
+void URController::initializeJoints(double* joint_delta)
 {
   printf("Initializing robot\n");
   if(initialize_joints(joint_delta)) {
@@ -306,6 +338,12 @@ void URController::initializeJoints(double joint_delta)
       printf("Unable to initialize robot\n");
       exit(EXIT_FAILURE);
   }
+  /*
+  robotinterface_read_state_blocking();
+  robotinterface_get_target(last_q_cmd, qd_des, qdd_des);
+  robotinterface_command_position_velocity_acceleration(last_q_cmd, qd_des, qdd_des);
+  robotinterface_send();
+  */
   printf("Robot initialized\n\n\n\n");
 }
 
@@ -347,10 +385,13 @@ void URController::startRobot()
 
 void URController::commandJoints()
 {
-  if(robot_mode_id != ROBOT_RUNNING_MODE)
+  if(robot_mode_id != ROBOT_RUNNING_MODE) {
     robotinterface_command_empty_command();
+    //robotinterface_command_position_velocity_acceleration(last_q_cmd, zero_vector, zero_vector);
+  }
   if(loop_counter - latest_cmd_loop >= CMD_TIMEOUT) {
     robotinterface_command_velocity(zero_vector);
+    //robotinterface_command_position_velocity_acceleration(last_q_cmd, zero_vector, zero_vector);
 #if 0
     if(loop_counter % CONTROL_RATE*10 == 0)
       printf("No command, loop_counter: %d, latest_cmd_loop: %d\n", loop_counter, latest_cmd_loop);
@@ -362,9 +403,12 @@ void URController::commandJoints()
     robotinterface_command_empty_command();
   else if(cmd_mode == URJointCommand::CMD_VELOCITY)
     robotinterface_command_velocity(qd_cmd);
-  else if(cmd_mode == URJointCommand::CMD_POS_VEL_ACC)
+  else if(cmd_mode == URJointCommand::CMD_POS_VEL_ACC) {
     robotinterface_command_position_velocity_acceleration(q_cmd, qd_cmd, qdd_cmd);
+    for(int i=0;i<6;i++) last_q_cmd[i] = q_cmd[i];
+  }
   else {
+    //robotinterface_command_position_velocity_acceleration(q_des, zero_vector, zero_vector);
     robotinterface_command_empty_command();
     if(loop_counter % CONTROL_RATE*1 == 0)
       printf("Bad cmd_mode: %d\n", cmd_mode);
@@ -383,6 +427,18 @@ void URController::commandModes()
     robotinterface_unlock_security_stop();
   if(security_stop)
     robotinterface_security_stop(joint_code, error_state, error_argument);
+  if(change_tcp) {
+    change_tcp = false;
+    robotinterface_set_tcp(set_tcp);
+  }
+  if(change_tcp_payload) {
+    change_tcp_payload = false;
+    robotinterface_set_tcp_payload(set_tcp_payload);
+  }
+  if(change_tcp_wrench) {
+    change_tcp_wrench = false;
+    robotinterface_set_tcp_wrench(set_tcp_wrench, true);
+  }
 }
 
 void URController::resetModes()
@@ -420,6 +476,34 @@ void URController::cmdModeCallback(const URModeCommand::ConstPtr& cmd)
   }
 }
 
+void URController::setTCPCallback(const geometry_msgs::Twist::ConstPtr& tcp_msg)
+{
+  change_tcp = true;
+  set_tcp[0] = tcp_msg->linear.x;
+  set_tcp[1] = tcp_msg->linear.y;
+  set_tcp[2] = tcp_msg->linear.z;
+  set_tcp[3] = tcp_msg->angular.x;
+  set_tcp[4] = tcp_msg->angular.y;
+  set_tcp[5] = tcp_msg->angular.z;
+}
+
+void URController::setTCPPayloadCallback(const std_msgs::Float64::ConstPtr& tcp_payload_msg)
+{
+  change_tcp_payload = true;
+  set_tcp_payload = tcp_payload_msg->data;
+}
+
+void URController::setTCPWrench(const geometry_msgs::Wrench::ConstPtr& tcp_wrench_msg)
+{
+  change_tcp_wrench = true;
+  set_tcp_wrench[0] = tcp_wrench_msg->force.x;
+  set_tcp_wrench[1] = tcp_wrench_msg->force.y;
+  set_tcp_wrench[2] = tcp_wrench_msg->force.z;
+  set_tcp_wrench[3] = tcp_wrench_msg->torque.x;
+  set_tcp_wrench[4] = tcp_wrench_msg->torque.y;
+  set_tcp_wrench[5] = tcp_wrench_msg->torque.z;
+}
+
 void URController::controlLoop()
 {
   while(ros::ok()) {
@@ -438,8 +522,8 @@ void URController::controlLoop()
     pubRobotStates();
     resetModes();
     ros::spinOnce();
-    robotinterface_set_tcp(zero_vector);
-    robotinterface_set_tcp_payload(3.0);
+    //robotinterface_set_tcp(zero_vector);
+    //robotinterface_set_tcp_payload(3.0);
     commandJoints();
     commandModes();
     robotinterface_send();
@@ -508,7 +592,7 @@ int powerup_robot(int max_attempts, int retries)
   return -1;
 }
 
-int initialize_joints(double delta_move)
+int initialize_joints(double* delta_move)
 {
   int i=0,j;
   double speed_vector[6];
@@ -520,7 +604,7 @@ int initialize_joints(double delta_move)
       //speed_vector[j] = 0.25 * sin(((double)i) / 80.0);
       speed_vector[j] = (robotinterface_get_joint_mode(j) == 
           JOINT_INITIALISATION_MODE || robotinterface_get_joint_mode(j) ==
-          JOINT_IDLE_MODE) ? delta_move : 0.0;
+          JOINT_IDLE_MODE) ? delta_move[j] : 0.0;
     }
     i++;
     robotinterface_command_velocity(speed_vector);
@@ -536,11 +620,21 @@ using namespace ur_controller_manager;
 int main(int argc, char* argv[])
 {
   string name = "ur_controller";
-  if(argc < 2) {
-    printf("Need joint delta\n");
-    return -1;
+  double joint_delta[6];
+  if(argc == 2) {
+    for(int j=0;j<6;j++)
+      joint_delta[j] = atof(argv[1]);
   }
-  double joint_delta = atof(argv[1]);
+  else {
+    if(argc == 7) {
+      for(int j=0;j<6;j++)
+        joint_delta[j] = atof(argv[1+j]);
+    }
+    else {
+      printf("Need joint deltas\n");
+      return -1;
+    }
+  }
 
   // Make this thread RT priority
   struct sched_param sch_param;

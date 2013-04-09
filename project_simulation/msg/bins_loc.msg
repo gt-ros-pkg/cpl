@@ -1,0 +1,1 @@
+bin_loc[] bin_array

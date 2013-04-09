@@ -1,0 +1,10 @@
+trajectory_msgs/JointTrajectory traj
+---
+bool success
+bool is_robot_running
+---
+float64[6] q
+float64[6] qd
+float64[6] qdd
+float64 t
+float64 duration

@@ -1,0 +1,6 @@
+#bin_id
+14
+#parts sequence: <part name> <mean> <std-dev>
+tail_at1 3.4444 0.44389
+tail_at2 3.5556 0.33389
+tail_at3 9 1.3544

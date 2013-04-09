@@ -1,0 +1,9 @@
+#bin_id
+1
+#parts sequence: <part name> <mean> <std-dev>
+body1 2.7037 0.40874
+body2 3.8185 0.74649
+body3 4.1963 0.52927
+body4 9.0074 1.9861
+body5 6.0704 0.9524
+body6 8.9444 1.2939

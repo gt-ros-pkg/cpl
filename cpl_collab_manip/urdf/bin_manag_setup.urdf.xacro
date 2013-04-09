@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" 
+       name="ur10">
+
+  <include filename="$(find ur10_description)/urdf/gazebo.urdf.xacro" />
+
+  <include filename="$(find ur10_description)/urdf/model.urdf.xacro" />
+  <include filename="$(find cpl_collab_manip)/urdf/cart_base.urdf.xacro" />
+  <include filename="$(find cpl_collab_manip)/urdf/sensors.urdf.xacro" />
+  <xacro:ur10_robot prefix="" />
+  <xacro:cart_base prefix="" />
+  <xacro:sensors prefix="" />
+
+
+</robot>

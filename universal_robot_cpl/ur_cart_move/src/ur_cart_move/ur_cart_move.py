@@ -3,15 +3,17 @@
 from threading import Lock
 import numpy as np
 from openravepy import *
-from scipy.interpolate import PiecewisePolynomial
-import sys
 
 import roslib
 roslib.load_manifest("ur_cart_move")
+roslib.load_manifest("ur_controller_manager")
+roslib.load_manifest("hrl_geom")
 
 import rospy
 import roslaunch.substitution_args
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64
+from geometry_msgs.msg import Wrench, Twist
 
 from hrl_geom.pose_converter import PoseConv
 from hrl_geom.transformations import rotation_from_matrix as mat_to_ang_axis_point
@@ -19,8 +21,14 @@ from hrl_geom.transformations import rotation_matrix as ang_axis_point_to_mat
 from hrl_geom.transformations import euler_matrix
 from ur_controller_manager.msg import URJointCommand, URModeStates, URJointStates, URModeCommand
 
+roslib.load_manifest("pykdl_utils")
+from pykdl_utils.kdl_kinematics import create_kdl_kin
+
+from ur_analytical_ik import inverse_kin, UR10_A, UR10_D, UR10_L
+
 class RAVEKinematics(object):
-    def __init__(self, robot_file, load_ik=True):
+    def __init__(self, robot_file='$(find ur10_description)/ur10_robot.dae', load_ik=True):
+        robot_file = roslaunch.substitution_args.resolve_args(robot_file)
         self.env = Environment()
         self.env.Load(robot_file)
         self.robot = self.env.GetRobots()[0] # get the first robot
@@ -30,6 +38,9 @@ class RAVEKinematics(object):
     #                         self.robot,iktype=IkParameterization.Type.Translation3D)
         self.ikmodel6d = databases.inversekinematics.InverseKinematicsModel(
                              self.robot,iktype=IkParameterization.Type.Transform6D)
+        robot_urdf = roslaunch.substitution_args.resolve_args(
+                '$(find ur10_description)/ur10_robot.urdf')
+        self.kdl_kin = create_kdl_kin('/base_link', '/ee_link', robot_urdf)
         if True:
             self.ik_options = (IkFilterOptions.IgnoreCustomFilters |
                                IkFilterOptions.IgnoreJointLimits)
@@ -58,7 +69,7 @@ class RAVEKinematics(object):
         return np.mat(self.manip.GetEndEffectorTransform())
 
     def inverse(self, x, q_guess=None, restarts=3, 
-                q_min=6*[-999.0], q_max=6*[999.0], weights=6*[1.], options=None):
+                q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi], weights=6*[1.], options=None):
         if options is None:
             ik_options = self.ik_options
         else:
@@ -76,7 +87,13 @@ class RAVEKinematics(object):
                     # just keep trying random joint configs after initial guess
                     self.robot.SetDOFValues(2*(np.random.rand(6)-0.5)*(2*np.pi))
                 #ikparam = IkParameterization(x.A, self.ikmodel6d)
-                sols = self.manip.FindIKSolutions(x.A, ik_options)
+                if False:
+                    # use OpenRave
+                    sols = self.manip.FindIKSolutions(x.A, ik_options)
+                else:
+                    # use analytic
+                    sols = inverse_kin(x, UR10_A, UR10_D, UR10_L, q_guess[5])
+                    #print sols
                 valid_sols = []
                 for sol in sols:
                     test_sol = np.ones(6)*9999.
@@ -88,11 +105,17 @@ class RAVEKinematics(object):
                                 abs(test_ang - q_guess[i]) < abs(test_sol[i] - q_guess[i])):
                                 test_sol[i] = test_ang
                     if np.all(test_sol != 9999.):
-                        valid_sols.append(test_sol)
+                        if True:
+                            # sanity check for inverse_kin stuff
+                            if np.allclose(np.linalg.inv(self.forward(test_sol)) * x, np.eye(4)):
+                                valid_sols.append(test_sol)
+                        else:
+                            valid_sols.append(test_sol)
                 if len(valid_sols) > 0:
                     break
             if len(valid_sols) == 0:
-                return None
+                return self.kdl_kin.inverse(x, q_guess, 10, q_min, q_max)
+                #return None
             best_sol_ind = np.argmin(np.sum((weights*(valid_sols - np.array(q_guess)))**2,1))
             best_sol = valid_sols[best_sol_ind]
             if False:
@@ -105,7 +128,7 @@ class RAVEKinematics(object):
 
     def inverse_rand_search(self, x, q_guess=None, pos_tol=0.01, rot_tol=20.0/180.0*np.pi, 
                             restarts=10, 
-                            q_min=6*[-999.0], q_max=6*[999.0], weights=6*[1.], options=None):
+                            q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi], weights=6*[1.], options=None):
         num_restart = 0
         while not rospy.is_shutdown():
             if num_restart == 0:
@@ -152,6 +175,12 @@ class ArmInterface(object):
     JOINT_NAMES = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 
                    'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
     def __init__(self, timeout=3., topic_prefix=""):
+        if topic_prefix == '/':
+            topic_prefix = ''
+        if topic_prefix == '':
+            print_prefix = '/'
+        else:
+            print_prefix = topic_prefix
         self.joint_state_inds = None
         self.joint_states = None 
         self.ur_joint_states = None 
@@ -163,8 +192,15 @@ class ArmInterface(object):
         rospy.Subscriber(topic_prefix+'/ur_mode_states', URModeStates, self._ur_mode_states_cb)
         self.joint_cmd_pub = rospy.Publisher(topic_prefix+"/ur_joint_command", URJointCommand)
         self.mode_cmd_pub = rospy.Publisher(topic_prefix+"/ur_mode_command", URModeCommand)
+        self.tcp_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp", Twist)
+        self.tcp_payload_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp_payload", Float64)
+        self.tcp_wrench_pub = rospy.Publisher(topic_prefix+"/ur_set_tcp_wrench", Wrench)
 
-        self.wait_for_states(timeout)
+        print "%s UR arm: Connecting interface" % print_prefix
+        if not self.wait_for_states(timeout) and timeout > 0.:
+            print "%s UR arm: Unable to connect" % print_prefix
+        else:
+            print "%s UR arm: Succesfully connected" % print_prefix
 
     def wait_for_states(self, timeout=10.):
         start_time = rospy.get_time()
@@ -211,19 +247,37 @@ class ArmInterface(object):
     def get_qdd_des(self):
         return np.array(self.ur_joint_states.qdd_des)
 
+    # pose of the payload in the end link
+    # payload in kg
+    def set_payload(self, pose=None, payload=None):
+        if pose is not None:
+            self.tcp_pub.publish(PoseConv.to_twist_msg(pose))
+        if payload is not None:
+            self.tcp_payload_pub.publish(Float64(payload))
+
+    # wrench felt by the end effector in the base link
+    def set_felt_wrench(self, wrench):
+        w = Wrench()
+        w.force.x, w.force.y, w.force.z  = wrench[0], wrench[1], wrench[2]
+        w.torque.x, w.torque.y, w.torque.z  = wrench[3], wrench[4], wrench[5]
+        self.tcp_wrench_pub.publish(w)
+
     def cmd_empty(self, qd):
         cmd = URJointCommand()
+        cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_EMPTY
         self.joint_cmd_pub.publish(cmd)
 
     def cmd_vel(self, qd):
         cmd = URJointCommand()
+        cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_VELOCITY
         cmd.qd_des = qd
         self.joint_cmd_pub.publish(cmd)
 
     def cmd_pos_vel_acc(self, q, qd, qdd):
         cmd = URJointCommand()
+        cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_POS_VEL_ACC
         cmd.q_des = np.array(q).tolist()
         cmd.qd_des = np.array(qd).tolist()
@@ -293,42 +347,19 @@ class ArmBehaviors(object):
         q_pts = []
         s_traj = min_jerk_traj(duration, num_ik)
         q_prev = q_init
-        #print 'init'
-        #print q_init
-        #print x_init
-        #print x_goal
-        #print 'traj'
-        
-        #start_time = rospy.get_time()
         for s in s_traj:
             x_cur = x_init.copy()
             x_cur[:3,3] += s * pos_delta
             x_cur[:3,:3] *= ang_axis_point_to_mat(s * ang_delta, axis_delta, point_delta)[:3,:3]
             q_pt = self.kin.inverse(x_cur, q_prev)
-            #print x_cur
-            #print q_pt
             if q_pt is None:
                 print x_init
                 print "IK failed", q_pts, x_cur
                 return None
             q_pts.append(q_pt)
             q_prev = q_pt
-        #print "ik_move_time:", rospy.get_time() - start_time
         q_pts = np.array(q_pts)
         return q_pts
-
-        #t_traj = np.linspace(0., duration, num_ik)
-        #splines = []
-        #for i in range(6):
-        #    y_traj = ([[q_pts[i][0], 0., 0.]]  + 
-        #              [[q_pts[i][j]] for j in range(num_ik)] +
-        #              [[q_pts[i][-1], 0., 0.]] )
-        #    print y_traj
-        #    y_traj[1].extend([0., 0.])
-        #    y_traj[-2].extend([0., 0.])
-        #    
-        #    splines.append(PiecewisePolynomial([0.] + t_traj.tolist() + [duration], y_traj, orders=2))
-        #return splines
 
     def interpolated_ik_delta(self, pos_delta=3*[0.], rot_delta=3*[0.], duration=5., num_ik=10):
         q_cur = self.arm.get_q()
@@ -454,15 +485,15 @@ class ArmBehaviors(object):
 
 def load_ur_robot(timeout=5., desc_filename='$(find ur10_description)/ur10_robot.dae',
                   topic_prefix=""):
-    robot_descr = roslaunch.substitution_args.resolve_args(desc_filename)
     arm = ArmInterface(timeout=0., topic_prefix=topic_prefix)
-    kin = RAVEKinematics(robot_descr)
+    kin = RAVEKinematics(desc_filename)
     if not arm.wait_for_states(timeout=timeout):
         print 'arm not connected!'
     arm_behav = ArmBehaviors(arm, kin)
     return arm, kin, arm_behav
 
 def main():
+    import sys
     np.set_printoptions(precision=4, suppress=True)
 
     rospy.init_node("ur_cart_move")

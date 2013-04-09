@@ -7,9 +7,11 @@ float64[6] acc_x
 float64[6] acc_y
 float64[6] acc_z
 float64 tcp_force_scalar
+float64 tcp_payload
 float64[6] tcp_force
 float64[6] tcp_speed
 float64[6] tcp_wrench
+float64[6] tcp_pose
 float64 power
 float64[6] q_des
 float64[6] qd_des

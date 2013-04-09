@@ -1,0 +1,4 @@
+geometry_msgs/PoseStamped grasp_tag
+geometry_msgs/PoseStamped place_tag
+---
+std_msgs/Bool success

@@ -1,0 +1,13 @@
+<launch>
+    <arg name="arm_prefix" default="" />
+    <node name="spline_traj_as" type="spline_traj_as.py" pkg="ur_cart_move" output="screen">
+        <param name="arm_prefix" value="$(arg arm_prefix)" />
+        <rosparam>
+            max_joint_values:
+                q: [6.283, 6.283, 6.283, 6.283, 6.283, 6.283]
+                qd: [2.16, 2.16, 3.15, 3.2, 3.2, 3.2]
+                qdd: [60, 60, 15, 300, 300, 300]
+                qddd: [1000, 1000, 1000, 1000, 1000, 1000]
+        </rosparam>
+    </node>
+</launch>

@@ -8,8 +8,7 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/cpl_collab_manip</url>
-  <depend package="ur_cart_move"/>
-  <depend package="arm_3d_cb_calib"/>
+
 
 </package>
 

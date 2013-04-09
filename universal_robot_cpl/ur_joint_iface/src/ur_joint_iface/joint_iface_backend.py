@@ -8,10 +8,12 @@ import functools
 import roslib
 roslib.load_manifest("rospy")
 roslib.load_manifest("ur_joint_iface")
+roslib.load_manifest("hrl_geom")
 import rospy
 
 from joint_iface_gui import Ui_Frame as QTJointIFaceGUIFrame
-from ur_cart_move.ur_cart_move import ArmInterface
+from ur_cart_move.ur_cart_move import load_ur_robot
+from hrl_geom.pose_converter import PoseConv
 
 BUTTONS = {
     "shoulder_pan_left" : [0, -1.0],
@@ -27,12 +29,15 @@ BUTTONS = {
     "wrist_3_up" : [5, -1.0],
     "wrist_3_down" : [5, 1.0]}
 
+JOINTS = ["shoulder_pan", "shoulder_lift", "elbow", "wrist_1", "wrist_2", "wrist_3"]
+
 MONITOR_RATE = 1000./125.
 class JointIFaceGUIFrame(QtGui.QFrame):
-    def __init__(self):
+    def __init__(self, clipboard):
         super(JointIFaceGUIFrame, self).__init__()
         self.button_down = None
         self.joint_ctrl = SingleJointController()
+        self.clipboard = clipboard
         self.init_ui()
 
     def init_ui(self):
@@ -45,6 +50,22 @@ class JointIFaceGUIFrame(QtGui.QFrame):
     def monitor_cb(self):
         last_button_down = self.button_down
         self.button_down = None
+        q = self.joint_ctrl.arm.get_q().tolist()
+        for i, joint in enumerate(JOINTS):
+            exec("self.ui.%s_num.setPlainText(QtCore.QString.fromAscii('%f'))" % (joint, q[i]))
+            if q[i] >= 0:
+                exec("self.ui.%s_prog_pos.setValue(%d)" % (joint, int(q[i]/(2.*np.pi)*100.)))
+                exec("self.ui.%s_prog_neg.setValue(%d)" % (joint, 0))
+            if q[i] < 0:
+                exec("self.ui.%s_prog_pos.setValue(%d)" % (joint, 0))
+                exec("self.ui.%s_prog_neg.setValue(%d)" % (joint, int(-q[i]/(2.*np.pi)*100.)))
+        if self.ui.copy_joint_config.isDown():
+            q_str = ", ".join([str(q[i]) for i in range(6)])
+            self.clipboard.setText(QtCore.QString.fromAscii(q_str))
+        if self.ui.copy_ee_pose.isDown():
+            ee_pose = PoseConv.to_pos_quat(self.joint_ctrl.kin.forward(q))
+            ee_pose = ", ".join([str(x) for x in (ee_pose[0] + ee_pose[1])])
+            self.clipboard.setText(QtCore.QString.fromAscii(ee_pose))
         for button in BUTTONS:
             exec("is_down = self.ui.%s.isDown()" % button)
             if is_down:
@@ -57,8 +78,11 @@ class JointIFaceGUIFrame(QtGui.QFrame):
 
             if self.button_down is not None:
                 # do button down on current
-                self.joint_ctrl.start_moving(BUTTONS[self.button_down][0],
-                                             BUTTONS[self.button_down][1])
+                joint_ind = BUTTONS[self.button_down][0]
+                moving_dir = BUTTONS[self.button_down][1]
+                exec("vel = self.ui.%s_vel.value()" % JOINTS[joint_ind])
+                self.joint_ctrl.start_moving(joint_ind,
+                                             moving_dir, vel)
         self.joint_ctrl.update()
 
 class SingleJointController(object):
@@ -66,12 +90,13 @@ class SingleJointController(object):
         self.moving_joint = None
         self.moving_dir = None
         self.delta_x = 0.01
-        self.acc = 0.2
         self.vel_f = 0.2
-        self.t_f = self.vel_f / self.acc
+        self.t_f = 0.5 
+        self.acc = self.vel_f / self.t_f
         self.pos_f = 0.5*self.acc*(self.t_f**2)
         self.t = 0.0
-        self.arm = ArmInterface()
+        prefix = rospy.get_param("~prefix", "")
+        self.arm, self.kin, self.arm_behav = load_ur_robot(topic_prefix=prefix)
         self.q_init = None
 
     def update(self):
@@ -89,30 +114,26 @@ class SingleJointController(object):
                 q_cmd[self.moving_joint] += self.moving_dir*(vel_f*(t-t_f) + pos_f)
                 qd_cmd[self.moving_joint] = self.moving_dir*vel_f
                 self.arm.cmd_pos_vel_acc(q_cmd, qd_cmd, qdd_cmd)
-            print t
-            print q_cmd
-            print qd_cmd
-            print qdd_cmd
             self.t += 1.0/self.arm.CONTROL_RATE
 
-    def start_moving(self, joint_ind, direction):
-        print "Down:", joint_ind, direction
+    def start_moving(self, joint_ind, direction, vel):
         self.arm.unlock_security_stop()
         self.moving_joint = joint_ind
         self.moving_dir = direction
         self.t = 0.0
+        self.vel_f = vel
+        self.acc = self.vel_f / self.t_f
+        self.pos_f = 0.5*self.acc*(self.t_f**2)
         self.q_init = np.array(self.arm.get_q())
-        print 'act', self.arm.get_q()
-        print 'des', self.arm.get_q_des()
 
     def stop_moving(self):
-        print "Up", self.moving_joint, self.moving_dir
         self.moving_joint = None
 
 def main():
     rospy.init_node("arm_cart_control_interface")
     app = QtGui.QApplication(sys.argv)
-    frame = JointIFaceGUIFrame()
+    cb = app.clipboard()
+    frame = JointIFaceGUIFrame(cb)
     frame.show()
     sys.exit(app.exec_())
 

@@ -1,4 +1,5 @@
 <launch>
+    <include file="$(find cpl_collab_manip)/launch/lifecam_frames.launch" />
     <arg name="name" default="lifecam1" />
     <arg name="dev_ind" default="0" />
     <node pkg="usb_cam" name="$(arg name)_publish" type="usb_cam_node" >
@@ -17,8 +18,6 @@
             P: [1151.052734, 0.000000, 651.312921, 0.000000, 0.000000, 1159.340332, 358.469883, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000]
         </rosparam>
     </node>
-    <node pkg="tf" type="static_transform_publisher" name="$(arg name)_tf_calibration"
-               args="0.260675 0.037183 1.903672 0.543750 0.819747 -0.141930 -0.110487 /base_link /$(arg name)_optical_frame 10" />
     <!--
     <node pkg="image_transport" name="$(arg name)_republish" type="republish" args="raw" >
         <remap from="in" to="/$(arg name)/image_raw" />
