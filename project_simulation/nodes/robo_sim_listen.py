@@ -383,18 +383,21 @@ def pub_viz_enf():
     temp_msg.text = 'ENDFACTOR'
     endf_viz_pub.publish(temp_msg)
 
-def listen_tasks(task_msg):
-    global task_list, performing_task, change_task
+def wait_at_loc(for_time):
+    global PUB_RATE
+    tot_time_steps = for_time * PUB_RATE
+    cur_step = 0
+    loop_rate = rospy.Rate(PUB_RATE)
+    
+    while cur_step < tot_time_steps:
+        pub_endfactor()
+        cur_step += 1
+        loop_rate.sleep()
 
-    cur_task = task_list[0]
-            
-    if performing_task and task_msg.change_task:
-        task_list = []
-        task_list.append({'move_workspace' : task_msg.to_workspace, 
-                          'bin_id' : task_msg.bin_id})
-    else:
-        task_list.append({'move_workspace' : task_msg.to_workspace, 
-                              'bin_id' : task_msg.bin_id})
+def listen_tasks(task_msg):
+    global task_list
+    task_list.append({'targ_loc' : task_msg.move_to_location.data, 
+                          'bin_id' : task_msg.bin_id.data})
     
     return
 
@@ -418,49 +421,66 @@ if __name__=='__main__':
     
     loop_rate = rospy.Rate(PUB_RATE)
     
-    while not rospy.shutdown():
+    while not rospy.is_shutdown():
         #no task to do publish current pos
         if task_list.__len__() == 0:
-            pub_endf()
+            pub_endfactor()
+            loop_rate.sleep()
         else:
             cur_task = task_list[0]
-            if performing_task and not (endfactor_cur_bin == cur_task['bin_id']):
+            
+            #find bin
+            targ_bin_cur_loc = None
+            bin_not_found = True
+            for cur_bin in cur_bin_list:
+                if cur_bin['id'] == cur_task['bin_id']:
+                    targ_bin_cur_loc = cur_bin['location']
+                    bin_not_found = False
+                    break
+            if bin_not_found:
+                #incase bin wasn't found, move to next task
+                print 'Error bin not found for the task' + str(cur_task)+'. Skipping task'
                 task_list.pop(0)
-                pub_endf()
-                loop_rate.sleep()
-                
-            else:
-                if not performing_task:
-                    performing_task = True
-                    
-                    targ_bin_cur_loc
-                    bin_not_found = True
+                continue
 
-                    #find bin
-                    for cur_bin in cur_bin_list:
-                        if cur_bin['id'] == cur_task['bin_id']:
-                            targ_bin_cur_loc = cur_bin['location']
-                            bin_not_found = False
-                            break
-                        
-                    if bin_not_found:
-                        if endfactor_cur_bin >-1:
-                            continue
-                        else:
-                            performing_task = False
-                            continue
+            #check if target position empty
+            dest_loc = cur_task['targ_loc']
+            location_not_empty = True
+            for e_loc in empty_locations:
+                if e_loc == dest_loc:
+                    location_not_empty = False
+                    break
 
-                    #move endfactor to bin
-                    move_endf(targ_bin_cur_loc)
-                    
-                    if cur_task['move_workspace']:
-                        #check if empty work-space
-                        empty_work, target_loc = find_work_spot()
-#find 
-                        
+            if location_not_empty:
+                print "Location: " + str(dest_loc) + "is currently occupied. Skipping task."
+                task_list.pop(0)
+                continue
 
+            #in case both those conditions met- do it!
+            #move endfactor to bin
+            move_endf(targ_bin_cur_loc)    
 
+            #pick up bin
+            #removing bin from ar_pose_markers
+            targ_bin_id = cur_task['bin_id']
+            pub_remove_bin(targ_bin_id)
+            #hold bin
+            endfactor_cur_bin = cur_task['bin_id']
+            wait_at_loc(ROBO_PICK)
+   
+            #move bin to target
+            pub_endf_w_bin(targ_bin_id, dest_loc)
+            #put down bin
+            wait_at_loc(ROBO_PUT)    
+            pub_add_bin(targ_bin_id, dest_loc)
+            #no-bin now
+            endfactor_cur_bin = -1
+    
+            #move endfactor to rest position
+            move_endf(1, True)
 
-
+            #task_complete
+            task_list.pop(0)
+            continue
 
 
