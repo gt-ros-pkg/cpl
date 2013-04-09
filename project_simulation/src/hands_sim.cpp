@@ -449,7 +449,7 @@ handSim::handSim(string task_name, bool cheat)
     viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
     task_pub = nh.advertise<std_msgs::String>("action_name", 1);
     
-    ar_poses = nh.subscribe("ar_pose_marker", 0, &handSim::read_ar, this);  
+    ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
     
     //store transform
     tf::TransformListener tf_cam_to_kin;  
@@ -1067,8 +1067,8 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
   //at bin
   double handSim::time_to_wait()
   {
-    //wait a tenth-of-second for the moment
-    return 1.0;
+    //wait a third-a-second for the moment
+    return 0.3;
   }
 
   void handSim::vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos)

@@ -187,16 +187,20 @@ def add_bin_id(bin_n_loc):
 
 def pub_bins():
 
-    global bin_locs, slocations, PUB_RATE, bin_for_removal, location_noise, orientation_noise
+    global bins_locs, slocations, PUB_RATE, bin_for_removal, location_noise, orientation_noise
     
 
     br = tf.TransformBroadcaster()
+    
     #perturbed by gaussian noise, thought to simulate tracking noise
     pub = rospy.Publisher('ar_pose_marker', project_simulation.msg.AlvarMarkers)
+    
     #human gets actual bin positions
     pub_human = rospy.Publisher('ar_pose_marker_hum', project_simulation.msg.AlvarMarkers)
+    
     #location of bins to robot simulator
     pub_robo = rospy.Publisher('bins_robo_sim', project_simulation.msg.bins_loc)
+    
     #ROS-viz
     viz_pub = rospy.Publisher('ar_poses_visual', visualization_msgs.msg.MarkerArray)
 
@@ -254,7 +258,7 @@ def pub_bins():
                             break
                     
                     #add gaussian noise
-                    #marker =add_gauss_noise(marker)
+                    marker =add_gauss_noise(marker)
                     
                     #visual marker
                     temp_msg.pose = copy.deepcopy(marker.pose.pose)
@@ -295,6 +299,24 @@ def pub_bins():
             temp_marker = gen_delete_bin(bin_for_removal)
             ar_viz_markers.append(temp_marker)
             bin_for_removal = None
+
+        #publish to robot simulator
+        #find empty locations and give them -1 bin_id
+        for slocation in slocations:
+            temp_b_l = project_simulation.msg.bin_loc()
+            temp_b_l.bin_id.data = -1
+            temp_b_l.location.data = slocation['name']
+            bin_present = False
+            for temp_bin in bins_locs:
+                if slocation['name'] == temp_bin['location']:
+                    bin_there = True
+                    break
+            if not bin_present:
+                markers_robo.append(temp_b_l)
+            
+        robo_msg = project_simulation.msg.bins_loc()
+        robo_msg.bin_array = markers_robo        
+        pub_robo.publish(robo_msg)
                     
         #publish markers to 'ar_pose_marker'
         msg = project_simulation.msg.AlvarMarkers()
@@ -308,10 +330,6 @@ def pub_bins():
         msg_hum.markers = hum_ar_markers
         pub_human.publish(msg_hum)
 
-        #publish to robot simulator
-        robo_msg = project_simulation.msg.bins_loc()
-        robo_msg.bin_array = markers_robo        
-        pub_robo.publish(robo_msg)
         
         '''#debug
         print ar_viz_markers

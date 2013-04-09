@@ -87,7 +87,7 @@ empty_locations = []
 #list of tasks to perform
 task_list = []
 
-#endfactor position
+#endfactor initial/rest position
 endfactor_rest = [0.226263331563,0.225740063166,1.17398472964]
 endfactor_cur_pos = [0.226263331563,0.225740063166,1.17398472964]
 
@@ -98,14 +98,21 @@ def listen_bin_loc(bin_loc_msg):
 
     #add bins to current bin list
     cur_bin_list = []
+    empty_locations = []
     for temp_bin_msg in bin_loc_msg.bin_array:
-        for slocation in slocations:
-            if slocation['name'] == temp_bin_msg.location.data:
-                temp_bin = {'id':temp_bin_msg.bin_id.data, 'location':slocation['name']}
-                cur_bin_list.append(temp_bin)
-                break
+        
+        #bin Ids are positive
+        if temp_bin_msg.bin_id.data >-1:
+            for slocation in slocations:
+                if slocation['name'] == temp_bin_msg.location.data:
+                    temp_bin = {'id':temp_bin_msg.bin_id.data, 'location':slocation['name']}
+                    cur_bin_list.append(temp_bin)
+                    break
+        else:
+            empty_locations.append(temp_bin_msg.location.data)
     
-    #populate empty locations
+
+    '''#populate empty locations
     empty_locations = []
     for slocation in slocations:
         bin_in_loc = False
@@ -114,9 +121,8 @@ def listen_bin_loc(bin_loc_msg):
                 bin_in_loc = True
                 break
         if not bin_in_loc:
-            empty_locations.append(slocation['name'])
+            empty_locations.append(slocation['name'])'''
 
-    #    do_tasks()
     return
 
     '''
