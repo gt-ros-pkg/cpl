@@ -123,8 +123,7 @@ def set_wbs_transf():
                                   'rotation': rot_mat})
                 break
     
-    #debug
-    print inv_trans
+
     return
 
 #samples from gaussian for hand-offset in marker's frame
@@ -216,11 +215,6 @@ def pub_bins():
 
         #generate human work positions
         hum_locs = gen_locs_human()
-        #debug 
-        print "Human locations:" + str(hum_locs)
-        time.sleep(1000)
-
-        
         for bin in bins_locs:
             
             #message for robo-sim
