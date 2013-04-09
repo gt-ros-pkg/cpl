@@ -1,0 +1,2 @@
+std_msgs/Int8 bin_id
+geometry_msgs/PoseStamped endf_pose

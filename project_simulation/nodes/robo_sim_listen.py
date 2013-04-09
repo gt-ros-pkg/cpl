@@ -436,6 +436,21 @@ def pub_viz_enf():
     temp_msg.text = 'ENDFACTOR'
     endf_viz_pub.publish(temp_msg)
 
+def listen_tasks(task_msg):
+    global task_list, performing_task, change_task
+
+    cur_task = task_list[0]
+            
+    if performing_task and task_msg.change_task:
+        task_list = []
+        task_list.append({'move_workspace' : task_msg.to_workspace, 
+                          'bin_id' : task_msg.bin_id})
+    else:
+        task_list.append({'move_workspace' : task_msg.to_workspace, 
+                              'bin_id' : task_msg.bin_id})
+    
+    return
+        
 
 if __name__=='__main__':
     
@@ -451,8 +466,9 @@ if __name__=='__main__':
     pub_bin_adder = rospy.Publisher('add_bin', project_simulation.msg.bin_loc)
     
     endf_viz_pub = rospy.Publisher('endfactor_visual', visualization_msgs.msg.Marker)
-
-
+    
+    task_listen = rospy.Subscriber('move_bin', project_simulation.msg.move_bin, listen_tasks)
+    
     #input tasks
     keep_doing = True
     

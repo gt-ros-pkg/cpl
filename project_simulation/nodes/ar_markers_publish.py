@@ -136,6 +136,21 @@ def samp_hand_offset():
 
 #generate positions of workspace bins for the human
 def gen_locs_human():
+    global workspace
+    hand_t_locs = []
+    n = workspace.__len__()
+
+    for work_loc in workspace:
+        for sloc in slocations:
+            if sloc['name'] == work_loc:
+                hand_t_locs.append({'name':work_loc, 
+                                    'position':sloc['position']})
+                break
+    return hand_t_locs
+        
+
+#no longer using, generate positions of workspace bins for the human
+def old_gen_locs_human():
     global workspace, inv_trans
     hand_t_locs = []
     n = workspace.__len__()
@@ -394,8 +409,5 @@ if __name__ == '__main__':
 
     # init 
     rospy.init_node('ar_pose_markers_pub')
-
-    #set transform for work-space locations
-    set_wbs_transf()
 
     pub_bins()
