@@ -11,6 +11,7 @@ from geometry_msgs.msg import *
 from std_msgs.msg import *
 from project_simulation.msg import *
 from visualization_msgs.msg import *
+from rospy_tutorials.msg import *
 
 import math
 import copy
