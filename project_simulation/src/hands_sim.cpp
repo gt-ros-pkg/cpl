@@ -256,7 +256,7 @@ public:
   void mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[], size_t mat_two_size[2], double mat_out[]);
 
   void trans_homo_vec(double homo_vec[]);
-  void trans_homo_vec_hand_off(double homo_vec[]);
+  void trans_homo_vec_hand_off(double homo_vec[], double translate[]);
 
   void read_ar(project_simulation::AlvarMarkers msg);
 
@@ -351,28 +351,39 @@ geometry_msgs::PoseStamped handSim::transform_for_hand
   transformed = bin_cur_pose;
 
   //rotate
-  double homo_pos_vec[4] = {bin_cur_pose.pose.position.x,
-			    bin_cur_pose.pose.position.y,
-			    bin_cur_pose.pose.position.z,
+  double homo_pos_vec[4] = {samp_gauss(hand_t_mean[0], hand_t_var[0]),
+			    samp_gauss(hand_t_mean[1], hand_t_var[1]),
+			    samp_gauss(hand_t_mean[2], hand_t_var[2]),
 			    1.0};
   size_t size_mat[]={4,4}; size_t size_vec[]={4,1};
   double homo_vec_out[4];
 
-  //debug
+  /*  //debug
   cout<<"time for mat "<<endl;
   for (int i=0; i<4; i++){
     for(int j=0; j<4;j++)
       {cout<<bin_rot_mat[4*i+j]<<"     ";}
-    cout<<endl;}
+      cout<<endl;}*/
 
-  mat_mul(transform_rot_mat, size_mat, homo_pos_vec, size_vec, homo_vec_out);
+  mat_mul(bin_rot_mat, size_mat, homo_pos_vec, size_vec, homo_vec_out);
     
+  double translate_by[] = {bin_cur_pose.pose.position.x,
+		   bin_cur_pose.pose.position.y,
+		   bin_cur_pose.pose.position.z};
+  double* temp_translate_by;
+  temp_translate_by = translate_by;
+
   //convert back from homogenous and translate
-  trans_homo_vec_hand_off(homo_vec_out);
+  trans_homo_vec_hand_off(homo_vec_out, temp_translate_by);
     
   transformed.pose.position.x = homo_vec_out[0];
   transformed.pose.position.y = homo_vec_out[1];
   transformed.pose.position.z = homo_vec_out[2];
+
+  //debug
+  /*  cout<<"Hand positions initial:"<<bin_cur_pose<<endl;
+      cout<<"Hand positions transform:"<<transformed<<endl;*/
+  
   //  transformed.header.frame_id = frame_of_reference;
   
   return transformed;
@@ -581,7 +592,7 @@ void handSim::mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[]
 
   }
 
-  void handSim::trans_homo_vec_hand_off(double homo_vec[])
+void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
   {
     //convert to regular vector
     homo_vec[0] /= homo_vec[3];
@@ -589,10 +600,12 @@ void handSim::mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[]
     homo_vec[2] /= homo_vec[3];
     homo_vec[3] /= homo_vec[3];
     
+
     //translate
-    homo_vec[0] += samp_gauss(hand_t_mean[0], hand_t_var[0]);
-    homo_vec[1] += samp_gauss(hand_t_mean[1], hand_t_var[1]);
-    homo_vec[2] += samp_gauss(hand_t_mean[2], hand_t_var[2]);
+    homo_vec[0] += translate[0];
+    homo_vec[1] += translate[1];
+    homo_vec[2] += translate[2];
+
   }
 
 
@@ -610,7 +623,7 @@ void handSim::mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[]
 	//to transform each bin acc to learnt params to simulate hand reaching
 	//into bin
 	//debug 
-	cout<<"BIN ID::"<< msg.markers[i].id;
+	//cout<<"BIN ID::"<< msg.markers[i].id;
 	temp_pose = transform_for_hand(msg.markers[i].pose);
 
 	//to transform ar-tags frame of reference from webcam to kinect
@@ -1055,7 +1068,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
   double handSim::time_to_wait()
   {
     //wait a tenth-of-second for the moment
-    return 0.1;
+    return 1.0;
   }
 
   void handSim::vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos)
