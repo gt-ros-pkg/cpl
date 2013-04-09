@@ -6,6 +6,8 @@
     </include>
     <param name="/kinect0/driver/depth_ir_offset_x" value="-5.8" />
     <param name="/kinect0/driver/depth_ir_offset_y" value="2.4" /> 
+
+    <!--
     <node pkg="tf" type="static_transform_publisher" name="kinect0_calibration"
           args="0.433613 -0.406085 1.375427 0.486451 0.752414 -0.376964 -0.234811 /base_link /kinect0_calibration_frame 10" />  
     <node pkg="tf" type="static_transform_publisher" name="kinect0_calibration_offset"
@@ -23,5 +25,6 @@
         args="$(arg optical_rotate) /kinect0_depth_frame /kinect0_depth_optical_frame  10" />  
   <node pkg="tf" type="static_transform_publisher" name="kinect0_base_link3"
         args="$(arg optical_rotate) /kinect0_rgb_frame /kinect0_rgb_optical_frame 10" />  
+        -->
 
 </launch>

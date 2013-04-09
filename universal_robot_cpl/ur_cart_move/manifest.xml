@@ -11,6 +11,8 @@
   <depend package="rospy"/>
   <depend package="actionlib"/>
   <depend package="trajectory_msgs"/>
+  <depend package="geometry_msgs"/>
+  <depend package="std_msgs"/>
 
 </package>
 

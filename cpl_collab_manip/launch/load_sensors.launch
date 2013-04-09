@@ -1,0 +1,15 @@
+<launch>
+  <arg name="dev_ind" default="0" />
+  <param name="sensor_description" command="$(find xacro)/xacro.py '$(find cpl_collab_manip)/urdf/sensors_setup.urdf.xacro'" />
+
+  <node name="sensors_state_publisher" pkg="robot_state_publisher" type="state_publisher">
+    <remap from="/joint_states" to="/sensors/joint_states" />
+    <param name="tf_prefix" value="" />
+    <remap from="/robot_description" to="/sensor_description" />
+  </node>
+
+  <include file="$(find cpl_collab_manip)/launch/kinect_publish.launch" />
+  <include file="$(find cpl_collab_manip)/launch/lifecam_publish.launch" >
+    <arg name="dev_ind" value="$(arg dev_ind)" />
+  </include>
+</launch>
