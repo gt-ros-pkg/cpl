@@ -9,7 +9,9 @@
   </node>
 
   <include file="$(find cpl_collab_manip)/launch/kinect_publish.launch" />
+  <!--
   <include file="$(find cpl_collab_manip)/launch/lifecam_publish.launch" >
     <arg name="dev_ind" value="$(arg dev_ind)" />
   </include>
+  -->
 </launch>
