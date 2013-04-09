@@ -29,14 +29,14 @@ Collects following information:
 
 endf_recd = False
 bin_loc_recd = False
-prob_dis_recd = False
+prob_dist_recd = False
 
 bins_locs_cur =None
 prob_dist_cur = None 
 endf_cur = None
  
 def pub_as_one():
-    global endf_recd, bin_loc_recd, prob_dis_recd, bins_locs_cur, prob_dist_cur, endf_cur
+    global endf_recd, bin_loc_recd, prob_dist_recd, bins_locs_cur, prob_dist_cur, endf_cur
 
     if (endf_recd and bin_loc_recd and prob_dist_recd):
         msg_pub = project_simulation.msg.state_estimate()
@@ -85,14 +85,14 @@ if __name__ == '__main__':
                                 project_simulation.msg.endf_bin, endf_listen)
     
     #nam's inference
-    sub_inf_prob = rospy.Subscriber('inference_dist', rospy_tutorials.Floats, 
+    sub_inf_prob = rospy.Subscriber('inference_dist', rospy_tutorials.msg.Floats, 
                                     inf_prob_listen)
     
     #publish as one
     pub_cur_state = rospy.Publisher('current_state', 
                                     project_simulation.msg.state_estimate)
     
-    while not rospy.shutdown():
+    while not rospy.is_shutdown():
 
         pub_as_one()
     
