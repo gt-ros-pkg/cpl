@@ -250,63 +250,6 @@ class TabletopExecutive:
             rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
                           ' objects')
 
-    def run_feedback_testing(self, behavior_primitive):
-        high_init = True
-        use_spin_push = _SPIN_FIRST
-        continuing = False
-        while True:
-            start_time = time.time()
-            # Select controller to use
-            if use_spin_push:
-                controller_name = SPIN_TO_HEADING
-            elif _USE_CENTROID_CONTROLLER:
-                controller_name = CENTROID_CONTROLLER
-            else:
-                controller_name = SPIN_COMPENSATION
-
-            if use_spin_push:
-                goal_pose = self.generate_random_table_pose()
-                code_in = raw_input('Set object in start pose and press <Enter>: ')
-                if code_in.lower().startswith('q'):
-                    return
-            elif _WAIT_BEFORE_STRAIGHT_PUSH or not _SPIN_FIRST:
-                if not _SPIN_FIRST:
-                    goal_pose = self.generate_random_table_pose()
-                    if continuing:
-                        code_in = ''
-                        continuing = False
-                    else:
-                        code_in = raw_input('Set object in start pose and press <Enter>: ')
-                else:
-                    code_in = raw_input('Spun object to orientation going to push now <Enter>: ')
-                if code_in.lower().startswith('q'):
-                    return
-
-            push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name)
-            code_in = raw_input('Got start pose to continue press <Enter>: ')
-            if code_in.lower().startswith('q'):
-                return
-
-            if push_vec_res is None:
-                return
-            which_arm = self.choose_arm(push_vec_res.push, controller_name)
-            res, push_res = self.perform_push(which_arm, behavior_primitive, push_vec_res, goal_pose,
-                                      controller_name, '', '', high_init=high_init)
-            if res == 'aborted':
-                rospy.loginfo('Continuing after abortion')
-                continuing = True
-                continue
-
-            # NOTE: Alternate between spinning and pushing
-            if not _TEST_START_POSE and _SPIN_FIRST:
-                use_spin_push = (not use_spin_push)
-            push_time = time.time() - start_time
-            self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                              push_vector_res, goal_pose)
-
-            if not res or res == 'quit':
-                return
-
     def run_start_loc_learning(self, object_id, num_pushes_per_sample, num_sample_locs):
         self.push_loc_shape_features = []
         for controller in CONTROLLERS:
@@ -1209,7 +1152,6 @@ if __name__ == '__main__':
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     elif use_learning:
-        # node.run_feedback_testing(behavior_primitive)
         while True:
             need_object_id = True
             while need_object_id:
