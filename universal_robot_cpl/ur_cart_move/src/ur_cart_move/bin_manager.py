@@ -55,10 +55,9 @@ class ARTagManager(object):
                     self.ar_poses[marker.id] = deque()
                 self.ar_poses[marker.id].append([cur_time, marker.pose])
             for mid in self.ar_poses:
-                while cur_time - self.ar_poses[mid][0][0] > self.filter_window:
+                while (len(self.ar_poses[mid]) > 0 and 
+                       cur_time - self.ar_poses[mid][0][0] > self.filter_window):
                     self.ar_poses[mid].popleft()
-                    if len(self.ar_poses[mid]) == 0:
-                        break
 
     def get_available_bins(self):
         with self.lock:
@@ -84,7 +83,6 @@ class ARTagManager(object):
                 pos, rot = self.clean_ar_pose(pose)
                 pos_list.append(pos)
                 rot_list.append(rot)
-            print bin_id, np.array(pos_list)
             med_pos, med_rot = np.median(pos_list,0), np.median(rot_list,0)
             is_table = bool(med_pos[2] < self.table_cutoff)
             med_pos[2] = is_table*self.table_offset+self.bin_height
@@ -105,7 +103,7 @@ class BinManager(object):
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
 
         self.place_offset = rospy.get_param("~place_offset", 0.02)
-        self.ar_offset = rospy.get_param("~ar_offset", 0.115)
+        self.ar_offset = rospy.get_param("~ar_offset", 0.125)
         self.grasp_height = rospy.get_param("~grasp_height", 0.10)
         self.grasp_rot = rospy.get_param("~grasp_rot", 0.0)
         self.grasp_lift = rospy.get_param("~grasp_lift", 0.18)
@@ -167,7 +165,7 @@ class BinManager(object):
             not self.arm_sim.wait_for_states(timeout=1.)):
             print 'Arms not connected!'
         print 'found.'
-        self.arm_cmd.set_payload(pose=([0., -0.0086, 0.0353], [0.]*3), payload=0.89)
+        self.update_payload(empty=True)
 
         #while not rospy.is_shutdown():
         #    try:
@@ -175,21 +173,26 @@ class BinManager(object):
         #        break
         #    except (rospy.ROSException):
         #        continue
+    def update_payload(self, empty):
+        if empty:
+            self.arm_cmd.set_payload(pose=([0., -0.0086, 0.0353], [0.]*3), payload=0.89)
+        else:
+            self.arm_cmd.set_payload(pose=([-0.03, -0.0086, 0.0453], [0.]*3), payload=1.40)
 
     def create_bin_waypts(self, ar_grasp_id, ar_place_id):
 
         ar_grasp_tag_pose, grasp_is_table = self.ar_man.get_bin_pose(ar_grasp_id)
-        place_offset = self.place_offset*is_place
         grasp_offset = PoseConv.to_homo_mat(
-                [0., self.ar_offset, self.grasp_height],
+                [-0.013, self.ar_offset, self.grasp_height],
                 [0., np.pi/2, self.grasp_rot])
         grasp_pose = PoseConv.to_homo_mat(ar_grasp_tag_pose) * grasp_offset
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose[2,3] += self.grasp_lift
 
-        ar_place_tag_pose, place_is_table = self.ar_empty_locs[ar_grasp_id]
+        ar_place_tag_pos, ar_place_tag_rot, place_is_table = self.ar_empty_locs[ar_place_id]
+        ar_place_tag_pose = (ar_place_tag_pos, ar_place_tag_rot)
         place_offset = PoseConv.to_homo_mat(
-                [0., self.ar_offset, self.grasp_height + self.place_offset],
+                [-0.013, self.ar_offset, self.grasp_height + self.place_offset],
                 [0., np.pi/2, self.grasp_rot])
         place_pose = PoseConv.to_homo_mat(ar_place_tag_pose) * place_offset
         preplace_pose = place_pose.copy()
@@ -330,7 +333,7 @@ class BinManager(object):
         t_knots, q_knots = self.traj_plan.min_jerk_interp_q_vel(q_init, q_home, self.pregrasp_vel)
         print 'Planning time:', rospy.get_time() - start_time
         home_traj = SplineTraj.generate(t_knots, q_knots)
-        print t_knots, q_knots
+        #print t_knots, q_knots
         return home_traj
 
     def plan_grasp_traj(self, pregrasp_pose, grasp_pose):
@@ -348,6 +351,7 @@ class BinManager(object):
                                       q_min=self.q_min, q_max=self.q_max)
         if q_pregrasp is None:
             print 'move to pregrasp pose failed'
+            self.pose_pub.publish(PoseConv.to_pose_stamped_msg("/base_link", pregrasp_pose))
             print pregrasp_pose
             print q_knots
             return None
@@ -395,6 +399,7 @@ class BinManager(object):
             return False
         if self.gripper is not None:
             self.gripper.close(block=True)
+            self.update_payload(empty=False)
         move_traj = self.plan_move_traj(pregrasp_pose, mid_pts, preplace_pose, place_pose)
         if move_traj is None:
             return False
@@ -405,6 +410,7 @@ class BinManager(object):
         if self.gripper is not None:
             self.gripper.goto(0.042, 0., 0., block=True)
             rospy.sleep(0.5)
+            self.update_payload(empty=True)
         retreat_traj = self.plan_retreat_traj(preplace_pose, place_pose)
         if retreat_traj is None:
             return False
@@ -414,7 +420,7 @@ class BinManager(object):
             return False
         return True
 
-    def do_thing(self):
+    def do_random_move_test(self):
         raw_input("Move to home")
         reset = True
         while not rospy.is_shutdown():
@@ -431,13 +437,35 @@ class BinManager(object):
                     self.gripper.goto(0.042, 0., 0., block=False)
             #raw_input("Ready")
             ar_tags = self.ar_man.get_available_bins()
+            ar_locs = self.ar_empty_locs.keys()
             grasp_tag_num = ar_tags[np.random.randint(0,len(ar_tags))]
-            place_tag_num = grasp_tag_num
-            while place_tag_num == grasp_tag_num:
-                place_tag_num = ar_tags[np.random.randint(0,len(ar_tags))]
+            place_tag_num = ar_locs[np.random.randint(0,len(self.ar_empty_locs))]
             if not self.move_bin(grasp_tag_num, place_tag_num):
                 reset = True
                 print 'Failed moving bin from %d to %d' % (grasp_tag_num, place_tag_num)
+
+    def do_move_demo(self, ar_bin):
+        reset = True
+        while not rospy.is_shutdown():
+            if reset:
+                raw_input("Move to home")
+                reset = False
+                home_traj = self.plan_home_traj()
+                self.execute_traj(home_traj)
+                if self.gripper is not None:
+                    if self.gripper.is_reset():
+                        self.gripper.reset()
+                        self.gripper.activate()
+                self.update_payload(empty=True)
+            if self.gripper is not None:
+                if self.gripper.get_pos() != 0.042:
+                    self.gripper.goto(0.042, 0., 0., block=False)
+            #raw_input("Ready")
+            ar_locs = self.ar_empty_locs.keys()
+            place_tag_num = ar_locs[np.random.randint(0,len(self.ar_empty_locs))]
+            if not self.move_bin(ar_bin, place_tag_num):
+                reset = True
+                print 'Failed moving bin from %d to %d' % (ar_bin, place_tag_num)
 
 def main():
     np.set_printoptions(precision=4)
@@ -452,7 +480,10 @@ def main():
                  help="Save ar tag locations to file.")
     p.add_option('-t', '--test', dest="is_test",
                  action="store_true", default=False,
-                 help="Test robot in simulations moving bins around.")
+                 help="Test robot in simulation moving bins around.")
+    p.add_option('-d', '--demo', dest="is_demo",
+                 action="store_true", default=False,
+                 help="Test robot in reality moving a bin around.")
     (opts, args) = p.parse_args()
 
     if opts.is_save:
@@ -477,17 +508,24 @@ def main():
             r.sleep()
     elif opts.is_test:
         f = file(opts.filename, 'r')
-        ar_empty_locs = yaml.load(f)
+        ar_empty_locs = yaml.load(f)['data']
         f.close()
         arm_prefix = "/sim1"
         bm = BinManager(arm_prefix, ar_empty_locs)
-        bm.do_thing()
+        bm.do_random_move_test()
+    elif opts.is_demo:
+        f = file(opts.filename, 'r')
+        ar_empty_locs = yaml.load(f)['data']
+        f.close()
+        arm_prefix = ""
+        bm = BinManager(arm_prefix, ar_empty_locs)
+        bm.do_move_demo(5)
     else:
         print 'h'
 
     
     #bm = BinManager()
-    #bm.do_thing()
+    #bm.do_random_move_test()
     #rospy.spin()
 
 if __name__ == "__main__":

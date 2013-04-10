@@ -1,6 +1,12 @@
 <launch>
   <include file="$(find cpl_collab_manip)/launch/load_urdf.launch" />
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" />
+  <node name="gripper_driver" pkg="robotiq_c_model_control" type="CModelUsbNode.py" 
+        args="/dev/ttyUSB0" />
+
+  <include file="$(find ur_cart_move)/launch/spline_traj_as.launch">
+    <arg name="arm_prefix" value="" />
+  </include>
 
 
   <node name="ur_sim_sim2" pkg="ur_cart_move" type="ur_arm_sim.py" output="screen">

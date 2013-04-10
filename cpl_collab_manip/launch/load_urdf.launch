@@ -1,4 +1,4 @@
 <launch>
   <param name="robot_description" command="$(find xacro)/xacro.py '$(find cpl_collab_manip)/urdf/bin_manag_setup.urdf.xacro'" />
-  <param name="sensor_description" command="$(find xacro)/xacro.py '$(find cpl_collab_manip)/urdf/sensors_setup.urdf.xacro'" />
+  <param name="sensor_description" command="$(find xacro)/xacro.py '$(find cpl_collab_manip)/urdf/sensors.urdf.xacro'" />
 </launch>

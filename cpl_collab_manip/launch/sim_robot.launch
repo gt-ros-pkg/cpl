@@ -7,7 +7,7 @@
   -->
 
   <node name="ur_sim_sim1" pkg="ur_cart_move" type="ur_arm_sim.py"  output="screen">
-    <param name="use_gui" value="false"/>
+    <param name="use_gui" value="true"/>
     <param name="prefix" value="/sim1"/>
   </node>
   <node name="sim1_state_publisher" pkg="robot_state_publisher" type="state_publisher">
