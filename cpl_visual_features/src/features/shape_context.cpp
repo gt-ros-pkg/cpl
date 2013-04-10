@@ -58,6 +58,30 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
   ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
   // std::cout << "Getting descriptors for samples B" << std::endl;
   ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
+  // for (int i = 0; i < descriptorsA.size(); ++i)
+  // {
+  //   // std::cout << "Filled bins are: [";
+  //   for (int j = 0; j < descriptorsA[i].size(); ++j)
+  //   {
+  //     if (descriptorsA[i][j] > 0)
+  //     {
+  //       std::cout << " " << j;
+  //     }
+  //   }
+  //   std::cout << "]" << std::endl;
+  // }
+  // for (int i = 0; i < descriptorsB.size(); ++i)
+  // {
+  //   std::cout << "Filled bins are: [";
+  //   for (int j = 0; j < descriptorsB[i].size(); ++j)
+  //   {
+  //     if (descriptorsA[i][j] > 0)
+  //     {
+  //       std::cout << " " << j;
+  //     }
+  //   }
+  //   std::cout << "]" << std::endl;
+  // }
   // std::cout << "Computing cost matrix" << std::endl;
   cv::Mat cost_matrix = computeCostMatrix(descriptorsA, descriptorsB,
                                           epsilonCost, write_images, filePath, filePostFix);
@@ -143,10 +167,11 @@ Samples samplePoints(cv::Mat& edge_image, double percentage)
 
 int getHistogramIndex(double radius, double theta, int radius_bins, int theta_bins)
 {
+  if (theta > 1.0) std::cout << "theta is too big: " << theta << std::endl;
+  if (theta < 0.0) std::cout << "theta is too big: " << theta << std::endl;
   int radius_idx = std::max(std::min((int)std::floor(radius*radius_bins), radius_bins-1), 0);
   int theta_idx = std::max(std::min((int)std::floor(theta*theta_bins), theta_bins-1),0);
-  // std::cout << "radius idx: " << radius_idx << std:: endl;
-  // std::cout << "theta idx: " << theta_idx << std:: endl;
+  // std::cout << "theta_idx: " << theta_idx << std::endl;
   int idx = theta_idx*radius_bins+radius_idx;
   return idx;
 }
@@ -156,7 +181,8 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
                                       bool use_center,
                                       int radius_bins,
                                       int theta_bins,
-                                      double max_radius)
+                                      double max_radius,
+                                      double scale)
 {
   ShapeDescriptors descriptors;
   ShapeDescriptor descriptor;
@@ -166,7 +192,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
   unsigned int i, j, k, m;
 
   // find maximum radius for normalization purposes (unless passed in as argument)
-  if (max_radius == 0)
+  if (max_radius == 0.0)
   {
     for (i=0; i < samples.size(); i++)
     {
@@ -179,7 +205,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
           x2 = samples.at(k).x;
           y2 = samples.at(k).y;
 
-          radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
+          radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2))*scale;
           if (radius > max_radius)
           {
             max_radius = radius;
@@ -188,7 +214,13 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
       }
     }
   }
+  else
+  {
+    max_radius *= scale;
+  }
+  // std::cout << "max_radius is: " << max_radius << std::endl;
   max_radius = log(max_radius);
+  // std::cout << "log(max_radius) is: " << max_radius << std::endl;
 
   // build a descriptor for each sample
   for (i=0; i < samples.size(); i++)
@@ -201,7 +233,7 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
     }
 
     // Orient descriptor towards center
-    double center_angle = atan2(center.y-samples[i].y, center.x-samples[i].x);
+    double center_angle = atan2(samples[i].y - center.y, samples[i].x- center.x);
     x1 = samples.at(i).x;
     y1 = samples.at(i).y;
 
@@ -212,21 +244,26 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
       {
         x2 = samples.at(m).x;
         y2 = samples.at(m).y;
-        radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
+        radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2))*scale;
         radius = log(radius);
         radius /= max_radius;
         theta = atan2(y1-y2,x1-x2);
+        // std::cout << "Theta raw: " << theta << std::endl;
         if (use_center)
         {
           // Rotate theta so that center orientation is 0
           theta = cpl_visual_features::subPIAngle(theta-center_angle);
+          // std::cout << "Theta shifted: " << theta << std::endl;
         }
         // Get in range [0,2pi]
-        theta += M_PI/2;
+        theta += M_PI;
+        // std::cout << "Theta [0,2pi]: " << theta << std::endl;
         // Get theta in range [0,1]
         theta /= 2*M_PI;
+        // std::cout << "Theta [0,1]: " << theta << std::endl;
         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
-        descriptor.at(idx)++;
+        // std::cout << "idx: " << idx << std::endl;
+        descriptor[idx]++;
       }
     }
 
@@ -296,7 +333,7 @@ ShapeDescriptors constructDescriptors(Samples& samples,
         radius = log(radius);
         radius /= max_radius;
         theta = atan(fabs(y1-y2) / fabs(x1-x2));
-        theta += M_PI/2;
+        theta += M_PI;
         if (y1-y2 < 0)
         {
           theta += M_PI;

@@ -40,13 +40,37 @@ import rospy
 import cv2
 import numpy as np
 import sys
-from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos
-from pylab import *
+from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos, isnan
+#from pylab import *
+import matplotlib.pyplot as plotter
+import random
+import os
+import subprocess
 
-_VERSION_LINE = '# v0.4'
-_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
+_VERSION_LINE = '# v0.5'
+_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
+_BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
+
+def subPIAngle(theta):
+    while theta < -pi:
+        theta += 2.0*pi
+    while theta > pi:
+        theta -= 2.0*pi
+    return theta
+
+def point_line_dist(pt, a, b):
+    '''
+    Get the perpendicular distance from pt to the line defined through (a,b)
+    '''
+    A = np.asarray(a)
+    B = np.asarray(b)
+    P = np.asarray(pt)
+    q = A - P
+    n = B-A
+    n_hat = n / np.linalg.norm(n)
+    return np.linalg.norm(q-np.dot(q,n_hat)*n_hat)
 
 class PushTrial:
     def __init__(self):
@@ -61,11 +85,13 @@ class PushTrial:
         self.final_centroid = Point()
         self.final_orientation = 0.0
         self.goal_pose = Pose2D()
+        self.start_point = Point()
         self.push_time = 0.0
         # NOTE: Everything below not saved to disk, just computed for convenience
         self.push_angle = 0.0
         self.push_dist = 0.0
         self.continuation = False
+        self.shape_descriptor = []
 
     def __str__(self):
         return (self.object_id +
@@ -102,9 +128,9 @@ class PushLearningIO:
         self.data_in = None
 
     def write_line(self, init_centroid, init_orientation, final_centroid,
-                   final_orientation, goal_pose, behavior_primitive,
+                   final_orientation, goal_pose, push_start_point, behavior_primitive,
                    controller, proxy, which_arm, push_time, object_id,
-                   precondition_method='centroid_push'):
+                   push_point, precondition_method='centroid_push'):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -113,6 +139,7 @@ class PushLearningIO:
             str(init_orientation)+' '+str(final_centroid.x)+' '+str(final_centroid.y)+' '+\
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
         self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
@@ -137,6 +164,9 @@ class PushLearningIO:
         push.goal_pose.x = float(l.pop())
         push.goal_pose.y = float(l.pop())
         push.goal_pose.theta = float(l.pop())
+        push.start_point.x = float(l.pop())
+        push.start_point.y = float(l.pop())
+        push.start_point.z = float(l.pop())
         push.behavior_primitive = l.pop()
         push.controller = l.pop()
         push.proxy = l.pop()
@@ -146,6 +176,10 @@ class PushLearningIO:
             push.precondition_method = l.pop()
         else:
             push.precondition_method = 'push_centroid'
+        push.shape_descriptor = []
+        while len(l) > 0:
+            push.shape_descriptor.append(float(l.pop()))
+
         push.push_angle = atan2(push.goal_pose.y-push.init_centroid.y,
                                 push.goal_pose.x-push.init_centroid.x)
         push.push_dist = hypot(push.goal_pose.y-push.init_centroid.y,
@@ -154,7 +188,7 @@ class PushLearningIO:
             print 'Greater than 1.0 x: ', str(push)
         return push
 
-    def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, behavior_primitive,
+    def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, push_start_point, behavior_primitive,
                             controller, proxy, which_arm, object_id, precondition_method,
                             shape_descriptor=None):
         if self.data_out is None:
@@ -165,6 +199,7 @@ class PushLearningIO:
             str(init_orientation)+' '+str(0.0)+' '+str(0.0)+' '+\
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
+            str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
             behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method
         if shape_descriptor is not None:
             for s in shape_descriptor:
@@ -172,6 +207,10 @@ class PushLearningIO:
         data_line+='\n'
         self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
+        self.data_out.flush()
+
+    def write_bad_trial_line(self):
+        self.data_out.write(_BAD_TRIAL_HEADER_LINE+'\n')
         self.data_out.flush()
 
     def read_in_data_file(self, file_name):
@@ -276,6 +315,12 @@ class CombinedPushLearnControlIO:
         read_pl_trial_line = False
         read_ctrl_line = False
         trial_is_start = True
+
+        trial_starts = 0
+        bad_stops = 0
+        object_comments = 0
+        control_headers = 0
+
         self.push_trials = []
         current_trial = PushCtrlTrial()
         for line in  data_in.readlines():
@@ -284,14 +329,26 @@ class CombinedPushLearnControlIO:
                     print 'Ignoring version line'
                 continue
             elif line.startswith(_LEARN_TRIAL_HEADER_LINE):
+                object_comments += 1
+
                 if _DEBUG_IO:
                     print 'Read learn trial header'
+                if trial_is_start:
+                    trial_starts += 1
                 read_pl_trial_line = True
                 read_ctrl_line = False
             elif line.startswith(_CONTROL_HEADER_LINE):
                 if _DEBUG_IO:
                     print 'Read control header'
+                control_headers += 1
                 read_ctrl_line = True
+            elif line.startswith(_BAD_TRIAL_HEADER_LINE):
+                bad_stops += 1
+                if _DEBUG_IO:
+                    print 'BAD TRIAL: not adding current trial to list'
+                # Reset trial and switch to read next pl_trial_line as start trial
+                current_trial = PushCtrlTrial()
+                trial_is_start = True
             elif read_pl_trial_line:
                 if _DEBUG_IO:
                     print 'Reading trial'
@@ -317,9 +374,238 @@ class CombinedPushLearnControlIO:
                 if _DEBUG_IO:
                     print 'None of these?'
         data_in.close()
+        print 'object_comments',object_comments
+        print 'trial_starts',trial_starts
+        print 'bad_stops',bad_stops
+        print 'control_headers',control_headers
 
-class HandPlacementPerformanceAnalysis:
-    def analyze_straight_line_push(self, push_trial):
+    def write_example_file(self, file_name, X, Y, normalize=False, debug=False):
+        data_out = file(file_name, 'w')
+        # print 'Normalize:', normalize
+        k = 0
+        for x,y in zip(X,Y):
+            k += 1
+            if debug:
+                print y, x
+            if isnan(y):
+                print 'Skipping writing example: ', k
+                continue
+            data_line = str(y)
+            if normalize:
+                feature_sum = 0.0
+                for xi in x:
+                    feature_sum += xi
+                for i, xi in enumerate(x):
+                    if xi > 0:
+                        data_line += ' ' + str(i+1)+':'+str(sqrt(xi/float(feature_sum)))
+            else:
+                for i, xi in enumerate(x):
+                    if xi > 0:
+                        data_line += ' ' + str(i+1)+':'+str(xi)
+            data_line +='\n'
+            data_out.write(data_line)
+        print 'Wrote', k, 'examples'
+        data_out.close()
+
+    def read_example_file(self, file_name):
+        data_in = file(file_name, 'r')
+        lines = [l.split() for l in data_in.readlines()]
+        data_in.close()
+        Y = []
+        X = []
+        for line in lines:
+            y = float(line.pop(0))
+            Y.append(y)
+            x = []
+            for pair in line:
+                idx, val = pair.split(':')
+                idx = int(idx) - 1
+                val = float(val)
+                while len(x) < idx:
+                    x.append(0)
+                x.append(val)
+            X.append(x)
+        return (X,Y)
+
+    def read_regression_prediction_file(self, file_name):
+        data_in = file(file_name, 'r')
+        Y_hat = [float(y.strip()) for y in data_in.readlines()]
+        data_in.close()
+        return Y_hat
+
+class StartLocPerformanceAnalysis:
+
+    def __init__(self):
+        self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
+
+    def get_trial_features(self, file_name):
+        self.plio = CombinedPushLearnControlIO()
+        self.plio.read_in_data_file(file_name)
+        Y = []
+        X = []
+        for i, p in enumerate(self.plio.push_trials):
+            y = self.analyze_straight_line_push(p)
+            if y < 0:
+                continue
+            x = p.trial_start.shape_descriptor
+            Y.append(y)
+            X.append(x)
+        return (X,Y)
+
+    def generate_example_file(self, file_in_name, file_out_name, normalize=False, set_train=False, set_test=False):
+        (X, Y) = self.get_trial_features(file_in_name)
+        print 'Read in', len(X), 'sample locations'
+        self.plio.write_example_file(file_out_name, X, Y, normalize)
+        if set_train:
+            self.X_train = X[:]
+            self.Y_train = Y[:]
+        if set_test:
+            self.X_test = X[:]
+            self.Y_test = Y[:]
+
+    def generate_train_and_test_files(self, file_in, file_out, normalize=False, train_percent=0.6,
+                                      must_move_epsilon=0.05):
+        (X,Y) = self.get_trial_features(file_in)
+        Z = zip(X,Y)
+        # random.shuffle(Z)
+        if file_out.endswith('.txt'):
+            train_file_out = file_out[:-4]+'_train'+'.txt'
+            test_file_out = file_out[:-4]+'_test'+'.txt'
+        else:
+            train_file_out = file_out+'_train'
+            test_file_out = file_out+'_test'
+
+        # TODO: Make more informed based on object_id
+        num_train_examples = int(train_percent*len(X))
+        print 'Read in', len(X), 'examples'
+        print 'Training file has', num_train_examples, 'examples'
+        print 'Test file has', len(X)-num_train_examples, 'examples'
+        self.Y_train = []
+        self.X_train = []
+        self.Y_test = []
+        self.X_test = []
+
+        for i, xy in enumerate(Z):
+            x = xy[0]
+            y = xy[1]
+            if i < num_train_examples:
+                self.Y_train.append(y)
+                self.X_train.append(x)
+            else:
+                self.Y_test.append(y)
+                self.X_test.append(x)
+        print 'len(Y_train)', len(self.Y_train)
+        self.plio.write_example_file(train_file_out, self.X_train, self.Y_train, normalize)
+        print 'len(Y_test)', len(self.Y_test)
+        self.plio.write_example_file(test_file_out, self.X_test, self.Y_test, normalize)
+
+    def plot_svm_results(self, pred_file):
+        self.Y_hat = self.plio.read_regression_prediction_file(pred_file)
+
+        max_score = 0.0
+        Y_test_norm = self.Y_test[:]
+        Y_hat_norm = self.Y_hat[:]
+        Y_diffs = []
+        for i in xrange(len(Y_test_norm)):
+            # TODO: Get max and normalize
+            if self.Y_test[i] > max_score:
+                max_score = self.Y_test[i]
+            if self.Y_hat[i] > max_score:
+                max_score = self.Y_hat[i]
+            Y_diffs.append(fabs(self.Y_hat[i]-self.Y_test[i]))
+        for i in xrange(len(Y_test_norm)):
+            Y_test_norm[i] = self.Y_test[i]/max_score
+            Y_hat_norm[i] = self.Y_hat[i]/max_score
+        print 'Average error is', sum(Y_diffs)/len(Y_diffs)
+        print 'Max error is', max(Y_diffs)
+        print 'Min error is', min(Y_diffs)
+        p1, = plotter.plot(Y_test_norm, Y_hat_norm,'bx')
+        plotter.xlabel('True Score')
+        plotter.ylabel('Predicted score')
+        plotter.title('Push Scoring Evaluation')
+        plotter.xlim((0.0,1.0))
+        plotter.ylim((0.0,1.0))
+        plotter.show()
+
+    def plot_svm_results_old(self, pred_file):
+        self.Y_hat = self.plio.read_regression_prediction_file(pred_file)
+
+        Ys_ordered = zip(self.Y_test[:], self.Y_hat[:])
+        Ys_ordered.sort(key=lambda test_value: test_value[0])
+        Y_test_ordered = []
+        Y_hat_ordered = []
+        Y_diffs = []
+        for Ys in Ys_ordered:
+            Y_test_ordered.append(Ys[0])
+            Y_hat_ordered.append(Ys[1])
+            Y_diffs.append(fabs(Ys[0]-Ys[1]))
+        print 'Average error is', sum(Y_diffs)/len(Y_diffs)
+        print 'Max error is', max(Y_diffs)
+        print 'Min error is', min(Y_diffs)
+        p1, = plotter.plot(Y_test_ordered,'bx')
+        p2, = plotter.plot(Y_hat_ordered, 'r+')
+        plotter.xlabel('Test index')
+        plotter.ylabel('Straight push score')
+        plotter.title('Push Scoring Evaluation')
+        plotter.legend([p1,p2],['True Score', 'Predicted Score'], loc=2)
+        plotter.show()
+
+    def lookup_push_trial_by_shape_descriptor(self, trials, descriptor):
+        for t in trials:
+            match = True
+            for a,b in zip(t.trial_start.shape_descriptor, descriptor):
+                if a != b:
+                    match = False
+            if match:
+                print t
+                return t
+        return None
+
+    def analyze_straight_line_push_delta_theta(self, push_trial):
+        '''
+        Compute the average frame to frame change in orientation while pushing
+        '''
+        init_theta = push_trial.trial_start.init_orientation
+        angle_errs = []
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            if i == 0:
+                theta_prev = init_theta
+            else:
+                theta_prev = push_trial.trial_trajectory[i-1].x.theta
+            angle_errs.append(abs(subPIAngle(pt.x.theta - theta_prev)))
+
+        if len(angle_errs) < 1:
+            return -1
+        mean_angle_errs = sum(angle_errs)/len(angle_errs)
+        # print mean_angle_errs, 'rad'
+
+        return mean_angle_errs
+
+    def analyze_straight_line_push_line_dist(self, push_trial):
+        '''
+        Get the average distance of the current point to the desired straight line path
+        '''
+        init_pose = push_trial.trial_start.init_centroid
+        goal_pose = push_trial.trial_start.goal_pose
+        init_loc = (init_pose.x, init_pose.y)
+        goal_loc = (goal_pose.x, goal_pose.y)
+
+        line_dists = []
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            cur_pt = (pt.x.x, pt.x.y)
+            line_dist = point_line_dist(cur_pt, init_loc, goal_loc)
+            line_dists.append(line_dist)
+
+        if len(line_dists) < 1:
+            return -1
+        mean_line_dist = sum(line_dists)/len(line_dists)
+        return mean_line_dist
+
+    def analyze_straight_line_push_goal_vector_diff(self, push_trial, normalize_score=False):
+        '''
+        Get the average angler error between the instantaneous velocity direction of the object and the
+        direction towards the goal
+        '''
         init_pose = push_trial.trial_start.init_centroid
         goal_pose = push_trial.trial_start.goal_pose
         final_pose = push_trial.trial_end.final_centroid
@@ -327,25 +613,61 @@ class HandPlacementPerformanceAnalysis:
         err_x = goal_pose.x - final_pose.x
         err_y = goal_pose.y - final_pose.y
         final_error =  hypot(err_x, err_y)
-
+        total_change = hypot(final_pose.x - init_pose.x, final_pose.y - init_pose.y)
         angle_errs = []
+        init_goal_vector = np.asarray([goal_pose.x - init_pose.x, goal_pose.y - init_pose.y])
+        init_final_vector = np.asarray([final_pose.x - init_pose.x, final_pose.y - init_pose.y])
+        final_angle_diff = self.angle_between_vectors(init_goal_vector, init_final_vector)
+        final_angle_area = 0.5*fabs(init_goal_vector[0]*init_final_vector[1]-
+                                    init_goal_vector[1]*init_final_vector[0])
         for i, pt in enumerate(push_trial.trial_trajectory):
             if i == 0:
                 continue
             prev_pt = push_trial.trial_trajectory[i-1]
             goal_vector = np.asarray([goal_pose.x - prev_pt.x.x, goal_pose.y - prev_pt.x.y])
             push_vector = np.asarray([pt.x.x - prev_pt.x.x, pt.x.y - prev_pt.x.y])
-            angle_errs.append(self.angle_between_vectors(goal_vector, push_vector))
+            if hypot(push_vector[0], push_vector[1]) == 0:
+                continue
+            else:
+                angle_errs.append(self.angle_between_vectors(goal_vector, push_vector))
         mean_angle_errs = sum(angle_errs)/len(angle_errs)
         # print mean_angle_errs, 'rad'
         # print final_error, 'cm'
-        return (mean_angle_errs, final_error)
+        if normalize_score:
+            score = 1.0-mean_angle_errs/pi
+        else:
+            score = mean_angle_errs
+
+        return (score, final_error, total_change, final_angle_diff, final_angle_area)
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
         norm_a = hypot(a[0], a[1])
         norm_b = hypot(b[0], b[1])
+        if norm_a == 0 or norm_b == 0:
+            # print 'Bad angle, returning max value'
+            return pi
         return acos(a_dot_b/(norm_a*norm_b))
+
+    def show_data_affinity(self):
+        X = self.X_train[:]
+        X.extend(self.X_test[:])
+        Y = self.Y_train[:]
+        Y.extend(self.Y_test[:])
+        X_aff = np.zeros((len(X),len(X)))
+        Y_aff = np.zeros((len(Y),len(Y)))
+        for r in xrange(len(X)):
+            for c in range(r, len(X)):
+                X_aff[r,c] = sum(np.fabs(np.asarray(X[r]) - np.asarray(X[c])))
+                Y_aff[r,c] = fabs(Y[r] - Y[c])
+                print '(',r,',',c,'): ', X_aff[r,c], '\t', Y_aff[r,c]
+        plotter.imshow(X_aff, plotter.cm.gray,interpolation='nearest')
+        plotter.title('Xaff')
+        plotter.figure()
+        plotter.imshow(Y_aff, plotter.cm.gray, interpolation='nearest')
+        plotter.title('Yaff')
+        plotter.show()
+        return X_aff,Y_aff
 
 class BruteForceKNN:
     def __init__(self, data):
@@ -1063,89 +1385,87 @@ def plot_controller_results(file_name, spin=False):
     goal_x = controls[0].x_desired.x
     goal_y = controls[0].x_desired.y
     goal_theta = controls[0].x_desired.theta
-    figure()
-    plot(XS,YS)
-    scatter(XS,YS)
-    ax = gca()
+    plotter.figure()
+    plotter.plot(XS,YS)
+    plotter.scatter(XS,YS)
+    ax = plotter.gca()
     print ylim()
     print ax.set_xlim(xlim()[1]-(ylim()[1]-ylim()[0]), xlim()[1])
-    headings = [Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
+    headings = [plotter.Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.01, sin(c.x.theta)*0.01, 0.05, axes=ax) for c in controls]
     arrows = [ax.add_patch(h) for h in headings]
-    init_arrow = Arrow(controls[0].x.x, controls[0].x.y,
-                       cos(controls[0].x.theta)*0.01,
-                       sin(controls[0].x.theta)*0.01, 0.05,
-                       axes=ax, facecolor='red')
-    goal_arrow = Arrow(controls[0].x_desired.x, controls[0].x_desired.y,
-                       cos(controls[0].x_desired.theta)*0.01,
-                       sin(controls[0].x_desired.theta)*0.01, 0.05,
-                       axes=ax, facecolor='green')
+    init_arrow = plotter.Arrow(controls[0].x.x, controls[0].x.y,
+                               cos(controls[0].x.theta)*0.01,
+                               sin(controls[0].x.theta)*0.01, 0.05,
+                               axes=ax, facecolor='red')
+    goal_arrow = plotter.Arrow(controls[0].x_desired.x, controls[0].x_desired.y,
+                               cos(controls[0].x_desired.theta)*0.01,
+                               sin(controls[0].x_desired.theta)*0.01, 0.05,
+                               axes=ax, facecolor='green')
     ax.add_patch(goal_arrow)
     ax.add_patch(init_arrow)
-    scatter(init_x, init_y, c='r')
-    scatter(goal_x, goal_y, c='g')
-    xlabel('x (meters)')
-    ylabel('y (meters)')
-    title('Tracker Ouput')
-    savefig('/home/thermans/sandbox/tracker-output.png')
-    figure()
+    plotter.scatter(init_x, init_y, c='r')
+    plotter.scatter(goal_x, goal_y, c='g')
+    plotter.xlabel('x (meters)')
+    plotter.ylabel('y (meters)')
+    plotter.title('Tracker Ouput')
+    plotter.savefig('/home/thermans/sandbox/tracker-output.png')
+    plotter.figure()
     ux = [c.u.linear.x for c in controls]
     uy = [c.u.linear.y for c in controls]
     if spin:
         uy = [c.u.linear.z for c in controls]
-    plot(ux)
-    plot(uy)
-    xlabel('Time')
-    ylabel('Velocity (m/s)')
-    legend(['u_x', 'u_y'])
-    title('Feedback Controller - Input Velocities')
-    savefig('/home/thermans/sandbox/feedback-input.png')
-    figure()
+    plotter.plot(ux)
+    plotter.plot(uy)
+    plotter.xlabel('Time')
+    plotter.ylabel('Velocity (m/s)')
+    plotter.legend(['u_x', 'u_y'])
+    plotter.title('Feedback Controller - Input Velocities')
+    plotter.savefig('/home/thermans/sandbox/feedback-input.png')
+    plotter.figure()
     xdots = [c.x_dot.x for c in controls]
     ydots = [c.x_dot.y for c in controls]
-    plot(xdots)
-    plot(ydots)
-    xlabel('Time')
-    ylabel('Velocity (m/s)')
-    title('Tracker Velocities')
-    legend(['x_dot', 'y_dot'])
-    savefig('/home/thermans/sandbox/tracker-velocities.png')
-    figure()
+    plotter.plot(xdots)
+    plotter.plot(ydots)
+    plotter.xlabel('Time')
+    plotter.ylabel('Velocity (m/s)')
+    plotter.title('Tracker Velocities')
+    plotter.legend(['x_dot', 'y_dot'])
+    plotter.savefig('/home/thermans/sandbox/tracker-velocities.png')
+    plotter.figure()
     thetadots = [c.x_dot.theta for c in controls]
-    plot(thetadots,c='r')
-    xlabel('Time')
-    ylabel('Velocity (rad/s)')
-    title('Tracker Velocities')
-    legend(['theta_dot'])
-    savefig('/home/thermans/sandbox/tracker-theta-vel.png')
-    figure()
+    plotter.plot(thetadots,c='r')
+    plotter.xlabel('Time')
+    plotter.ylabel('Velocity (rad/s)')
+    plotter.title('Tracker Velocities')
+    plotter.legend(['theta_dot'])
+    plotter.savefig('/home/thermans/sandbox/tracker-theta-vel.png')
+    plotter.figure()
     x_err = [c.x_desired.x - c.x.x for c in controls]
     y_err = [c.x_desired.y - c.x.y for c in controls]
-    plot(x_err)
-    plot(y_err)
-    xlabel('Time')
-    ylabel('Error (meters)')
-    title('Position Error')
-    legend(['x_err', 'y_err'])
-    savefig('/home/thermans/sandbox/pos-err.png')
-    figure()
+    plotter.plot(x_err)
+    plotter.plot(y_err)
+    plotter.xlabel('Time')
+    plotter.ylabel('Error (meters)')
+    plotter.title('Position Error')
+    plotter.legend(['x_err', 'y_err'])
+    plotter.savefig('/home/thermans/sandbox/pos-err.png')
+    plotter.figure()
     if spin:
         theta_err = [c.x_desired.theta - c.x.theta for c in controls]
     else:
         theta_err = [c.theta0 - c.x.theta for c in controls]
-    plot(theta_err, c='r')
-    xlabel('Time')
-    ylabel('Error (radians)')
+    plotter.plot(theta_err, c='r')
+    plotter.xlabel('Time')
+    plotter.ylabel('Error (radians)')
     if spin:
-        title('Error in Orientation')
+        plotter.title('Error in Orientation')
     else:
-        title('Heading Deviation from Initial')
-    savefig('/home/thermans/sandbox/theta-err.png')
-    show()
+        plotter.title('Heading Deviation from Initial')
+    plotter.savefig('/home/thermans/sandbox/theta-err.png')
+    plotter.show()
 
-if __name__ == '__main__':
-    plot_controller_results(sys.argv[1])
-
-if __name__ == '__main__':
+def plot_junk():
+    # plot_controller_results(sys.argv[1])
     req_object_id = None
     thresh = 1.0
     # TODO: Add more options to command line
@@ -1172,3 +1492,118 @@ if __name__ == '__main__':
     # pla.object_ranking()
     # pla.object_proxy_ranking()
     print 'Num trials: ' + str(len(pla.all_trials))
+
+def read_example_file(file_name):
+    data_in = file(file_name, 'r')
+    lines = [l.split() for l in data_in.readlines()]
+    data_in.close()
+    Y = []
+    X = []
+    for line in lines:
+        y = float(line.pop(0))
+        Y.append(y)
+        x = []
+        for pair in line:
+            idx, val = pair.split(':')
+            idx = int(idx) - 1
+            val = float(val)
+            while len(x) < idx:
+                x.append(0)
+            x.append(val)
+        X.append(x)
+    return (X,Y)
+
+def read_feature_file(file_name):
+    data_in = file(file_name, 'r')
+    lines = [l.split() for l in data_in.readlines()]
+    data_in.close()
+    X = []
+    for line in lines:
+        x = []
+        for val in line:
+            x.append(float(val))
+        X.append(x)
+    return X
+
+def write_example_file(file_name, X, Y, normalize=False, debug=False):
+    data_out = file(file_name, 'w')
+    # print 'Normalize:', normalize
+    i = 0
+    for x,y in zip(X,Y):
+        i += 1
+        if debug:
+            print y, x
+        if isnan(y):
+            print 'Skipping writing example: ', i
+            continue
+        data_line = str(y)
+        if normalize:
+            feature_sum = 0.0
+            for xi in x:
+                feature_sum += xi
+            for i, xi in enumerate(x):
+                if xi > 0:
+                    data_line += ' ' + str(i+1)+':'+str(sqrt(xi/float(feature_sum)))
+        else:
+            for i, xi in enumerate(x):
+                if xi > 0:
+                    data_line += ' ' + str(i+1)+':'+str(xi)
+        data_line +='\n'
+        data_out.write(data_line)
+    data_out.close()
+
+def rewrite_example_file_features(original_file_name, feat_file_name, out_file_name, normalize=False, debug=False):
+    old_X, Y = read_example_file(original_file_name)
+    X = read_feature_file(feat_file_name)
+    write_example_file(out_file_name, X, Y, normalize, debug)
+
+def extract_shape_features_batch():
+  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  # class_dirs = ['toothpaste3']
+  out_dir = base_dir+'examples_line_dist/'
+  feat_dir = base_dir+'examples_line_dist/'
+  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
+
+  for c in class_dirs:
+      print 'Class:', c
+      class_dir = base_dir+c+'/'
+      files = os.listdir(class_dir)
+      data_file = None
+      for f in files:
+          if f.startswith('aff_learn_out'):
+              data_file = f
+      if data_file is None:
+          print 'ERROR: No data file in directory:', c
+          continue
+      aff_file = class_dir+data_file
+      score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
+      file_out = out_dir+c[:-1]+'_gt_scores.png'
+      print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
+          class_dir, file_out, score_file
+      p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',
+                            aff_file, class_dir, file_out, score_file], shell=False)
+      p.wait()
+
+def read_and_score_raw_files():
+  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  out_dir = base_dir+'examples_line_dist/'
+  for c in class_dirs:
+      in_dir = base_dir+c+'/'
+      files = os.listdir(in_dir)
+      file_name = None
+      for f in files:
+          if f.startswith('aff_learn_out'):
+              file_name = f
+      if file_name is None:
+          continue
+      file_in = in_dir+file_name
+      file_out = out_dir+c[:-1]+'.txt'
+      print file_out
+      slp = StartLocPerformanceAnalysis()
+      slp.generate_example_file(file_in, file_out)
+
+if __name__ == '__main__':
+    # read_and_score_raw_files()
+    extract_shape_features_batch()

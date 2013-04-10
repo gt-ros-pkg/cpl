@@ -83,7 +83,7 @@ PointCloudSegmentation::PointCloudSegmentation(
   {
     cv::Vec3f rand_color;
     rand_color[0] = randf();
-    rand_color[1] = randf()*0.5;
+    rand_color[1] = randf();
     rand_color[2] = randf();
     colors_.push_back(rand_color);
   }

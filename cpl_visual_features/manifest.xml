@@ -8,16 +8,23 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/cpl_visual_features</url>
-  <depend package="cv_bridge"/>
-  <depend package="sensor_msgs"/>
-  <depend package="message_filters"/>
+
   <depend package="roscpp"/>
   <depend package="roslib"/>
-  <rosdep name="opencv2"/>
+  <depend package="cv_bridge"/>
+  <depend package="sensor_msgs"/>
+  <depend package="geometry_msgs"/>
+  <depend package="message_filters"/>
+  <depend package="pcl"/>
+  <depend package="pcl_ros"/>
+  <depend package="pcl16"/>
+  <depend package="pcl16_ros"/>
+
   <export>
-    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lcpl_visual_features_base -lcpl_visual_features_saliency -lcpl_visual_features_motion -lcpl_lap_cpp" />
+    <cpp cflags="-I${prefix}/include" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lcpl_visual_features_base -lcpl_visual_features_saliency -lcpl_visual_features_motion -lcpl_lap_cpp -lcpl_comp_geometry" />
   </export>
 
+  <rosdep name="opencv2"/>
 </package>
 
 

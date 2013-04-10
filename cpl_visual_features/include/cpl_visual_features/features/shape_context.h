@@ -32,7 +32,8 @@ ShapeDescriptors constructDescriptors(Samples2f& samples, cv::Point2f& center,
                                       bool use_center = false,
                                       int radius_bins = 5,
                                       int theta_bins = 12,
-                                      double max_radius = 0);
+                                      double max_radius = 0,
+                                      double scale = 100.0);
 
 ShapeDescriptors constructDescriptors(Samples& samples,
                                       unsigned int radius_bins = 5,

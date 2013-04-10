@@ -10,8 +10,8 @@ r_cart_transpose_push:
       p: 80.0
       d: 15.0
     rot:
-      p: 20.0
-      d: 1.2
+      p: 30.0
+      d: 0.5
   joint_feedforward:
     r_shoulder_pan_joint: 3.33
     r_shoulder_lift_joint: 1.16
@@ -30,7 +30,7 @@ r_cart_transpose_push:
     r_wrist_roll_joint: 5.568
 
   vel_saturation_trans: 2.0
-  vel_saturation_rot: 4.0
+  vel_saturation_rot: 6.0
 
   use_tip_frame: true
 

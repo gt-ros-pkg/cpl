@@ -74,12 +74,12 @@ class TabletopExecutive:
         self.gripper_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
-        self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.09)
+        self.pincher_offset_dist = rospy.get_param('~pincher_push_offset_dist', 0.05)
         self.pincher_start_z = rospy.get_param('~pincher_push_start_z', -0.29)
 
-        self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.05)
-        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.02)
-        self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.27)
+        self.sweep_face_offset_dist = rospy.get_param('~gripper_sweep_face_offset_dist', 0.03)
+        self.sweep_wrist_offset_dist = rospy.get_param('~gripper_sweep_wrist_offset_dist', 0.01)
+        self.sweep_start_z = rospy.get_param('~gripper_sweep_start_z', -0.30)
 
         self.overhead_offset_dist = rospy.get_param('~overhead_push_offset_dist', 0.05)
         self.overhead_start_z = rospy.get_param('~overhead_push_start_z', -0.29)
@@ -88,7 +88,6 @@ class TabletopExecutive:
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
-        self.num_start_loc_samples = rospy.get_param('~num_start_loc_samples', 5)
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
         self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.425)
@@ -96,6 +95,9 @@ class TabletopExecutive:
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
         self.min_workspace_y = -self.max_workspace_y
 
+        self.goal_y_base_delta = 0.01
+        self.num_start_loc_clusters = 5
+        self.start_loc_use_fixed_goal = rospy.get_param('start_loc_use_fixed_goal', False)
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.learn_file_base = rospy.get_param('push_learn_file_base_path', '/u/thermans/data/new/aff_learn_out_')
 
@@ -163,18 +165,6 @@ class TabletopExecutive:
             'get_singulation_push_vector', SingulationPush)
 
     def init_learning(self):
-        # Start loc learning stuff
-        self.push_loc_shape_features = []
-        self.push_count = 0
-        self.base_trial_id = str(rospy.get_time())
-
-        if _USE_LEARN_IO:
-            self.learn_io = PushLearningIO()
-            learn_file_name = self.learn_file_base+str(self.base_trial_id)+'.txt'
-            self.learn_out_file_name = learn_file_name
-            rospy.loginfo('Opening learn file: '+learn_file_name)
-            self.learn_io.open_out_file(learn_file_name)
-
         self.learning_push_vector_proxy = rospy.ServiceProxy(
             'get_learning_push_vector', LearnPush)
         # Get table height and raise to that before anything else
@@ -187,6 +177,19 @@ class TabletopExecutive:
             initialized = self.initialize_learning_push()
             r.sleep()
         rospy.loginfo('Done initializing learning')
+
+    def init_loc_learning(self):
+        # Start loc learning stuff
+        self.push_loc_shape_features = []
+        self.push_count = 0
+        self.base_trial_id = str(rospy.get_time())
+
+        if _USE_LEARN_IO:
+            self.learn_io = PushLearningIO()
+            learn_file_name = self.learn_file_base+str(self.base_trial_id)+'.txt'
+            self.learn_out_file_name = learn_file_name
+            rospy.loginfo('Opening learn file: '+learn_file_name)
+            self.learn_io.open_out_file(learn_file_name)
 
     def finish_learning(self):
         rospy.loginfo('Done with learning pushes and such.')
@@ -304,16 +307,14 @@ class TabletopExecutive:
             if not res or res == 'quit':
                 return
 
-    def run_start_loc_learning(self, object_id):
+    def run_start_loc_learning(self, object_id, num_pushes_per_sample, num_sample_locs):
         self.push_loc_shape_features = []
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
-                        trial_id = str(object_id) +'_'+ str(self.base_trial_id) + str(self.push_count)
-                        self.push_count += 1
-                        res = self.explore_push_start_locs(behavior_primitive, controller, proxy,
-                                                           trial_id, arm)
+                        res = self.explore_push_start_locs(num_pushes_per_sample, num_sample_locs, behavior_primitive,
+                                                           controller, proxy, object_id, arm)
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
                             return False
@@ -352,7 +353,6 @@ class TabletopExecutive:
         else:
             rospy.loginfo("No input. Moving on...")
 
-        done_with_push = False
         # NOTE: Get initial object pose here to make sure goal pose is far enough away
         if self.servo_head_during_pushing:
             self.raise_and_look(point_head_only=True)
@@ -368,6 +368,7 @@ class TabletopExecutive:
         goal_pose = self.generate_random_table_pose(init_pose)
 
         restart_count = 0
+        done_with_push = False
         while not done_with_push:
             start_time = time.time()
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
@@ -386,7 +387,8 @@ class TabletopExecutive:
 
             if _USE_LEARN_IO:
                 self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
-                                                  goal_pose, behavior_primitive, controller_name,
+                                                  goal_pose, push_vec_res.push.start_point,
+                                                  behavior_primitive, controller_name,
                                                   proxy_name, which_arm, object_id, precondition_method)
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
@@ -413,8 +415,9 @@ class TabletopExecutive:
                 done_with_push = True
         return res
 
-    def explore_push_start_locs(self, behavior_primitive, controller_name, proxy_name, trial_id,
-                                which_arm, precondition_method=CENTROID_PUSH_PRECONDITION):
+    def explore_push_start_locs(self, num_pushes_per_sample, num_sample_locs, behavior_primitive, controller_name,
+                                proxy_name, object_id, which_arm,
+                                precondition_method=CENTROID_PUSH_PRECONDITION):
         rospy.loginfo('Exploring push start locs for triple: (' + behavior_primitive + ', ' +
                       controller_name + ', ' + proxy_name + ')')
         timeout = 2
@@ -428,59 +431,92 @@ class TabletopExecutive:
         else:
             rospy.loginfo("No input. Moving on...")
 
-        done_with_push = False
-
         if self.servo_head_during_pushing:
             self.raise_and_look(point_head_only=True)
 
-        # NOTE: Get initial object pose here to make sure goal pose is far enough away
-        init_pose = self.get_feedback_push_initial_obj_pose()
-        while not _OFFLINE and self.out_of_workspace(init_pose):
-            rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
-                          str(init_pose.y) + ')')
-            code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
-            if code_in.lower().startswith('q'):
-                return 'quit'
-            init_pose = self.get_feedback_push_initial_obj_pose()
 
         start_loc_trials = 0
-        # Doesn't matter what the goal_pose is, the start pose server picks it for us
-        goal_pose = Pose2D()
-        while not done_with_push:
-            start_time = time.time()
-            push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
-                                                             proxy_name, behavior_primitive,
-                                                             learn_start_loc=True,
-                                                             new_object=(not start_loc_trials),
-                                                             trial_id=trial_id)
-            goal_pose = push_vec_res.goal_pose
-            shape_descriptor = push_vec_res.shape_descriptor[:]
-            self.push_loc_shape_features.append(shape_descriptor)
-            if push_vec_res is None:
-                return None
-            elif push_vec_res == 'quit':
-                return push_vec_res
+        self.start_loc_goal_y_delta = 0
+        # HACK: Currently quit after half the locations, assuming pushing on symmetric objects
+        N_PUSH = num_sample_locs/2+1
+        # N_PUSH = num_sample_locs
+        for i in xrange(N_PUSH):
+            # Doesn't matter what the goal_pose is, the start pose server picks it for us
+            goal_pose = self.generate_random_table_pose()
+            for j in xrange(num_pushes_per_sample):
+                rospy.loginfo('Performing push iteration: '+str(i*num_pushes_per_sample+j))
+                # NOTE: Get initial object pose here to make sure goal pose is far enough away
+                init_pose = self.get_feedback_push_initial_obj_pose()
+                if self.start_loc_use_fixed_goal:
+                    reset = False
+                    while not reset:
+                        code_in = raw_input('Move object to initial test pose and press <Enter> to continue: ')
+                        if code_in.lower().startswith('q'):
+                            return 'quit'
+                        reset = True
+                        init_pose = self.get_feedback_push_initial_obj_pose()
+                elif not _OFFLINE:
+                    while self.out_of_workspace(init_pose):
+                        rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
+                                      str(init_pose.y) + ')')
+                        code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
+                        if code_in.lower().startswith('q'):
+                            return 'quit'
+                        init_pose = self.get_feedback_push_initial_obj_pose()
 
-            if _USE_LEARN_IO:
-                self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
-                                                  goal_pose, behavior_primitive, controller_name,
-                                                  proxy_name, which_arm, trial_id,
-                                                  precondition_method, shape_descriptor)
+                trial_id = str(object_id) +'_'+ str(self.base_trial_id) + '_' + str(self.push_count)
+                self.push_count += 1
+                start_time = time.time()
+                push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name, proxy_name,
+                                                                 behavior_primitive, learn_start_loc=True,
+                                                                 new_object=(not start_loc_trials),
+                                                                 num_clusters=self.num_start_loc_clusters,
+                                                                 trial_id=trial_id,
+                                                                 num_sample_locs=num_sample_locs,
+                                                                 num_pushes_per_sample=num_pushes_per_sample)
+                if push_vec_res is None:
+                    return None
+                elif push_vec_res == 'quit':
+                    return push_vec_res
 
-            res, push_res = self.perform_push(which_arm, behavior_primitive,
-                                              push_vec_res, goal_pose,
-                                              controller_name, proxy_name)
-            push_time = time.time() - start_time
+                goal_pose = push_vec_res.goal_pose
+                shape_descriptor = push_vec_res.shape_descriptor[:]
+                self.push_loc_shape_features.append(shape_descriptor)
 
-            # TODO: Analyze push here / write result to disk / retrain regressor
-            if res == 'quit':
-                return res
-            elif res == 'aborted':
-                if self.servo_head_during_pushing:
-                    self.raise_and_look(point_head_only=True)
-                start_loc_trials += 1
-                if start_loc_trials > self.num_start_loc_samples:
-                    done_with_push = True
+                if _USE_LEARN_IO:
+                    # TODO: Write this to disk! push_vector_res.push.start_point
+                    self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
+                                                      goal_pose, push_vec_res.push.start_point, behavior_primitive, controller_name,
+                                                      proxy_name, which_arm, trial_id,
+                                                      precondition_method, shape_descriptor)
+
+                res, push_res = self.perform_push(which_arm, behavior_primitive, push_vec_res, goal_pose,
+                                                  controller_name, proxy_name)
+                push_time = time.time() - start_time
+                # NOTE: Don't save unless s is pressed
+                if _USE_LEARN_IO and not _OFFLINE:
+                    timeout = 2
+                    rospy.loginfo("Enter something to not save the previous push trial: ")
+                    rlist, _, _ = select([sys.stdin], [], [], timeout)
+                    if rlist:
+                        self.learn_io.write_bad_trial_line()
+                        s = sys.stdin.readline()
+                        rospy.loginfo('Not saving previous trial.')
+                        if s.lower().startswith('q'):
+                            return 'quit'
+                    else:
+                        rospy.loginfo("No input. Saving trial data")
+                        self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                                          push_vec_res, goal_pose, trial_id, precondition_method)
+
+
+                if res == 'quit':
+                    return res
+                elif res == 'aborted' or res == 'done':
+                    if self.servo_head_during_pushing:
+                        self.raise_and_look(point_head_only=True)
+                    start_loc_trials += 1
+        rospy.loginfo('Done performing push loc exploration!')
         return res
 
     def get_feedback_push_initial_obj_pose(self):
@@ -508,7 +544,8 @@ class TabletopExecutive:
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                      behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
-                                     learn_start_loc=False, new_object=False, trial_id=''):
+                                     learn_start_loc=False, new_object=False, num_clusters=1,
+                                     trial_id='',num_sample_locs=1, num_pushes_per_sample=1):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
@@ -516,7 +553,10 @@ class TabletopExecutive:
                                                                  tool_proxy_name,
                                                                  learn_start_loc=learn_start_loc,
                                                                  new_object=new_object,
-                                                                 trial_id=trial_id)
+                                                                 num_clusters=num_clusters,
+                                                                 trial_id=trial_id,
+                                                                 num_sample_locs=num_sample_locs,
+                                                                 num_pushes_per_sample=num_pushes_per_sample)
 
             if push_vec_res is None:
                 return None
@@ -626,10 +666,10 @@ class TabletopExecutive:
             return ('aborted', result)
 
         rospy.loginfo('Done performing push behavior.')
-        if _OFFLINE:
-            code_in = raw_input("Press <Enter> to try another push: ")
-            if code_in.lower().startswith('q'):
-                return ('quit', result)
+        # if _OFFLINE:
+        #     code_in = raw_input("Press <Enter> to try another push: ")
+        #     if code_in.lower().startswith('q'):
+        #         return ('quit', result)
         return ('done', result)
 
     def analyze_push(self, behavior_primitive, controller_name, proxy_name,
@@ -657,7 +697,7 @@ class TabletopExecutive:
             self.learn_io.write_line(
                 push_vector_res.centroid, push_vector_res.theta,
                 analysis_res.centroid, analysis_res.theta,
-                goal_pose, behavior_primitive, controller_name, proxy_name,
+                goal_pose, push_vector_res.push.start_point, behavior_primitive, controller_name, proxy_name,
                 which_arm, push_time, object_id, precondition_method)
 
     def request_singulation_push(self, use_guided=True):
@@ -676,7 +716,8 @@ class TabletopExecutive:
     def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                          behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
                                          get_pose_only=False, learn_start_loc=False,
-                                         new_object=False, trial_id=''):
+                                         new_object=False, num_clusters=1, trial_id='',
+                                         num_sample_locs=1, num_pushes_per_sample=1):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -689,6 +730,9 @@ class TabletopExecutive:
         push_vector_req.learn_start_loc = learn_start_loc
         push_vector_req.new_object = new_object
         push_vector_req.trial_id = trial_id
+        push_vector_req.num_start_loc_clusters = num_clusters
+        push_vector_req.num_start_loc_sample_locs = num_sample_locs
+        push_vector_req.num_start_loc_pushes_per_sample = num_pushes_per_sample
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -835,6 +879,11 @@ class TabletopExecutive:
         else:
             offset_dist = self.gripper_offset_dist
             start_z = self.gripper_start_z
+
+        rospy.loginfo('Gripper push pre-augmented start_point: (' +
+                      str(push_req.start_point.point.x) + ', ' +
+                      str(push_req.start_point.point.y) + ', ' +
+                      str(push_req.start_point.point.z) + ')')
 
         push_req.start_point.point.x += -offset_dist*cos(wrist_yaw)
         push_req.start_point.point.y += -offset_dist*sin(wrist_yaw)
@@ -1104,11 +1153,13 @@ class TabletopExecutive:
                 init_pose.y < self.min_workspace_y or init_pose.y > self.max_workspace_y)
 
     def generate_random_table_pose(self, init_pose=None):
-        if _USE_FIXED_GOAL:
+        if _USE_FIXED_GOAL or self.start_loc_use_fixed_goal:
             goal_pose = Pose2D()
-            goal_pose.x = 0.5
-            goal_pose.y = 0.2
-            goal_pose.theta = 3.01697971833
+            goal_pose.x = 0.65
+            goal_pose.y = -0.3
+            goal_pose.theta = 0
+            if self.start_loc_use_fixed_goal:
+                goal_pose.y += self.start_loc_goal_y_delta
             return goal_pose
         min_x = self.min_workspace_x
         max_x = self.max_workspace_x
@@ -1145,10 +1196,12 @@ class TabletopExecutive:
 if __name__ == '__main__':
     random.seed()
     learn_start_loc = True
+    num_start_loc_pushes_per_sample = 3
+    num_start_loc_sample_locs = 16
     use_singulation = False
     use_learning = True
     use_guided = True
-    max_pushes = 50
+    max_pushes = 500
     behavior_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
     # tool_proxy_name = EE_TOOL_PROXY
     # tool_proxy_name = HACK_TOOL_PROXY
@@ -1168,7 +1221,10 @@ if __name__ == '__main__':
             if code_in.lower().startswith('q'):
                 break
             if learn_start_loc:
-                clean_exploration = node.run_start_loc_learning(object_id=code_in)
+                node.init_loc_learning()
+                clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
+                                                                num_start_loc_sample_locs)
+                node.finish_learning()
             else:
                 clean_exploration = node.run_push_exploration(object_id=code_in)
             if not clean_exploration:
