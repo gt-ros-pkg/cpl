@@ -95,4 +95,3 @@ if __name__ == '__main__':
     while not rospy.is_shutdown():
 
         pub_as_one()
-    
