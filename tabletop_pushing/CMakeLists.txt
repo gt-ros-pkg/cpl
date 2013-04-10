@@ -33,12 +33,16 @@ rosbuild_add_library(graphcut include/tabletop_pushing/extern/graphcut/graph.cpp
 rosbuild_add_library(point_cloud_segmentation include/tabletop_pushing/point_cloud_segmentation.h src/point_cloud_segmentation.cpp)
 target_link_libraries(point_cloud_segmentation ${OpenCV_LIBRARIES})
 
+rosbuild_add_library(object_tracker_25d include/tabletop_pushing/object_tracker_25d.h src/object_tracker_25d.cpp)
+target_link_libraries(object_tracker_25d ${OpenCV_LIBRARIES})
+
 rosbuild_add_library(shape_features include/tabletop_pushing/shape_features.h src/shape_features.cpp)
 target_link_libraries(shape_features ${OpenCV_LIBRARIES})
 
 rosbuild_add_executable(tabletop_pushing_perception_node src/tabletop_pushing_perception_node.cpp)
 target_link_libraries(tabletop_pushing_perception_node point_cloud_segmentation)
 target_link_libraries(tabletop_pushing_perception_node shape_features)
+target_link_libraries(tabletop_pushing_perception_node object_tracker_25d)
 target_link_libraries(tabletop_pushing_perception_node ${OpenCV_LIBRARIES})
 rosbuild_link_boost(tabletop_pushing_perception_node signals)
 rosbuild_link_boost(tabletop_pushing_perception_node signals)

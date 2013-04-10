@@ -49,7 +49,7 @@ import time
 import random
 from push_primitives import *
 
-_OFFLINE = False
+_OFFLINE = True
 _USE_LEARN_IO = True
 _TEST_START_POSE = False
 _WAIT_BEFORE_STRAIGHT_PUSH = False
