@@ -410,7 +410,7 @@ if __name__=='__main__':
 
     bin_loc_sub = rospy.Subscriber('bins_robo_sim', project_simulation.msg.bins_loc, listen_bin_loc)
     
-    endf_pub = rospy.Publisher('endfactor_pose', project_simulation.msg.endf_bin)
+    endf_pub = rospy.Publisher('endfactor_bin', project_simulation.msg.endf_bin)
     
     rmv_bin_pub = rospy.Publisher('remove_bin', std_msgs.msg.UInt8)
 
