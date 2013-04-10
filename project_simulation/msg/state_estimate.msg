@@ -1,0 +1,3 @@
+bins_loc bin_locations
+endf_bin endfactor_pos_n_bin
+symbol_prob[] inf_prob_dist

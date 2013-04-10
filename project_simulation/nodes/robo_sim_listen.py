@@ -11,6 +11,7 @@ from geometry_msgs.msg import *
 from std_msgs.msg import *
 from project_simulation.msg import *
 from visualization_msgs.msg import *
+from rospy_tutorials.msg import *
 
 import math
 import copy
@@ -29,6 +30,9 @@ ROBO_PUT = 0.5
 task_done = False
 task_cnt =0
 frame_of_reference = '/lifecam1_optical_frame'
+
+#work-space
+work_space = ['L0', 'L1', 'L2']
 
 #possible locations
 slocations = [ 
@@ -92,8 +96,11 @@ endfactor_rest = [0.226263331563,0.225740063166,1.17398472964]
 endfactor_cur_pos = [0.226263331563,0.225740063166,1.17398472964]
 endfactor_cur_bin = -1 #bin held by endfactor, -1 denotes none
 
+performing_task = False
+
 endfactor_fix_orientation = [0.0, 1.0, 0.0, 0.0]
 
+#populate bin lists and empty lists
 def listen_bin_loc(bin_loc_msg):
     global cur_bin_list, empty_locations, slocations
 
@@ -112,45 +119,8 @@ def listen_bin_loc(bin_loc_msg):
         else:
             empty_locations.append(temp_bin_msg.location.data)
     
-
-    '''#populate empty locations
-    empty_locations = []
-    for slocation in slocations:
-        bin_in_loc = False
-        for cur_bin in cur_bin_list:
-            if cur_bin['location'] == slocation['name']:
-                bin_in_loc = True
-                break
-        if not bin_in_loc:
-            empty_locations.append(slocation['name'])'''
-
     return
 
-    '''
-    #debug
-    print "******BINS********"
-    for t_bin in cur_bin_list:
-        print "bin, loc" + str(t_bin['id']) + ' , ' + str(t_bin['location']) 
-        
-    print "******EMPTY********"
-    for e_loc in empty_locations:
-        print "loc  : " + e_loc 
-    '''
-
-#check whether position received matches to stored location within 15 percent
-def check_pos_match(pos_tup, pos_point):
-    perc_x = 5*abs(pos_point.x/100)
-    perc_y = 5*abs(pos_point.y/100)
-    perc_z = 5*abs(pos_point.z/100)
-    
-    if (abs(pos_tup[0]-pos_point.x) > perc_x):
-        return False
-    if (abs(pos_tup[1]-pos_point.y) > perc_y):
-        return False
-    if (abs(pos_tup[2]-pos_point.z) > perc_z):
-        return False
-    
-    return True
 
 #perform tasks in list
 def do_tasks():
@@ -302,28 +272,6 @@ def pub_add_bin(bin_to_add, bin_location):
     
     pub_bin_adder.publish(msg)
 
-    '''bin_position = get_location(bin_location)
-
-    temp_msg = proj_simul.msg.AlvarMarker()
-    temp_msg.id = bin_to_add
-    temp_msg.header.frame_id = frame_of_reference
-    temp_msg.pose.header.frame_id = frame_of_reference
-
-
-    temp_msg.pose.pose.orientation.x = endfactor_fix_orientation[0]
-    temp_msg.pose.pose.orientation.y = endfactor_fix_orientation[1]
-    temp_msg.pose.pose.orientation.z = endfactor_fix_orientation[2]
-    temp_msg.pose.pose.orientation.w = endfactor_fix_orientation[3]
-
-    temp_msg.pose.pose.position.x = bin_position[0]
-    temp_msg.pose.pose.position.y = bin_position[1]
-    temp_msg.pose.pose.position.z = bin_position[2]   
-
-    #debug
-    print 'The message'
-    print temp_msg
-    time.sleep(100)
-    pub_bin_adder.publish(temp_msg)'''
 
 #move the endfactor, no bin to move
 def move_endf(target_loc_name, to_rest=False):
@@ -378,7 +326,7 @@ def calc_euclid(vec_one, vec_two):
 
 #publish current endfactor position
 def pub_endfactor():
-    global endfactor_cur_pos, endfactor_fix_orientation, endf_pub
+    global endfactor_cur_pos, endfactor_fix_orientation, endf_pub, endfactor_cur_bin
 
     temp_msg = geometry_msgs.msg.PoseStamped()
     temp_msg.header.frame_id = frame_of_reference
@@ -436,6 +384,24 @@ def pub_viz_enf():
     temp_msg.text = 'ENDFACTOR'
     endf_viz_pub.publish(temp_msg)
 
+def wait_at_loc(for_time):
+    global PUB_RATE
+    tot_time_steps = for_time * PUB_RATE
+    cur_step = 0
+    loop_rate = rospy.Rate(PUB_RATE)
+    
+    while cur_step < tot_time_steps:
+        pub_endfactor()
+        cur_step += 1
+        loop_rate.sleep()
+
+def listen_tasks(task_msg):
+    global task_list
+    task_list.append({'targ_loc' : task_msg.move_to_location.data, 
+                          'bin_id' : task_msg.bin_id.data})
+    
+    return
+
 
 if __name__=='__main__':
     
@@ -444,39 +410,78 @@ if __name__=='__main__':
 
     bin_loc_sub = rospy.Subscriber('bins_robo_sim', project_simulation.msg.bins_loc, listen_bin_loc)
     
-    endf_pub = rospy.Publisher('endfactor_pose', project_simulation.msg.endf_bin)
+    endf_pub = rospy.Publisher('endfactor_bin', project_simulation.msg.endf_bin)
     
     rmv_bin_pub = rospy.Publisher('remove_bin', std_msgs.msg.UInt8)
 
     pub_bin_adder = rospy.Publisher('add_bin', project_simulation.msg.bin_loc)
     
     endf_viz_pub = rospy.Publisher('endfactor_visual', visualization_msgs.msg.Marker)
+    
+    task_listen_sub = rospy.Subscriber('move_bin', project_simulation.msg.move_bin, listen_tasks)
+    
+    loop_rate = rospy.Rate(PUB_RATE)
+    
+    while not rospy.is_shutdown():
+        #no task to do publish current pos
+        if task_list.__len__() == 0:
+            pub_endfactor()
+            loop_rate.sleep()
+        else:
+            cur_task = task_list[0]
+            
+            #find bin
+            targ_bin_cur_loc = None
+            bin_not_found = True
+            for cur_bin in cur_bin_list:
+                if cur_bin['id'] == cur_task['bin_id']:
+                    targ_bin_cur_loc = cur_bin['location']
+                    bin_not_found = False
+                    break
+            if bin_not_found:
+                #incase bin wasn't found, move to next task
+                print 'Error bin not found for the task' + str(cur_task)+'. Skipping task'
+                task_list.pop(0)
+                continue
+
+            #check if target position empty
+            dest_loc = cur_task['targ_loc']
+            location_not_empty = True
+            for e_loc in empty_locations:
+                if e_loc == dest_loc:
+                    location_not_empty = False
+                    break
+
+            if location_not_empty:
+                print "Location: " + str(dest_loc) + "is currently occupied. Skipping task."
+                task_list.pop(0)
+                continue
+
+            #in case both those conditions met- do it!
+            #move endfactor to bin
+            move_endf(targ_bin_cur_loc)    
+
+            #pick up bin
+            #removing bin from ar_pose_markers
+            targ_bin_id = cur_task['bin_id']
+            pub_remove_bin(targ_bin_id)
+            #hold bin
+            endfactor_cur_bin = cur_task['bin_id']
+            wait_at_loc(ROBO_PICK)
+   
+            #move bin to target
+            pub_endf_w_bin(targ_bin_id, dest_loc)
+            #put down bin
+            wait_at_loc(ROBO_PUT)    
+            pub_add_bin(targ_bin_id, dest_loc)
+            #no-bin now
+            endfactor_cur_bin = -1
+    
+            #move endfactor to rest position
+            move_endf(1, True)
+
+            #task_complete
+            task_list.pop(0)
+            continue
 
 
-    #input tasks
-    keep_doing = True
-    
-    while(keep_doing):
-        more = False
-        inps = raw_input('Add Task: <bin_id> <location> <delay>')
-        inps = inps.rsplit(' ')
-        #TODO: take inputs proper
-        task_list.append({'bin_id':int(inps[0]), 'location':inps[1], 'delay':float(inps[2])})
-        
-        inps = raw_input('Add more(y/n)')
-        if inps[0] == 'y':
-            more = True
-        
-        done = False
-        #do tasks in list
-        if not more:
-            while ((not rospy.is_shutdown()) and (not done)):
-                done = do_tasks()
-            inps = raw_input('Do more tasks?(y/n)')
-            if not inps == 'y':
-                keep_doing = False
-            else:
-                task_list = []
-                task_cnt = 0
-    
-    #TODO: listen to hand positions
