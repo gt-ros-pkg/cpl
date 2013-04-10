@@ -48,8 +48,15 @@ class SplineTrajActionServer(object):
                 self.asrv.set_aborted(self.result)
 
 
-        self.arm.unlock_security_stop()
+        if self.arm.is_security_stopped():
+            self.arm.unlock_security_stop()
         r = rospy.Rate(2.*self.arm.CONTROL_RATE)
+        n = 20
+        while not rospy.is_shutdown() and n > 0.:
+            self.arm.cmd_pos_vel_acc(self.arm.get_q_des(), [0.]*6, [0.]*6)
+            n -= 1
+            r.sleep()
+
         start_time = rospy.get_time()
         while True:
 

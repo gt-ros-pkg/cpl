@@ -30,6 +30,7 @@ from pykdl_utils.kdl_kinematics import create_kdl_kin
 BIN_HEIGHT_DEFAULT = 0.1
 TABLE_OFFSET_DEFAULT = -0.2
 TABLE_CUTOFF_DEFAULT = 0.05
+VEL_MULT = 4.0
 
 class ARTagManager(object):
     def __init__(self):
@@ -58,6 +59,14 @@ class ARTagManager(object):
                 while (len(self.ar_poses[mid]) > 0 and 
                        cur_time - self.ar_poses[mid][0][0] > self.filter_window):
                     self.ar_poses[mid].popleft()
+
+    # forces bin location from a pose in the base_link frame
+    def set_bin_location(self, mid, pose):
+        with self.lock:
+            cur_time = rospy.get_time()
+            self.ar_poses[mid].clear()
+            self.ar_poses[mid].append([cur_time, 
+                                       self.camera_pose**-1 * PoseConv.to_homo_mat(pose)])
 
     def get_available_bins(self):
         with self.lock:
@@ -108,11 +117,11 @@ class BinManager(object):
         self.grasp_rot = rospy.get_param("~grasp_rot", 0.0)
         self.grasp_lift = rospy.get_param("~grasp_lift", 0.18)
         self.waypt_offset = rospy.get_param("~waypt_offset", 0.25)
-        self.waypt_robot_min_dist = rospy.get_param("~waypt_robot_min_dist", -0.20)
+        self.waypt_robot_min_dist = rospy.get_param("~waypt_robot_min_dist", -0.40)
 
-        self.pregrasp_vel = rospy.get_param("~pregrasp_vel", 2.0*0.10)
-        self.grasp_dur = rospy.get_param("~grasp_dur", 3.50/2.0)
-        self.grasp_vel = rospy.get_param("~grasp_vel", 0.03*2.0)
+        self.pregrasp_vel = rospy.get_param("~pregrasp_vel", VEL_MULT*0.10)
+        self.grasp_dur = rospy.get_param("~grasp_dur", 3.50/VEL_MULT)
+        self.grasp_vel = rospy.get_param("~grasp_vel", 0.03*VEL_MULT)
 
         self.qd_max = [0.2]*6
         self.q_min = [-4.78, -2.4, 0.3, -3.8, -3.3, -2.*np.pi]
@@ -178,62 +187,6 @@ class BinManager(object):
             self.arm_cmd.set_payload(pose=([0., -0.0086, 0.0353], [0.]*3), payload=0.89)
         else:
             self.arm_cmd.set_payload(pose=([-0.03, -0.0086, 0.0453], [0.]*3), payload=1.40)
-
-    def create_bin_waypts(self, ar_grasp_id, ar_place_id):
-
-        ar_grasp_tag_pose, grasp_is_table = self.ar_man.get_bin_pose(ar_grasp_id)
-        grasp_offset = PoseConv.to_homo_mat(
-                [-0.013, self.ar_offset, self.grasp_height],
-                [0., np.pi/2, self.grasp_rot])
-        grasp_pose = PoseConv.to_homo_mat(ar_grasp_tag_pose) * grasp_offset
-        pregrasp_pose = grasp_pose.copy()
-        pregrasp_pose[2,3] += self.grasp_lift
-
-        ar_place_tag_pos, ar_place_tag_rot, place_is_table = self.ar_empty_locs[ar_place_id]
-        ar_place_tag_pose = (ar_place_tag_pos, ar_place_tag_rot)
-        place_offset = PoseConv.to_homo_mat(
-                [-0.013, self.ar_offset, self.grasp_height + self.place_offset],
-                [0., np.pi/2, self.grasp_rot])
-        place_pose = PoseConv.to_homo_mat(ar_place_tag_pose) * place_offset
-        preplace_pose = place_pose.copy()
-        preplace_pose[2,3] += self.grasp_lift
-
-        mid_pts = []
-        if np.logical_xor(place_is_table, grasp_is_table):
-            waypt_line = [0., 1., self.waypt_offset]
-            grasp_pt = [grasp_pose[0,3], grasp_pose[1,3], 1.]
-            place_pt = [place_pose[0,3], place_pose[1,3], 1.]
-            waypt_pt = np.cross(waypt_line, np.cross(grasp_pt, place_pt))
-            waypt_pt /= waypt_pt[2]
-            waypt_pt[0] = min(waypt_pt[0], self.waypt_robot_min_dist)
-            waypt = pose_interp(pregrasp_pose, preplace_pose, 0.5)
-            waypt[:3,3] = np.mat([waypt_pt[0], waypt_pt[1], 
-                                  self.grasp_height+self.bin_height+self.grasp_lift]).T
-            mid_pts.append(waypt)
-
-        waypts = (  [pregrasp_pose, grasp_pose, pregrasp_pose] 
-                  + mid_pts 
-                  + [preplace_pose, place_pose, preplace_pose])
-        if False:
-            r = rospy.Rate(1)
-            for pose in waypts:
-                self.pose_pub.publish(PoseConv.to_pose_stamped_msg("/base_link", pose))
-                r.sleep()
-            print pregrasp_pose, grasp_pose, pregrasp_pose, mid_pts, preplace_pose, place_pose, preplace_pose
-
-        # bin_pose
-        # ar_pose[0,0], 
-        # x =
-        # z = is_table*self.table_offset
-        # bin_grasp/bin_place are [x, y, r, is_table]
-        # move to pregrasp, above the bin (traversal)
-        # move down towards the bin
-        # grasp the bin
-        # lift up
-        # move to preplace (traversal)
-        # move down
-        # release bin
-        return pregrasp_pose, grasp_pose, mid_pts, preplace_pose, place_pose
 
     def plan_move_traj(self, pregrasp_pose, mid_pts, preplace_pose, place_pose):
 
@@ -315,12 +268,12 @@ class BinManager(object):
         q_knots.extend(q_knots_new[1:])
         t_knots.extend(t_knots[-1] + t_knots_new[1:])
 
-        q_home = [-2.75203516454, -1.29936272152, 1.97292018645, 
-                  -2.28456617769, -1.5054511996, -1.1]
-        q_knots.append(q_home)
-        x_home = self.kin.forward(q_home)
-        dist = np.linalg.norm(x_home[:3,3]-preplace_pose[:3,3])
-        t_knots.append(t_knots[-1] + dist / self.pregrasp_vel)
+        #q_home = [-2.75203516454, -1.29936272152, 1.97292018645, 
+        #          -2.28456617769, -1.5054511996, -1.1]
+        #q_knots.append(q_home)
+        #x_home = self.kin.forward(q_home)
+        #dist = np.linalg.norm(x_home[:3,3]-preplace_pose[:3,3])
+        #t_knots.append(t_knots[-1] + dist / self.pregrasp_vel)
 
         retreat_traj = SplineTraj.generate(t_knots, q_knots)
         return retreat_traj
@@ -357,7 +310,8 @@ class BinManager(object):
             return None
         q_knots.append(q_pregrasp)
         dist = np.linalg.norm(pregrasp_pose[:3,3]-x_init[:3,3])
-        t_knots.append(t_knots[-1] + dist / self.pregrasp_vel)
+        dur = max(dist / self.pregrasp_vel, 0.5*VEL_MULT)
+        t_knots.append(t_knots[-1] + dur)
 
         # move downward to grasp pose
         start_time = rospy.get_time()
@@ -387,9 +341,65 @@ class BinManager(object):
         rospy.loginfo("Trajectory result:" + str(result))
         return result.success, result.is_robot_running
 
-    def move_bin(self, grasp_tag, place_tag):
-        (pregrasp_pose, grasp_pose, mid_pts, 
-         preplace_pose, place_pose) = self.create_bin_waypts(grasp_tag, place_tag)
+    def move_bin(self, ar_grasp_id, ar_place_id):
+        # bin_pose
+        # move to pregrasp, above the bin (traversal)
+        # move down towards the bin
+        # grasp the bin
+        # lift up
+        # move to preplace (traversal)
+        # move down
+        # release bin
+
+        ########################## create waypoints #############################
+        ar_grasp_tag_pose, grasp_is_table = self.ar_man.get_bin_pose(ar_grasp_id)
+        if ar_grasp_tag_pose is None:
+            rospy.loginfo('Failed getting grasp pose')
+            return False
+        grasp_offset = PoseConv.to_homo_mat(
+                [-0.013, self.ar_offset, self.grasp_height],
+                [0., np.pi/2, self.grasp_rot])
+        grasp_pose = PoseConv.to_homo_mat(ar_grasp_tag_pose) * grasp_offset
+        pregrasp_pose = grasp_pose.copy()
+        pregrasp_pose[2,3] += self.grasp_lift
+
+        if ar_place_id not in self.ar_empty_locs:
+            rospy.loginfo('Failed getting place pose')
+            return False
+        ar_place_tag_pos, ar_place_tag_rot, place_is_table = self.ar_empty_locs[ar_place_id]
+        ar_place_tag_pose = (ar_place_tag_pos, ar_place_tag_rot)
+        place_offset = PoseConv.to_homo_mat(
+                [-0.013, self.ar_offset, self.grasp_height + self.place_offset],
+                [0., np.pi/2, self.grasp_rot])
+        place_pose = PoseConv.to_homo_mat(ar_place_tag_pose) * place_offset
+        preplace_pose = place_pose.copy()
+        preplace_pose[2,3] += self.grasp_lift
+
+        mid_pts = []
+        if np.logical_xor(place_is_table, grasp_is_table):
+            waypt_line = [0., 1., self.waypt_offset]
+            grasp_pt = [grasp_pose[0,3], grasp_pose[1,3], 1.]
+            place_pt = [place_pose[0,3], place_pose[1,3], 1.]
+            waypt_pt = np.cross(waypt_line, np.cross(grasp_pt, place_pt))
+            waypt_pt /= waypt_pt[2]
+            waypt_pt[0] = min(waypt_pt[0], self.waypt_robot_min_dist)
+            waypt = pose_interp(pregrasp_pose, preplace_pose, 0.5)
+            waypt[:3,3] = np.mat([waypt_pt[0], waypt_pt[1], 
+                                  self.grasp_height+self.bin_height+self.grasp_lift]).T
+            mid_pts.append(waypt)
+
+        if False:
+            waypts = (  [pregrasp_pose, grasp_pose, pregrasp_pose] 
+                      + mid_pts 
+                      + [preplace_pose, place_pose, preplace_pose])
+            r = rospy.Rate(1)
+            for pose in waypts:
+                self.pose_pub.publish(PoseConv.to_pose_stamped_msg("/base_link", pose))
+                r.sleep()
+            print (pregrasp_pose, grasp_pose, pregrasp_pose, mid_pts, 
+                   preplace_pose, place_pose, preplace_pose)
+        #########################################################################
+
         grasp_traj = self.plan_grasp_traj(pregrasp_pose, grasp_pose)
         if grasp_traj is None:
             return False
@@ -408,7 +418,7 @@ class BinManager(object):
             rospy.loginfo('Failed on moving bin')
             return False
         if self.gripper is not None:
-            self.gripper.goto(0.042, 0., 0., block=True)
+            self.gripper.goto(0.042, 0., 0., block=False)
             rospy.sleep(0.5)
             self.update_payload(empty=True)
         retreat_traj = self.plan_retreat_traj(preplace_pose, place_pose)
@@ -418,23 +428,29 @@ class BinManager(object):
         if not success:
             rospy.loginfo('Failed on retreating from bin')
             return False
+        # update bin location
+        self.ar_man.set_bin_location(ar_grasp_id, ar_place_tag_pose)
         return True
+
+    def system_reset(self):
+        raw_input("Move to home")
+        home_traj = self.plan_home_traj()
+        self.execute_traj(home_traj)
+        if self.gripper is not None:
+            if self.gripper.is_reset():
+                self.gripper.reset()
+                self.gripper.activate()
+        self.update_payload(empty=True)
+        if self.gripper is not None:
+            if self.gripper.get_pos() != 0.042:
+                self.gripper.goto(0.042, 0., 0., block=False)
 
     def do_random_move_test(self):
         raw_input("Move to home")
         reset = True
         while not rospy.is_shutdown():
             if reset:
-                reset = False
-                home_traj = self.plan_home_traj()
-                self.execute_traj(home_traj)
-                if self.gripper is not None:
-                    if self.gripper.is_reset():
-                        self.gripper.reset()
-                        self.gripper.activate()
-            if self.gripper is not None:
-                if self.gripper.get_pos() != 0.042:
-                    self.gripper.goto(0.042, 0., 0., block=False)
+                self.system_reset()
             #raw_input("Ready")
             ar_tags = self.ar_man.get_available_bins()
             ar_locs = self.ar_empty_locs.keys()
@@ -448,18 +464,7 @@ class BinManager(object):
         reset = True
         while not rospy.is_shutdown():
             if reset:
-                raw_input("Move to home")
-                reset = False
-                home_traj = self.plan_home_traj()
-                self.execute_traj(home_traj)
-                if self.gripper is not None:
-                    if self.gripper.is_reset():
-                        self.gripper.reset()
-                        self.gripper.activate()
-                self.update_payload(empty=True)
-            if self.gripper is not None:
-                if self.gripper.get_pos() != 0.042:
-                    self.gripper.goto(0.042, 0., 0., block=False)
+                self.system_reset()
             #raw_input("Ready")
             ar_locs = self.ar_empty_locs.keys()
             place_tag_num = ar_locs[np.random.randint(0,len(self.ar_empty_locs))]

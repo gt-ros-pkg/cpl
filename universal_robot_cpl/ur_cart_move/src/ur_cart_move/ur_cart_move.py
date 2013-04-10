@@ -262,7 +262,7 @@ class ArmInterface(object):
         w.torque.x, w.torque.y, w.torque.z  = wrench[3], wrench[4], wrench[5]
         self.tcp_wrench_pub.publish(w)
 
-    def cmd_empty(self, qd):
+    def cmd_empty(self):
         cmd = URJointCommand()
         cmd.header.stamp = rospy.Time.now()
         cmd.mode = URJointCommand.CMD_EMPTY
