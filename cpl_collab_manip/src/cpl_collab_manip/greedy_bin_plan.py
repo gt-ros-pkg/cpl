@@ -57,7 +57,7 @@ class GreedyBinPlanner(object):
             if b < 0:
                 rewards_rm[i] = -np.inf
             else:
-                start_probs, end_probs = distribs[2*b+0], distribs[2*b+1]
+                start_probs, end_probs = distribs[2*(b-1)+0], distribs[2*(b-1)+1]
                 rewards_rm[i] = self.remove_reward(start_probs, end_probs, i_rm)
 
         # calculate rewards for delivering a bin late
@@ -67,7 +67,7 @@ class GreedyBinPlanner(object):
             if b < 0:
                 continue
             bin_locs[b] = i
-            start_probs = distribs[2*b+0]
+            start_probs = distribs[2*(b-1)+0]
             rewards_dv[i] = self.late_reward(start_probs, i_dv)
 
         # determine whether and which bins to swap
