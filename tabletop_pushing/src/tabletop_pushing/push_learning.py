@@ -437,6 +437,7 @@ class StartLocPerformanceAnalysis:
 
     def __init__(self):
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
+        self.analyze_spin_push = self.analyze_spin_push_total_spin
 
     def get_trial_features(self, file_name):
         self.plio = CombinedPushLearnControlIO()
@@ -639,6 +640,30 @@ class StartLocPerformanceAnalysis:
             score = mean_angle_errs
 
         return (score, final_error, total_change, final_angle_diff, final_angle_area)
+
+    def analyze_spin_push_total_spin(self, push_trial):
+        '''
+        Get the average change in heading aggregated over the entire trial
+        '''
+        init_theta = push_trial.trial_start.init_theta
+        goal_theta = push_trial.trial_start.goal_pose.theta
+
+        delta_thetas = []
+        prev_theta = init_theta
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            cur_theta = pt.x.theta
+            delta_thetas.append(abs(cur_theta-prev_theta))
+            prev_theta = cur_theta
+
+        if len(delta_thetas) < 1:
+            return -1
+        mean_delta_theta = sum(delta_thetas)/len(line_dists)
+        return mean_delta_theta
+
+    def analyze_spin_push_net_spin(self, push_trial):
+        init_theta = push_trial.trial_start.init_theta
+        final_theta = push_trial.trial_end.final_orientation
+        return abs(final_theta - init_theta)
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
