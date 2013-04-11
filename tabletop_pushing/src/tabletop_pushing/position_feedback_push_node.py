@@ -659,6 +659,17 @@ class PositionFeedbackPushNode:
             rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
         return u
 
+    def spinCircleStuff(self, cur_state, desired_state, which_arm):
+        r = 1.0 # Spin radius
+        T = 32
+        t = 0 # TODO: Increment / send in
+        theta_dot = 2*pi/T # Constant rotational speed
+        theta = theta_dot*t # Angle around spin circle
+        x_circle = r*sin(theta)
+        y_circle = r*cos(theta)
+        x_dot_circle = r*cos(theta)*theta_dot
+        y_dot_circle = -r*sin(theta)*theta_dot
+
     def contactCompensationController(self, cur_state, desired_state, ee_pose):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'

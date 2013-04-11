@@ -168,7 +168,7 @@ cv::Mat makeHistogramImage(ShapeDescriptor histogram, int n_x_bins, int n_y_bins
     int pix_val = (1 - histogram[i]/max_count)*255;
     int start_x = (i%n_x_bins)*bin_width_pixels;
     int start_y = (i/n_x_bins)*bin_width_pixels;;
-    ROS_INFO_STREAM("(start_x, start_y): (" << start_x << ", " << start_y << ")");
+    // ROS_INFO_STREAM("(start_x, start_y): (" << start_x << ", " << start_y << ")");
     for (int x = start_x; x < start_x+bin_width_pixels; ++x)
     {
       for (int y = start_y; y < start_y+bin_width_pixels; ++y)
@@ -195,7 +195,7 @@ cv::Mat makeHistogramImage(ShapeDescriptor histogram, int n_x_bins, int n_y_bins
       hist_img.at<uchar>(y,x) = 0;
     }
   }
-  cv::imshow("local_hist_img", hist_img);
+  // cv::imshow("local_hist_img", hist_img);
   // cv::waitKey();
   return hist_img;
 }
@@ -315,8 +315,8 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, float alpha, 
     }
   }
 
-  cv::imshow("local samples", footprint);
-  cv::imshow("local hist", footprint_hist);
+  // cv::imshow("local samples", footprint);
+  // cv::imshow("local hist", footprint_hist);
   // char c = cv::waitKey();
   // if (c == 'w')
   // {
@@ -726,7 +726,7 @@ ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, flo
     }
     descriptor << "\n";
   }
-  ROS_INFO_STREAM("Descriptor: \n" << descriptor.str());
+  // ROS_INFO_STREAM("Descriptor: \n" << descriptor.str());
   // ROS_INFO_STREAM("Descriptor size: " << feat_sum << "\tsample size: " << samples.size());
   return hist;
 }
@@ -758,8 +758,8 @@ void getPointRangesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
   }
   float x_range = x_max - x_min;
   float y_range = y_max - y_min;
-  ROS_INFO_STREAM("x_range: " << x_range << " : (" << x_min << ", " << x_max << ")");
-  ROS_INFO_STREAM("y_range: " << y_range << " : (" << y_min << ", " << y_max << ")");
+  // ROS_INFO_STREAM("x_range: " << x_range << " : (" << x_min << ", " << x_max << ")");
+  // ROS_INFO_STREAM("y_range: " << y_range << " : (" << y_min << ", " << y_max << ")");
   sd.push_back(x_range);
   sd.push_back(y_range);
 }
@@ -781,7 +781,7 @@ void getCovarianceXYFromPoints(XYZPointCloud& pts, ShapeDescriptor& sd)
           disp_stream << covariance(i,j) << " ";
         }
       }
-      ROS_INFO_STREAM("Covariance: " << disp_stream.str());
+      // ROS_INFO_STREAM("Covariance: " << disp_stream.str());
     }
     else
     {
@@ -811,8 +811,8 @@ void extractPCAFeaturesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
   Eigen::Vector4f centroid = pca.getMean();
   float lambda0 = eigen_values(0);
   float lambda1 = eigen_values(1);
-  ROS_INFO_STREAM("Lambda: " << lambda0 << ", " << lambda1 << ", " << eigen_values(2));
-  ROS_INFO_STREAM("lambda0/lambda1: " << lambda0/lambda1);
+  // ROS_INFO_STREAM("Lambda: " << lambda0 << ", " << lambda1 << ", " << eigen_values(2));
+  // ROS_INFO_STREAM("lambda0/lambda1: " << lambda0/lambda1);
   // ROS_INFO_STREAM("Eigen vectors: \n" << eigen_vectors);
   // Get inertia of points
   sd.push_back(lambda0);
@@ -821,7 +821,7 @@ void extractPCAFeaturesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
   // Get angls of eigen vectors
   float theta0 = atan2(eigen_vectors(1,0), eigen_vectors(0,0));
   float theta1 = atan2(eigen_vectors(1,1), eigen_vectors(0,1));
-  ROS_INFO_STREAM("theta: " << theta0 << ", " << theta1);
+  // ROS_INFO_STREAM("theta: " << theta0 << ", " << theta1);
   sd.push_back(theta0);
   sd.push_back(theta1);
 }
@@ -836,7 +836,7 @@ void extractBoundingBoxFeatures(XYZPointCloud& samples, ShapeDescriptor& sd)
   cv::RotatedRect box = cv::minAreaRect(obj_pts);
   float l = std::max(box.size.width, box.size.height);
   float w = std::min(box.size.width, box.size.height);
-  ROS_INFO_STREAM("(l,w): " << l << ", " << w << ") l/w: " << l/w);
+  // ROS_INFO_STREAM("(l,w): " << l << ", " << w << ") l/w: " << l/w);
   sd.push_back(l);
   sd.push_back(w);
   sd.push_back(l/w);
@@ -889,7 +889,7 @@ ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur
     }
     descriptor << " " << histogram[i];
   }
-  ROS_INFO_STREAM("Shape context: " << descriptor.str());
+  // ROS_INFO_STREAM("Shape context: " << descriptor.str());
 
 
   return sd;
@@ -899,14 +899,14 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
                                                    pcl16::PointXYZ sample_pt, int sample_pt_idx,
                                                    float sample_spread, float hull_alpha, float hist_res)
 {
-  ROS_INFO_STREAM("Local");
+  // ROS_INFO_STREAM("Local");
   ShapeDescriptor local = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
-  ROS_INFO_STREAM("Global");
+  // ROS_INFO_STREAM("Global");
   ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
-  ROS_INFO_STREAM("local.size() << " << local.size());
-  ROS_INFO_STREAM("global.size() << " << global.size());
+  // ROS_INFO_STREAM("local.size() << " << local.size());
+  // ROS_INFO_STREAM("global.size() << " << global.size());
   local.insert(local.end(), global.begin(), global.end());
-  ROS_INFO_STREAM("local.size() << " << local.size());
+  // ROS_INFO_STREAM("local.size() << " << local.size());
   return local;
 }
 
