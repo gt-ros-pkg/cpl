@@ -4,6 +4,7 @@
   - python fix_tf.py
   - python ar_markers_publish.py
   - python robo_sim_listen.py
+  -(when you don't have Nam's inference) python test_files/inference_dummy.py
   - python state_estimator.py
 - cd ..
   - rosrun project_simulation hands_sim
