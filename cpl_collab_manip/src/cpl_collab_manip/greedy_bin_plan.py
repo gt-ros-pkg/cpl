@@ -44,10 +44,11 @@ class GreedyBinPlanner(object):
         num_bins = len(s.inference.distributions) / s.inference.T_len / 2
         distribs = np.reshape(s.inference.distributions, 
                               (2*num_bins, s.inference.T_len))
+        t_cur = (s.header.stamp - s.inference.start_time).to_sec()
         # time bin gets removed if we start moving now
-        i_rm = s.t_cur + self.dur_rm / s.period 
+        i_rm = round((t_cur + self.dur_rm) / s.period)
         # time bin gets delivered if we start moving now
-        i_dv = s.t_cur + (self.dur_rm + self.dur_dv) / s.period
+        i_dv = round((t_cur + self.dur_rm + self.dur_dv) / s.period)
 
         # calculate rewards for removing a bin early
         rewards_rm = np.zeros(len(s.reachable_slots))
