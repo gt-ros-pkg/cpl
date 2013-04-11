@@ -21,7 +21,7 @@ import tf
 PUB_RATE = 60
 
 #constant robot velocity(m/s)
-ROBO_VEL = 1
+ROBO_VEL = 0.5
 
 #time taken to pick-up put down bin (s)
 ROBO_PICK = 0.5
@@ -97,6 +97,10 @@ endfactor_cur_pos = [0.226263331563,0.225740063166,1.17398472964]
 endfactor_cur_bin = -1 #bin held by endfactor, -1 denotes none
 
 performing_task = False
+
+probability_slow_down = 0
+slow_down_factor = 1
+is_speed_flipped = False
 
 endfactor_fix_orientation = [0.0, 1.0, 0.0, 0.0]
 
@@ -326,7 +330,7 @@ def calc_euclid(vec_one, vec_two):
 
 #publish current endfactor position
 def pub_endfactor():
-    global endfactor_cur_pos, endfactor_fix_orientation, endf_pub, endfactor_cur_bin
+    global endfactor_cur_pos, endfactor_fix_orientation, endf_pub, endfactor_cur_bin, performing_task
 
     temp_msg = geometry_msgs.msg.PoseStamped()
     temp_msg.header.frame_id = frame_of_reference
@@ -342,6 +346,7 @@ def pub_endfactor():
     endf_msg  = project_simulation.msg.endf_bin()
     endf_msg.endf_pose = temp_msg
     endf_msg.bin_id.data = endfactor_cur_bin
+    endf_msg.performing_task = performing_task
     endf_pub.publish(endf_msg)
 
     #visualize
@@ -421,6 +426,9 @@ if __name__=='__main__':
     task_listen_sub = rospy.Subscriber('move_bin', project_simulation.msg.move_bin, listen_tasks)
     
     loop_rate = rospy.Rate(PUB_RATE)
+
+    probability_slow_down = raw_input('Probability of the robot slowing down = ')
+    slow_down_factor = raw_input('Slows down robot by factor(ex. 3 to make 3 times slower) = ')
     
     while not rospy.is_shutdown():
         #no task to do publish current pos
@@ -458,7 +466,13 @@ if __name__=='__main__':
                 continue
 
             #in case both those conditions met- do it!
+            #flip coin to determine speed
+            if (random.random() < probability_slow_down) and (probability_slow_down>0) and (probability_slow_down<=1):
+                is_speed_flipped = True
+                ROBO_VEL /= slow_down_factor
+
             #move endfactor to bin
+            performing_task = True
             move_endf(targ_bin_cur_loc)    
 
             #pick up bin
@@ -482,6 +496,12 @@ if __name__=='__main__':
 
             #task_complete
             task_list.pop(0)
+            performing_task = False
+            
+            #change speed back
+            if is_speed_flipped:
+                is_speed_flipped = False
+                ROBO_VEL *= slow_down_factor
             continue
 
 

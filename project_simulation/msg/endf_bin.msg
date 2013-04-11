@@ -1,2 +1,3 @@
 std_msgs/Int8 bin_id
+std_msgs/Bool performing_task
 geometry_msgs/PoseStamped endf_pose
