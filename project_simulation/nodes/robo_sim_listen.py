@@ -346,7 +346,13 @@ def pub_endfactor():
     endf_msg  = project_simulation.msg.endf_bin()
     endf_msg.endf_pose = temp_msg
     endf_msg.bin_id.data = endfactor_cur_bin
-    endf_msg.performing_task = performing_task
+    endf_msg.performing_task.data = performing_task
+    
+    '''#debug
+    print "Publishing"
+    print endf_msg
+    time.sleep(50)'''
+
     endf_pub.publish(endf_msg)
 
     #visualize
@@ -503,5 +509,3 @@ if __name__=='__main__':
                 is_speed_flipped = False
                 ROBO_VEL *= slow_down_factor
             continue
-
-

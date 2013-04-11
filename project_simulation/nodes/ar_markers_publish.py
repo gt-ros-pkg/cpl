@@ -213,6 +213,9 @@ def pub_bins():
     #human gets actual bin positions
     pub_human = rospy.Publisher('ar_pose_marker_hum', project_simulation.msg.AlvarMarkers)
     
+    #workspace-bins
+    pub_workspace = rospy.Publisher('reachable_bins', project_simulation.msg.StringArray)
+    
     #location of bins to robot simulator
     pub_robo = rospy.Publisher('bins_robo_sim', project_simulation.msg.bins_loc)
     
@@ -344,7 +347,17 @@ def pub_bins():
         msg_hum.header.frame_id = frame_of_reference
         msg_hum.markers = hum_ar_markers
         pub_human.publish(msg_hum)
-
+        
+        #publish workspace
+        temp_arr = []
+        
+        for work_loc in workspace:
+            temp_str = std_msgs.msg.String()            
+            temp_str.data = work_loc
+            temp_arr.append(temp_str)
+        work_msg = project_simulation.msg.StringArray()
+        work_msg.string_array = temp_arr
+        pub_workspace.publish(work_msg)
         
         '''#debug
         print ar_viz_markers
