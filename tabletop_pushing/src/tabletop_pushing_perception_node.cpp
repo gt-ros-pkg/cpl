@@ -734,11 +734,13 @@ class TabletopPushingPerceptionNode
       float new_push_angle;
       if (spin_push)
       {
-        // Set goal for spin pushing and then get start location as usual below
-        // TODO: Make this angle orthogonal, inwards to the surface tangent at the push location
-        new_push_angle = 0.0;
+        // Set goal for spin pushing angle and goal state; then get start location as usual below
+        new_push_angle = getSpinPushHeading(cur_state, chosen_loc);
         res.goal_pose.x = cur_state.x.x;
         res.goal_pose.y = cur_state.x.y;
+        // NOTE: Uncomment for visualization purposes
+        // res.goal_pose.x = res.centroid.x+cos(new_push_angle)*start_loc_push_dist_;
+        // res.goal_pose.y = res.centroid.y+sin(new_push_angle)*start_loc_push_dist_;
         res.goal_pose.theta = req.goal_pose.theta;
       }
       else
@@ -1079,6 +1081,38 @@ class TabletopPushingPerceptionNode
     ShapeLocation s_world(boundary_loc, sd);
     return s_world;
     // return locs[boundary_loc_idx];
+  }
+
+  float getSpinPushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc)
+  {
+    // Get chosen_loc angle in object frame
+    pcl16::PointXYZ obj_pt = worldPointInObjectFrame(chosen_loc.boundary_loc_, cur_state);
+    float phi = atan2(obj_pt.y, obj_pt.x);
+    // Choose pushing direction based on angular position in object frame
+    float push_angle_obj_frame;
+    if ( -0.25*M_PI < phi && phi <= 0.25*M_PI)
+    {
+      push_angle_obj_frame = M_PI;
+    }
+    else if ( -0.75*M_PI < phi && phi <= -0.25*M_PI)
+    {
+      push_angle_obj_frame = 0.5*M_PI;
+    }
+    else if ( 0.25*M_PI < phi && phi <= 0.75*M_PI)
+    {
+      push_angle_obj_frame = -0.5*M_PI;
+    }
+    else if (phi <= -0.75*M_PI || phi > 0.75*M_PI)
+    {
+      push_angle_obj_frame = 0;
+    }
+    // Shift push direction into world frame
+    float push_angle_world_frame = push_angle_obj_frame + cur_state.x.theta;
+    ROS_INFO_STREAM("Object pose is (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.x.theta << ")");
+    ROS_INFO_STREAM("phi is: " << (phi));
+    ROS_INFO_STREAM("push_angle_obj_frame is: " << (push_angle_obj_frame));
+    ROS_INFO_STREAM("push_angle_world_frame is: " << (push_angle_world_frame));
+    return push_angle_world_frame;
   }
 
   ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)
