@@ -1,6 +1,7 @@
 #! /usr/bin/python
 
 import numpy as np
+from scipy.spatial import KDTree
 from collections import deque
 import yaml
 from threading import RLock
@@ -22,8 +23,8 @@ from ar_track_alvar.msg import AlvarMarkers
 from hrl_geom.pose_converter import PoseConv
 from traj_planner import TrajPlanner, pose_offset, pose_interp
 from spline_traj_executor import SplineTraj
-from ur_cart_move.msg import SplineTrajAction, SplineTrajGoal
-from ur_cart_move.ur_cart_move import ArmInterface, RAVEKinematics
+from msg import SplineTrajAction, SplineTrajGoal
+from ur_cart_move import ArmInterface, RAVEKinematics
 from robotiq_c_model_control.robotiq_c_ctrl import RobotiqCGripper
 from pykdl_utils.kdl_kinematics import create_kdl_kin
 
@@ -32,13 +33,24 @@ TABLE_OFFSET_DEFAULT = -0.2
 TABLE_CUTOFF_DEFAULT = 0.05
 VEL_MULT = 4.0
 
+def create_slot_tree(bin_slots):
+    pos_data = np.zeros((len(bin_slots),3))
+    for i, bid in enumerate(sorted(bin_slots.keys())):
+        pos_data[i,:] = bin_slots[bid][0]
+    return KDTree(pos_data)
+
 class ARTagManager(object):
-    def __init__(self):
+    def __init__(self, bin_slots, human_slots=range(3)):
         self.bin_height = rospy.get_param("~bin_height", BIN_HEIGHT_DEFAULT)
         self.table_offset = rospy.get_param("~table_offset", TABLE_OFFSET_DEFAULT)
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
         self.filter_window = rospy.get_param("~filter_window", 5.)
+        # distance from marker to slot which can be considered unified
+        self.ar_unification_thresh = rospy.get_param("~ar_unification_thresh", 0.08)
 
+        self.bin_slots = bin_slots
+        self.human_slots = human_slots
+        self.slot_tree = create_slot_tree(bin_slots)
         lifecam_kin = create_kdl_kin('base_link', 'lifecam1_optical_frame')
         self.camera_pose = lifecam_kin.forward([])
 
@@ -55,10 +67,10 @@ class ARTagManager(object):
                 if marker.id not in self.ar_poses:
                     self.ar_poses[marker.id] = deque()
                 self.ar_poses[marker.id].append([cur_time, marker.pose])
-            for mid in self.ar_poses:
-                while (len(self.ar_poses[mid]) > 0 and 
-                       cur_time - self.ar_poses[mid][0][0] > self.filter_window):
-                    self.ar_poses[mid].popleft()
+            #for mid in self.ar_poses:
+            #    while (len(self.ar_poses[mid]) > 0 and 
+            #           cur_time - self.ar_poses[mid][0][0] > self.filter_window):
+            #        self.ar_poses[mid].popleft()
 
     # forces bin location from a pose in the base_link frame
     def set_bin_location(self, mid, pose):
@@ -105,14 +117,59 @@ class ARTagManager(object):
                 bin_data[bin_id] = [bin_pose[0], bin_pose[1], is_table]
             return bin_data
 
+    def get_bin_slot(self, slot_id):
+        return self.bin_slots[slot_id]
+
+    def get_slot_ids(self):
+        return sorted(self.bin_slots.keys())
+
+    def get_bin_slot_states(self):
+        bin_poses = self.get_all_bin_poses()
+        bin_ids = sorted(bin_poses.keys())
+        bin_pos_data = np.array([bin_poses[bin_id][0] for bin_id in bin_ids])
+        dists, inds = self.slot_tree.query(bin_pos_data, k=1, 
+                                           distance_upper_bound=self.ar_unification_thresh)
+
+        slot_states = [-1] * len(self.slot_tree.data)
+        missing_bins = []
+        for i, ind in enumerate(inds):
+            bin_id = bin_ids[i]
+            if ind == len(slot_states):
+                missing_bins.append(bin_id)
+                continue
+            slot_states[ind] = bin_id
+        return slot_states, missing_bins
+
+    # finds the closest empty slot to the pos position
+    def get_filled_slots(self, near_human):
+        slot_states, _ = self.get_bin_slot_states()
+        bins = []
+        for ind, slot_state in enumerate(slot_states):
+            if slot_state != -1:
+                slot_near_human = ind in self.human_slots
+                if np.logical_xor(not slot_near_human, near_human):
+                    bins.append(slot_state)
+        return sorted(bins)
+
+    # finds the closest empty slot to the pos position
+    def get_empty_slot(self, near_human, pos=[-0.46, -0.93, -0.1]):
+        slot_states, _ = self.get_bin_slot_states()
+        dists, inds = self.slot_tree.query(pos, k=len(self.slot_tree.data)) 
+        for ind in inds:
+            if slot_states[ind] == -1:
+                slot_near_human = ind in self.human_slots
+                if np.logical_xor(not slot_near_human, near_human):
+                    return self.get_slot_ids()[ind]
+        return -1
+
 class BinManager(object):
-    def __init__(self, arm_prefix, ar_empty_locs):
+    def __init__(self, arm_prefix, bin_slots):
         self.bin_height = rospy.get_param("~bin_height", BIN_HEIGHT_DEFAULT)
         self.table_offset = rospy.get_param("~table_offset", TABLE_OFFSET_DEFAULT)
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
 
         self.place_offset = rospy.get_param("~place_offset", 0.02)
-        self.ar_offset = rospy.get_param("~ar_offset", 0.125)
+        self.ar_offset = rospy.get_param("~ar_offset", 0.110)
         self.grasp_height = rospy.get_param("~grasp_height", 0.10)
         self.grasp_rot = rospy.get_param("~grasp_rot", 0.0)
         self.grasp_lift = rospy.get_param("~grasp_lift", 0.18)
@@ -127,7 +184,6 @@ class BinManager(object):
         self.q_min = [-4.78, -2.4, 0.3, -3.8, -3.3, -2.*np.pi]
         self.q_max = [-1.2, -0.4, 2.7, -1.6, 0.3, 2.*np.pi]
 
-        self.ar_empty_locs = ar_empty_locs
         sim_prefix = rospy.get_param("~sim_arm_prefix", "/sim2")
         tf_list = tf.TransformListener()
         self.arm_cmd = ArmInterface(timeout=0., topic_prefix=arm_prefix)
@@ -139,7 +195,7 @@ class BinManager(object):
         self.kin = RAVEKinematics()
         self.traj_plan = TrajPlanner(self.kin)
 
-        self.ar_man = ARTagManager()
+        self.ar_man = ARTagManager(bin_slots)
         self.pose_pub = rospy.Publisher('/test', PoseStamped)
         #self.move_bin = rospy.ServiceProxy('/move_bin', MoveBin)
         self.traj_as = SimpleActionClient('spline_traj_as', SplineTrajAction)
@@ -363,10 +419,10 @@ class BinManager(object):
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose[2,3] += self.grasp_lift
 
-        if ar_place_id not in self.ar_empty_locs:
+        if ar_place_id not in self.ar_man.get_slot_ids():
             rospy.loginfo('Failed getting place pose')
             return False
-        ar_place_tag_pos, ar_place_tag_rot, place_is_table = self.ar_empty_locs[ar_place_id]
+        ar_place_tag_pos, ar_place_tag_rot, place_is_table = self.ar_man.get_bin_slot(ar_place_id)
         ar_place_tag_pose = (ar_place_tag_pos, ar_place_tag_rot)
         place_offset = PoseConv.to_homo_mat(
                 [-0.013, self.ar_offset, self.grasp_height + self.place_offset],
@@ -433,7 +489,6 @@ class BinManager(object):
         return True
 
     def system_reset(self):
-        raw_input("Move to home")
         home_traj = self.plan_home_traj()
         self.execute_traj(home_traj)
         if self.gripper is not None:
@@ -453,9 +508,9 @@ class BinManager(object):
                 self.system_reset()
             #raw_input("Ready")
             ar_tags = self.ar_man.get_available_bins()
-            ar_locs = self.ar_empty_locs.keys()
+            ar_locs = self.ar_man.get_slot_ids()
             grasp_tag_num = ar_tags[np.random.randint(0,len(ar_tags))]
-            place_tag_num = ar_locs[np.random.randint(0,len(self.ar_empty_locs))]
+            place_tag_num = ar_locs[np.random.randint(0,len(ar_locs))]
             if not self.move_bin(grasp_tag_num, place_tag_num):
                 reset = True
                 print 'Failed moving bin from %d to %d' % (grasp_tag_num, place_tag_num)
@@ -466,8 +521,8 @@ class BinManager(object):
             if reset:
                 self.system_reset()
             #raw_input("Ready")
-            ar_locs = self.ar_empty_locs.keys()
-            place_tag_num = ar_locs[np.random.randint(0,len(self.ar_empty_locs))]
+            ar_locs = self.ar_man.get_slot_ids()
+            place_tag_num = ar_locs[np.random.randint(0,len(ar_locs))]
             if not self.move_bin(ar_bin, place_tag_num):
                 reset = True
                 print 'Failed moving bin from %d to %d' % (ar_bin, place_tag_num)
@@ -513,17 +568,17 @@ def main():
             r.sleep()
     elif opts.is_test:
         f = file(opts.filename, 'r')
-        ar_empty_locs = yaml.load(f)['data']
+        bin_slots = yaml.load(f)['data']
         f.close()
         arm_prefix = "/sim1"
-        bm = BinManager(arm_prefix, ar_empty_locs)
+        bm = BinManager(arm_prefix, bin_slots)
         bm.do_random_move_test()
     elif opts.is_demo:
         f = file(opts.filename, 'r')
-        ar_empty_locs = yaml.load(f)['data']
+        bin_slots = yaml.load(f)['data']
         f.close()
         arm_prefix = ""
-        bm = BinManager(arm_prefix, ar_empty_locs)
+        bm = BinManager(arm_prefix, bin_slots)
         bm.do_move_demo(5)
     else:
         print 'h'
