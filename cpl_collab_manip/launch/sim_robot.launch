@@ -1,5 +1,11 @@
 <launch>
   <include file="$(find cpl_collab_manip)/launch/load_urdf.launch" />
+  <param name="sensor_description" command="$(find xacro)/xacro.py '$(find cpl_collab_manip)/urdf/sim_sensors.urdf.xacro'" />
+  <node name="sensors_state_publisher" pkg="robot_state_publisher" type="state_publisher">
+    <remap from="/joint_states" to="/sensors/joint_states" />
+    <param name="tf_prefix" value="" />
+    <remap from="/robot_description" to="/sensor_description" />
+  </node>
   <!--
   <include file="$(find cpl_collab_manip)/launch/load_sensors.launch" />
   <param name="/rate" value="125" />
