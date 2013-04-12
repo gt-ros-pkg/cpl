@@ -1,0 +1,29 @@
+<stack>
+  <description brief="namsbox">Nam Vo stack for dummy codes</description>
+  <author>Nam Vo</author>
+  <license>BSD</license>  
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/null</url>
+
+  <depend stack="ros"/>
+  <depend stack="common_msgs"/> <!-- geometry_msgs, sensor_msgs -->
+  <depend stack="geometry"/> <!-- tf -->
+  <depend stack="geometry_experimental"/> <!-- tf2 -->
+  <depend stack="image_common"/> <!-- image_transport -->
+  <depend stack="nodelet_core"/> <!-- nodelet -->
+  <depend stack="qt_gui_core"/> <!-- qt_dotgraph, qt_gui_core, qt_gui_cpp -->
+  <depend stack="ros_comm"/> <!-- roscpp, rosgraph, rosmsg, rosnode, rospy, rosservice, rostopic, rosgraph-->
+  <depend stack="std_msgs"/> <!-- std_msgs -->
+  <depend stack="vision_opencv"/> <!-- cv_bridge -->
+  <depend stack="visualization"/> <!-- rviz -->
+  <depend stack="pr2_power_drivers"/> <!-- rqt_pr2_dashboard -->
+
+  <depend stack="pluginlib" /> <!-- pluginlib -->
+  <depend stack="ros" /> <!-- roslib -->
+  <depend stack="robot_model" /> 
+  <depend stack="actionlib" /> 
+  <depend stack="ros_comm" /> 
+  <depend stack="control" /> 
+  <depend stack="common_msgs" /> 
+
+</stack>
