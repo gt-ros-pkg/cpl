@@ -126,7 +126,7 @@ if __name__ == '__main__':
                                 project_simulation.msg.endf_bin, endf_listen)
     
     #nam's inference
-    sub_inf_prob = rospy.Subscriber('all_distributions', 
+    sub_inf_prob = rospy.Subscriber('/inference/all_distributions', 
                                     project_simulation.msg.BinInference
                                     ,inf_prob_listen)
     #bins in the workspace
@@ -138,5 +138,7 @@ if __name__ == '__main__':
     pub_cur_state = rospy.Publisher('current_state', 
                                     project_simulation.msg.BinStateEstimate)
     
+    r = rospy.Rate(10)
     while not rospy.is_shutdown():
         pub_as_one()
+        r.sleep()
