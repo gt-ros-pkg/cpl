@@ -125,14 +125,8 @@ def sim_movebinout(binid):
    move_bin_to_location(binid, lname)
    return True
 
-#def move_bin(binid, pose):
-#   a = 1
-
-def move_bin_to_location(binid, lname):
-    
+def move_bin(binid, l, o):
    msg    = get_latest_msg()
-   (l, o) = utilities_aa0413.locations.get_location_by_name(lname)
-
    for i in range(len(msg.markers)):
       if msg.markers[i].id == binid:
 
@@ -146,6 +140,10 @@ def move_bin_to_location(binid, lname):
            msg.markers[i].pose.pose.orientation.w = o[3] 
 
    sim_update(msg)
+
+def move_bin_to_location(binid, lname):
+   (l, o) = utilities_aa0413.locations.get_location_by_name(lname)
+   move_bin(binid, l, o)
 
 ####################################################
 # test
