@@ -30,22 +30,22 @@ if __name__ == '__main__':
     pub = rospy.Publisher('move_bin', project_simulation.msg.move_bin)
     
     temp_msg = project_simulation.msg.move_bin()
-    time.sleep(2)
+    time.sleep(1)
     #1
-    temp_msg.bin_id = 11
+    temp_msg.bin_id = 3
     temp_msg.move_near_human = True
     pub.publish(temp_msg)
 
     time.sleep(8)
 
     #2
-    temp_msg.bin_id = 14
+    temp_msg.bin_id = 13
     temp_msg.move_near_human = True
     pub.publish(temp_msg)
 
     time.sleep(8)
 
     #3
-    temp_msg.bin_id = 11
+    temp_msg.bin_id = 14
     temp_msg.move_near_human = False
     pub.publish(temp_msg)

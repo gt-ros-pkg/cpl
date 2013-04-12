@@ -245,6 +245,9 @@ private:
   double hand_t_mean[3];
   double hand_t_var[3];
 
+  //max hand velocity
+  double hand_max_vel;
+
 public:
   handSim(string task_name, bool cheat);
   
@@ -334,7 +337,7 @@ public:
 
 //change bin centroid position so hand can reach inside it
 geometry_msgs::PoseStamped handSim::transform_for_hand
-  (geometry_msgs::PoseStamped bin_cur_pose)
+(geometry_msgs::PoseStamped bin_cur_pose)
 {
   double* bin_quaternion;
   double temp[] = {bin_cur_pose.pose.orientation.w,
@@ -402,7 +405,7 @@ handSim::handSim(string task_name, bool cheat)
 
     //set noise
     pub_noise_dev = 0.005;
-    walk_dev = 0.03;
+    walk_dev = 0.1;
 
     //initialize rest positions
     double init_pos_l[]= {-0.0813459, 0.258325,1.86598};
@@ -450,6 +453,11 @@ handSim::handSim(string task_name, bool cheat)
     task_pub = nh.advertise<std_msgs::String>("action_name", 1);
     
     ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
+
+    //max-magnitude of hand velocity, to be used for random walk in m/s. 
+    //TODO: maybe this should be checked every time the hand is published or 
+    //something
+    hand_max_vel = 1.0;
     
     //store transform
     tf::TransformListener tf_cam_to_kin;  
@@ -750,7 +758,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     //use the parts retrieved
     //wait_at_location(wait_bw_bins);
     random_walking(time_task_do, walk_dev);
-
+    
     //return the time for touching next bin
     return to_next_motion;
   }
@@ -1190,19 +1198,53 @@ void handSim::random_walking(double walk_time, double std_dev)
     vector<double> rh_init = rh_cur;
     vector<double> diff_l;
     vector<double> diff_r;
+    vector<double> temp_diff_r;
+    vector<double> temp_diff_l;
+    vector<double> zero_vec(3, 0.0);
+    double max_step_magnitude = handSim::hand_max_vel * (1.0/double(PUB_RATE));
+    double scale_l, scale_r;
+    double magnitude_l, magnitude_r
+
     while(cur_step<time_steps && ros::ok())
       {
-	//differentials
+	temp_diff_l.clear();
+	temp_diff_r.clear();
+
+	scale_l = 1.0;
+	scale_r = 1.0;
+
+	//differences
 	diff_l = vec_difference(lh_init, lh_cur);
 	diff_r = vec_difference(rh_init, rh_cur);
 	
-	lh_cur[0] += samp_gauss(diff_l[0], std_dev);
-	lh_cur[1] += samp_gauss(diff_l[1], std_dev);
-	lh_cur[2] += samp_gauss(diff_l[2], std_dev);
+	//sample
+	temp_diff_l.append(samp_gauss(diff_l[0], std_dev));
+	temp_diff_l.append(samp_gauss(diff_l[1], std_dev));
+	temp_diff_l.append(samp_gauss(diff_l[2], std_dev));
 
-	rh_cur[0] += samp_gauss(diff_r[0], std_dev);
-	rh_cur[1] += samp_gauss(diff_r[1], std_dev);
-	rh_cur[2] += samp_gauss(diff_r[2], std_dev);
+	//check magnitude
+	magnitude_l = calc_euclid(temp_diff_l, zero_vec);
+	if (magnitude_l> max_step_magnitude)
+	  {scale_l = max_step_magnitude/magnitude_l;}
+
+	//sample
+	temp_diff_r.append(samp_gauss(diff_r[0], std_dev));
+	temp_diff_r.append(samp_gauss(diff_r[1], std_dev));
+	temp_diff_r.append(samp_gauss(diff_r[2], std_dev));
+
+	//magnitude of vector
+	magnitude_r = calc_euclid(temp_diff_r, zero_vec);
+	if (magnitude_r> max_step_magnitude)
+	  {scale_r = max_step_magnitude/magnitude_r;}
+
+
+	lh_cur[0] += temp_diff_l[0]*scale_l;
+	lh_cur[1] += temp_diff_l[1]*scale_l;
+	lh_cur[2] += temp_diff_l[2]*scale_l;
+
+	rh_cur[0] += temp_diff_r[0]*scale_r;
+	rh_cur[1] += temp_diff_r[1]*scale_r;
+	rh_cur[2] += temp_diff_r[2]*scale_r;
 	
 	publish_cur_hand_pos();	
 	++cur_step;	
