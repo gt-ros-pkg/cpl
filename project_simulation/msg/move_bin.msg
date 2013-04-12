@@ -1,3 +1,3 @@
-std_msgs/UInt8 bin_id
+uint8 bin_id
 #move to this location
-std_msgs/Int8 move_to_location
+int8 move_to_location

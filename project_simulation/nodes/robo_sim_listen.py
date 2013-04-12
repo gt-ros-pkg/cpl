@@ -408,8 +408,8 @@ def wait_at_loc(for_time):
 
 def listen_tasks(task_msg):
     global task_list
-    task_list.append({'targ_loc' : 'L'+str(task_msg.move_to_location.data), 
-                          'bin_id' : task_msg.bin_id.data})
+    task_list.append({'targ_loc' : 'L'+str(task_msg.move_to_location), 
+                          'bin_id' : task_msg.bin_id})
     
     return
 
