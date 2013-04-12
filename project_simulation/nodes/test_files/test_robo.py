@@ -32,20 +32,20 @@ if __name__ == '__main__':
     temp_msg = project_simulation.msg.move_bin()
     time.sleep(10)
     #1
-    temp_msg.bin_id.data = 2
-    temp_msg.move_to_location.data = 0
+    temp_msg.bin_id = 2
+    temp_msg.move_near_human = False
     pub.publish(temp_msg)
 
     time.sleep(10)
 
     #2
-    temp_msg.bin_id.data = 2
-    temp_msg.move_to_location.data = 1
+    temp_msg.bin_id = 2
+    temp_msg.move_near_human = True
     pub.publish(temp_msg)
 
     time.sleep(10)
 
-    #3
+    '''#3
     temp_msg.bin_id.data = 2
     temp_msg.move_to_location.data = 11
-    pub.publish(temp_msg)
+    pub.publish(temp_msg)'''

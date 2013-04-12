@@ -407,11 +407,39 @@ def wait_at_loc(for_time):
         loop_rate.sleep()
 
 def listen_tasks(task_msg):
-    global task_list
-    task_list.append({'targ_loc' : 'L'+str(task_msg.move_to_location), 
-                          'bin_id' : task_msg.bin_id})
-    
-    return
+    global task_list, empty_locations, work_space
+
+    target_location = []
+
+    #move to the work list
+    if task_msg.move_near_human:
+        is_work_empty = False
+        for work_loc in work_space:
+            for empty_loc in empty_locations:
+                if work_loc == empty_loc:
+                    is_work_empty = True
+                    target_location = work_loc
+                    break
+                    
+        if is_work_empty:
+            task_list.append({'targ_loc' : target_location, 
+                              'bin_id' : task_msg.bin_id})
+            return
+        else:
+            print 'No empty slot in work-space'
+            return
+
+    #move to the work list
+    else:
+        is_space_empty = False
+        if empty_locations.__len__()> 0:
+            target_location = empty_locations[0]
+            task_list.append({'targ_loc' : target_location, 
+                              'bin_id' : task_msg.bin_id})
+            return
+        else:
+            print 'No empty slot'
+            return
 
 
 if __name__=='__main__':
