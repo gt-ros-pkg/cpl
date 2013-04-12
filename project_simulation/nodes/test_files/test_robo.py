@@ -33,13 +33,19 @@ if __name__ == '__main__':
     time.sleep(10)
     #1
     temp_msg.bin_id.data = 2
-    temp_msg.move_to_location.data = 'L0'
+    temp_msg.move_to_location.data = 0
     pub.publish(temp_msg)
 
-
-    time.sleep(15)
+    time.sleep(10)
 
     #2
     temp_msg.bin_id.data = 2
-    temp_msg.move_to_location.data = 'L11'
+    temp_msg.move_to_location.data = 1
+    pub.publish(temp_msg)
+
+    time.sleep(10)
+
+    #3
+    temp_msg.bin_id.data = 2
+    temp_msg.move_to_location.data = 11
     pub.publish(temp_msg)

@@ -6,7 +6,7 @@ import roslib
 roslib.load_manifest('project_simulation')
 import time
 
-
+import random
 from geometry_msgs.msg import *
 from std_msgs.msg import *
 from project_simulation.msg import *
@@ -21,11 +21,11 @@ import tf
 PUB_RATE = 60
 
 #constant robot velocity(m/s)
-ROBO_VEL = 0.5
+ROBO_VEL = 0.75
 
 #time taken to pick-up put down bin (s)
-ROBO_PICK = 0.5
-ROBO_PUT = 0.5
+ROBO_PICK = 1.0
+ROBO_PUT = 1.0
 
 task_done = False
 task_cnt =0
@@ -408,7 +408,7 @@ def wait_at_loc(for_time):
 
 def listen_tasks(task_msg):
     global task_list
-    task_list.append({'targ_loc' : task_msg.move_to_location.data, 
+    task_list.append({'targ_loc' : 'L'+str(task_msg.move_to_location.data), 
                           'bin_id' : task_msg.bin_id.data})
     
     return
@@ -461,6 +461,7 @@ if __name__=='__main__':
             #check if target position empty
             dest_loc = cur_task['targ_loc']
             location_not_empty = True
+
             for e_loc in empty_locations:
                 if e_loc == dest_loc:
                     location_not_empty = False

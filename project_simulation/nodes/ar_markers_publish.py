@@ -327,7 +327,7 @@ def pub_bins():
             bin_present = False
             for temp_bin in bins_locs:
                 if slocation['name'] == temp_bin['location']:
-                    bin_there = True
+                    bin_present = True
                     break
             if not bin_present:
                 markers_robo.append(temp_b_l)
