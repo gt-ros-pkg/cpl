@@ -248,6 +248,10 @@ private:
   //max hand velocity
   double hand_max_vel;
 
+  //workspace conditions
+  double workspace_thresh;
+  vector<double> bin_ref_point;
+
 public:
   handSim(string task_name, bool cheat);
   
@@ -256,20 +260,20 @@ public:
   geometry_msgs::PoseStamped transform_view
   (geometry_msgs::PoseStamped to_change);
 
-  void mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[], size_t mat_two_size[2], double mat_out[]);
+  void mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[], 
+	       size_t mat_two_size[2], double mat_out[]);
 
   void trans_homo_vec(double homo_vec[]);
   void trans_homo_vec_hand_off(double homo_vec[], double translate[]);
 
   void read_ar(project_simulation::AlvarMarkers msg);
 
-
   //does tasks in list
   void pub_hands();
   
   //pick out of given bin in correct time
-  double perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name);
-
+  double perform_task(size_t cur_bin, double dur_m, double dur_s, 
+		      double time_reach, bool pick_lefty, string cur_task_name);
   
   //calculate euclidean dist between two vectors
   double calc_euclid_dist(vector<double> vec_one, vector<double> vec_two);
@@ -331,6 +335,8 @@ public:
   //change bin centroid position so hand can reach inside it
   geometry_msgs::PoseStamped transform_for_hand
   (geometry_msgs::PoseStamped bin_cur_pose);
+
+  bool bin_in_workspace(vector<double> bin_loc);
 
 
 };
@@ -404,12 +410,12 @@ handSim::handSim(string task_name, bool cheat)
     to_perform.read_file(task_name);
 
     //set noise
-    pub_noise_dev = 0.005;
-    walk_dev = 0.1;
+    pub_noise_dev = 0.003;
+    walk_dev = 0.05;
 
     //initialize rest positions
-    double init_pos_l[]= {-0.0813459, 0.258325,1.86598};
-    double init_pos_r[]= {-0.1813459, 0.258325,1.86598};
+    double init_pos_l[]= {-0.155114992857, 0.354498310089, 1.78414916039};
+    double init_pos_r[]= {-0.209114992857, 0.434498310089, 1.78414916039};
     lh_rest.assign(&init_pos_l[0], &init_pos_l[0]+3);
     rh_rest.assign(&init_pos_r[0], &init_pos_r[0]+3);
 
@@ -444,7 +450,7 @@ handSim::handSim(string task_name, bool cheat)
     
     //hand-offset in bin frame
     hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
-    hand_t_var[0]=0.00020556;hand_t_var[1]=0.00052374;hand_t_var[2]=0.00058416;  
+    hand_t_var[0]=0.00020556;hand_t_var[1]=0.00052374;hand_t_var[2]=0.00058416; 
     
     //ros-stuff
     lh_pose = nh.advertise<geometry_msgs::PoseStamped>("left_hand",1);
@@ -452,12 +458,18 @@ handSim::handSim(string task_name, bool cheat)
     viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
     task_pub = nh.advertise<std_msgs::String>("action_name", 1);
     
-    ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
+    ar_poses = nh.subscribe("ar_pose_marker", 0, &handSim::read_ar, this);  
 
     //max-magnitude of hand velocity, to be used for random walk in m/s. 
     //TODO: maybe this should be checked every time the hand is published or 
     //something
     hand_max_vel = 1.0;
+
+    //workspace conditions
+    workspace_thresh = 0.55;
+
+    double init_ref_pos[] = {-0.265114992857, 0.434498310089, 2.04414916039};
+    bin_ref_point.assign(&init_ref_pos[0], &init_ref_pos[0]+3);
     
     //store transform
     tf::TransformListener tf_cam_to_kin;  
@@ -683,7 +695,7 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
 	        
   }
   
-  //pick out of given bin in correct time
+//pick out of given bin in correct time
 double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name)
   {
     vector<double> cur_bin_loc;
@@ -831,8 +843,8 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
       }while(ros::ok() && !bin_in_position(bin_to_chk));
   }
 
-  //check if bin in position
-  bool handSim::bin_in_position(size_t chk_bin)
+//check if bin in position
+bool handSim::bin_in_position(size_t chk_bin)
   {
     ros::spinOnce();
     
@@ -840,11 +852,19 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
       {
 	if(cur_bin_locations[i].id == chk_bin)
 	  {
-	    return true;
+	    return bin_in_workspace(cur_bin_locations[i].location);
 	  }
       }
     return false;
   }
+
+//check if location of a given bin is in workspace
+bool handSim::bin_in_workspace(vector<double> bin_loc)
+{
+  double bin_dist = calc_euclid_dist(bin_loc, handSim::bin_ref_point);
+
+  return (bin_dist < handSim::workspace_thresh);
+}
   
   //return only positive samples
   double handSim::samp_gauss_pos(double mean, double std_dev)
