@@ -27,6 +27,8 @@ ROBO_VEL = 0.75
 ROBO_PICK = 1.0
 ROBO_PUT = 1.0
 
+rest_above_by = 0.2
+
 task_done = False
 task_cnt =0
 frame_of_reference = '/lifecam1_optical_frame'
@@ -279,12 +281,13 @@ def pub_add_bin(bin_to_add, bin_location):
 
 #move the endfactor, no bin to move
 def move_endf(target_loc_name, to_rest=False):
-    global endfactor_cur_pos, PUB_RATE, ROBO_VEL, endfactor_rest
+    global endfactor_cur_pos, PUB_RATE, ROBO_VEL, rest_above_by
 
     if not to_rest:
         target_loc = get_location(target_loc_name)
     else:
-        target_loc = copy.deepcopy(endfactor_rest)
+        target_loc = copy.deepcopy(endfactor_cur_pos)
+        target_loc[2] -= rest_above_by
     
     tot_dist = calc_euclid(endfactor_cur_pos, target_loc)
     total_time_steps = math.floor((tot_dist/ROBO_VEL)*PUB_RATE)
