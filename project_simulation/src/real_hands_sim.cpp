@@ -414,8 +414,8 @@ handSim::handSim(string task_name, bool cheat)
     walk_dev = 0.05;
 
     //initialize rest positions
-    double init_pos_l[]= {-0.155114992857, 0.354498310089, 1.78414916039};
-    double init_pos_r[]= {-0.209114992857, 0.434498310089, 1.78414916039};
+    double init_pos_l[]= {-0.1064983785152, 0.306433949471, 2.05088281631};
+    double init_pos_r[]= {-0.208528461456, 0.384774179459,2.05639982224};
     lh_rest.assign(&init_pos_l[0], &init_pos_l[0]+3);
     rh_rest.assign(&init_pos_r[0], &init_pos_r[0]+3);
 
