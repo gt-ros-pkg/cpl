@@ -1,0 +1,6 @@
+<launch>
+    <node name="bin_move_executive" pkg="cpl_collab_manip" type="bin_move_executive.py" 
+          output="screen" >
+        <remap from="/bin_rewards" to="/new_bin_rewards" />
+    </node>
+</launch>

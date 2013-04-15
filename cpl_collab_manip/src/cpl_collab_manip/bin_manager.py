@@ -7,24 +7,20 @@ import yaml
 from threading import RLock
 
 import roslib
-roslib.load_manifest("ur_cart_move")
-roslib.load_manifest("ar_track_alvar")
-roslib.load_manifest('tf')
-roslib.load_manifest('robotiq_c_model_control')
-roslib.load_manifest('hrl_geom')
-roslib.load_manifest('pykdl_utils')
+roslib.load_manifest("cpl_collab_manip")
 import rospy
 
 import tf
 from geometry_msgs.msg import PoseStamped, PoseArray
 from actionlib import SimpleActionClient
+from roslaunch.substitution_args import resolve_args
 
 from ar_track_alvar.msg import AlvarMarkers
 from hrl_geom.pose_converter import PoseConv
-from traj_planner import TrajPlanner, pose_offset, pose_interp
-from spline_traj_executor import SplineTraj
-from msg import SplineTrajAction, SplineTrajGoal
-from ur_cart_move import ArmInterface, RAVEKinematics
+from ur_cart_move.traj_planner import TrajPlanner, pose_offset, pose_interp
+from ur_cart_move.spline_traj_executor import SplineTraj
+from ur_cart_move.msg import SplineTrajAction, SplineTrajGoal
+from ur_cart_move.ur_cart_move import ArmInterface, RAVEKinematics
 from robotiq_c_model_control.robotiq_c_ctrl import RobotiqCGripper
 from pykdl_utils.kdl_kinematics import create_kdl_kin
 
@@ -44,7 +40,7 @@ class ARTagManager(object):
         self.bin_height = rospy.get_param("~bin_height", BIN_HEIGHT_DEFAULT)
         self.table_offset = rospy.get_param("~table_offset", TABLE_OFFSET_DEFAULT)
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
-        self.filter_window = rospy.get_param("~filter_window", 5.)
+        self.filter_size = rospy.get_param("~filter_size", 6)
         # distance from marker to slot which can be considered unified
         self.ar_unification_thresh = rospy.get_param("~ar_unification_thresh", 0.08)
 
@@ -66,11 +62,9 @@ class ARTagManager(object):
                 marker.pose.header = marker.header
                 if marker.id not in self.ar_poses:
                     self.ar_poses[marker.id] = deque()
+                if len(self.ar_poses[marker.id]) == self.filter_size:
+                    self.ar_poses[marker.id].popleft()
                 self.ar_poses[marker.id].append([cur_time, marker.pose])
-            #for mid in self.ar_poses:
-            #    while (len(self.ar_poses[mid]) > 0 and 
-            #           cur_time - self.ar_poses[mid][0][0] > self.filter_window):
-            #        self.ar_poses[mid].popleft()
 
     # forces bin location from a pose in the base_link frame
     def set_bin_location(self, mid, pose):
@@ -533,7 +527,8 @@ def main():
 
     from optparse import OptionParser
     p = OptionParser()
-    p.add_option('-f', '--file', dest="filename", default="bin_locs.yaml",
+    p.add_option('-f', '--file', dest="filename", 
+                 default="$(find cpl_collab_manip)/config/bin_locs.yaml",
                  help="YAML file of bin locations.")
     p.add_option('-s', '--save', dest="is_save",
                  action="store_true", default=False,
@@ -544,13 +539,16 @@ def main():
     p.add_option('-d', '--demo', dest="is_demo",
                  action="store_true", default=False,
                  help="Test robot in reality moving a bin around.")
+    p.add_option('-v', '--visualize', dest="is_viz",
+                 action="store_true", default=False,
+                 help="Visualize poses.")
     (opts, args) = p.parse_args()
 
     if opts.is_save:
-        ar_man = ARTagManager()
+        ar_man = ARTagManager({})
         rospy.sleep(4.)
         bin_data = ar_man.get_all_bin_poses()
-        f = file(opts.filename, 'w')
+        f = file(resolve_args(opts.filename), 'w')
         for bid in bin_data:
             print bid, bin_data[bid]
         yaml.dump({'data':bin_data}, f)
@@ -567,19 +565,34 @@ def main():
             poses_pub.publish(poses)
             r.sleep()
     elif opts.is_test:
-        f = file(opts.filename, 'r')
+        f = file(resolve_args(opts.filename), 'r')
         bin_slots = yaml.load(f)['data']
         f.close()
         arm_prefix = "/sim1"
         bm = BinManager(arm_prefix, bin_slots)
         bm.do_random_move_test()
     elif opts.is_demo:
-        f = file(opts.filename, 'r')
+        f = file(resolve_args(opts.filename), 'r')
         bin_slots = yaml.load(f)['data']
         f.close()
         arm_prefix = ""
         bm = BinManager(arm_prefix, bin_slots)
         bm.do_move_demo(5)
+    elif opts.is_viz:
+        f = file(resolve_args(opts.filename), 'r')
+        bin_data = yaml.load(f)['data']
+        f.close()
+
+        poses_pub = rospy.Publisher('/ar_pose_array', PoseArray)
+        r = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            poses = PoseArray()
+            poses.header.stamp = rospy.Time.now()
+            poses.header.frame_id = '/base_link'
+            for bid in bin_data:
+                poses.poses.append(PoseConv.to_pose_msg(bin_data[bid][:2]))
+            poses_pub.publish(poses)
+            r.sleep()
     else:
         print 'h'
 

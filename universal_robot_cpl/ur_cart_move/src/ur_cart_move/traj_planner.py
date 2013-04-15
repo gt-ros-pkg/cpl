@@ -136,7 +136,5 @@ class TrajPlanner(object):
 
     def interpolate_q(self, q_init, q_final, s_knots):
         q_init, q_final = np.array(q_init), np.array(q_final)
-        print 'yo '*50
-        print q_init, q_final
         return np.array([q_init + (q_final - q_init)*s for s in s_knots])
 

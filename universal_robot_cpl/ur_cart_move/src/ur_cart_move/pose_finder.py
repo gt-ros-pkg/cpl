@@ -40,7 +40,8 @@ def menu_press(fb):
     pose = PoseConv.to_homo_mat(fb.pose)
     sol = kin.inverse(pose, arm.get_q())
     arm.unlock_security_stop()
-    arm_behav.move_to_q(sol)
+    move_velocity = rospy.get_param("~move_velocity", 0.15)
+    arm_behav.move_to_q(sol, velocity=move_velocity)
 
 
 def main():
