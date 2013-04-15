@@ -864,6 +864,8 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
   return sd;
 }
 
+
+
 ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
                                            int sample_pt_idx, float sample_spread)
 {
@@ -893,6 +895,20 @@ ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur
 
 
   return sd;
+}
+
+ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                                    float sample_spread, float hull_alpha,
+                                                    float hist_res)
+{
+  ShapeDescriptors descs;
+  for (unsigned int i = 0; i < hull.size(); ++i)
+  {
+    ShapeDescriptor d = extractLocalAndGlobalShapeFeatures(hull, cur_obj, hull[i], i, sample_spread, hull_alpha,
+                                                           hist_res);
+    descs.push_back(d);
+  }
+  return descs;
 }
 
 ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,

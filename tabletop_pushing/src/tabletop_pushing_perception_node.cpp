@@ -633,8 +633,7 @@ class TabletopPushingPerceptionNode
         recording_input_ = false;
         obj_tracker_->stopTracking();
       }
-      // NOTE: Assume pushing as default
-      else
+      else // NOTE: Assume pushing as default
       {
         ROS_INFO_STREAM("Determining push start pose");
         res = getPushStartPose(req);
@@ -719,7 +718,12 @@ class TabletopPushingPerceptionNode
     {
       // Get the pushing location
       ShapeLocation chosen_loc;
-      if (start_loc_use_fixed_goal_)
+      if (req.start_loc_weights_path.length() > 0) // TODO: Choose start location using the learned classifier
+      {
+        float chosen_score = -1;
+        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_weights_path, chosen_score);
+      }
+      else if (start_loc_use_fixed_goal_)
       {
         chosen_loc = chooseFixedGoalPushStartLoc(cur_obj, cur_state, req.new_object,
                                                  req.num_start_loc_pushes_per_sample, req.num_start_loc_sample_locs,
@@ -1047,8 +1051,9 @@ class TabletopPushingPerceptionNode
     //                                                                         use_center_pointing_shape_context_);
     float gripper_spread = 0.05;
     pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
-    ShapeDescriptor sd = tabletop_pushing::extractLocalShapeFeatures(hull_cloud, cur_obj, boundary_loc, gripper_spread,
-                                                                     hull_alpha, point_cloud_hist_res_);
+    ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
+                                                                              boundary_loc_idx, gripper_spread,
+                                                                              hull_alpha, point_cloud_hist_res_);
     // Add into pushing history in object frame
     // ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
     //                 locs[boundary_loc_idx].descriptor_);
@@ -1081,6 +1086,24 @@ class TabletopPushingPerceptionNode
     ShapeLocation s_world(boundary_loc, sd);
     return s_world;
     // return locs[boundary_loc_idx];
+  }
+
+  ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, std::string weights_path,
+                                          float& chosen_score)
+  {
+    // Get features for all of the boundary locations
+    float hull_alpha = 0.01;
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+    float gripper_spread = 0.05;
+    ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                                gripper_spread, hull_alpha,
+                                                                                point_cloud_hist_res_);
+    // TODO: Read in weights
+    // TODO: Perform prediction on all sample locations
+    // TODO: Choose "best" start location
+    // TODO: Return that location
+    ShapeLocation loc;
+    return loc;
   }
 
   float getSpinPushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc)

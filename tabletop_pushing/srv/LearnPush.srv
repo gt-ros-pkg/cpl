@@ -9,6 +9,7 @@ string proxy_name
 string behavior_primitive
 string tool_proxy_name
 string trial_id
+string start_loc_weights_path
 int32 num_start_loc_clusters
 int32 num_start_loc_sample_locs
 int32 num_start_loc_pushes_per_sample
