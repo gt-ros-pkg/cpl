@@ -257,7 +257,7 @@ class TabletopExecutive:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
                         res = self.explore_push_start_locs(num_pushes_per_sample, num_sample_locs, behavior_primitive,
-                                                           controller, proxy, object_id, arm)
+                                                           controller, proxy, object_id, arm, start_loc_param_path)
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
                             return False
@@ -359,7 +359,7 @@ class TabletopExecutive:
         return res
 
     def explore_push_start_locs(self, num_pushes_per_sample, num_sample_locs, behavior_primitive, controller_name,
-                                proxy_name, object_id, which_arm,
+                                proxy_name, object_id, which_arm, start_loc_param_path='',
                                 precondition_method=CENTROID_PUSH_PRECONDITION):
         rospy.loginfo('Exploring push start locs for triple: (' + behavior_primitive + ', ' +
                       controller_name + ', ' + proxy_name + ')')
@@ -416,7 +416,8 @@ class TabletopExecutive:
                                                                  num_clusters=self.num_start_loc_clusters,
                                                                  trial_id=trial_id,
                                                                  num_sample_locs=num_sample_locs,
-                                                                 num_pushes_per_sample=num_pushes_per_sample)
+                                                                 num_pushes_per_sample=num_pushes_per_sample,
+                                                                 start_loc_param_path=start_loc_param_path)
                 if push_vec_res is None:
                     return None
                 elif push_vec_res == 'quit':
@@ -488,7 +489,8 @@ class TabletopExecutive:
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
                                      behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
                                      learn_start_loc=False, new_object=False, num_clusters=1,
-                                     trial_id='',num_sample_locs=1, num_pushes_per_sample=1):
+                                     trial_id='',num_sample_locs=1, num_pushes_per_sample=1,
+                                     start_loc_param_path=''):
         get_push = True
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
@@ -499,7 +501,8 @@ class TabletopExecutive:
                                                                  num_clusters=num_clusters,
                                                                  trial_id=trial_id,
                                                                  num_sample_locs=num_sample_locs,
-                                                                 num_pushes_per_sample=num_pushes_per_sample)
+                                                                 num_pushes_per_sample=num_pushes_per_sample,
+                                                                 start_loc_param_path=start_loc_param_path)
 
             if push_vec_res is None:
                 return None
@@ -660,7 +663,7 @@ class TabletopExecutive:
                                          behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
                                          get_pose_only=False, learn_start_loc=False,
                                          new_object=False, num_clusters=1, trial_id='',
-                                         num_sample_locs=1, num_pushes_per_sample=1):
+                                         num_sample_locs=1, num_pushes_per_sample=1,start_loc_param_path=''):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = False
@@ -676,6 +679,7 @@ class TabletopExecutive:
         push_vector_req.num_start_loc_clusters = num_clusters
         push_vector_req.num_start_loc_sample_locs = num_sample_locs
         push_vector_req.num_start_loc_pushes_per_sample = num_pushes_per_sample
+        push_vector_req.start_loc_param_path=start_loc_param_path
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -1145,10 +1149,9 @@ if __name__ == '__main__':
     use_learning = True
     use_guided = True
     max_pushes = 500
-    behavior_primitive = OVERHEAD_PUSH # GRIPPER_PUSH, GRIPPER_SWEEP, OVERHEAD_PUSH
-    # tool_proxy_name = EE_TOOL_PROXY
-    # tool_proxy_name = HACK_TOOL_PROXY
     node = TabletopExecutive(use_singulation, use_learning)
+    # TODO: Put the path to the learned parameter file here to use the learned parameters
+    start_loc_param_path = ''
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     elif use_learning:
@@ -1165,7 +1168,7 @@ if __name__ == '__main__':
             if learn_start_loc:
                 node.init_loc_learning()
                 clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
-                                                                num_start_loc_sample_locs)
+                                                                num_start_loc_sample_locs, start_loc_param_path)
                 node.finish_learning()
             else:
                 clean_exploration = node.run_push_exploration(object_id=code_in)

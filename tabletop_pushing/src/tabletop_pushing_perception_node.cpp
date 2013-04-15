@@ -718,10 +718,10 @@ class TabletopPushingPerceptionNode
     {
       // Get the pushing location
       ShapeLocation chosen_loc;
-      if (req.start_loc_weights_path.length() > 0) // TODO: Choose start location using the learned classifier
+      if (req.start_loc_param_path.length() > 0) // TODO: Choose start location using the learned classifier
       {
         float chosen_score = -1;
-        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_weights_path, chosen_score);
+        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, chosen_score);
       }
       else if (start_loc_use_fixed_goal_)
       {
@@ -1088,7 +1088,7 @@ class TabletopPushingPerceptionNode
     // return locs[boundary_loc_idx];
   }
 
-  ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, std::string weights_path,
+  ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, std::string param_path,
                                           float& chosen_score)
   {
     // Get features for all of the boundary locations
