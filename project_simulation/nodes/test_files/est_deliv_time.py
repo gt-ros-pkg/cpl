@@ -1,9 +1,40 @@
 #!/usr/bin/env python
 
-global workspace
-workspace = ['L0', 'L1', 'L2']
+#########################
+# Estimate the average distance between bin in workspace versus, bin not there
+########################
 
-global slocations
+import rospy
+import sys
+
+import roslib
+roslib.load_manifest('project_simulation')
+import time
+
+
+from geometry_msgs.msg import *
+from std_msgs.msg import *
+from project_simulation.msg import *
+from visualization_msgs.msg import *
+
+import math
+import copy
+import tf
+
+#constant robot velocity(m/s)
+ROBO_VEL = 0.75
+
+#time taken to pick-up put down bin (s)
+ROBO_PICK = 1.0
+ROBO_PUT = 1.0
+
+rest_above_by = 0.2
+
+
+#work-space
+work_space = ['L0', 'L1', 'L2']
+
+#possible locations
 slocations = [ 
          { 'name' : 'L5' , 'position' : (-0.694954464364,0.264302079631,1.99317972681) , 'orientation' : (0.0864803654147,0.979654035105,-0.178136413992,0.0326578614002)},
          { 'name' : 'L3' , 'position' :  (-0.847151201376,0.297786050824,1.96464817216) , 'orientation' :  (0.099286275045,0.979143250933,-0.172672549803,0.040061456355)},
@@ -51,42 +82,46 @@ slocations = [
 , 'orientation' :   (-0.201361148913,0.961335468405,-0.186586019109,-0.0217591904042)}
          ]
 
-def get_location_names():
-    names = []
+#calculate euclidean distance between two vectors
+def calc_euclid(vec_one, vec_two):
+    if vec_one.__len__() == vec_two.__len__():
+        vec_size = vec_one.__len__()
+        distance = 0.0
+        for i in range(vec_size):
+            distance+= math.pow(vec_one[i]-vec_two[i],2)
+        
+        return math.sqrt(distance)
 
-    for l in slocations:
-        names.append(l['name'])
-
-    return names
-
-
-def get_location_by_name(lname):
-
-    for l in slocations:
-        if l['name'] == lname :
-             return l['position'], l['orientation']
-
-    return None, None
+    #sizes don't match
+    print "Sizes don't match can't compute euclidean distance"
 
 
-def is_workspace_location(lname):
+
+
+if __name__ == '__main__':
+    not_work_pos = []
+    work_pos = []
     
-    for l in workspace:
-       if lname == l
-          return True
+    for slocation in slocations:
+        is_work = False
+        for work_loc in work_space:
+            if work_loc == slocation['name']:
+                work_pos.append(slocation['position'])
+                is_work = True
+        if not is_work:
+            not_work_pos.append(slocation['position'])
+                
 
-    return False
+    total_distance = 0
+    no_of_cases = 0
 
+    for workP in work_pos:
+        for not_workP in not_work_pos:
+            total_distance += calc_euclid(list(workP), list(not_workP))
+            no_of_cases += 1
 
+    avg_dist = (total_distance + rest_above_by)/no_of_cases
+    avg_time = avg_dist/ROBO_VEL + ROBO_PICK + ROBO_PUT
 
-
-
-
-
-
-
-
-
-
-
-
+    print "Average Distance = " + str(avg_dist)
+    print "Average Time = " + str(avg_time)

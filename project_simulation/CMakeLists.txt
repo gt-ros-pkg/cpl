@@ -35,4 +35,5 @@ rosbuild_genmsg()
 #target_link_libraries(example ${PROJECT_NAME})
 
 rosbuild_add_executable(hands_sim src/hands_sim.cpp)
+rosbuild_add_executable(real_hands_sim src/real_hands_sim.cpp)
 

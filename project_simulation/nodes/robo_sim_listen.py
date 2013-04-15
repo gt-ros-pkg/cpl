@@ -27,6 +27,8 @@ ROBO_VEL = 0.75
 ROBO_PICK = 1.0
 ROBO_PUT = 1.0
 
+rest_above_by = 0.2
+
 task_done = False
 task_cnt =0
 frame_of_reference = '/lifecam1_optical_frame'
@@ -279,12 +281,13 @@ def pub_add_bin(bin_to_add, bin_location):
 
 #move the endfactor, no bin to move
 def move_endf(target_loc_name, to_rest=False):
-    global endfactor_cur_pos, PUB_RATE, ROBO_VEL, endfactor_rest
+    global endfactor_cur_pos, PUB_RATE, ROBO_VEL, rest_above_by
 
     if not to_rest:
         target_loc = get_location(target_loc_name)
     else:
-        target_loc = copy.deepcopy(endfactor_rest)
+        target_loc = copy.deepcopy(endfactor_cur_pos)
+        target_loc[2] -= rest_above_by
     
     tot_dist = calc_euclid(endfactor_cur_pos, target_loc)
     total_time_steps = math.floor((tot_dist/ROBO_VEL)*PUB_RATE)
@@ -406,22 +409,86 @@ def wait_at_loc(for_time):
         cur_step += 1
         loop_rate.sleep()
 
-def listen_tasks(task_msg):
-    global task_list, empty_locations, work_space
+#find the the location name closest to given location name in passed list
+def find_close_location(std_loc, loc_list):
+    closest_loc = None
+    std_loc_pos = None
 
+    #find the std_loc
+    for slocation in slocations:
+        if slocation['name'] == std_loc:
+            std_loc_pos = list(slocation['position'])
+            break
+
+    min_dist = float("Infinity")
+
+    #check distances
+    for a_loc in loc_list:
+        for slocation in slocations:
+            if slocation['name'] == a_loc:
+                temp_dist = calc_euclid(list(slocation['position']), std_loc_pos)
+                if temp_dist < min_dist:
+                    min_dist = temp_dist
+                    closest_loc = slocation['name']
+                    break
+                    
+    return closest_loc
+    
+
+def listen_tasks(task_msg):
+    global task_list, empty_locations, work_space, cur_bin_list
+
+    to_move_bin = task_msg.bin_id
     target_location = []
+    
+    
+    #find bin
+    targ_bin_cur_loc = None
+    bin_found = False
+    for cur_bin in cur_bin_list:
+        if cur_bin['id'] == to_move_bin:
+            targ_bin_cur_loc = cur_bin['location']
+            bin_found = True
+            break
+        
+    if not bin_found:
+        #incase bin wasn't found, move to next task
+        print 'Bin not found for the task. Skipping task'
+        return
+
+    #check if already in workspace
+    is_bin_in_work = False
+    for work_loc in work_space:
+        if targ_bin_cur_loc == work_loc:
+            is_bin_in_work = True
+            break
+
+    #find empty work slots
+    empty_works = []
+    empty_non_works = []
+    
+    for empty_loc in empty_locations:
+        is_work = False
+        for work_loc in work_space:
+            if work_loc == empty_loc:
+                is_work = True
+                temp_location = work_loc
+                empty_works.append(temp_location)
+                break
+        if not is_work:
+            empty_non_works.append(empty_loc)
+
 
     #move to the work list
     if task_msg.move_near_human:
-        is_work_empty = False
-        for work_loc in work_space:
-            for empty_loc in empty_locations:
-                if work_loc == empty_loc:
-                    is_work_empty = True
-                    target_location = work_loc
-                    break
+        
+        #do if bin in workspace already
+        if is_bin_in_work:
+            print "Bin already in workspace. Skipping task"
+            return
                     
-        if is_work_empty:
+        if empty_works.__len__()>0:
+            target_location = find_close_location(targ_bin_cur_loc, empty_works)
             task_list.append({'targ_loc' : target_location, 
                               'bin_id' : task_msg.bin_id})
             return
@@ -429,11 +496,16 @@ def listen_tasks(task_msg):
             print 'No empty slot in work-space'
             return
 
-    #move to the work list
+    #move out of work list
     else:
+        
+        if not is_bin_in_work:
+            print 'Bin already out of workspace. Skipping task.'
+            return
+            
         is_space_empty = False
-        if empty_locations.__len__()> 0:
-            target_location = empty_locations[0]
+        if empty_non_works.__len__()> 0:
+            target_location = find_close_location(targ_bin_cur_loc, empty_non_works)
             task_list.append({'targ_loc' : target_location, 
                               'bin_id' : task_msg.bin_id})
             return

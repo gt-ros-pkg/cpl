@@ -17,7 +17,7 @@ import copy
 import tf
 
 #publish Hz
-PUB_RATE = 60
+PUB_RATE = 10
 
 '''
 Collects following information:
@@ -138,7 +138,8 @@ if __name__ == '__main__':
     pub_cur_state = rospy.Publisher('current_state', 
                                     project_simulation.msg.BinStateEstimate)
     
-    r = rospy.Rate(10)
+    loop_rate = rospy.Rate(PUB_RATE)
     while not rospy.is_shutdown():
         pub_as_one()
+        loop_rate.sleep()
         r.sleep()
