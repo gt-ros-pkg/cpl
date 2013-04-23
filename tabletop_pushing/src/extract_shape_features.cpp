@@ -482,7 +482,7 @@ void drawScores(std::vector<float>& push_scores, std::string out_file_path)
   }
   // ROS_INFO_STREAM("Max score is: " << max_score);
   // ROS_INFO_STREAM("Writing image: " << out_file_path);
-  cv::imwrite(out_file_path, footprint);
+  // cv::imwrite(out_file_path, footprint);
 
   cv::imshow("Push score", footprint);
   cv::waitKey();

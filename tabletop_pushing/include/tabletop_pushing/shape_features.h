@@ -63,9 +63,9 @@ cpl_visual_features::ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPoin
                                                                         float hist_res);
 
 cpl_visual_features::ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
-                                                                   pcl16::PointXYZ sample_pt, int sample_pt_idx,
-                                                                   float sample_spread, float hull_alpha,
-                                                                   float hist_res);
+                                                                        pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                                                        float sample_spread, float hull_alpha,
+                                                                        float hist_res);
 
 cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& samples_pcl,
                                                                ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,

@@ -11,6 +11,8 @@
 
 #define XY_RES 0.00075
 #define DRAW_LR_LIMITS 1
+// #define USE_RANGE_AND_VAR_FEATS 1
+
 using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
 namespace tabletop_pushing
@@ -852,10 +854,12 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
 
   // Compute features and populate the descriptor
   ShapeDescriptor sd;
+#ifdef USE_RANGE_AND_VAR_FEATS
   getPointRangesXY(transformed_pts, sd);
   getCovarianceXYFromPoints(transformed_pts, sd);
   extractPCAFeaturesXY(transformed_pts, sd);
   extractBoundingBoxFeatures(transformed_pts, sd);
+#endif // USE_RANGE_AND_VAR_FEATS
 
   // Get histogram to describe local distribution
   ShapeDescriptor histogram = extractPointHistogramXY(transformed_pts, hist_res, hist_res,
@@ -871,11 +875,13 @@ ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur
 {
   XYZPointCloud transformed_pts = transformSamplesIntoSampleLocFrame(cur_obj.cloud, cur_obj, sample_pt);
   ShapeDescriptor sd;
+#ifdef USE_RANGE_AND_VAR_FEATS
   // Get the general features describing the point cloud in the local object frame
   getPointRangesXY(transformed_pts, sd);
   getCovarianceXYFromPoints(transformed_pts, sd);
   extractPCAFeaturesXY(transformed_pts, sd);
   extractBoundingBoxFeatures(transformed_pts, sd);
+#endif // USE_RANGE_AND_VAR_FEATS
 
   // Get shape context
   ShapeLocations sc = extractShapeContextFromSamples(hull, cur_obj, true);
@@ -916,9 +922,113 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
                                                    float sample_spread, float hull_alpha, float hist_res)
 {
   // ROS_INFO_STREAM("Local");
-  ShapeDescriptor local = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
+  ShapeDescriptor local_raw = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
+  // Binarize local histogram
+  for (unsigned int i = 0; i < local_raw.size(); ++i)
+  {
+    if (local_raw[i] > 0)
+    {
+      local_raw[i] = 1.0;
+    }
+    else
+    {
+      local_raw[i] = 0.0;
+    }
+  }
+  // Convert back into image for resizing
+  int hist_size = std::sqrt(local_raw.size());
+  cv::Mat local_hist(cv::Size(hist_size, hist_size), CV_32FC1, cv::Scalar(0.0));
+  std::stringstream raw_hist;
+  for (int r = 0; r < hist_size; ++r)
+  {
+    for (int c = 0; c < hist_size; ++c)
+    {
+      local_hist.at<float>(r,c) = local_raw[r*hist_size+c];
+      raw_hist << " " << local_hist.at<float>(r,c);
+    }
+    raw_hist << "\n";
+  }
+  // Resize to 6x6
+  // TODO: Set 6 as a variable
+  cv::Mat local_resize(cv::Size(6,6), CV_32FC1, cv::Scalar(0.0));
+  cv::resize(local_hist, local_resize, local_resize.size(), 0, 0, CV_INTER_CUBIC);
+  std::stringstream resized_hist;
+  for (int r = 0; r < local_resize.rows; ++r)
+  {
+    for (int c = 0; c < local_resize.cols; ++c)
+    {
+      resized_hist << " " << local_resize.at<float>(r,c);
+    }
+    resized_hist << "\n";
+  }
+  // TODO: Compare the resized histogram to computing 6x6 directly
+  // Filter with gaussian
+  cv::Mat local_smooth(local_resize.size(), CV_32FC1, cv::Scalar(0.0));
+  cv::Mat g_kernel = cv::getGaussianKernel(5, 0.2, CV_32F);
+  cv::sepFilter2D(local_resize, local_smooth, CV_32F, g_kernel, g_kernel);
+  // Threshold negatives then L1 normalize
+  float local_sum = 0.0;
+  std::stringstream smooth_hist;
+  std::stringstream smooth_hist_clip;
+  for (int r = 0; r < local_smooth.rows; ++r)
+  {
+    for (int c = 0; c < local_smooth.cols; ++c)
+    {
+      smooth_hist << " " << local_smooth.at<float>(r,c);
+      if(local_smooth.at<float>(r,c) < 0.0)
+      {
+        local_smooth.at<float>(r,c) = 0.0;
+      }
+      else
+      {
+        local_sum += local_smooth.at<float>(r,c);
+      }
+      smooth_hist_clip << " " << local_smooth.at<float>(r,c);
+    }
+    smooth_hist << "\n";
+    smooth_hist_clip << "\n";
+  }
+  // L1 normalize local histogram
+  ShapeDescriptor local;
+  std::stringstream l1_hist;
+  for (int r = 0; r < local_smooth.rows; ++r)
+  {
+    for (int c = 0; c < local_smooth.cols; ++c)
+    {
+      local_smooth.at<float>(r,c) /= local_sum;
+      local.push_back(local_smooth.at<float>(r,c));
+      l1_hist << " " << local_smooth.at<float>(r,c);
+    }
+    l1_hist << "\n";
+  }
+  // ROS_INFO_STREAM("raw:\n" << raw_hist.str());
+  // ROS_INFO_STREAM("resized:\n" << resized_hist.str());
+  // ROS_INFO_STREAM("smooth:\n" << smooth_hist.str());
+  // ROS_INFO_STREAM("smooth_clip:\n" << smooth_hist_clip.str());
+  // ROS_INFO_STREAM("l1_normed:\n" << l1_hist.str());
+
   // ROS_INFO_STREAM("Global");
   ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+  // Binarize global histogram then L1 normalize
+  double global_sum = 0.0;
+  for (unsigned int i = 0; i < global.size(); ++i)
+  {
+    if (global[i] > 0)
+    {
+      global[i] = 1.0;
+      global_sum += 1.0;
+    }
+    else
+    {
+      global[i] = 0.0;
+    }
+  }
+  // L1 normalize global histogram
+  for (unsigned int i = 0; i < global.size(); ++i)
+  {
+    global[i] /= global_sum;
+  }
+
   // ROS_INFO_STREAM("local.size() << " << local.size());
   // ROS_INFO_STREAM("global.size() << " << global.size());
   local.insert(local.end(), global.begin(), global.end());
