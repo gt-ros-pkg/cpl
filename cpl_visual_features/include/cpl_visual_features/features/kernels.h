@@ -41,9 +41,10 @@
 namespace cpl_visual_features
 {
 
-double chiSqaureKernel(std::vector<double>& x, std::vector<double>& y);
-cv::Mat chiSquareKernelBatch(cv::Mat& x, cv::Mat& y, double gamma=0.0);
+double chiSqaureKernel(std::vector<double> x, std::vector<double> y);
 
+std::vector<std::vector<double> > chiSquareKernelBatch(std::vector<std::vector<double> >& X,
+                                                       std::vector<std::vector<double> >& Y, double gamma);
 };
 
 #endif // cpl_kernels_h_DEFINED

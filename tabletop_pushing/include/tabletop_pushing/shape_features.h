@@ -51,25 +51,25 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl,
 XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoObject& cur_obj,
                                                  pcl16::PointXYZ sample_pt);
 
-cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, float y_res, float x_range,
-                                                             float y_range);
+cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, double x_res, double y_res, double x_range,
+                                                             double y_range);
 
 
 XYZPointCloud getLocalSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
-                              float s, float hull_alpha);
+                              double s, double hull_alpha);
 
 cpl_visual_features::ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
-                                                                        float sample_spread, float hull_alpha,
-                                                                        float hist_res);
+                                                                        double sample_spread, double hull_alpha,
+                                                                        double hist_res);
 
 cpl_visual_features::ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                                         pcl16::PointXYZ sample_pt, int sample_pt_idx,
-                                                                        float sample_spread, float hull_alpha,
-                                                                        float hist_res);
+                                                                        double sample_spread, double hull_alpha,
+                                                                        double hist_res);
 
 cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& samples_pcl,
                                                                ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
-                                                               float s, float hull_alpha, float hist_res);
+                                                               double s, double hull_alpha, double hist_res);
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 

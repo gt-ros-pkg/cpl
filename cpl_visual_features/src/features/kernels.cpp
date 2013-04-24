@@ -33,12 +33,12 @@
  *********************************************************************/
 
 #include <cpl_visual_features/features/kernels.h>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <math.h>
 
 namespace cpl_visual_features
 {
 
-double chiSqaureKernel(std::vector<double>& x, std::vector<double>& y)
+double chiSqaureKernel(std::vector<double> x, std::vector<double> y)
 {
   double kernel_sum = 0.0;
   for (unsigned int i = 0; i < x.size(); ++i)
@@ -53,24 +53,32 @@ double chiSqaureKernel(std::vector<double>& x, std::vector<double>& y)
   return kernel_sum;
 }
 
-cv::Mat chiSquareKernelBatch(cv::Mat& x, cv::Mat& y, double gamma)
+std::vector<std::vector<double> > chiSquareKernelBatch(std::vector<std::vector<double> >& X,
+                                                       std::vector<std::vector<double> >& Y, double gamma)
 {
-  cv::Mat K(cv::Size(x.rows, y.rows), CV_64FC1, cv::Scalar(0.0));
+  std::vector<std::vector<double> > K;
+
   // Compute chi-square elementwise
-  for (int i = 0; i < x.rows; ++i)
+  for (int i = 0; i < X.size(); ++i)
   {
-    std::vector<double> xr = x.row(i);
-    for (int j = 0; j < y.rows; ++j)
+    std::vector<double> x = X[i];
+    std::vector<double> row;
+    K.push_back(row);
+    for (int j = 0; j < Y.size(); ++j)
     {
-      std::vector<double> yr = y.row(i);
-      K.at<double>(i,j) = cpl_visual_features::chiSqaureKernel(xr, yr);
+      std::vector<double> y = Y[j];
+      K[i].push_back(cpl_visual_features::chiSqaureKernel(x, y));
     }
   }
   if (gamma > 0.0)
   {
-    cv::Mat exp_K;
-    cv::exp(-gamma*K, exp_K);
-    return exp_K;
+    for (int i = 0; i < K.size(); ++i)
+    {
+      for (int j = 0; j < K[i].size(); ++j)
+      {
+        K[i][j] = exp(-gamma*K[i][j]);
+      }
+    }
   }
   return K;
 }

@@ -35,7 +35,7 @@ cv::Point worldPtToImgPt(pcl16::PointXYZ world_pt, double min_x, double max_x,
                    worldLocToIdx(world_pt.y, min_y, max_y));
   return img_pt;
 }
-std::vector<int> getJumpIndices(XYZPointCloud& concave_hull, float alpha)
+std::vector<int> getJumpIndices(XYZPointCloud& concave_hull, double alpha)
 {
   std::vector<int> jump_indices;
   for (int i = 0; i < concave_hull.size(); i++)
@@ -202,12 +202,12 @@ cv::Mat makeHistogramImage(ShapeDescriptor histogram, int n_x_bins, int n_y_bins
   // cv::waitKey();
   return hist_img;
 }
-void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, float alpha, pcl16::PointXYZ& center_pt,
+void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, double alpha, pcl16::PointXYZ& center_pt,
                       pcl16::PointXYZ& sample_pt, pcl16::PointXYZ& approach_pt,
                       pcl16::PointXYZ e_left, pcl16::PointXYZ e_right,
                       pcl16::PointXYZ c_left, pcl16::PointXYZ c_right,
                       pcl16::PointXYZ i_left, pcl16::PointXYZ i_right,
-                      float x_res, float y_res, float x_range, float y_range, ProtoObject& cur_obj)
+                      double x_res, double y_res, double x_range, double y_range, ProtoObject& cur_obj)
 {
   double max_y = 0.5;
   double min_y = -0.2;
@@ -281,20 +281,20 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, float alpha, 
 
   int n_x_bins = ceil(x_range/x_res);
   int n_y_bins = ceil(y_range/y_res);
-  float min_hist_x = -x_range*0.5;
-  float min_hist_y = -y_range*0.5;
+  double min_hist_x = -x_range*0.5;
+  double min_hist_y = -y_range*0.5;
   std::vector<std::vector<cv::Point> > hist_corners;
-  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  double center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
   double ct = std::cos(center_angle);
   double st = std::sin(center_angle);
   for (int i = 0; i <= n_x_bins; ++i)
   {
-    float local_x = min_hist_x+x_res*i;
+    double local_x = min_hist_x+x_res*i;
     std::vector<cv::Point> hist_row;
     hist_corners.push_back(hist_row);
     for (int j = 0; j <= n_y_bins; ++j)
     {
-      float local_y = min_hist_y+y_res*j;
+      double local_y = min_hist_y+y_res*j;
 
       // Transform into world frame
       pcl16::PointXYZ corner_in_world;
@@ -346,13 +346,13 @@ void drawSamplePoints(XYZPointCloud& hull, XYZPointCloud& samples, float alpha, 
 }
 
 XYZPointCloud getLocalSamplesNew(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
-                              float sample_spread, float alpha)
+                              double sample_spread, double alpha)
 {
   // TODO: This is going to get all points in front of the gripper, not only those on the close boundary
-  float radius = sample_spread / 2.0;
+  double radius = sample_spread / 2.0;
   pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
-  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
-  float approach_dist = 0.05;
+  double center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  double approach_dist = 0.05;
   pcl16::PointXYZ approach_pt(sample_pt.x - std::cos(center_angle)*approach_dist,
                               sample_pt.y - std::sin(center_angle)*approach_dist, 0.0);
   pcl16::PointXYZ e_vect(std::cos(center_angle+M_PI/2.0)*radius,
@@ -443,13 +443,13 @@ XYZPointCloud getLocalSamplesNew(XYZPointCloud& hull, ProtoObject& cur_obj, pcl1
 }
 
 XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
-                                 float sample_spread, float alpha)
+                                 double sample_spread, double alpha)
 {
   // TODO: This is going to get all points in front of the gripper, not only those on the close boundary
-  float radius = sample_spread / 2.0;
+  double radius = sample_spread / 2.0;
   pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
-  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
-  float approach_dist = 0.05;
+  double center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  double approach_dist = 0.05;
   pcl16::PointXYZ approach_pt(sample_pt.x - std::cos(center_angle)*approach_dist,
                               sample_pt.y - std::sin(center_angle)*approach_dist, 0.0);
   pcl16::PointXYZ e_vect(std::cos(center_angle+M_PI/2.0)*radius,
@@ -672,7 +672,7 @@ XYZPointCloud getLocalSamples(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::
   // Copy to new cloud and return
   XYZPointCloud local_samples;
   pcl16::copyPointCloud(hull, indices, local_samples);
-  float x_res = 0.01, y_res=0.01, x_range=2.0*sample_spread, y_range=2.0*sample_spread;
+  double x_res = 0.01, y_res=0.01, x_range=2.0*sample_spread, y_range=2.0*sample_spread;
   drawSamplePoints(hull, local_samples, alpha, center_pt, sample_pt, approach_pt, e_left, e_right,
                    c_left, c_right, hull[min_l_idx], hull[min_r_idx], x_res, y_res, x_range, y_range, cur_obj);
   return local_samples;
@@ -683,7 +683,7 @@ XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoOb
 {
   XYZPointCloud samples_transformed(samples);
   pcl16::PointXYZ center_pt(cur_obj.centroid[0], cur_obj.centroid[1], cur_obj.centroid[2]);
-  float center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
+  double center_angle = std::atan2(center_pt.y - sample_pt.y, center_pt.x - sample_pt.x);
   for (int i = 0; i < samples.size(); ++i)
   {
     // Remove mean and rotate based on pushing_direction
@@ -697,8 +697,8 @@ XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoOb
   return samples_transformed;
 }
 
-ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, float y_res, float x_range,
-                                        float y_range)
+ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, double x_res, double y_res, double x_range,
+                                        double y_range)
 {
   int n_x_bins = ceil(x_range/x_res);
   int n_y_bins = ceil(y_range/y_res);
@@ -706,8 +706,8 @@ ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, flo
   // Assume demeaned
   for (int i = 0; i < samples.size(); ++i)
   {
-    float x_norm = (samples[i].x+x_range*0.5)/ x_range;
-    float y_norm = (samples[i].y+y_range*0.5)/ y_range;
+    double x_norm = (samples[i].x+x_range*0.5)/ x_range;
+    double y_norm = (samples[i].y+y_range*0.5)/ y_range;
     if (x_norm  > 1.0 || x_norm < 0 || y_norm > 1.0 || y_norm <0)
     {
       continue;
@@ -736,10 +736,10 @@ ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, float x_res, flo
 
 void getPointRangesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
 {
-  float x_min = FLT_MAX;
-  float x_max = FLT_MIN;
-  float y_min = FLT_MAX;
-  float y_max = FLT_MIN;
+  double x_min = FLT_MAX;
+  double x_max = FLT_MIN;
+  double y_min = FLT_MAX;
+  double y_max = FLT_MIN;
   for (int i = 0; i < samples.size(); ++i)
   {
     if (samples[i].x > x_max)
@@ -759,8 +759,8 @@ void getPointRangesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
       y_min = samples[i].y;
     }
   }
-  float x_range = x_max - x_min;
-  float y_range = y_max - y_min;
+  double x_range = x_max - x_min;
+  double y_range = y_max - y_min;
   // ROS_INFO_STREAM("x_range: " << x_range << " : (" << x_min << ", " << x_max << ")");
   // ROS_INFO_STREAM("y_range: " << y_range << " : (" << y_min << ", " << y_max << ")");
   sd.push_back(x_range);
@@ -812,8 +812,8 @@ void extractPCAFeaturesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
   Eigen::Vector3f eigen_values = pca.getEigenValues();
   Eigen::Matrix3f eigen_vectors = pca.getEigenVectors();
   Eigen::Vector4f centroid = pca.getMean();
-  float lambda0 = eigen_values(0);
-  float lambda1 = eigen_values(1);
+  double lambda0 = eigen_values(0);
+  double lambda1 = eigen_values(1);
   // ROS_INFO_STREAM("Lambda: " << lambda0 << ", " << lambda1 << ", " << eigen_values(2));
   // ROS_INFO_STREAM("lambda0/lambda1: " << lambda0/lambda1);
   // ROS_INFO_STREAM("Eigen vectors: \n" << eigen_vectors);
@@ -822,8 +822,8 @@ void extractPCAFeaturesXY(XYZPointCloud& samples, ShapeDescriptor& sd)
   sd.push_back(lambda1);
   sd.push_back(lambda0/lambda1);
   // Get angls of eigen vectors
-  float theta0 = atan2(eigen_vectors(1,0), eigen_vectors(0,0));
-  float theta1 = atan2(eigen_vectors(1,1), eigen_vectors(0,1));
+  double theta0 = atan2(eigen_vectors(1,0), eigen_vectors(0,0));
+  double theta1 = atan2(eigen_vectors(1,1), eigen_vectors(0,1));
   // ROS_INFO_STREAM("theta: " << theta0 << ", " << theta1);
   sd.push_back(theta0);
   sd.push_back(theta1);
@@ -837,8 +837,8 @@ void extractBoundingBoxFeatures(XYZPointCloud& samples, ShapeDescriptor& sd)
     obj_pts.push_back(cv::Point2f(samples[i].x, samples[i].y));
   }
   cv::RotatedRect box = cv::minAreaRect(obj_pts);
-  float l = std::max(box.size.width, box.size.height);
-  float w = std::min(box.size.width, box.size.height);
+  double l = std::max(box.size.width, box.size.height);
+  double w = std::min(box.size.width, box.size.height);
   // ROS_INFO_STREAM("(l,w): " << l << ", " << w << ") l/w: " << l/w);
   sd.push_back(l);
   sd.push_back(w);
@@ -846,8 +846,8 @@ void extractBoundingBoxFeatures(XYZPointCloud& samples, ShapeDescriptor& sd)
 }
 
 ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
-                                          pcl16::PointXYZ sample_pt, float sample_spread, float hull_alpha,
-                                          float hist_res)
+                                          pcl16::PointXYZ sample_pt, double sample_spread, double hull_alpha,
+                                          double hist_res)
 {
   XYZPointCloud local_samples = getLocalSamples(hull, cur_obj, sample_pt, sample_spread, hull_alpha);
   // Transform points into sample_pt frame
@@ -872,7 +872,7 @@ ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_
 
 
 ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj, pcl16::PointXYZ sample_pt,
-                                           int sample_pt_idx, float sample_spread)
+                                           int sample_pt_idx, double sample_spread)
 {
   XYZPointCloud transformed_pts = transformSamplesIntoSampleLocFrame(cur_obj.cloud, cur_obj, sample_pt);
   ShapeDescriptor sd;
@@ -905,8 +905,8 @@ ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur
 }
 
 ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
-                                                    float sample_spread, float hull_alpha,
-                                                    float hist_res)
+                                                    double sample_spread, double hull_alpha,
+                                                    double hist_res)
 {
   ShapeDescriptors descs;
   for (unsigned int i = 0; i < hull.size(); ++i)
@@ -920,7 +920,7 @@ ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoOb
 
 ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                    pcl16::PointXYZ sample_pt, int sample_pt_idx,
-                                                   float sample_spread, float hull_alpha, float hist_res)
+                                                   double sample_spread, double hull_alpha, double hist_res)
 {
   // ROS_INFO_STREAM("Local");
   ShapeDescriptor local_raw = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
@@ -938,53 +938,53 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   }
   // Convert back into image for resizing
   int hist_size = std::sqrt(local_raw.size());
-  cv::Mat local_hist(cv::Size(hist_size, hist_size), CV_32FC1, cv::Scalar(0.0));
+  cv::Mat local_hist(cv::Size(hist_size, hist_size), CV_64FC1, cv::Scalar(0.0));
   std::stringstream raw_hist;
   for (int r = 0; r < hist_size; ++r)
   {
     for (int c = 0; c < hist_size; ++c)
     {
-      local_hist.at<float>(r,c) = local_raw[r*hist_size+c];
-      raw_hist << " " << local_hist.at<float>(r,c);
+      local_hist.at<double>(r,c) = local_raw[r*hist_size+c];
+      raw_hist << " " << local_hist.at<double>(r,c);
     }
     raw_hist << "\n";
   }
   // Resize to 6x6
   // TODO: Set 6 as a variable
-  cv::Mat local_resize(cv::Size(6,6), CV_32FC1, cv::Scalar(0.0));
+  cv::Mat local_resize(cv::Size(6,6), CV_64FC1, cv::Scalar(0.0));
   cpl_visual_features::imResize(local_hist, 6./hist_size, local_resize);
   std::stringstream resized_hist;
   for (int r = 0; r < local_resize.rows; ++r)
   {
     for (int c = 0; c < local_resize.cols; ++c)
     {
-      resized_hist << " " << local_resize.at<float>(r,c);
+      resized_hist << " " << local_resize.at<double>(r,c);
     }
     resized_hist << "\n";
   }
   // TODO: Compare the resized histogram to computing 6x6 directly
   // Filter with gaussian
-  cv::Mat local_smooth(local_resize.size(), CV_32FC1, cv::Scalar(0.0));
-  cv::Mat g_kernel = cv::getGaussianKernel(5, 0.2, CV_32F);
-  cv::sepFilter2D(local_resize, local_smooth, CV_32F, g_kernel, g_kernel);
+  cv::Mat local_smooth(local_resize.size(), CV_64FC1, cv::Scalar(0.0));
+  cv::Mat g_kernel = cv::getGaussianKernel(5, 0.2, CV_64F);
+  cv::sepFilter2D(local_resize, local_smooth, CV_64F, g_kernel, g_kernel);
   // Threshold negatives then L1 normalize
-  float local_sum = 0.0;
+  double local_sum = 0.0;
   std::stringstream smooth_hist;
   std::stringstream smooth_hist_clip;
   for (int r = 0; r < local_smooth.rows; ++r)
   {
     for (int c = 0; c < local_smooth.cols; ++c)
     {
-      smooth_hist << " " << local_smooth.at<float>(r,c);
-      if(local_smooth.at<float>(r,c) < 0.0)
+      smooth_hist << " " << local_smooth.at<double>(r,c);
+      if(local_smooth.at<double>(r,c) < 0.0)
       {
-        local_smooth.at<float>(r,c) = 0.0;
+        local_smooth.at<double>(r,c) = 0.0;
       }
       else
       {
-        local_sum += local_smooth.at<float>(r,c);
+        local_sum += local_smooth.at<double>(r,c);
       }
-      smooth_hist_clip << " " << local_smooth.at<float>(r,c);
+      smooth_hist_clip << " " << local_smooth.at<double>(r,c);
     }
     smooth_hist << "\n";
     smooth_hist_clip << "\n";
@@ -996,9 +996,9 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   {
     for (int c = 0; c < local_smooth.cols; ++c)
     {
-      local_smooth.at<float>(r,c) /= local_sum;
-      local.push_back(local_smooth.at<float>(r,c));
-      l1_hist << " " << local_smooth.at<float>(r,c);
+      local_smooth.at<double>(r,c) /= local_sum;
+      local.push_back(local_smooth.at<double>(r,c));
+      l1_hist << " " << local_smooth.at<double>(r,c);
     }
     l1_hist << "\n";
   }
@@ -1161,15 +1161,15 @@ double shapeFeatureSquaredEuclideanDist(ShapeDescriptor& a, ShapeDescriptor& b)
 void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<int>& cluster_ids, ShapeDescriptors& centers,
                           double min_err_change, int max_iter, int num_retries)
 {
-  cv::Mat samples(locs.size(), locs[0].descriptor_.size(), CV_32FC1);
+  cv::Mat samples(locs.size(), locs[0].descriptor_.size(), CV_64FC1);
   for (int r = 0; r < samples.rows; ++r)
   {
     // NOTE: Normalize features here
-    float feature_sum = 0;
+    double feature_sum = 0;
     for (int c = 0; c < samples.cols; ++c)
     {
-      samples.at<float>(r,c) = locs[r].descriptor_[c];
-      feature_sum += samples.at<float>(r,c);
+      samples.at<double>(r,c) = locs[r].descriptor_[c];
+      feature_sum += samples.at<double>(r,c);
     }
     if (feature_sum == 0)
     {
@@ -1177,9 +1177,9 @@ void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<in
     }
     for (int c = 0; c < samples.cols; ++c)
     {
-      samples.at<float>(r,c) /= feature_sum;
+      samples.at<double>(r,c) /= feature_sum;
       // NOTE: Use Hellinger distance for comparison
-      samples.at<float>(r,c) = sqrt(samples.at<float>(r,c));
+      samples.at<double>(r,c) = sqrt(samples.at<double>(r,c));
     }
   }
   cv::TermCriteria term_crit(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, max_iter, min_err_change);
@@ -1192,7 +1192,7 @@ void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<in
     ShapeDescriptor s(centers_cv.cols, 0);
     for (int c = 0; c < centers_cv.cols; ++c)
     {
-      s[c] = centers_cv.at<float>(r,c);
+      s[c] = centers_cv.at<double>(r,c);
     }
     centers.push_back(s);
   }
@@ -1211,7 +1211,7 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
   int min_idx = -1;
   min_dist = FLT_MAX;
   ShapeDescriptor normalized(descriptor);
-  float feature_sum = 0;
+  double feature_sum = 0;
   for (int i = 0; i < normalized.size(); ++i)
   {
     feature_sum += normalized[i];
