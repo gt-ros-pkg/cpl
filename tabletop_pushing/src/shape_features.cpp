@@ -7,6 +7,7 @@
 #include <pcl16/surface/concave_hull.h>
 #include <pcl16/common/pca.h>
 #include <cpl_visual_features/comp_geometry.h>
+#include <cpl_visual_features/helpers.h>
 #include <iostream>
 
 #define XY_RES 0.00075
@@ -951,7 +952,7 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   // Resize to 6x6
   // TODO: Set 6 as a variable
   cv::Mat local_resize(cv::Size(6,6), CV_32FC1, cv::Scalar(0.0));
-  cv::resize(local_hist, local_resize, local_resize.size(), 0, 0, CV_INTER_CUBIC);
+  cpl_visual_features::imResize(local_hist, 6./hist_size, local_resize);
   std::stringstream resized_hist;
   for (int r = 0; r < local_resize.rows; ++r)
   {
