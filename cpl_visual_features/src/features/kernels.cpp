@@ -44,11 +44,11 @@ double chiSqaureKernel(std::vector<double>& x, std::vector<double>& y)
   for (unsigned int i = 0; i < x.size(); ++i)
   {
     double numerator = x[i]-y[i];
-    if (x[i] == 0.0 && y[i] == 0.0)
+    double a_plus_b = x[i]+y[i];
+    if (a_plus_b > 0.0)
     {
-      continue;
+      kernel_sum += (numerator*numerator)/a_plus_b;
     }
-    kernel_sum += (numerator*numerator)/(x[i]+y[i]);
   }
   return kernel_sum;
 }
