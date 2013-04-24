@@ -91,7 +91,7 @@ double subPIAngle(double theta)
 
 float Cubic(const float& x, const float& scale)
 {
-  /* 
+  /*
   % See Keys, "Cubic Convolution Interpolation for Digital Image
   % Processing," IEEE Transactions on Acoustics, Speech, and Signal
   % Processing, Vol. ASSP-29, No. 6, December 1981, p. 1155.
@@ -101,7 +101,7 @@ float Cubic(const float& x, const float& scale)
   float absx2 = pow(absx, 2);
   float absx3 = pow(absx, 3);
 
-  float f = (1.5*absx3 - 2.5*absx2 + 1) * (absx <= 1) + 
+  float f = (1.5*absx3 - 2.5*absx2 + 1) * (absx <= 1) +
             (-0.5*absx3 + 2.5*absx2 - 4*absx + 2) *
             ((1 < absx) & (absx <= 2));
 
@@ -109,8 +109,8 @@ float Cubic(const float& x, const float& scale)
 }
 
 
-void Contributions(const unsigned int& in_length, const unsigned int& out_length, const float& scale, 
-      /*std::function<float (const float&)>*/kernel KernelFoo, const float& kernel_scale, float kernel_width, 
+void Contributions(const unsigned int& in_length, const unsigned int& out_length, const float& scale,
+      /*std::function<float (const float&)>*/kernel KernelFoo, const float& kernel_scale, float kernel_width,
       const bool antialiasing, boost::shared_array<float>& weights, boost::shared_array<int>& indices,
       unsigned int& P)
 {
@@ -164,7 +164,7 @@ void Contributions(const unsigned int& in_length, const unsigned int& out_length
     if (!kill_col[y])
       relocate_idx[max_idx++] = y;
   }
-  
+
   if (max_idx < P) {
     boost::shared_array<float> weights_temp(new float[out_length*max_idx]);
     boost::shared_array<int> indices_temp(new int[out_length*max_idx]);
@@ -203,7 +203,7 @@ void ResizeAlongDim(const cv::Mat& in, const unsigned int& dim, const boost::sha
 
     out = cv::Mat::zeros(out_length, in.cols, in.type());
     limit = in.cols;
-    
+
     in_gap_next_pxl = in.cols*in.channels();
     out_gap_next_pxl = out.cols*in.channels();
   } else {
@@ -219,12 +219,12 @@ void ResizeAlongDim(const cv::Mat& in, const unsigned int& dim, const boost::sha
   T* in_ptr = (T*)in.data;
   T* out_ptr = (T*)out.data;
   unsigned int ch = in.channels();
-  
+
   for (unsigned int k = 0; k < limit; k++) {
     for (unsigned int m = 0; m < out_length; m++) {
       for (unsigned int c = 0; c < ch; c++) {
         sum = 0.0;
-        
+
         for (unsigned int p = 0; p < P; p++) {
           index = indices[(m*P) + p];
           sum += weights[(m*P) + p] * in_ptr[(index * in_gap_next_pxl) + c];
@@ -271,21 +271,21 @@ void imResize(const cv::Mat& in_im, const float& scale, cv::Mat& out_im)
     // No antialiasing; use unmodified kernel.
     kernel_scale = 1.0;
   }
-  
+
   Contributions(src_im.rows, rscl_h, scale, &Cubic, kernel_scale, kernel_width, antialiasing, weights, indices, P);
-  
+
   if (src_im.type() == CV_8UC1 || src_im.type() == CV_8UC3)
     ResizeAlongDim<unsigned char>(src_im, 0, weights, indices, rscl_h, P, intermediate_out);
   else
     ResizeAlongDim<float>(src_im, 0, weights, indices, rscl_h, P, intermediate_out);
-  
+
   Contributions(src_im.cols, rscl_w, scale, &Cubic, kernel_scale, kernel_width, antialiasing, weights, indices, P);
-  
+
   if (src_im.type() == CV_8UC1 || src_im.type() == CV_8UC3)
     ResizeAlongDim<unsigned char>(intermediate_out, 1, weights, indices, rscl_w, P, out_im);
   else
     ResizeAlongDim<float>(intermediate_out, 1, weights, indices, rscl_w, P, out_im);
-  
+
   /*
   int x = 10, y = 1;
   std::cout << out_im.at<cv::Vec3f>(x,y)[0] << "," << out_im.at<cv::Vec3f>(x,y)[1] << "," << out_im.at<cv::Vec3f>(x,y)[2] << std::endl;
@@ -296,7 +296,7 @@ void imResize(const cv::Mat& in_im, const float& scale, cv::Mat& out_im)
   } else if (src_type == CV_8UC3) {
     out_im += cv::Scalar(1e-5, 1e-5, 1e-5);
   }
-  
+
   std::cout << out_im.at<cv::Vec3f>(x,y)[0] << "," << out_im.at<cv::Vec3f>(x,y)[1] << "," << out_im.at<cv::Vec3f>(x,y)[2] << std::endl;
   */
 
