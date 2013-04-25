@@ -13,10 +13,11 @@ from greedy_bin_plan import GreedyBinPlanner
 from msg import BinRewards
 
 class MoveExecutive(object):
-    def __init__(self, arm_prefix, ar_empty_locs):
-        self.bm = BinManager(arm_prefix, ar_empty_locs)
+    def __init__(self, arm_prefix, ar_empty_locs, available_bins):
+        self.bm = BinManager(arm_prefix, ar_empty_locs, available_bins)
         self.gbp = GreedyBinPlanner()
         self.reward_pub = rospy.Publisher("/bin_rewards", BinRewards)
+        rospy.sleep(0.2)
         self.grasp_tag_num = -1
         self.place_tag_num = -1
         self.near_human = False
@@ -79,7 +80,8 @@ def main():
     f.close()
     #arm_prefix = "/sim1"
     arm_prefix = ""
-    me = MoveExecutive(arm_prefix, ar_empty_locs)
+    available_bins = [3, 11, 12, 14, 2, 15, 10, 7, 13]
+    me = MoveExecutive(arm_prefix, ar_empty_locs, available_bins)
     me.move_loop()
 
 if __name__ == "__main__":

@@ -51,11 +51,11 @@ class GreedyBinPlanner(object):
         i, dur_rm, dur_dv = i_rm, self.dur_rm, self.dur_dv
         if i >= len(t):
             return 0.
-        const_integ = np.sum(-(dur_rm + dur_dv)**2 * end_probs[:i])
+        const_integ = np.sum(-(dur_rm + dur_dv)**2 * start_probs[:i])
         lin_reward = -(np.max(dur_rm + dur_dv - (t[i+1:]-t[i]),0))**2
-        lin_integ = np.sum(lin_reward * end_probs[i+1:])
+        lin_integ = np.sum(lin_reward * start_probs[i+1:])
         start_integ = const_integ + lin_integ
-        return start_integ * np.sum(start_probs[i+1:])
+        return start_integ * np.sum(end_probs[i+1:])
 
     # Reward (negative cost) for delivering a bin late
     # @param start_probs  Probability distribution for the start of this bin step
