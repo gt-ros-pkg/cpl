@@ -15,6 +15,10 @@ rosbuild_find_ros_package(actionlib_msgs)
 include(${actionlib_msgs_PACKAGE_PATH}/cmake/actionbuild.cmake)
 genaction()
 
+# add local path for finding LibSVM
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake/Modules/)
+message("module path" ${CMAKE_MODULE_PATH})
+
 rosbuild_init()
 
 #set the default path for built executables to the "bin" directory
@@ -26,7 +30,10 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_genmsg()
 #uncomment if you have defined services
 rosbuild_gensrv()
+
+# Find external libraries
 find_package(OpenCV REQUIRED)
+find_package(LibSVM)
 
 rosbuild_add_library(graphcut include/tabletop_pushing/extern/graphcut/graph.cpp include/tabletop_pushing/extern/graphcut/maxflow.cpp include/tabletop_pushing/extern/graphcut/LinkedBlockList.cpp include/tabletop_pushing/extern/graphcut/GCoptimization.cpp)
 

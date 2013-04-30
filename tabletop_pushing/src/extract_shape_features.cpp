@@ -604,7 +604,7 @@ int main(int argc, char** argv)
     }
     global_out << "\n";
   }
-  ROS_INFO_STREAM("Global: \n" << global_out.str());
+  // ROS_INFO_STREAM("Global: \n" << global_out.str());
   std::stringstream local_out;
   for (int r = 0; r < K_local.size(); ++r)
   {
@@ -615,18 +615,18 @@ int main(int argc, char** argv)
     local_out << "\n";
   }
   ROS_INFO_STREAM("Local: \n" << local_out.str());
-  std::stringstream line_out;
-  for (int c = 0; c < local_feats[0].size(); ++c)
-  {
-    for (int r = 0; r < local_feats.size(); ++r)
-    {
-      if (local_feats[r][c] > 0)
-      {
-        line_out << "\t(" << (r+1) << ", " << (c+1) << ")\t" << local_feats[r][c] << "\n";
-      }
-    }
-  }
-  ROS_INFO_STREAM("feat: " << line_out.str());
+  // std::stringstream line_out;
+  // for (int c = 0; c < local_feats[0].size(); ++c)
+  // {
+  //   for (int r = 0; r < local_feats.size(); ++r)
+  //   {
+  //     if (local_feats[r][c] > 0)
+  //     {
+  //       line_out << "\t(" << (r+1) << ", " << (c+1) << ")\t" << local_feats[r][c] << "\n";
+  //     }
+  //   }
+  // }
+  // ROS_INFO_STREAM("feat: " << line_out.str());
 
   // std::stringstream out_file;
   // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);

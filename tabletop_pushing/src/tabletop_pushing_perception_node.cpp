@@ -93,6 +93,9 @@
 #include <tabletop_pushing/object_tracker_25d.h>
 #include <tabletop_pushing/push_primitives.h>
 
+// libSVM
+#include <libsvm/svm.h>
+
 // STL
 #include <vector>
 #include <set>
@@ -1098,11 +1101,41 @@ class TabletopPushingPerceptionNode
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                                 gripper_spread, hull_alpha,
                                                                                 point_cloud_hist_res_);
-    // TODO: Read in weights
-    // TODO: Perform prediction on all sample locations
-    // TODO: Choose "best" start location
-    // TODO: Return that location
+    // Set parameters for prediction
+    // svm_parameter push_parameters;
+    // push_parameters.svm_type = EPSILON_SVR;
+    // push_parameters.kernel_type = PRECOMPUTED;
+    // push_parameters.C = 2.0; // NOTE: only needed for training
+    // push_parameters.p = 0.3; // NOTE: only needed for training
+    // push_model.param = push_parameters;
+
+    // TODO: Read in model SVs and coefficients
+    svm_model* push_model;
+    push_model = svm_load_model(param_path.c_str());
+
+    std::vector<double> pred_push_scores;
+    double best_score = FLT_MAX;
+    int best_idx = -1;
+    // TODO: Perform prediction at all sample locations
+    for (int i = 0; i < sds.size(); ++i)
+    {
+      // TODO: Set the data vector
+      svm_node x;
+      double pred_log_score = svm_predict(push_model, &x);
+      double pred_score = exp(pred_log_score);
+      if (pred_score < best_score)
+      {
+        best_score = pred_score;
+        best_idx = i;
+      }
+      pred_push_scores.push_back(pred_score);
+    }
+
+    // TODO: Return the location of the best score
     ShapeLocation loc;
+    if (best_idx >= 0)
+    {
+    }
     return loc;
   }
 
