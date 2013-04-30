@@ -252,8 +252,13 @@ ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& 
   // push_model.param = push_parameters;
 
   // TODO: Read in model SVs and coefficients
+  ROS_INFO_STREAM("reading svm model: " << param_path);
   svm_model* push_model;
   push_model = svm_load_model(param_path.c_str());
+  ROS_INFO_STREAM("read svm model: " << param_path);
+  ROS_INFO_STREAM("svm_parameters.svm_type: " << push_model->param.svm_type);
+  ROS_INFO_STREAM("svm_parameters.kernel_type: " << push_model->param.kernel_type);
+  ROS_INFO_STREAM("number SVs: " << push_model->l);
 
   std::vector<double> pred_push_scores;
   chosen_score = FLT_MAX;
@@ -261,6 +266,7 @@ ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& 
   // Perform prediction at all sample locations
   for (int i = 0; i < sds.size(); ++i)
   {
+    // ROS_INFO_STREAM("Predicting score for location " << i);
     // Set the data vector in libsvm format
     svm_node* x = new svm_node[sds[i].size()];
     for (int j = 0; j < sds[i].size(); ++j)
@@ -268,8 +274,11 @@ ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& 
       x[j].index = (j+1); // NOTE: 1 based indices
       x[j].value = sds[i][j];
     }
+    // ROS_INFO_STREAM("Created svm_node vector of size: " << sds[i].size());
     // Perform prediction and convert out of log spacex
-    double pred_score = exp(svm_predict(push_model, x));
+    double pred_log_score = svm_predict(push_model, x);
+    double pred_score = exp(pred_log_score);
+    // ROS_INFO_STREAM("Predicted score for location " << i << " of " << pred_score << " from log score " << pred_log_score);
     // Track the best score to know the location to return
     if (pred_score < chosen_score)
     {
@@ -277,8 +286,10 @@ ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& 
       best_idx = i;
     }
     pred_push_scores.push_back(pred_score);
+    delete x;
   }
   ROS_INFO_STREAM("Chose best push location " << best_idx << " with score " << chosen_score);
+  ROS_INFO_STREAM("Push location 3D: " << hull_cloud[best_idx]);
   // Return the location of the best score
   ShapeLocation loc;
   if (best_idx >= 0)
@@ -647,7 +658,7 @@ int main(int argc, char** argv)
       }
       ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
       cv::imshow("hull", disp_img);
-      cv::waitKey();
+      // cv::waitKey();
       if (push_scores[i] > max_score)
       {
         max_score = push_scores[i];
@@ -655,14 +666,15 @@ int main(int argc, char** argv)
     }
     descriptors.push_back(sd);
   }
-  ROS_INFO_STREAM("Constructing features matrices for x^2 kernel");
-  int local_hist_width = 6;
-  int local_hist_size = local_hist_width*local_hist_width;
-  int global_hist_size = 60;
+  // Feature testing below
+  // ROS_INFO_STREAM("Constructing features matrices for x^2 kernel");
+  // int local_hist_width = 6;
+  // int local_hist_size = local_hist_width*local_hist_width;
+  // int global_hist_size = 60;
   // cv::Mat local_feats(cv::Size(local_hist_size, descriptors.size()), CV_64FC1, cv::Scalar(0.0));
   // cv::Mat global_feats(cv::Size(global_hist_size, descriptors.size()), CV_64FC1, cv::Scalar(0.0));
-  std::vector<std::vector<double> > local_feats;
-  std::vector<std::vector<double> > global_feats;
+  // std::vector<std::vector<double> > local_feats;
+  // std::vector<std::vector<double> > global_feats;
   // cv::Mat global_feats(cv::Size(global_hist_size, descriptors.size()), CV_64FC1, cv::Scalar(0.0));
   // ROS_INFO_STREAM("feat_length: " << descriptors[0].size());
   // for (int r = 0; r < descriptors.size(); ++r)
@@ -694,7 +706,7 @@ int main(int argc, char** argv)
   //   }
   //   global_out << "\n";
   // }
-  // // ROS_INFO_STREAM("Global: \n" << global_out.str());
+  // ROS_INFO_STREAM("Global: \n" << global_out.str());
   // std::stringstream local_out;
   // for (int r = 0; r < K_local.size(); ++r)
   // {
@@ -705,21 +717,21 @@ int main(int argc, char** argv)
   //   local_out << "\n";
   // }
   // ROS_INFO_STREAM("Local: \n" << local_out.str());
-  // // std::stringstream line_out;
-  // // for (int c = 0; c < local_feats[0].size(); ++c)
-  // // {
-  // //   for (int r = 0; r < local_feats.size(); ++r)
-  // //   {
-  // //     if (local_feats[r][c] > 0)
-  // //     {
-  // //       line_out << "\t(" << (r+1) << ", " << (c+1) << ")\t" << local_feats[r][c] << "\n";
-  // //     }
-  // //   }
-  // // }
-  // // ROS_INFO_STREAM("feat: " << line_out.str());
+  // std::stringstream line_out;
+  // for (int c = 0; c < local_feats[0].size(); ++c)
+  // {
+  //   for (int r = 0; r < local_feats.size(); ++r)
+  //   {
+  //     if (local_feats[r][c] > 0)
+  //     {
+  //       line_out << "\t(" << (r+1) << ", " << (c+1) << ")\t" << local_feats[r][c] << "\n";
+  //     }
+  //   }
+  // }
+  // ROS_INFO_STREAM("feat: " << line_out.str());
 
-  // // std::stringstream out_file;
-  // // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
+  // std::stringstream out_file;
+  // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
   if (draw_scores)
   {
     // TODO: Pass in info to write these to disk again?
