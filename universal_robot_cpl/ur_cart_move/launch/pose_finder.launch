@@ -2,6 +2,7 @@
     <node name="pose_finder" type="pose_finder.py" pkg="ur_cart_move" output="screen">
         <param name="test_prefix" value="/sim2" />
         <param name="tf_prefix" value="" />
+        <param name="move_velocity" value="0.3" />
         <remap from="/joint_states" to="/joint_states" />
         <remap from="/ur_joint_states" to="/ur_joint_states" />
         <remap from="/ur_mode_states" to="/ur_mode_states" />

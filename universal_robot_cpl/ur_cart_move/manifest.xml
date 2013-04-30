@@ -8,8 +8,12 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/ur_cart_move</url>
-  <depend package="ur_demos"/>
   <depend package="rospy"/>
+  <depend package="actionlib"/>
+  <depend package="trajectory_msgs"/>
+  <depend package="geometry_msgs"/>
+  <depend package="std_msgs"/>
+  <depend package="ur_kinematics"/>
 
 </package>
 

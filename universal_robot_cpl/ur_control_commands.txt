@@ -1,0 +1,39 @@
+ssh root@192.168.0.100
+PW: easybot
+rosrun ur_controller_manager ur_controller 0.1 0.1 -0.1 -0.1 0.1 0.1
+# the numbers should all be +/-0.1, represent the directions joints will move
+
+rosrun ur_joint_iface joint_iface_backend.py
+roslaunch ur_cart_move pose_finder.launch
+
+
+Before shutting down, put the robot in a good configuration to start up again.
+
+Gripper:
+# blue lights should be on on both gripper and gripper box
+sudo chmod /dev/ttyUSB*
+rosrun robotiq_c_model_control CModelUsbNode.py /dev/ttyUSB0
+# command line gripper controller:
+rosrun robotiq_c_model_control CModelSimpleController.py
+
+# Trajectory controller:
+rosrun ur_cart_move spline_traj_as.py 
+
+# Bin manager
+rosrun ur_cart_move bin_manager.py
+
+
+######################################################################
+# simulation:
+roslaunch ur10_description sim_robot.launch
+
+rosrun ur_joint_iface joint_iface_backend.py _prefix:="/sim1"
+roslaunch ur_cart_move pose_finder_sim.launch 
+
+# Trajectory controller:
+rosrun ur_cart_move spline_traj_as.py _arm_prefix:="/sim1"
+
+
+# Bin manager
+rosrun ur_cart_move bin_manager.py _cmd_prefix:="/sim1"
+

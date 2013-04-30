@@ -1,0 +1,5 @@
+#the sequece of bins to pick from for helicopter
+Body
+Nose_A
+Wing_AT
+Tail_AT

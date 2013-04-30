@@ -1,9 +1,10 @@
 <launch>
-  <include file="$(find ur10_description)/launch/load.launch" />
+  <include file="$(find cpl_collab_manip)/launch/load_urdf.launch" />
   <!--
   <param name="/rate" value="125" />
   <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" ></node>
   -->
+
   <node name="ur_sim_sim1" pkg="ur_cart_move" type="ur_arm_sim.py"  output="screen">
     <param name="use_gui" value="true"/>
     <param name="prefix" value="/sim1"/>
@@ -13,6 +14,9 @@
     <param name="tf_prefix" value="/sim1" />
   </node>
   <node pkg="tf" type="static_transform_publisher" name="sim1_static_tf" args="0 0 0 0 0 0 /base_link /sim1/base_link 100" />
+  <include file="$(find ur_cart_move)/launch/spline_traj_as.launch">
+    <arg name="arm_prefix" value="/sim1" />
+  </include>
 
 
   <node name="ur_sim_sim2" pkg="ur_cart_move" type="ur_arm_sim.py" output="screen">

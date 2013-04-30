@@ -10,15 +10,12 @@ from threading import Thread
 
 import roslib
 roslib.load_manifest("ur_cart_move")
+roslib.load_manifest("ur_controller_manager")
 
 import rospy
 import roslaunch.substitution_args
 from sensor_msgs.msg import JointState
 
-from hrl_geom.pose_converter import PoseConv
-from hrl_geom.transformations import rotation_from_matrix as mat_to_ang_axis_point
-from hrl_geom.transformations import rotation_matrix as ang_axis_point_to_mat
-from hrl_geom.transformations import euler_matrix
 from ur_controller_manager.msg import URJointCommand, URModeStates, URJointStates, URModeCommand
 
 def get_param(name, value=None):
@@ -84,11 +81,14 @@ class ArmSimulator(object):
 
     def _ur_joint_command_cb(self, cmd):
         with self.lock:
-            self.q_des = list(cmd.q_des)
-            self.qd_des = list(cmd.qd_des)
-            self.qdd_des = list(cmd.qdd_des)
-            for i, name in enumerate(ArmSimulator.JOINT_NAMES):
-                self.free_joints[name]['value'] = self.q_des[i]
+            if not np.any(np.isnan(cmd.q_des)):
+                self.q_des = list(cmd.q_des)
+                for i, name in enumerate(ArmSimulator.JOINT_NAMES):
+                    self.free_joints[name]['value'] = self.q_des[i]
+            if not np.any(np.isnan(cmd.qd_des)):
+                self.qd_des = list(cmd.qd_des)
+            if not np.any(np.isnan(cmd.qdd_des)):
+                self.qdd_des = list(cmd.qdd_des)
             if self.gui is not None:
                 wx.PostEvent(self.gui, ResultEvent(None))
                 #self.gui.update_sliders()

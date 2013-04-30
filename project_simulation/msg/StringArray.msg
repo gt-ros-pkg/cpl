@@ -1,0 +1,1 @@
+std_msgs/String[] string_array

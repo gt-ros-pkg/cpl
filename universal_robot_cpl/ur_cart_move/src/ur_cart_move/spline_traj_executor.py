@@ -4,7 +4,10 @@ import numpy as np
 
 import roslib
 roslib.load_manifest("ur_cart_move")
+roslib.load_manifest("trajectory_msgs")
 import rospy
+
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from cubic_spline_interp import CubicSpline
 from traj_planner import TrajPlanner, pose_offset
@@ -18,14 +21,53 @@ class SplineTraj(object):
         qsamp = np.array([self.splines[i].sample(t) for i in range(6)])
         return qsamp[:,0], qsamp[:,1], qsamp[:,2]
 
+    def max_values(self):
+        max_vals = np.array([self.splines[i].max_values() for i in range(6)])
+        return max_vals[:,0], max_vals[:,1], max_vals[:,2], max_vals[:,3] 
+
+    def to_trajectory_msg(self):
+        msg = JointTrajectory()
+        msg.header.stamp = rospy.Time.now()
+        for i, t in enumerate(self.splines[0].tk):
+            point = JointTrajectoryPoint()
+            for spline in self.splines:
+                point.positions.append(spline.q[i])
+                point.velocities.append(spline.qd[i])
+                point.accelerations.append(spline.qdd[i])
+                point.time_from_start = rospy.Duration(t)
+            msg.points.append(point)
+        return msg
+
     @staticmethod
     def generate(t_knots, q_waypts, qd_i=[0.]*6, qd_f=[0.]*6, qdd_i=[0.]*6, qdd_f=[0.]*6):
         t_knots, q_waypts = np.array(t_knots), np.array(q_waypts)
-        assert(t_knots[0] == 0 and np.all((t_knots[1:]-t_knots[0:-1]) > 0))
+        assert(t_knots[0] == 0 and np.all((t_knots[1:]-t_knots[:-1]) > 0))
+        MIN_LEN = 4
+        if len(t_knots) == 2:
+            t_knots = np.array([t_knots[0], t_knots[1]/3., t_knots[1]*2./3., t_knots[1]])
+            diff = q_waypts[-1,:] - q_waypts[0,:]
+            q_waypts = np.vstack((q_waypts[0,:], q_waypts[0,:]+diff/3., q_waypts[0,:]+2.*diff/3., q_waypts[-1,:]))
+        if False and len(t_knots) < MIN_LEN:
+            t_knots = np.append(t_knots, [t_knots[-1]]*(MIN_LEN-len(t_knots)))
+            q_waypts = np.vstack((q_waypts, np.repeat(q_waypts[-1,:],[MIN_LEN-len(t_knots),1])))
         splines = []
         for i in range(6):
             splines.append(CubicSpline.generate(t_knots.tolist(), q_waypts[:,i].tolist(), 
                                                 qd_i[i], qd_f[i], qdd_i[i], qdd_f[i]))
+        return SplineTraj(splines)
+
+    @staticmethod
+    def from_trajectory_msg(msg):
+        t, q, qd, qdd = [], [], [], []
+        for point in msg.points:
+            t.append(point.time_from_start.to_sec())
+            q.append(point.positions)
+            qd.append(point.velocities)
+            qdd.append(point.accelerations)
+        q, qd, qdd = np.array(q), np.array(qd), np.array(qdd)
+        splines = []
+        for i in range(6):
+            splines.append(CubicSpline(np.array(t), q[:,i], qd[:,i], qdd[:,i]))
         return SplineTraj(splines)
 
 class TrajExecutor(object):

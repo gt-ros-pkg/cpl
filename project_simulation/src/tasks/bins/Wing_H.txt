@@ -1,0 +1,9 @@
+#bin_id
+7
+#parts sequence: <part name> <mean> <std-dev>
+wing_h1 4.5 0.78387
+wing_h2 2.9778 0.63625
+wing_h3 7.8778 2.2525
+wing_h4 3.1 0.54874
+wing_h5 3.0778 0.43376
+wing_h6 7.5111 0.62746

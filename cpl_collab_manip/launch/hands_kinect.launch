@@ -1,0 +1,4 @@
+<launch>	
+   <include file="$(find cpl_collab_manip)/launch/kinect_publish.launch" />	
+   <include file="$(find cpl_collab_manip)">
+</launch>
