@@ -53,6 +53,7 @@ target_link_libraries(tabletop_pushing_perception_node object_tracker_25d)
 target_link_libraries(tabletop_pushing_perception_node ${OpenCV_LIBRARIES})
 rosbuild_link_boost(tabletop_pushing_perception_node signals)
 rosbuild_link_boost(tabletop_pushing_perception_node signals)
+target_link_libraries(tabletop_pushing_perception_node ${LIBSVM_LIBRARIES})
 
 rosbuild_add_executable(object_singulation_node src/object_singulation_node.cpp)
 target_link_libraries(object_singulation_node point_cloud_segmentation)
