@@ -439,13 +439,16 @@ class StartLocPerformanceAnalysis:
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
         self.analyze_spin_push = self.analyze_spin_push_total_spin
 
-    def get_trial_features(self, file_name):
+    def get_trial_features(self, file_name, use_spin=False):
         self.plio = CombinedPushLearnControlIO()
         self.plio.read_in_data_file(file_name)
         Y = []
         X = []
         for i, p in enumerate(self.plio.push_trials):
-            y = self.analyze_straight_line_push(p)
+            if use_spin:
+                y = self.analyze_spin_push(p)
+            else:
+                y = self.analyze_straight_line_push(p)
             if y < 0:
                 continue
             x = p.trial_start.shape_descriptor
