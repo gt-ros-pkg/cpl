@@ -1114,27 +1114,35 @@ class TabletopPushingPerceptionNode
     push_model = svm_load_model(param_path.c_str());
 
     std::vector<double> pred_push_scores;
-    double best_score = FLT_MAX;
+    chosen_score = FLT_MAX;
     int best_idx = -1;
-    // TODO: Perform prediction at all sample locations
+    // Perform prediction at all sample locations
     for (int i = 0; i < sds.size(); ++i)
     {
-      // TODO: Set the data vector
-      svm_node x;
-      double pred_log_score = svm_predict(push_model, &x);
-      double pred_score = exp(pred_log_score);
-      if (pred_score < best_score)
+      // Set the data vector in libsvm format
+      svm_node* x = new svm_node[sds[i].size()];
+      for (int j = 0; j < sds[i].size(); ++j)
       {
-        best_score = pred_score;
+        x[j].index = (j+1); // NOTE: 1 based indices
+        x[j].value = sds[i][j];
+      }
+      // Perform prediction and convert out of log spacex
+      double pred_score = exp(svm_predict(push_model, x));
+      // Track the best score to know the location to return
+      if (pred_score < chosen_score)
+      {
+        chosen_score = pred_score;
         best_idx = i;
       }
       pred_push_scores.push_back(pred_score);
     }
-
-    // TODO: Return the location of the best score
+    ROS_INFO_STREAM("Chose best push location " << best_idx << " with score " << chosen_score);
+    // Return the location of the best score
     ShapeLocation loc;
     if (best_idx >= 0)
     {
+      loc.boundary_loc_ = hull_cloud[best_idx];
+      loc.descriptor_ = sds[best_idx];
     }
     return loc;
   }
