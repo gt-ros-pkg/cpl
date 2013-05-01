@@ -250,7 +250,7 @@ class TabletopExecutive:
             rospy.loginfo('Final estimate of ' + str(pose_res.num_objects) +
                           ' objects')
 
-    def run_start_loc_learning(self, object_id, num_pushes_per_sample, num_sample_locs):
+    def run_start_loc_learning(self, object_id, num_pushes_per_sample, num_sample_locs, start_loc_param_path=''):
         self.push_loc_shape_features = []
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:

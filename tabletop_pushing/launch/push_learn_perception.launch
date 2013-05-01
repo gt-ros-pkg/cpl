@@ -20,7 +20,7 @@
     <param name="icp_ransac_thresh" value="0.015" type="double"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
-    <param name="camera_frame" value="openni_rgb_optical_frame" type="string"/>
+    <param name="camera_frame" value="head_mount_kinect_rgb_optical_frame" type="string"/>
     <param name="min_workspace_x" value="-1.0" type="double"/>
     <param name="max_workspace_x" value="1.75" type="double"/>
     <param name="min_workspace_z" value="-0.8" type="double"/>
