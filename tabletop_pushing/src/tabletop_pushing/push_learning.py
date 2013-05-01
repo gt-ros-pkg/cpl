@@ -47,8 +47,8 @@ import random
 import os
 import subprocess
 
-_VERSION_LINE = '# v0.5'
-_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
+_VERSION_LINE = '# v0.6'
+_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method score [shape_descriptors]'
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
@@ -91,6 +91,7 @@ class PushTrial:
         self.push_angle = 0.0
         self.push_dist = 0.0
         self.continuation = False
+        self.score = -1.0
         self.shape_descriptor = []
 
     def __str__(self):
@@ -130,7 +131,7 @@ class PushLearningIO:
     def write_line(self, init_centroid, init_orientation, final_centroid,
                    final_orientation, goal_pose, push_start_point, behavior_primitive,
                    controller, proxy, which_arm, push_time, object_id,
-                   push_point, precondition_method='centroid_push'):
+                   push_point, precondition_method='centroid_push', push_score=-1):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -140,7 +141,8 @@ class PushLearningIO:
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
-            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+' '+\
+            str(push_score)+'\n'
         self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()
@@ -176,6 +178,10 @@ class PushLearningIO:
             push.precondition_method = l.pop()
         else:
             push.precondition_method = 'push_centroid'
+        if len(l) > 0:
+            push.score = float(l.pop())
+        else:
+            push.score = -1.0
         push.shape_descriptor = []
         while len(l) > 0:
             push.shape_descriptor.append(float(l.pop()))
@@ -190,7 +196,7 @@ class PushLearningIO:
 
     def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, push_start_point, behavior_primitive,
                             controller, proxy, which_arm, object_id, precondition_method,
-                            shape_descriptor=None):
+                            predicted_score, shape_descriptor=None):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -200,7 +206,9 @@ class PushLearningIO:
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
-            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method+ ' ' +\
+            str(predicted_score)
+
         if shape_descriptor is not None:
             for s in shape_descriptor:
                 data_line += ' '+str(s)

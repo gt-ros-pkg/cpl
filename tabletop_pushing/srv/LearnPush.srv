@@ -22,3 +22,4 @@ float64 theta
 bool no_push
 bool no_objects
 float64[] shape_descriptor
+float64 predicted_score

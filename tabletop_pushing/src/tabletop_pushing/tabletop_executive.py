@@ -431,9 +431,10 @@ class TabletopExecutive:
                 if _USE_LEARN_IO:
                     # TODO: Write this to disk! push_vector_res.push.start_point
                     self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
-                                                      goal_pose, push_vec_res.push.start_point, behavior_primitive, controller_name,
-                                                      proxy_name, which_arm, trial_id,
-                                                      precondition_method, shape_descriptor)
+                                                      goal_pose, push_vec_res.push.start_point, behavior_primitive,
+                                                      controller_name, proxy_name, which_arm, trial_id,
+                                                      precondition_method, push_vec_res.predicted_score,
+                                                      shape_descriptor)
 
                 res, push_res = self.perform_push(which_arm, behavior_primitive, push_vec_res, goal_pose,
                                                   controller_name, proxy_name)

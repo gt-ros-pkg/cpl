@@ -721,11 +721,11 @@ class TabletopPushingPerceptionNode
     {
       // Get the pushing location
       ShapeLocation chosen_loc;
+      float predicted_score = -1;
       if (req.start_loc_param_path.length() > 0) // Choose start location using the learned classifier
       {
-        float chosen_score = -1;
         ROS_INFO_STREAM("Finding learned push start loc");
-        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, chosen_score);
+        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score);
       }
       else if (start_loc_use_fixed_goal_)
       {
@@ -739,6 +739,7 @@ class TabletopPushingPerceptionNode
       }
       ROS_INFO_STREAM("Chosen loc is: (" << chosen_loc.boundary_loc_.x << ", " << chosen_loc.boundary_loc_.y << ")");
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
+      res.predicted_score = predicted_score;
       float new_push_angle;
       if (spin_push)
       {
