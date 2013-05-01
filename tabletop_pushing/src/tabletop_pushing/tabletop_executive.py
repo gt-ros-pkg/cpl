@@ -516,7 +516,7 @@ class TabletopExecutive:
                 return push_vec_res
 
     def choose_arm(self, push_vec, controller_name):
-        if controller_name == SPIN_TO_HEADING:
+        if controller_name == ROTATE_TO_HEADING:
             if (push_vec.start_point.y < 0):
                 which_arm = 'r'
             else:

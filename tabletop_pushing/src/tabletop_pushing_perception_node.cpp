@@ -508,7 +508,7 @@ class TabletopPushingPerceptionNode
       return;
     }
 
-    if (controller_name_ == "spin_to_heading")
+    if (controller_name_ == "rotate_to_heading")
     {
       if (theta_dist < tracker_angle_thresh_)
       {
@@ -714,7 +714,7 @@ class TabletopPushingPerceptionNode
     PushVector p;
     p.header.frame_id = workspace_frame_;
     bool pull_start = (req.behavior_primitive == "gripper_pull");
-    bool spin_push = (req.controller_name == "spin_to_heading");
+    bool rotate_push = (req.controller_name == "rotate_to_heading");
 
     // Choose a pushing location to test if we are learning good pushing locations
     if (req.learn_start_loc)
@@ -741,10 +741,10 @@ class TabletopPushingPerceptionNode
       res.shape_descriptor.assign(chosen_loc.descriptor_.begin(), chosen_loc.descriptor_.end());
       res.predicted_score = predicted_score;
       float new_push_angle;
-      if (spin_push)
+      if (rotate_push)
       {
-        // Set goal for spin pushing angle and goal state; then get start location as usual below
-        new_push_angle = getSpinPushHeading(cur_state, chosen_loc);
+        // Set goal for rotate pushing angle and goal state; then get start location as usual below
+        new_push_angle = getRotatePushHeading(cur_state, chosen_loc);
         res.goal_pose.x = cur_state.x.x;
         res.goal_pose.y = cur_state.x.y;
         // NOTE: Uncomment for visualization purposes
@@ -794,7 +794,7 @@ class TabletopPushingPerceptionNode
         // NOTE: Want the opposite direction for pulling as pushing
         p.push_angle = atan2(res.centroid.y - res.goal_pose.y, res.centroid.x - res.goal_pose.x);
       }
-      else if (spin_push)
+      else if (rotate_push)
       {
         // TODO: Figure out something here
       }
@@ -817,7 +817,7 @@ class TabletopPushingPerceptionNode
     PointStamped obj_centroid;
     obj_centroid.header.frame_id = workspace_frame_;
     obj_centroid.point = res.centroid;
-    if (spin_push)
+    if (rotate_push)
     {
       displayGoalHeading(cur_color_frame_, obj_centroid, cur_state.x.theta, res.goal_pose.theta);
     }
@@ -1150,7 +1150,7 @@ class TabletopPushingPerceptionNode
     return loc;
   }
 
-  float getSpinPushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc)
+  float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc)
   {
     // Get chosen_loc angle in object frame
     pcl16::PointXYZ obj_pt = worldPointInObjectFrame(chosen_loc.boundary_loc_, cur_state);

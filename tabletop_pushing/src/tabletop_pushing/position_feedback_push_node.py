@@ -555,8 +555,8 @@ class PositionFeedbackPushNode:
 
         # TODO: Create options for non-velocity control updates, separate things more
         # NOTE: Add new pushing visual feedback controllers here
-        if feedback.controller_name == SPIN_TO_HEADING:
-            update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
+        if feedback.controller_name == ROTATE_TO_HEADING:
+            update_twist = self.rotateHeadingController(feedback, self.desired_pose, which_arm)
         elif feedback.controller_name == CENTROID_CONTROLLER:
             update_twist = self.contactCompensationController(feedback, self.desired_pose,
                                                               cur_pose)
@@ -638,7 +638,7 @@ class PositionFeedbackPushNode:
                           str(spin_y_dot) + ')')
         return u
 
-    def spinHeadingController(self, cur_state, desired_state, which_arm):
+    def rotateHeadingController(self, cur_state, desired_state, which_arm):
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
         u.header.stamp = rospy.Time.now()
