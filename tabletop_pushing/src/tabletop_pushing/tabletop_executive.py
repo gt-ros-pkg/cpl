@@ -49,12 +49,9 @@ import time
 import random
 from push_primitives import *
 
-_OFFLINE = True
+_OFFLINE = False
 _USE_LEARN_IO = True
 _TEST_START_POSE = False
-_WAIT_BEFORE_STRAIGHT_PUSH = False
-_SPIN_FIRST = False
-_USE_CENTROID_CONTROLLER = True
 _USE_FIXED_GOAL = False
 
 class TabletopExecutive:
@@ -422,6 +419,10 @@ class TabletopExecutive:
                     return None
                 elif push_vec_res == 'quit':
                     return push_vec_res
+
+                # Pick arm if we are using learned stuff
+                if len(start_loc_param_path) > 0:
+                    which_arm = self.choose_arm(push_vec_res.push, controller_name)
 
                 goal_pose = push_vec_res.goal_pose
                 shape_descriptor = push_vec_res.shape_descriptor[:]
