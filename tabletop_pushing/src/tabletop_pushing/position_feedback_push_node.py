@@ -558,8 +558,8 @@ class PositionFeedbackPushNode:
         if feedback.controller_name == ROTATE_TO_HEADING:
             update_twist = self.rotateHeadingController(feedback, self.desired_pose, which_arm)
         elif feedback.controller_name == CENTROID_CONTROLLER:
-            update_twist = self.contactCompensationController(feedback, self.desired_pose,
-                                                              cur_pose)
+            update_twist = self.centroidAlignmentController(feedback, self.desired_pose,
+                                                            cur_pose)
         elif feedback.controller_name == TOOL_CENTROID_CONTROLLER:
             tool_pose = feedback.tool_x
             update_twist = self.toolCentroidCompensationController(feedback, self.desired_pose,
@@ -639,6 +639,47 @@ class PositionFeedbackPushNode:
         return u
 
     def rotateHeadingController(self, cur_state, desired_state, which_arm):
+        '''
+        TODO: Change to align to a given point in object frame while pushing in direction perpendicular
+        to the original orientation...?
+        '''
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # TODO: Add term to perpendicular to current orientation given current pushing location
+        # TODO: Pass in offset x and y in object frame
+        centroid = cur_state.x
+        ee = ee_pose.pose.position
+        rotate_x_dot = 0.0
+        rotate_y_dot = 0.0
+
+        # Add in direction to corect for not pushing through the centroid
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        m = (((ee.x - centroid.x)*x_error + (ee.y - centroid.y)*y_error) /
+             sqrt(x_error*x_error + y_error*y_error))
+        tan_pt_x = centroid.x + m*x_error
+        tan_pt_y = centroid.y + m*y_error
+        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
+        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
+        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
+            rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
+                          str(contact_pt_y_dot) + ')')
+        return u
+
+    def rotateHeadingControllerPalm(self, cur_state, desired_state, which_arm):
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
         u.header.stamp = rospy.Time.now()
@@ -652,7 +693,7 @@ class PositionFeedbackPushNode:
         t_dist = fabs(t_error)
         heading_x_dot = self.k_h_f*t_dist
         heading_y_dot = s_theta*self.k_h_in#*t_dist
-        u.twist.linear.x = min(heading_x_dot, self.max_heading_u_x)
+        u.twist.linear.z = min(heading_x_dot, self.max_heading_u_x)
         u.twist.linear.y = heading_y_dot
         if self.feedback_count % 5 == 0:
             rospy.loginfo('heading_x_dot: (' + str(heading_x_dot) + ')')
@@ -670,7 +711,7 @@ class PositionFeedbackPushNode:
         x_dot_circle = r*cos(theta)*theta_dot
         y_dot_circle = -r*sin(theta)*theta_dot
 
-    def contactCompensationController(self, cur_state, desired_state, ee_pose):
+    def centroidAlignmentController(self, cur_state, desired_state, ee_pose):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
