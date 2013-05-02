@@ -1,0 +1,91 @@
+
+
+% grammar rule
+
+S		> Body and NWT
+NWT		> NWT_A or NWT_H
+NWT_A	> Nose_A and WT_A
+WT_A	> WT_A_T or WT_A_D
+WT_A_T	> Wing_AT and Tail_AT
+WT_A_D	> Wing_AD and Tail_AD
+NWT_H	> Nose_H and Wing_H and Tail_H
+
+Body	> body1 and body2 and body3 and body4 and body5 and body6
+Nose_A	> nose_a1 and nose_a2 and nose_a3 and nose_a4
+Nose_H	> nose_h1 and nose_h2 and nose_h3
+Wing_AT	> wing_at1 and wing_at2 and wing_at3
+Wing_AD	> wing_ad1 and wing_ad2 and wing_ad3 and wing_ad4
+Wing_H	> wing_h1 and wing_h2 and wing_h3 and wing_h4 and wing_h5 and wing_h6
+Tail_AT	> tail_at1 and tail_at2 and tail_at3
+Tail_AD > tail_ad1 and tail_ad2 and tail_ad3 and tail_ad4
+Tail_H	> tail_h1 and tail_h2 and tail_h3 and tail_h4 and tail_h5 and tail_h6
+
+
+% primitive action - detector id 
+
+body1	3
+body2	3
+body3	3
+body4	3
+body5	3
+body6	3
+
+nose_a1 11
+nose_a2 11
+nose_a3 11
+nose_a4	11
+
+nose_h1 10
+nose_h2 10
+nose_h3	10
+
+wing_at1 	12
+wing_at2 	12
+wing_at3 	12
+
+wing_ad1 	2
+wing_ad2 	2
+wing_ad3 	2
+wing_ad4 	2
+
+wing_h1 7 
+wing_h2 7 
+wing_h3 7 
+wing_h4 7 
+wing_h5 7 
+wing_h6 7
+
+tail_at1 14 
+tail_at2 14
+tail_at3 14
+
+tail_ad1 15
+tail_ad2 15
+tail_ad3 15
+tail_ad4 15
+
+tail_h1 13
+tail_h2 13
+tail_h3 13
+tail_h4 13
+tail_h5 13
+tail_h6	13
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
