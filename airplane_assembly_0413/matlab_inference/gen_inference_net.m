@@ -3,7 +3,7 @@
 function m = gen_inference_net(model)
 
 if isstr(model)
-    load model;
+    load(model);
 end
 
 disp ==========================================================

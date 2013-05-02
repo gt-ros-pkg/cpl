@@ -1,5 +1,6 @@
 
 %% load data
+addpath(genpath('.'));
 clc; clear; close all;
 m = gen_inference_net('s/model');
 
