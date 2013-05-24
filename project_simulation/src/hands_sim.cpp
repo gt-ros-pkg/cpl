@@ -316,7 +316,7 @@ public:
 			  vector<double> in_orient);
   /*
     Quaternion to rotation matrix.
-    :Author:
+    Adapted from:
     `Christoph Gohlke <http://www.lfd.uci.edu/~gohlke/>`_
   */
   void quaternion_matrix(
@@ -1310,9 +1310,9 @@ int main(int argc, char** argv)
     while(correct != 'y')
       {
 	cheat = false;
-	cout<<"Which task? helicopter, airplane1, or airplane2"<<endl;
+	cout<<"Which task?"<<endl;
 	cin>> task;
-	if(task=="helicopter" || task=="airplane1" || task=="airplane2")
+	if(1)
 	  {
 	    string cht_inp;
 	    cout<<"Cheat at waiting?(y/n)"<<endl;
