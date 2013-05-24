@@ -23,6 +23,7 @@ from ur_controller_manager.msg import URJointCommand, URModeStates, URJointState
 
 roslib.load_manifest("pykdl_utils")
 from pykdl_utils.kdl_kinematics import create_kdl_kin
+from ur_kin_py import inverse
 
 from ur_analytical_ik import inverse_kin, UR10_A, UR10_D, UR10_L
 
@@ -47,7 +48,7 @@ class RAVEKinematics(object):
         else:
             self.ik_options = IkFilterOptions.CheckEnvCollisions
 
-        if load_ik:
+        if False and load_ik:
             self.load_ik_model()
 
     def load_ik_model(self):
@@ -90,10 +91,12 @@ class RAVEKinematics(object):
                 if False:
                     # use OpenRave
                     sols = self.manip.FindIKSolutions(x.A, ik_options)
-                else:
+                elif False:
                     # use analytic
                     sols = inverse_kin(x, UR10_A, UR10_D, UR10_L, q_guess[5])
                     #print sols
+                else:
+                    sols = inverse(np.array(x), q_guess[5])
                 valid_sols = []
                 for sol in sols:
                     test_sol = np.ones(6)*9999.

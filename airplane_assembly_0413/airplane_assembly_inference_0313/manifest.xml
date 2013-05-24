@@ -1,0 +1,25 @@
+<package>
+  <description brief="airplane_assembly_inference_0313">
+
+     airplane_assembly_0313
+
+  </description>
+  <author>nam</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/airplane_assembly_inference_0313</url>
+  <depend package="rospy"/>
+  <depend package="roscpp"/>
+  <depend package="std_msgs"/>
+  <depend package="geometry_msgs"/>
+  <depend package="sensor_msgs"/>
+  <depend package="pcl"/>
+  <depend package="opencv2"/>
+  <depend package="cv_bridge"/>
+  <depend package="ar_track_alvar"/>
+  <depend package="tf"/>
+  <depend package="project_simulation"/>
+
+</package>
+
+

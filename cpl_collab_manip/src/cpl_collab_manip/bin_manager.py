@@ -15,7 +15,7 @@ from geometry_msgs.msg import PoseStamped, PoseArray
 from actionlib import SimpleActionClient
 from roslaunch.substitution_args import resolve_args
 
-from ar_track_alvar.msg import AlvarMarkers
+from ar_track_alvar.msg import AlvarMarkers, AlvarMarker
 from hrl_geom.pose_converter import PoseConv
 from ur_cart_move.traj_planner import TrajPlanner, pose_offset, pose_interp
 from ur_cart_move.spline_traj_executor import SplineTraj
@@ -36,15 +36,16 @@ def create_slot_tree(bin_slots):
     return KDTree(pos_data)
 
 class ARTagManager(object):
-    def __init__(self, bin_slots, human_slots=range(3)):
+    def __init__(self, bin_slots, available_bins=None, human_slots=range(3)):
         self.bin_height = rospy.get_param("~bin_height", BIN_HEIGHT_DEFAULT)
         self.table_offset = rospy.get_param("~table_offset", TABLE_OFFSET_DEFAULT)
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
         self.filter_size = rospy.get_param("~filter_size", 6)
         # distance from marker to slot which can be considered unified
-        self.ar_unification_thresh = rospy.get_param("~ar_unification_thresh", 0.08)
+        self.ar_unification_thresh = rospy.get_param("~ar_unification_thresh", 0.12)
 
         self.bin_slots = bin_slots
+        self.available_bins = available_bins
         self.human_slots = human_slots
         self.slot_tree = create_slot_tree(bin_slots)
         lifecam_kin = create_kdl_kin('base_link', 'lifecam1_optical_frame')
@@ -53,6 +54,7 @@ class ARTagManager(object):
         self.ar_poses = {}
         self.ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, 
                                        self.ar_cb)
+        self.clean_mkrs_pub = rospy.Publisher("/ar_pose_marker_clean", AlvarMarkers)
         self.lock = RLock()
 
     def ar_cb(self, msg):
@@ -65,6 +67,19 @@ class ARTagManager(object):
                 if len(self.ar_poses[marker.id]) == self.filter_size:
                     self.ar_poses[marker.id].popleft()
                 self.ar_poses[marker.id].append([cur_time, marker.pose])
+        if True:
+            bin_data = self.get_all_bin_poses()
+            new_msg = AlvarMarkers()
+            for bid in self.ar_poses:
+                mkr = AlvarMarker()
+                mkr.id = bid
+                ar_pose = PoseConv.to_homo_mat(bin_data[bid][:2])
+                mkr.pose = PoseConv.to_pose_stamped_msg("/lifecam1_rgb_optical_frame", 
+                                                        self.camera_pose**-1 * ar_pose)
+                new_msg.markers.append(mkr)
+            self.clean_mkrs_pub.publish(new_msg)
+
+
 
     # forces bin location from a pose in the base_link frame
     def set_bin_location(self, mid, pose):
@@ -78,7 +93,8 @@ class ARTagManager(object):
         with self.lock:
             bins = []
             for mid in self.ar_poses:
-                if len(self.ar_poses[mid]) > 0:
+                if (len(self.ar_poses[mid]) > 0 and 
+                        (self.available_bins is None or mid in self.available_bins)):
                     bins.append(mid)
             return bins
 
@@ -157,7 +173,7 @@ class ARTagManager(object):
         return -1
 
 class BinManager(object):
-    def __init__(self, arm_prefix, bin_slots):
+    def __init__(self, arm_prefix, bin_slots, available_bins=None):
         self.bin_height = rospy.get_param("~bin_height", BIN_HEIGHT_DEFAULT)
         self.table_offset = rospy.get_param("~table_offset", TABLE_OFFSET_DEFAULT)
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
@@ -189,7 +205,7 @@ class BinManager(object):
         self.kin = RAVEKinematics()
         self.traj_plan = TrajPlanner(self.kin)
 
-        self.ar_man = ARTagManager(bin_slots)
+        self.ar_man = ARTagManager(bin_slots, available_bins)
         self.pose_pub = rospy.Publisher('/test', PoseStamped)
         #self.move_bin = rospy.ServiceProxy('/move_bin', MoveBin)
         self.traj_as = SimpleActionClient('spline_traj_as', SplineTrajAction)
@@ -381,6 +397,32 @@ class BinManager(object):
         grasp_traj = SplineTraj.generate(t_knots, q_knots)
         return grasp_traj
 
+    def plan_above_traj(self, pregrasp_pose):
+
+        q_init = self.arm_cmd.get_q()
+        x_init = self.kin.forward(q_init)
+
+        q_knots = [q_init]
+        t_knots = [0.]
+
+        # move to pregrasp pose
+        q_pregrasp = self.kin.inverse(pregrasp_pose, q_knots[-1],
+                                      q_min=self.q_min, q_max=self.q_max)
+        if q_pregrasp is None:
+            print 'move to pregrasp pose failed'
+            self.pose_pub.publish(PoseConv.to_pose_stamped_msg("/base_link", pregrasp_pose))
+            print pregrasp_pose
+            print q_knots
+            return None
+        q_knots.append(q_pregrasp)
+        dist = np.linalg.norm(pregrasp_pose[:3,3]-x_init[:3,3])
+        dur = max(dist / self.pregrasp_vel, 0.5*VEL_MULT)
+        t_knots.append(t_knots[-1] + dur)
+
+        grasp_traj = SplineTraj.generate(t_knots, q_knots)
+        return grasp_traj
+
+
     def execute_traj(self, traj):
         goal = SplineTrajGoal(traj=traj.to_trajectory_msg())
         self.arm_cmd.unlock_security_stop()
@@ -482,6 +524,29 @@ class BinManager(object):
         self.ar_man.set_bin_location(ar_grasp_id, ar_place_tag_pose)
         return True
 
+    def move_above_bin(self, ar_id):
+        ########################## create waypoints #############################
+        ar_grasp_tag_pose, grasp_is_table = self.ar_man.get_bin_pose(ar_id)
+        if ar_grasp_tag_pose is None:
+            rospy.loginfo('Failed getting grasp pose')
+            return False
+        grasp_offset = PoseConv.to_homo_mat(
+                [-0.013, self.ar_offset, self.grasp_height],
+                [0., np.pi/2, self.grasp_rot])
+        grasp_pose = PoseConv.to_homo_mat(ar_grasp_tag_pose) * grasp_offset
+        pregrasp_pose = grasp_pose.copy()
+        pregrasp_pose[2,3] += self.grasp_lift
+        #########################################################################
+
+        grasp_traj = self.plan_above_traj(pregrasp_pose)
+        if grasp_traj is None:
+            return False
+        success, is_robot_running = self.execute_traj(grasp_traj)
+        if not success:
+            rospy.loginfo('Failed on grasping bin')
+            return False
+        return True
+
     def system_reset(self):
         home_traj = self.plan_home_traj()
         self.execute_traj(home_traj)
@@ -514,12 +579,27 @@ class BinManager(object):
         while not rospy.is_shutdown():
             if reset:
                 self.system_reset()
+                reset = False
             #raw_input("Ready")
             ar_locs = self.ar_man.get_slot_ids()
             place_tag_num = ar_locs[np.random.randint(0,len(ar_locs))]
             if not self.move_bin(ar_bin, place_tag_num):
                 reset = True
                 print 'Failed moving bin from %d to %d' % (ar_bin, place_tag_num)
+
+    def do_above_demo(self):
+        reset = True
+        while not rospy.is_shutdown():
+            if reset:
+                self.system_reset()
+                reset = False
+            print "Available bins:"
+            print self.ar_man.get_available_bins()
+            bin_id = int(raw_input("Bin ID:"))
+            if not self.move_above_bin(bin_id):
+                reset = True
+                print "Failed", bin_id
+
 
 def main():
     np.set_printoptions(precision=4)
@@ -539,6 +619,9 @@ def main():
     p.add_option('-d', '--demo', dest="is_demo",
                  action="store_true", default=False,
                  help="Test robot in reality moving a bin around.")
+    p.add_option('-a', '--ademo', dest="is_ademo",
+                 action="store_true", default=False,
+                 help="Move above bins.")
     p.add_option('-v', '--visualize', dest="is_viz",
                  action="store_true", default=False,
                  help="Visualize poses.")
@@ -578,6 +661,13 @@ def main():
         arm_prefix = ""
         bm = BinManager(arm_prefix, bin_slots)
         bm.do_move_demo(5)
+    elif opts.is_ademo:
+        f = file(resolve_args(opts.filename), 'r')
+        bin_slots = yaml.load(f)['data']
+        f.close()
+        arm_prefix = ""
+        bm = BinManager(arm_prefix, bin_slots)
+        bm.do_above_demo()
     elif opts.is_viz:
         f = file(resolve_args(opts.filename), 'r')
         bin_data = yaml.load(f)['data']
