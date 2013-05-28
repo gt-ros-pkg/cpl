@@ -51,6 +51,11 @@ slocations = [
 , 'orientation' :   (-0.201361148913,0.961335468405,-0.186586019109,-0.0217591904042)}
          ]
 
+
+global hand_rest_location
+hand_res_location = (-0.742476, -1.13072, -0.149273)
+
+
 def get_location_names():
     names = []
 
@@ -78,7 +83,8 @@ def is_workspace_location(lname):
     return False
 
 
-
+def get_hand_rest_location():
+    return hand_res_location
 
 
 

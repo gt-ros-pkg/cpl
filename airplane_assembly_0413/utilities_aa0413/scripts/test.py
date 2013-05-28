@@ -28,10 +28,14 @@ def main():
 
     while not rospy.is_shutdown():
 
-       msg = utilities_aa0413.ar_tag_tracker.get_latest_msg()
-       msg.markers[1].pose.pose.position.x = msg.markers[1].pose.pose.position.x + 0.1
-       utilities_aa0413.ar_tag_tracker.sim_update(msg)
-
+       #msg = utilities_aa0413.ar_tag_tracker.get_latest_msg()
+       #msg.markers[1].pose.pose.position.x = msg.markers[1].pose.pose.position.x + 0.1
+       #utilities_aa0413.ar_tag_tracker.sim_update(msg)
+       m = utilities_aa0413.ar_tag_tracker.get_markers()
+       mname = []
+       for i in m:
+          mname.append(i.id)
+       print mname
        rospy.sleep(0.5)
     
 

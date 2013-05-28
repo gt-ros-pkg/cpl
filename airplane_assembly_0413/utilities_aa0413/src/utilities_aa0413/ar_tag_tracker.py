@@ -18,6 +18,8 @@ ROS_TOPIC_SIM_UPDATE = "update_ar_pose_marker"
 pub             = None
 sub 		= None
 latest_msg 	= None
+markers         = []
+webcam_to_w     = None
 
 ####################################################
 # functions
@@ -28,12 +30,33 @@ def init():
     sub = rospy.Subscriber(ROS_TOPIC_BINMARKES, AlvarMarkers, the_cb)
     pub = rospy.Publisher(ROS_TOPIC_SIM_UPDATE, AlvarMarkers)  
 
+
 def the_cb(msg):
     global latest_msg
     latest_msg = msg
 
+    # update markers
+    global markers
+    markers = msg.markers
+    for i in range(len(msg.markers)):
+
+        new_marker = True
+
+        for j in range(len(markers)):
+            if markers[j].id == msg.markers[i].id:
+                 new_marker = False
+                 markers[j] = msg.markers[i]
+
+        if new_marker:
+             markers.append(msg.markers[i])
+            
+
 def get_latest_msg():
     return latest_msg
+
+def get_markers():
+    return markers
+
 
 def sim_update(msg):
     pub.publish(msg)

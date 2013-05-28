@@ -1,0 +1,4 @@
+#sequence of bins to pick from for linear chain 1
+lc2_b1
+lc2_b2
+lc2_b3

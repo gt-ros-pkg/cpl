@@ -1,0 +1,10 @@
+#bin_id
+7
+#parts sequence: <part name> <mean> <std-dev>
+lc3_b3_1 1.0 2.0
+lc3_b3_2 1.0 2.0
+lc3_b3_3 1.0 2.0
+lc3_b3_4 1.0 2.0
+lc3_b3_5 1.0 2.0
+lc3_b3_6 1.0 2.0
+lc3_b3_7 1.0 2.0
