@@ -6,7 +6,7 @@
    <node name="robo_sim_listen" pkg="project_simulation" type="robo_sim_listen.py" 
           output="screen" ></node>
 	  
-   <node name="hands_sim" pkg="project_simulation" type="hands_sim" 
+   <node name="hands_sim" pkg="project_simulation" type="hands_sim" cwd="node" 
           output="screen" ></node>
 
 

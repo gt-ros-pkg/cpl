@@ -533,8 +533,8 @@ if __name__=='__main__':
     
     loop_rate = rospy.Rate(PUB_RATE)
 
-    probability_slow_down = raw_input('Probability of the robot slowing down = ')
-    slow_down_factor = raw_input('Slows down robot by factor(ex. 3 to make 3 times slower) = ')
+    probability_slow_down = 0.0#raw_input('Probability of the robot slowing down = ')
+    slow_down_factor = 1.0#raw_input('Slows down robot by factor(ex. 3 to make 3 times slower) = ')
     
     while not rospy.is_shutdown():
         #no task to do publish current pos

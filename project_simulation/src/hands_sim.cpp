@@ -25,6 +25,15 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
+#include <stdio.h>  /* defines FILENAME_MAX */
+#ifdef WINDOWS
+    #include <direct.h>
+    #define GetCurrentDir _getcwd
+#else
+    #include <unistd.h>
+    #define GetCurrentDir getcwd
+ #endif
+
 #define EPSILON 8.8817841970012523e-016
 
 using namespace std;
@@ -57,7 +66,7 @@ private:
 
   void read_into_bin(string file_name, Bin* read_bin)
   {
-    string file_path = "src/tasks/bins/";
+    string file_path = "../src/tasks/bins/";
     string file = file_path + file_name + ".txt";
     (*read_bin).bin_name = file_name;
     
@@ -109,7 +118,7 @@ private:
   
   void read_task(string file)
   {
-    string file_path = "src/tasks/";
+    string file_path = "../src/tasks/";
     ifstream task_file;
     string file_n_path = file_path+file;
     task_file.open(file_n_path.c_str());
@@ -1298,6 +1307,20 @@ void handSim::cheat_wait(size_t bin_to_chk)
 
 int main(int argc, char** argv)
 {
+
+  /*debug- PWD
+  char cCurrentPath[FILENAME_MAX];
+
+  if (!GetCurrentDir(cCurrentPath, sizeof(cCurrentPath)))
+    {
+      return errno;
+    }
+  
+  cCurrentPath[sizeof(cCurrentPath) - 1] = '\0'; // not really required 
+  
+  printf ("The current working directory is %s", cCurrentPath);
+  debug over*/
+
   ros::init(argc, argv, "hand_simulator");
   char do_another='n';
 
