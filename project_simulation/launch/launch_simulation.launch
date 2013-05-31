@@ -1,0 +1,13 @@
+<launch>
+   <node name="fix_tf" pkg="project_simulation" type="fix_tf.py" 
+          output="screen" ></node>
+   <node name="ar_markers_publish" pkg="project_simulation" type="ar_markers_publish.py" 
+          output="screen" ></node>
+   <node name="robo_sim_listen" pkg="project_simulation" type="robo_sim_listen.py" 
+          output="screen" ></node>
+	  
+   <node name="hands_sim" pkg="project_simulation" type="hands_sim" 
+          output="screen" ></node>
+
+
+</launch>

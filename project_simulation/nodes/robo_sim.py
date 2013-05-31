@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+''' Old robot simulator
+You probably want to use robo_sim_listen.py'''
+
+
 import rospy
 import sys
 
