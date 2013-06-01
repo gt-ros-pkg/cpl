@@ -17,17 +17,24 @@ import math
 import copy
 import tf
 
+#Average time for completing a robotic action
+AVG_TIME_BIN_MOVE = 3.542032597;
+
 #publish Hz
 PUB_RATE = 60
-
-#constant robot velocity(m/s)
-ROBO_VEL = 0.75
 
 #time taken to pick-up put down bin (s)
 ROBO_PICK = 1.0
 ROBO_PUT = 1.0
 
+#the distance above the bin where the endfactor hovers, in meters
 rest_above_by = 0.2
+
+#constant robot velocity(m/s)
+#ROBO_VEL = 0.75
+AVG_ROBO_MOTION = 0.9565244477500001
+ROBO_VEL = (AVG_ROBO_MOTION+rest_above_by)/(AVG_TIME_BIN_MOVE - ROBO_PICK - ROBO_PUT)
+
 
 task_done = False
 task_cnt =0
@@ -533,8 +540,8 @@ if __name__=='__main__':
     
     loop_rate = rospy.Rate(PUB_RATE)
 
-    probability_slow_down = raw_input('Probability of the robot slowing down = ')
-    slow_down_factor = raw_input('Slows down robot by factor(ex. 3 to make 3 times slower) = ')
+    probability_slow_down = 0.0#raw_input('Probability of the robot slowing down = ')
+    slow_down_factor = 1.0#raw_input('Slows down robot by factor(ex. 3 to make 3 times slower) = ')
     
     while not rospy.is_shutdown():
         #no task to do publish current pos

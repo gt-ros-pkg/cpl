@@ -120,7 +120,7 @@ if __name__ == '__main__':
             total_distance += calc_euclid(list(workP), list(not_workP))
             no_of_cases += 1
 
-    avg_dist = (total_distance + rest_above_by)/no_of_cases
+    avg_dist = (total_distance)/no_of_cases + rest_above_by
     avg_time = avg_dist/ROBO_VEL + ROBO_PICK + ROBO_PUT
 
     print "Average Distance = " + str(avg_dist)

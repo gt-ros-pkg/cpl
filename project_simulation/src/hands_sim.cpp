@@ -12,6 +12,7 @@
 #include <geometry_msgs/Quaternion.h>
 #include <tf/transform_listener.h>
 #include<std_msgs/UInt8MultiArray.h>
+#include<std_msgs/Int8.h>
 
 #include <math.h>
 
@@ -24,6 +25,15 @@
 #include <std_msgs/String.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+
+#include <stdio.h>  /* defines FILENAME_MAX */
+#ifdef WINDOWS
+    #include <direct.h>
+    #define GetCurrentDir _getcwd
+#else
+    #include <unistd.h>
+    #define GetCurrentDir getcwd
+ #endif
 
 #define EPSILON 8.8817841970012523e-016
 
@@ -57,7 +67,7 @@ private:
 
   void read_into_bin(string file_name, Bin* read_bin)
   {
-    string file_path = "src/tasks/bins/";
+    string file_path = "../src/tasks/bins/";
     string file = file_path + file_name + ".txt";
     (*read_bin).bin_name = file_name;
     
@@ -109,7 +119,7 @@ private:
   
   void read_task(string file)
   {
-    string file_path = "src/tasks/";
+    string file_path = "../src/tasks/";
     ifstream task_file;
     string file_n_path = file_path+file;
     task_file.open(file_n_path.c_str());
@@ -206,6 +216,10 @@ private:
   ros::Publisher rh_pose;
   ros::Publisher viz_pub;
   ros::Publisher task_pub;
+  ros::Publisher picking_bin;
+
+  //Bin being picked right now, 0 if not started or ended, -1 if waiting.
+  int currently_picked_bin;
 
   ros::Subscriber ar_poses;
   
@@ -407,6 +421,9 @@ handSim::handSim(string task_name, bool cheat)
     pub_noise_dev = 0.005;
     walk_dev = 0.1;
 
+    //picking which bin
+    currently_picked_bin = 0;
+
     //initialize rest positions
     double init_pos_l[]= {-0.0813459, 0.258325,1.86598};
     double init_pos_r[]= {-0.1813459, 0.258325,1.86598};
@@ -451,6 +468,7 @@ handSim::handSim(string task_name, bool cheat)
     rh_pose = nh.advertise<geometry_msgs::PoseStamped>("right_hand",1);
     viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
     task_pub = nh.advertise<std_msgs::String>("action_name", 1);
+    picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
     
     ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
 
@@ -679,6 +697,7 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
       }
     
     //after tasks complete, just publish the rest position
+    currently_picked_bin =0;
     pub_hands_rest();
 	        
   }
@@ -705,17 +724,25 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     //if bin to pick from unavailable
     if(!bin_in_position(cur_bin))
       {
+	//waiting-so change current picked bin
+	int prev_bin = handSim::currently_picked_bin;
+	handSim::currently_picked_bin = -1;
+
 	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
 	else{cheat_wait(cur_bin);}
 
 	//always at rest after waiting
 	is_lh_rest =true;
 	is_rh_rest = true;
+	
+	//waiting over
+	handSim::currently_picked_bin = prev_bin;
       }
 
 
-    //after it becomes available
+    //after it becomes available    
     cur_bin_loc = find_bin_pos(cur_bin);
+    handSim::currently_picked_bin = int(cur_bin);
 
     //time to wait at bin
     double wait_at_bin = time_to_wait();
@@ -881,6 +908,10 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     lh_pose.publish(msg_l);
     rh_pose.publish(msg_r);
 
+    std_msgs::Int8 bin_2_pub;
+    bin_2_pub.data = currently_picked_bin;
+    picking_bin.publish(bin_2_pub);
+
     //publish visual markers
     pub_viz_marker(msg_l, msg_r);
   }
@@ -943,6 +974,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
   //brings hands to rest positions and then task is completed
   void handSim::pub_hands_rest()
   {
+    
     ros::Rate loop_rate(PUB_RATE);
 	    
     //TODO: make use of publish pose function to remove redundancy
@@ -1298,6 +1330,20 @@ void handSim::cheat_wait(size_t bin_to_chk)
 
 int main(int argc, char** argv)
 {
+
+  /*debug- PWD
+  char cCurrentPath[FILENAME_MAX];
+
+  if (!GetCurrentDir(cCurrentPath, sizeof(cCurrentPath)))
+    {
+      return errno;
+    }
+  
+  cCurrentPath[sizeof(cCurrentPath) - 1] = '\0'; // not really required 
+  
+  printf ("The current working directory is %s", cCurrentPath);
+  debug over*/
+
   ros::init(argc, argv, "hand_simulator");
   char do_another='n';
 
