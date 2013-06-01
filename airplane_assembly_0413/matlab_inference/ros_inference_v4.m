@@ -13,8 +13,8 @@ MAX_NAME_LENGTH     = 20; % must match ROS node param
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 1;
-DRAW_DISTRIBUTION_FIGURE = 999;
-DRAW_START_DISTRIBUTION  = {'body1', 'nose_a1', 'Wing_AT', 'Tail_AT'};
+DRAW_DISTRIBUTION_FIGURE = 99;
+DRAW_START_DISTRIBUTION  = {'Body', 'body1','body2', 'nose_a1', 'nose_a2', 'Wing_AT', 'tail_at1', 'tail_at2', 'tail_at3'};
 %DRAW_START_DISTRIBUTION  = {'space', 'body1', 'body2', 'body3', 'body4', 'body5', 'body6'};
 %DRAW_START_DISTRIBUTION  = {'Nose_A', 'Wing_AD', 'Tail_AT'};
 DRAW_END_DISTRIBUTION    = {'S'};
@@ -41,9 +41,12 @@ while 1
     end
 end
 
+%% init planning
 
-%%
+k = k_planning_init(m);
 
+
+%% set up variables
 
 t               = 0;
 nt              = 0;
@@ -51,6 +54,9 @@ inference_num   = 0;
 
 detection_raw_result  = ones(length(m.detection.result), m.params.T);
 m.start_conditions(:) = 1;
+
+
+%% LOOP
 
 while t < m.params.T * m.params.downsample_ratio & t < 6000
     
@@ -121,16 +127,18 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % inference
     %------------------------------------------------
     if DO_INFERENCE
+        inference_num = inference_num + 1;
+        disp(['Inference num: ' num2str(inference_num)]);
         
         % compute detection result matrix
         for i=1:length(m.detection.result)
-            m.detection.result{i} = triu(repmat(detection_raw_result(i,:)', [1 m.params.T]));
+            %m.detection.result{i} = triu(repmat(detection_raw_result(i,:)', [1 m.params.T]));
+            m.detection.result{i} = repmat(detection_raw_result(i,:)', [1 m.params.T]);
         end
         
         % do inference
         m = m_inference_v3(m);
-        inference_num = inference_num + 1;
-        disp(['Inference num: ' num2str(inference_num)]);
+        
         
         % send to ROS
         if SEND_INFERENCE_TO_ROS
@@ -148,13 +156,26 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
             end
         end
         
+        
+        
         % plot
         if DRAW_DISTRIBUTION_FIGURE > 0
-            nx_figure(DRAW_DISTRIBUTION_FIGURE);
+            nx_figure(DRAW_DISTRIBUTION_FIGURE); % subplot(2, 1, 1);
             m_plot_distributions(m, DRAW_START_DISTRIBUTION, DRAW_END_DISTRIBUTION);
+            hold on; plot(nt, 0, '*'); hold off;
+            ylim([0 1]);
         end
+        % linkaxes([findall(figure(DRAW_DISTRIBUTION_FIGURE), 'type', 'axes')]);
+        pause(1);
     end
     
+    
+    %------------------------------------------------
+    % planning
+    %------------------------------------------------
+    if nt > 1 & exist('frame_info')
+        k = k_planning_process(k, m, nt, frame_info);
+    end
     
     %------------------------------------------------
     % misc
@@ -182,7 +203,7 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         
     end
     
-    if DRAW_POSITIONS_FIGURE
+    if exist('frame_info') & DRAW_POSITIONS_FIGURE
         
         nx_figure(DRAW_POSITIONS_FIGURE);
         cla;
@@ -215,6 +236,9 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
 end
 
 
+%% close
+
+k = n_planning_terminate(k);
 
 fclose(ros_tcp_connection);
 disp 'The End'

@@ -1,4 +1,4 @@
-function orderx = find_optimal_timing_for_order(orderx, data)
+function orderx = find_optimal_timing_for_order(orderx, data, planning)
 %FIND_OPTIMAL_TIMING_FOR_ORDER Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -8,11 +8,11 @@ if n == 0
 end
 
 % prepare
-orderx.costx = zeros(n, data.T);
+orderx.costx = zeros(n, data.params.T);
 for i=1:n
     sid = actionname2symbolid(orderx.events(i).name, data.grammar);
     d   = data.grammar.symbols(sid).(orderx.events(i).type);
-    orderx.costx(i,:) = ef2(d, data.planning.cache_cost.(orderx.events(i).cost_type));
+    orderx.costx(i,:) = ef2(d, planning.cache_cost.(orderx.events(i).cost_type));
 end
 
 mindist = [orderx.events.pre_duration 0] + [0 orderx.events.post_duration];
