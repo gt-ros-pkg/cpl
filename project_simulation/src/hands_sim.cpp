@@ -26,14 +26,16 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
-#include <stdio.h>  /* defines FILENAME_MAX */
+/*include to disp current directory
+#include <stdio.h>  // defines FILENAME_MAX 
 #ifdef WINDOWS
     #include <direct.h>
     #define GetCurrentDir _getcwd
 #else
     #include <unistd.h>
     #define GetCurrentDir getcwd
- #endif
+    #endif
+*/
 
 #define EPSILON 8.8817841970012523e-016
 
@@ -45,6 +47,22 @@ boost::mt19937 rng;
 boost::normal_distribution<> nd(0.0, 1.0);
 boost::variate_generator<boost::mt19937&, 
 			 boost::normal_distribution<> > NORM_GEN(rng, nd);
+
+//-------------PARAMETERS
+//variance of the gaussian for simulated sensor noise
+double PUB_NOISE_DEV = 0.005;
+//variance of the gaussian for random noise when performing task with a part
+double WALK_DEV = 0.1;
+//parameters for gaussian representing time it takes
+//for moving hand to a location or back
+double MOTION_MEAN = 1.0;
+double MOTION_STD = 0.01;
+//Maximum velocity a hand can achieve between frames. This limits the amount of
+//movement is possible for each hand between frames when human is performing a 
+//task using a part from some bin
+double HAND_MAX_VEL = 1.0;    
+
+
 
 class Task{
 
@@ -417,9 +435,15 @@ handSim::handSim(string task_name, bool cheat)
     task_name += ".txt";
     to_perform.read_file(task_name);
 
+    //publish name of the task
+    std_msgs::String start_task_msg;
+    start_task_msg.data= task_name;
+    task_pub.publish(start_task_msg);
+
+
     //set noise
-    pub_noise_dev = 0.005;
-    walk_dev = 0.1;
+    pub_noise_dev = PUB_NOISE_DEV;
+    walk_dev = WALK_DEV;
 
     //picking which bin
     currently_picked_bin = 0;
@@ -452,8 +476,8 @@ handSim::handSim(string task_name, bool cheat)
     ar_pose_frame = "/lifecam1_optical_frame";
     
     //time for moving hand to location or back
-    motion_mean = 1.0;
-    motion_std = 0.01;
+    motion_mean = MOTION_MEAN;
+    motion_std = MOTION_STD;
     
     //clear bin vectors
     cur_bin_locations.clear();
@@ -475,7 +499,7 @@ handSim::handSim(string task_name, bool cheat)
     //max-magnitude of hand velocity, to be used for random walk in m/s. 
     //TODO: maybe this should be checked every time the hand is published or 
     //something
-    hand_max_vel = 1.0;
+    hand_max_vel = HAND_MAX_VEL;
     
     //store transform
     tf::TransformListener tf_cam_to_kin;  
@@ -698,11 +722,15 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
     
     //after tasks complete, just publish the rest position
     currently_picked_bin =0;
-    pub_hands_rest();
-	        
+    //publish tasks ended
+    std_msgs::String end_task_msg;
+    end_task_msg.data= "Complete";
+    task_pub.publish(end_task_msg);
+
+    pub_hands_rest();	        
   }
   
-  //pick out of given bin in correct time
+//pick out of given bin in correct time
 double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name)
   {
     vector<double> cur_bin_loc;
@@ -727,6 +755,12 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	//waiting-so change current picked bin
 	int prev_bin = handSim::currently_picked_bin;
 	handSim::currently_picked_bin = -1;
+
+	//publish that human is currently waiting
+	std_msgs::String wait_task_msg;
+	wait_task_msg.data= "Waiting";
+	task_pub.publish(wait_task_msg);
+
 
 	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
 	else{cheat_wait(cur_bin);}
