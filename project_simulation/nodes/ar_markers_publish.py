@@ -18,6 +18,9 @@ from transformations import quaternion_matrix, quaternion_inverse
 import tf
 import numpy as np
 
+#SEED RANDOM NUMBERS
+RNG_SEED = 1
+
 #publish at Hz 
 PUB_RATE = 30
 
@@ -415,12 +418,13 @@ def set_viz_marker(temp_msg, bin_id):
     temp_msg.lifetime = rospy.Duration()
     return
 
-
-
 #MAIN
 if __name__ == '__main__':
 
     # init 
     rospy.init_node('ar_pose_markers_pub')
+
+    #seed random numbers
+    random.seed(RNG_SEED)
 
     pub_bins()
