@@ -18,7 +18,7 @@ if ~exist('model')
 end
 
 m                               = model;
-m.params.T                      = 900;
+m.params.T                      = 1000;
 m.params.wait_for_bin           = 1;
 m.params.compute_terminal_joint = 0;
 m.params.downsample_ratio       = 7;

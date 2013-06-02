@@ -1,0 +1,23 @@
+<package>
+  <description brief="color_blob_tracking">
+
+     color_blob_tracking
+
+  </description>
+  <author>Kelsey</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/color_blob_tracking</url>
+  <depend package="roscpp"/>
+  <depend package="pcl"/>
+  <depend package="pcl_ros"/>
+  <depend package="opencv2"/>
+  <depend package="cv_bridge"/>
+  <depend package="tf"/>
+  <depend package="tf_conversions"/>
+  <depend package="stereo_msgs"/>
+  <depend package="sensor_msgs"/>
+
+</package>
+
+
