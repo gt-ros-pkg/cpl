@@ -49,7 +49,7 @@ boost::variate_generator<boost::mt19937&,
 			 boost::normal_distribution<> > NORM_GEN(rng, nd);
 
 int RNG_SEED = 5;
-boost::mt19937 rng_rep(RNG_SEED);
+boost::mt19937 rng_rep;
 boost::normal_distribution<> nd_rep(0.0, 1.0);
 boost::variate_generator<boost::mt19937&, 
 			 boost::normal_distribution<> > NORM_GEN_REP(rng_rep, nd_rep);
@@ -729,6 +729,8 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
 	time_to_next_touch = perform_task(cur_bin_id, duration_m, duration_s, 
 					  time_to_next_touch, pick_lefty, 
 					  cur_task);
+	
+	
 	pick_lefty = !pick_lefty;
       }
     
@@ -773,7 +775,6 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	wait_task_msg.data= "Waiting";
 	task_pub.publish(wait_task_msg);
 
-
 	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
 	else{cheat_wait(cur_bin);}
 
@@ -796,8 +797,8 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     double time_task_do = samp_gauss_pos_rep(dur_m, dur_s);
 
     //time for interpolating b/w rest and next bin
-    double to_next_motion = samp_gauss_pos(motion_mean, motion_std);
-    double time_back_rest = samp_gauss_pos(motion_mean, motion_std);
+    double to_next_motion = samp_gauss_pos_rep(motion_mean, motion_std);
+    double time_back_rest = samp_gauss_pos_rep(motion_mean, motion_std);
 
     //if sampled time < time for motion and waiting
     if ((wait_at_bin+to_next_motion+time_back_rest)>=time_task_do)
@@ -822,7 +823,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     task_pub.publish(task_msg);
 
     //wait at the bin
-    wait_at_location(wait_at_bin);    
+    wait_at_location(wait_at_bin);
     
     //move back to rest position
     move_to_loc(!is_lh_rest, !is_rh_rest, lh_rest, rh_rest, time_back_rest);
@@ -1169,7 +1170,7 @@ double handSim::samp_gauss_pos_rep(double mean, double std_dev)
   double handSim::time_to_wait()
   {
     //wait a third-a-second for the moment
-    return TIME_TO_WAIT_AT_BIN//0.3;
+    return TIME_TO_WAIT_AT_BIN;//0.3;
   }
 
   void handSim::vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos)
@@ -1406,6 +1407,13 @@ int main(int argc, char** argv)
   debug over*/
 
   ros::init(argc, argv, "hand_simulator");
+
+  //seed generators
+  rng.seed(time(0));
+  rng_rep.seed(RNG_SEED);
+
+
+
   char do_another='n';
 
   do{
