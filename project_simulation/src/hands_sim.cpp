@@ -48,10 +48,18 @@ boost::normal_distribution<> nd(0.0, 1.0);
 boost::variate_generator<boost::mt19937&, 
 			 boost::normal_distribution<> > NORM_GEN(rng, nd);
 
+int RNG_SEED = 5;
+boost::mt19937 rng_rep(RNG_SEED);
+boost::normal_distribution<> nd_rep(0.0, 1.0);
+boost::variate_generator<boost::mt19937&, 
+			 boost::normal_distribution<> > NORM_GEN_REP(rng_rep, nd_rep);
+
+
 //-------------PARAMETERS
-//variance of the gaussian for simulated sensor noise
+//standard deviation of the gaussian for simulated sensor noise
 double PUB_NOISE_DEV = 0.005;
-//variance of the gaussian for random noise when performing task with a part
+//standard deviation of the gaussian for random noise when performing 
+//task with a part
 double WALK_DEV = 0.1;
 //parameters for gaussian representing time it takes
 //for moving hand to a location or back
@@ -60,9 +68,9 @@ double MOTION_STD = 0.01;
 //Maximum velocity a hand can achieve between frames. This limits the amount of
 //movement is possible for each hand between frames when human is performing a 
 //task using a part from some bin
-double HAND_MAX_VEL = 1.0;    
-
-
+double HAND_MAX_VEL = 1.0;// m/s    
+//amount of time the hand waits at a bin (simulate picking from it)
+double TIME_TO_WAIT_AT_BIN = 0.3; //seconds
 
 class Task{
 
@@ -320,6 +328,12 @@ public:
 
   //return sample
   double samp_gauss(double mean, double std_dev);
+
+  //REPLICATABLE
+  //return only positive samples
+  double samp_gauss_pos_rep(double mean, double std_dev);
+  //return sample
+  double samp_gauss_rep(double mean, double std_dev);
   
   //publish present hand positions
   void publish_cur_hand_pos();
@@ -386,9 +400,9 @@ geometry_msgs::PoseStamped handSim::transform_for_hand
   transformed = bin_cur_pose;
 
   //rotate
-  double homo_pos_vec[4] = {samp_gauss(hand_t_mean[0], hand_t_var[0]),
-			    samp_gauss(hand_t_mean[1], hand_t_var[1]),
-			    samp_gauss(hand_t_mean[2], hand_t_var[2]),
+  double homo_pos_vec[4] = {samp_gauss(hand_t_mean[0], sqrt(hand_t_var[0])),
+			    samp_gauss(hand_t_mean[1], sqrt(hand_t_var[1])),
+			    samp_gauss(hand_t_mean[2], sqrt(hand_t_var[2])),
 			    1.0};
   size_t size_mat[]={4,4}; size_t size_vec[]={4,1};
   double homo_vec_out[4];
@@ -434,12 +448,6 @@ handSim::handSim(string task_name, bool cheat)
     //load tasks
     task_name += ".txt";
     to_perform.read_file(task_name);
-
-    //publish name of the task
-    std_msgs::String start_task_msg;
-    start_task_msg.data= task_name;
-    task_pub.publish(start_task_msg);
-
 
     //set noise
     pub_noise_dev = PUB_NOISE_DEV;
@@ -495,6 +503,12 @@ handSim::handSim(string task_name, bool cheat)
     picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
     
     ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
+
+    //publish name of the task
+    std_msgs::String start_task_msg;
+    start_task_msg.data= task_name;
+    task_pub.publish(start_task_msg);
+
 
     //max-magnitude of hand velocity, to be used for random walk in m/s. 
     //TODO: maybe this should be checked every time the hand is published or 
@@ -679,8 +693,6 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
 	//to transform ar-tags frame of reference from webcam to kinect
 	temp_pose = transform_view(temp_pose);
 
-
-
 	temp_pos = temp_pose.pose.position;
 
 	temp_bin.id = msg.markers[i].id;
@@ -773,8 +785,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	handSim::currently_picked_bin = prev_bin;
       }
 
-
-    //after it becomes available    
+    //after it becomes available
     cur_bin_loc = find_bin_pos(cur_bin);
     handSim::currently_picked_bin = int(cur_bin);
 
@@ -782,7 +793,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     double wait_at_bin = time_to_wait();
 
     //sample gaussian to determine time till next bin touch after present one
-    double time_task_do = samp_gauss_pos(dur_m, dur_s);
+    double time_task_do = samp_gauss_pos_rep(dur_m, dur_s);
 
     //time for interpolating b/w rest and next bin
     double to_next_motion = samp_gauss_pos(motion_mean, motion_std);
@@ -793,7 +804,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	  {
 	    //scale both times to just fit within the actual time
 	    double time_scale = time_task_do
-	      /(wait_at_bin+to_next_motion+time_back_rest);
+	      /(wait_at_bin + to_next_motion+time_back_rest);
 	    wait_at_bin *= time_scale;
 	    to_next_motion *= time_scale;
 	    time_back_rest *= time_scale;
@@ -919,6 +930,22 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
   double handSim::samp_gauss(double mean, double std_dev)
   {
     double sample = mean + std_dev*NORM_GEN();
+    return sample;
+  }
+
+// REPLICATEABLE GAUSSIAN SAMPLING
+//return only positive samples
+double handSim::samp_gauss_pos_rep(double mean, double std_dev)
+{
+  double sample = mean + std_dev*NORM_GEN_REP();
+  while(sample<=0){sample = mean + std_dev* NORM_GEN_REP();}
+  return sample;
+}
+
+  //return sample
+  double handSim::samp_gauss_rep(double mean, double std_dev)
+  {
+    double sample = mean + std_dev* NORM_GEN_REP();
     return sample;
   }
   
@@ -1142,7 +1169,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
   double handSim::time_to_wait()
   {
     //wait a third-a-second for the moment
-    return 0.3;
+    return TIME_TO_WAIT_AT_BIN//0.3;
   }
 
   void handSim::vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos)
