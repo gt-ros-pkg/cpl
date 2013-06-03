@@ -441,7 +441,7 @@ class TabletopExecutive:
                 res, push_res = self.perform_push(which_arm, behavior_primitive, push_vec_res, goal_pose,
                                                   controller_name, proxy_name)
                 push_time = time.time() - start_time
-                # NOTE: Don't save unless s is pressed
+
                 if _USE_LEARN_IO and not _OFFLINE:
                     timeout = 2
                     rospy.loginfo("Enter something to not save the previous push trial: ")
@@ -452,18 +452,20 @@ class TabletopExecutive:
                         rospy.loginfo('Not saving previous trial.')
                         if s.lower().startswith('q'):
                             return 'quit'
+                    elif push_res.failed_pre_position:
+                        rospy.loginfo('Not saving previous trial because of failed hand placement')
+                        # TOOD: Get the next choice, to avoid infinitely trying this one
                     else:
                         rospy.loginfo("No input. Saving trial data")
                         self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
                                           push_vec_res, goal_pose, trial_id, precondition_method)
-
+                        start_loc_trials += 1
 
                 if res == 'quit':
                     return res
                 elif res == 'aborted' or res == 'done':
                     if self.servo_head_during_pushing:
                         self.raise_and_look(point_head_only=True)
-                    start_loc_trials += 1
         rospy.loginfo('Done performing push loc exploration!')
         return res
 
@@ -854,13 +856,17 @@ class TabletopExecutive:
 
         rospy.loginfo("Calling gripper feedback pre push service")
         pre_push_res = self.gripper_feedback_pre_push_proxy(push_req)
-        rospy.loginfo("Calling gripper feedback push service")
 
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
             push_res = FeedbackPushResponse()
+        elif pre_push_res.failed_pre_position:
+            rospy.logwarn('Failed to properly position in pre-push, aborting push')
+            push_res = pre_push_res
         else:
+            rospy.loginfo("Calling gripper feedback push service")
             push_res = self.gripper_feedback_push_proxy(push_req)
+
         rospy.loginfo("Calling gripper feedback post push service")
         post_push_res = self.gripper_feedback_post_push_proxy(push_req)
         return push_res

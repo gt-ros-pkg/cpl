@@ -1148,7 +1148,11 @@ class PositionFeedbackPushNode:
 
         # Move to start pose
         if not self.move_to_cart_pose_ik(start_pose, which_arm):
-            self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+            rospy.logwarn('IK Failed, not at desired initial pose')
+            response.failed_pre_position = True
+            # self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+        else:
+            response.failed_pre_position = False
 
         rospy.loginfo('Done moving to start point')
         self.use_gripper_place_joint_posture = False

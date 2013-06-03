@@ -13,3 +13,4 @@ string learn_out_file_name
 ---
 geometry_msgs/Pose2D goal_error
 bool action_aborted
+bool failed_pre_position
