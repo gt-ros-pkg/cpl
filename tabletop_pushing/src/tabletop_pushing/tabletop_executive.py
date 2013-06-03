@@ -59,7 +59,7 @@ class TabletopExecutive:
     def __init__(self, use_singulation, use_learning):
         self.previous_rand_pose = None
 
-        rospy.init_node('tabletop_executive_node',log_level=rospy.DEBUG)
+        rospy.init_node('tabletop_executive_node',log_level=rospy.INFO)
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
         self.max_push_dist = rospy.get_param('~mix_push_dist', 0.3)
         self.use_overhead_x_thresh = rospy.get_param('~use_overhead_x_thresh', 0.55)
@@ -385,6 +385,7 @@ class TabletopExecutive:
             goal_pose = self.generate_random_table_pose()
             for j in xrange(num_pushes_per_sample):
                 rospy.loginfo('Performing push iteration: '+str(i*num_pushes_per_sample+j))
+                rospy.loginfo('Sending param_path: ' + start_loc_param_path)
                 # NOTE: Get initial object pose here to make sure goal pose is far enough away
                 init_pose = self.get_feedback_push_initial_obj_pose()
                 if self.start_loc_use_fixed_goal:

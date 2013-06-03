@@ -193,7 +193,7 @@ def trigAugState(X, ndx, remove_old=False):
 class PositionFeedbackPushNode:
 
     def __init__(self):
-        rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
+        rospy.init_node('position_feedback_push_node', log_level=rospy.INFO)
         self.controller_io = ControlAnalysisIO()
         self.use_learn_io = False
         self.use_gripper_place_joint_posture = False

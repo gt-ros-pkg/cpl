@@ -725,6 +725,7 @@ class TabletopPushingPerceptionNode
       if (req.start_loc_param_path.length() > 0) // Choose start location using the learned classifier
       {
         ROS_INFO_STREAM("Finding learned push start loc");
+        ROS_INFO_STREAM("Using param path"<< req.start_loc_param_path);
         chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score);
       }
       else if (start_loc_use_fixed_goal_)
