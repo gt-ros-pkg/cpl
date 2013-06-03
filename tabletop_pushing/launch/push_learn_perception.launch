@@ -1,10 +1,26 @@
 <launch>
   <param name="start_loc_use_fixed_goal" value="true" type="bool"/>
+  <arg name="offline" value="false"/>
+
+  <arg name="color_image_topic_name" value="/kinect_head/rgb/image_color" if="$(arg offline)"/>
+  <arg name="depth_image_topic_name" value="/kinect_head/depth/image"  if="$(arg offline)"/>
+  <arg name="mask_image_topic_name" value="/kinect_head/rgb/image_color/self_mask"  if="$(arg offline)"/>
+  <arg name="point_cloud_topic_name" value="/kinect_head/depth/points" if="$(arg offline)"/>
+  <arg name="camera_frame_name" value="openni_rgb_optical_frame"  if="$(arg offline)"/>
+
+  <arg name="color_image_topic_name" value="/kinect_head/rgb/image_rect_color" unless="$(arg offline)"/>
+  <arg name="depth_image_topic_name" value="/kinect_head/depth_registered/image" unless="$(arg offline)"/>
+  <arg name="mask_image_topic_name" value="/kinect_head/rgb/image_rect_color/self_mask" unless="$(arg offline)"/>
+  <arg name="point_cloud_topic_name" value="/kinect_head/depth_registered/points" unless="$(arg offline)"/>
+  <arg name="camera_frame_name" value="head_mount_kinect_rgb_optical_frame" unless="$(arg offline)"/>
+
   <node name="push_learning_perception" pkg="tabletop_pushing" type="tabletop_pushing_perception_node" respawn="false" output="screen">
-    <remap from="color_image_topic" to="/kinect_head/rgb/image_rect_color"/>
-    <remap from="depth_image_topic" to="/kinect_head/depth_registered/image"/>
-    <remap from="mask_image_topic" to="/kinect_head/rgb/image_rect_color/self_mask"/>
-    <remap from="point_cloud_topic" to="/kinect_head/depth_registered/points"/>
+
+    <remap from="color_image_topic" to="$(arg color_image_topic_name)"/>
+    <remap from="depth_image_topic" to="$(arg depth_image_topic_name)"/>
+    <remap from="mask_image_topic"  to="$(arg mask_image_topic_name)"/>
+    <remap from="point_cloud_topic" to="$(arg point_cloud_topic_name)"/>
+    <param name="camera_frame" value="$(arg camera_frame_name)" type="string"/>
 
     <param name="start_loc_push_time_limit" value="6.0" type="double"/>
     <param name="start_loc_push_dist" value="0.30" type="double"/>
@@ -20,7 +36,6 @@
     <param name="icp_ransac_thresh" value="0.015" type="double"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
-    <param name="camera_frame" value="head_mount_kinect_rgb_optical_frame" type="string"/>
     <param name="min_workspace_x" value="-1.0" type="double"/>
     <param name="max_workspace_x" value="1.75" type="double"/>
     <param name="min_workspace_z" value="-0.8" type="double"/>
