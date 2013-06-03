@@ -417,6 +417,7 @@ class TabletopExecutive:
                                                                  num_pushes_per_sample=num_pushes_per_sample,
                                                                  start_loc_param_path=start_loc_param_path)
                 if push_vec_res is None:
+                    rospy.logwarn('Push vector Response is none, exiting')
                     return None
                 elif push_vec_res == 'quit':
                     return push_vec_res
