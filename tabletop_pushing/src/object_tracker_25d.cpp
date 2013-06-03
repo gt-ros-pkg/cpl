@@ -340,12 +340,13 @@ cv::RotatedRect ObjectTracker25D::findFootprintBox(ProtoObject& obj)
 
 cv::RotatedRect ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj)
 {
-  pcl16::PCA<pcl16::PointXYZ> pca;
+  // pcl16::PCA<pcl16::PointXYZ> pca(true);
   XYZPointCloud cloud_no_z;
   cloud_no_z.header = obj.cloud.header;
-  cloud_no_z.width = obj.cloud.size();
+  cloud_no_z.width = obj.cloud.points.size();
   cloud_no_z.height = 1;
-  cloud_no_z.resize(obj.cloud.size());
+  cloud_no_z.is_dense = false;
+  cloud_no_z.resize(cloud_no_z.width*cloud_no_z.height);
   if (obj.cloud.size() < 3)
   {
     ROS_WARN_STREAM("Too few points to find ellipse");
@@ -362,11 +363,48 @@ cv::RotatedRect ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj)
     cloud_no_z[i] = obj.cloud[i];
     cloud_no_z[i].z = 0.0f;
   }
+  Eigen::Vector3f eigen_values;
+  Eigen::Matrix3f eigen_vectors;
+  Eigen::Vector4f centroid;
 
-  pca.setInputCloud(cloud_no_z.makeShared());
-  Eigen::Vector3f eigen_values = pca.getEigenValues();
-  Eigen::Matrix3f eigen_vectors = pca.getEigenVectors();
-  Eigen::Vector4f centroid = pca.getMean();
+  // HACK: Copied/adapted from PCA in PCL because PCL was seg faulting after an update on the robot
+  // Compute mean
+  centroid = Eigen::Vector4f::Zero();
+  // ROS_INFO_STREAM("Getting centroid");
+  pcl16::compute3DCentroid(cloud_no_z, centroid);
+  // Compute demeanished cloud
+  Eigen::MatrixXf cloud_demean;
+  // ROS_INFO_STREAM("Demenaing point cloud");
+  pcl16::demeanPointCloud(cloud_no_z, centroid, cloud_demean);
+
+  // Compute the product cloud_demean * cloud_demean^T
+  // ROS_INFO_STREAM("Getting alpha");
+  Eigen::Matrix3f alpha = static_cast<Eigen::Matrix3f> (cloud_demean.topRows<3> () * cloud_demean.topRows<3> ().transpose ());
+
+  // Compute eigen vectors and values
+  // ROS_INFO_STREAM("Getting eigenvectors");
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> evd (alpha);
+  // Organize eigenvectors and eigenvalues in ascendent order
+  for (int i = 0; i < 3; ++i)
+  {
+    eigen_values[i] = evd.eigenvalues()[2-i];
+    eigen_vectors.col(i) = evd.eigenvectors().col(2-i);
+  }
+
+  // try{
+  //   pca.setInputCloud(cloud_no_z.makeShared());
+  //   ROS_INFO_STREAM("Getting mean");
+  //   centroid = pca.getMean();
+  //   ROS_INFO_STREAM("Getting eiven values");
+  //   eigen_values = pca.getEigenValues();
+  //   ROS_INFO_STREAM("Getting eiven vectors");
+  //   eigen_vectors = pca.getEigenVectors();
+  // } catch(pcl16::InitFailedException ife)
+  // {
+  //   ROS_WARN_STREAM("Failed to compute PCA");
+  //   ROS_WARN_STREAM("ife: " << ife.what());
+  // }
+
   cv::RotatedRect obj_ellipse;
   obj_ellipse.center.x = centroid[0];
   obj_ellipse.center.y = centroid[1];
