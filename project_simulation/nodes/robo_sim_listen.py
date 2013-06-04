@@ -368,6 +368,54 @@ def pub_endfactor():
     #visualize
     pub_viz_enf()
 
+def display_inaction_text():
+    global robo_inaction_pub, frame_of_reference
+    
+    temp_marker = visualization_msgs.msg.Marker()
+    temp_marker.header.frame_id = '/kinect0_rgb_optical_frame'
+    temp_marker.header.stamp = rospy.Time.now()
+    temp_marker.ns = 'robo_sim'
+    temp_marker.id = 55
+    temp_marker.action = visualization_msgs.msg.Marker.ADD
+    temp_marker.type = visualization_msgs.msg.Marker.TEXT_VIEW_FACING
+    
+    temp_marker.pose.orientation.x = 1.0#endfactor_fix_orientation[0]
+    temp_marker.pose.orientation.y = 0.0#endfactor_fix_orientation[1]
+    temp_marker.pose.orientation.z = 0.0#endfactor_fix_orientation[2]
+    temp_marker.pose.orientation.w = 0.0#endfactor_fix_orientation[3]
+    
+    temp_position = [0.6813459, 0.308325,1.66598]
+
+    temp_marker.pose.position.x = temp_position[0]
+    temp_marker.pose.position.y = temp_position[1]
+    temp_marker.pose.position.z = temp_position[2]
+
+    temp_marker.color.r = 0.5
+    temp_marker.color.g = 1.0
+    temp_marker.color.b = 0.0
+    temp_marker.color.a = 0.5
+
+    temp_marker.scale.x = 0.1
+    temp_marker.scale.y = 0.1
+    temp_marker.scale.z = 0.1
+    temp_marker.lifetime = rospy.Duration()
+    temp_marker.text = 'Robot is Inactive'
+    
+    robo_inaction_pub.publish(temp_marker)
+    return
+
+def delete_inaction_text():
+    global robo_inaction_pub, frame_of_reference
+    
+    temp_marker = visualization_msgs.msg.Marker()
+    temp_marker.header.frame_id = '/kinect0_rgb_optical_frame'
+    temp_marker.header.stamp = rospy.Time.now()
+    temp_marker.ns = 'robo_sim'
+    temp_marker.id = 55
+    temp_marker.action = visualization_msgs.msg.Marker.DELETE
+    robo_inaction_pub.publish(temp_marker)
+    return
+    
 def pub_viz_enf():
     
     marker_shape = visualization_msgs.msg.Marker.CYLINDER
@@ -536,6 +584,8 @@ if __name__=='__main__':
     
     endf_viz_pub = rospy.Publisher('endfactor_visual', visualization_msgs.msg.Marker)
     
+    robo_inaction_pub = rospy.Publisher('robo_inactive_text', visualization_msgs.msg.Marker)
+    
     task_listen_sub = rospy.Subscriber('move_bin', project_simulation.msg.move_bin, listen_tasks)
     
     loop_rate = rospy.Rate(PUB_RATE)
@@ -547,8 +597,11 @@ if __name__=='__main__':
         #no task to do publish current pos
         if task_list.__len__() == 0:
             pub_endfactor()
+            display_inaction_text()
             loop_rate.sleep()
+            
         else:
+            delete_inaction_text()
             cur_task = task_list[0]
             
             #find bin

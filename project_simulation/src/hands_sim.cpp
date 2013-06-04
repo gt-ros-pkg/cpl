@@ -466,7 +466,7 @@ handSim::handSim(string task_name, bool cheat)
     rh_rest.assign(&init_pos_r[0], &init_pos_r[0]+3);
 
     //if cheating- waiting position
-    double cheat_l[]= {0.2813459, 0.308325,1.86598};
+    double cheat_l[]= {0.6813459, 0.308325,1.86598};
     lh_cheat_wait.assign(&cheat_l[0], &cheat_l[0]+3);
 
     //initially, hands are at rest position
