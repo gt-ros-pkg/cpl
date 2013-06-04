@@ -165,7 +165,7 @@ class ScoredIdxComparison
  public:
   bool operator() (const ScoredIdx& lhs, const ScoredIdx&rhs) const
   {
-    return (lhs.score < rhs.score);
+    return (lhs.score > rhs.score);
   }
 };
 
@@ -1178,20 +1178,20 @@ class TabletopPushingPerceptionNode
     writePredictedScoreToDisk(hull_cloud, sds, pred_push_scores);
 
     ScoredIdx best_scored = pq.top();
-    if (!previous_position_worked)
-    {
-      // TODO: Replace this with location history not simple count
-      num_position_failures_++;
-      ROS_INFO_STREAM("Ignoring top: " << num_position_failures_ << " positions");
-      for (int p = 0; p < num_position_failures_; ++p)
-      {
-        pq.pop();
-      }
-    }
-    else
-    {
-      num_position_failures_ = 0;
-    }
+    // if (!previous_position_worked)
+    // {
+    //   // TODO: Replace this with location history not simple count
+    //   num_position_failures_++;
+    //   ROS_INFO_STREAM("Ignoring top: " << num_position_failures_ << " positions");
+    //   for (int p = 0; p < num_position_failures_; ++p)
+    //   {
+    //     pq.pop();
+    //   }
+    // }
+    // else
+    // {
+    //   num_position_failures_ = 0;
+    // }
 
     // Ensure goal pose is on the table
     while (pq.size() > 0)
@@ -1217,8 +1217,49 @@ class TabletopPushingPerceptionNode
     ShapeLocation best_loc;
     best_loc.boundary_loc_ = hull_cloud[best_scored.idx];
     best_loc.descriptor_ = sds[best_scored.idx];
-    ROS_INFO_STREAM("Chose push location " << best_scored.idx << " with score " << best_scored.score);
+    ROS_INFO_STREAM("Chose default push location " << best_scored.idx << " with score " << best_scored.score);
     return best_loc;
+  }
+
+  ShapeLocation chooseRandomPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state)
+  {
+    // Get features for all of the boundary locations
+    // TODO: Set these values somewhere else
+    float hull_alpha = 0.01;
+    float gripper_spread = 0.05;
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+    ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                                gripper_spread, hull_alpha,
+                                                                                point_cloud_hist_res_);
+    std::vector<int> available_indices;
+    for (int i = 0; i < hull_cloud.size(); ++i)
+    {
+      available_indices.push_back(i);
+    }
+    // Ensure goal pose is on the table
+    while (available_indices.size() > 0)
+    {
+      int rand_idx = rand()%available_indices.size();
+      int chosen_idx = available_indices[rand_idx];
+
+      // Return the location of the best score
+      ShapeLocation loc;
+      loc.boundary_loc_ = hull_cloud[chosen_idx];
+      loc.descriptor_ = sds[chosen_idx];
+      float new_push_angle;
+      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, loc, new_push_angle, false);
+      if (goalPoseValid(goal_pose))
+      {
+        return loc;
+      }
+      available_indices.erase(available_indices.begin()+rand_idx);
+    }
+    // No points wokred
+    int chosen_idx = rand()%hull_cloud.size();
+    ShapeLocation chosen_loc;
+    chosen_loc.boundary_loc_ = hull_cloud[chosen_idx];
+    chosen_loc.descriptor_ = sds[chosen_idx];
+    return chosen_loc;
   }
 
   float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc)
