@@ -1,7 +1,7 @@
 #bin_id
 2
 #parts sequence: <part name> <mean> <std-dev>
-wing_ad1 3.6889 0.8598
-wing_ad2 3.7 0.31798
-wing_ad3 3.9111 0.68503
-wing_ad4 11.0222 2.2446
+wing_ad1 3.68889 4.70932868535
+wing_ad2 3.7 1.74164673035
+wing_ad3 3.91111 3.752036336
+wing_ad4 11.0222233333 12.2940816385
