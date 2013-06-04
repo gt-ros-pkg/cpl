@@ -243,6 +243,7 @@ private:
   ros::Publisher viz_pub;
   ros::Publisher task_pub;
   ros::Publisher picking_bin;
+  ros::Publisher human_wait_text;
 
   //Bin being picked right now, 0 if not started or ended, -1 if waiting.
   int currently_picked_bin;
@@ -302,8 +303,10 @@ public:
   void trans_homo_vec_hand_off(double homo_vec[], double translate[]);
 
   void read_ar(project_simulation::AlvarMarkers msg);
-
-
+  
+  void display_wait_marker();
+  void delete_wait_marker();
+  
   //does tasks in list
   void pub_hands();
   
@@ -501,14 +504,14 @@ handSim::handSim(string task_name, bool cheat)
     viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
     task_pub = nh.advertise<std_msgs::String>("action_name", 1);
     picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
-    
+    human_wait_text = nh.advertise<visualization_msgs::Marker>("waiting_text",1);
+
     ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
 
     //publish name of the task
     std_msgs::String start_task_msg;
     start_task_msg.data= task_name;
     task_pub.publish(start_task_msg);
-
 
     //max-magnitude of hand velocity, to be used for random walk in m/s. 
     //TODO: maybe this should be checked every time the hand is published or 
@@ -881,6 +884,9 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
   {
     ros::Rate loop_rate(PUB_RATE);
     
+    //display viz marker saying human waits
+    display_wait_marker();
+
     do
       {
 	if (!(is_lh_rest && is_rh_rest))
@@ -902,6 +908,10 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	//debug
 	cout<<"Need Bin: "<<bin_to_chk<<endl;
       }while(ros::ok() && !bin_in_position(bin_to_chk));
+    
+    //delete human waiting viz marker
+    delete_wait_marker();
+
   }
 
   //check if bin in position
@@ -984,6 +994,49 @@ double handSim::samp_gauss_pos_rep(double mean, double std_dev)
     message.pose.position.y += samp_gauss(0.0, pub_noise_dev);
     message.pose.position.z += samp_gauss(0.0, pub_noise_dev);
   }
+
+//publish a visualization marker to depict that human is waiting
+void handSim::display_wait_marker()
+{
+  visualization_msgs::Marker temp_marker;
+
+  temp_marker.header.frame_id = handSim::frame_of_reference;
+  temp_marker.header.stamp = ros::Time();
+  temp_marker.ns = "hands";
+  temp_marker.id = 55;
+  temp_marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+  temp_marker.action = visualization_msgs::Marker::ADD;
+  temp_marker.text = "Human is waiting";
+  
+  vec_to_position(temp_marker.pose.position, handSim::lh_cheat_wait);
+  
+  temp_marker.scale.x = 0.1;
+  temp_marker.scale.y =0.1;
+  temp_marker.scale.z = 0.1;
+  temp_marker.color.a = 0.5;
+  temp_marker.color.r = 0.0;
+  temp_marker.color.g = 0.8;
+  temp_marker.color.b = 1.0;
+  //temp_marker.lifetime = 0;
+  
+  human_wait_text.publish(temp_marker);
+
+}
+
+void handSim::delete_wait_marker()
+{
+  visualization_msgs::Marker temp_marker;
+    
+  temp_marker.header.frame_id = handSim::frame_of_reference;
+  
+  temp_marker.ns = "hands";
+  temp_marker.id = 55;
+  temp_marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+  temp_marker.action = visualization_msgs::Marker::DELETE;
+  temp_marker.text = "Human is waiting";
+  
+  human_wait_text.publish(temp_marker);
+}
 
   //publish a visualization marker at given location
   void handSim::pub_viz_marker(geometry_msgs::PoseStamped lh_pose, geometry_msgs::PoseStamped rh_pose)
