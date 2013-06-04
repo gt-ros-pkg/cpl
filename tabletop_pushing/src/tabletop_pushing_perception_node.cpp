@@ -1171,8 +1171,11 @@ class TabletopPushingPerceptionNode
       delete x;
     }
 
-    // TODO: Write SVM scores & descriptors to disk?
-    // writePredictedScoreToDisk(hull_cloud, sds, pred_scores);
+    // Free SVM struct
+    svm_free_and_destroy_model(&push_model);
+
+    // Write SVM scores & descriptors to disk?
+    writePredictedScoreToDisk(hull_cloud, sds, pred_push_scores);
 
     ScoredIdx best_scored = pq.top();
     if (!previous_position_worked)
@@ -1190,7 +1193,7 @@ class TabletopPushingPerceptionNode
       num_position_failures_ = 0;
     }
 
-    // TODO: Ensure goal pose is on the table
+    // Ensure goal pose is on the table
     while (pq.size() > 0)
     {
       ScoredIdx chosen = pq.top();
@@ -1827,6 +1830,27 @@ class TabletopPushingPerceptionNode
     score_selected_file_name << base_output_path_ << "score_footprint_selected" << "_" << frame_set_count_ << ".png";
     cv::imwrite(score_selected_file_name.str(), footprint);
   }
+
+  void writePredictedScoreToDisk(XYZPointCloud& hull_cloud, ShapeDescriptors& sds, std::vector<double>& pred_scores)
+  {
+    // Write SVM scores & descriptors to disk?
+    std::stringstream svm_file_name;
+    svm_file_name << base_output_path_ << "predicted_svm_scores" << "_" << frame_set_count_ << ".txt";
+    // TODO: write loc, score, descriptor
+    std::ofstream svm_file_stream;
+    svm_file_stream.open(svm_file_name.str().c_str());
+    for (int i = 0; i < hull_cloud.size(); ++i)
+    {
+      svm_file_stream << hull_cloud[i].x << " " << hull_cloud[i].y << " " << pred_scores[i];
+      for (int j = 0; j < sds[i].size(); ++j)
+      {
+        svm_file_stream << " " << sds[i][j];
+      }
+      svm_file_stream << "\n";
+    }
+    svm_file_stream.close();
+  }
+
 
   /**
    * Executive control function for launching the node.
