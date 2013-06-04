@@ -22,14 +22,14 @@ m.params.T                      = 1000;
 m.params.wait_for_bin           = 1;
 m.params.compute_terminal_joint = 0;
 m.params.downsample_ratio       = 7;
-m.params.duration_var_scale     = 5;
-m.params.use_start_conditions   = 0;
+m.params.duration_var_scale     = 3;
+m.params.use_start_conditions   = 1;
 
 
-duration_mean = 30 / m.params.downsample_ratio;
+duration_mean = 50 / m.params.downsample_ratio;
 duration_var  = 400 * m.params.duration_var_scale / m.params.downsample_ratio^2;
 m.params.trick.fakedummystep    = nxmakegaussian(m.params.T, duration_mean, duration_var);
-m.params.trick.fakedummystep    = NaN;
+% m.params.trick.fakedummystep    = NaN;
 
 
 m.start_conditions              = ones(length(model.grammar.symbols), m.params.T);
@@ -93,7 +93,7 @@ end
 %% set up root
 m.s =  m.grammar.starting;
 m.g(m.s).start_distribution = 0 * ones(1, m.params.T) / m.params.T;
-m.g(m.s).start_distribution(1:100) = 1 / 100;
+m.g(m.s).start_distribution(1:200) = 1 / 200;
 m.g(m.s).end_likelihood = ones(1, m.params.T) / m.params.T;
 
 %% set up detection result

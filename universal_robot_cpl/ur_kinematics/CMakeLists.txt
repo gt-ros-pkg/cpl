@@ -46,7 +46,7 @@ include_directories(${PYTHON_INCLUDE_DIRS})
 #target_link_libraries(example ${PYTHON_LIBRARIES} boost_numpy)
 #set_target_properties(example PROPERTIES PREFIX "")
 
-#rosbuild_add_executable(ur_kin src/ur_kin.cpp)
+rosbuild_add_executable(ur_kin src/ur_kin.cpp)
 rosbuild_add_library(ur_kin src/ur_kin.cpp)
 
 rosbuild_add_library(ur_kin_py src/ur_kin_py.cpp)

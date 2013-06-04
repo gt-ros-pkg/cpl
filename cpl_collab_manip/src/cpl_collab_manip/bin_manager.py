@@ -27,7 +27,7 @@ from pykdl_utils.kdl_kinematics import create_kdl_kin
 BIN_HEIGHT_DEFAULT = 0.1
 TABLE_OFFSET_DEFAULT = -0.2
 TABLE_CUTOFF_DEFAULT = 0.05
-VEL_MULT = 4.0
+VEL_MULT = 4.7
 
 def create_slot_tree(bin_slots):
     pos_data = np.zeros((len(bin_slots),3))
@@ -150,7 +150,6 @@ class ARTagManager(object):
             slot_states[ind] = bin_id
         return slot_states, missing_bins
 
-    # finds the closest empty slot to the pos position
     def get_filled_slots(self, near_human):
         slot_states, _ = self.get_bin_slot_states()
         bins = []
@@ -172,6 +171,20 @@ class ARTagManager(object):
                     return self.get_slot_ids()[ind]
         return -1
 
+    def get_empty_slots(self, care_near_human=False, near_human=True):
+        slot_states, _ = self.get_bin_slot_states()
+        slot_ids = self.get_slot_ids()
+        empty_slots = []
+        for ind, slot_state in enumerate(slot_states):
+            if slot_state == -1:
+                if care_near_human:
+                    slot_near_human = ind in self.human_slots
+                    if np.logical_xor(not slot_near_human, near_human):
+                        empty_slots.append(slot_ids[ind])
+                else:
+                    empty_slots.append(slot_ids[ind])
+        return empty_slots
+
 class BinManager(object):
     def __init__(self, arm_prefix, bin_slots, available_bins=None):
         self.bin_height = rospy.get_param("~bin_height", BIN_HEIGHT_DEFAULT)
@@ -179,12 +192,12 @@ class BinManager(object):
         self.table_cutoff = rospy.get_param("~table_cutoff", TABLE_CUTOFF_DEFAULT)
 
         self.place_offset = rospy.get_param("~place_offset", 0.02)
-        self.ar_offset = rospy.get_param("~ar_offset", 0.110)
+        self.ar_offset = rospy.get_param("~ar_offset", 0.100)
         self.grasp_height = rospy.get_param("~grasp_height", 0.10)
         self.grasp_rot = rospy.get_param("~grasp_rot", 0.0)
         self.grasp_lift = rospy.get_param("~grasp_lift", 0.18)
         self.waypt_offset = rospy.get_param("~waypt_offset", 0.25)
-        self.waypt_robot_min_dist = rospy.get_param("~waypt_robot_min_dist", -0.40)
+        self.waypt_robot_min_dist = rospy.get_param("~waypt_robot_min_dist", -0.70)
 
         self.pregrasp_vel = rospy.get_param("~pregrasp_vel", VEL_MULT*0.10)
         self.grasp_dur = rospy.get_param("~grasp_dur", 3.50/VEL_MULT)
@@ -578,14 +591,17 @@ class BinManager(object):
         reset = True
         while not rospy.is_shutdown():
             if reset:
+                raw_input("Reset system needed")
                 self.system_reset()
                 reset = False
-            #raw_input("Ready")
-            ar_locs = self.ar_man.get_slot_ids()
-            place_tag_num = ar_locs[np.random.randint(0,len(ar_locs))]
-            if not self.move_bin(ar_bin, place_tag_num):
+                raw_input("Ready?")
+            ar_tags = self.ar_man.get_available_bins()
+            grasp_tag_num = ar_tags[np.random.randint(0,len(ar_tags))]
+            empty_slots = self.ar_man.get_empty_slots()
+            place_tag_num = empty_slots[np.random.randint(0,len(empty_slots))]
+            if not self.move_bin(grasp_tag_num, place_tag_num):
                 reset = True
-                print 'Failed moving bin from %d to %d' % (ar_bin, place_tag_num)
+                print 'Failed moving bin from %d to %d' % (grasp_tag_num, place_tag_num)
 
     def do_above_demo(self):
         reset = True

@@ -6,10 +6,15 @@ function n = n_planning_process( n, m, nt, frame_info )
 % return;
 
 %% receive executed plan
-if ~exist('executedplan')
-    executedplan.events = [];
+
+if ~isfield(n, 'executedplan')
+    n.executedplan.events = [];
 end
+
+executedplan = n.executedplan;
+
 if n.ros_tcp_connection.BytesAvailable > 0
+    disp receive_executedplan
     len = fread(n.ros_tcp_connection, 1, 'int');
     executedplan = char(fread(n.ros_tcp_connection, len, 'char'))';
     executedplan = nx_fromxmlstr(executedplan);
@@ -82,15 +87,24 @@ for i=1:length(plans)
    
 end
 
+disp plan_score
+disp([plans(1).score plans(2).score plans(3).score]);
 
-
-%% send plan
-n.executedplan = executedplan;
-n.bestplan     = bestplan;
+%% send
 bestplan.costx = [];
 planning_s     = nx_toxmlstr(bestplan);
 fwrite(n.ros_tcp_connection, length(planning_s), 'int'); 
 fwrite(n.ros_tcp_connection, planning_s, 'char');
+
+%% save
+n.executedplan  = executedplan;
+n.bestplans     = bestplan;
+if ~isfield(n, 'bestplans')
+    n.bestplans = bestplan;
+else
+    n.bestplans(end+1) = bestplan;
+end
+
 
 end
 
