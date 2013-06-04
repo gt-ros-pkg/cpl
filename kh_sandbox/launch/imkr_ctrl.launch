@@ -1,3 +1,0 @@
-<launch>
-  <node name="imkr_control" pkg="kh_sandbox" type="imkr_control.py" output="screen" />
-</launch>

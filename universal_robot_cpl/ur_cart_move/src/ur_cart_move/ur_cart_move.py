@@ -69,65 +69,40 @@ class RAVEKinematics(object):
         self.robot.SetDOFValues(q)
         return np.mat(self.manip.GetEndEffectorTransform())
 
-    def inverse(self, x, q_guess=None, restarts=3, 
-                q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi], weights=6*[1.], options=None):
-        if options is None:
-            ik_options = self.ik_options
-        else:
-            ik_options = options
+    def inverse_all(self, x, q_guess=None, q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi]):
         if q_guess is None:
             q_guess = np.zeros(6)
-        q_wrapped, q_resid = self.wrap_angles(q_guess)
         q_min = np.array(q_min)
         q_max = np.array(q_max)
-        with self.robot: 
-            for i in range(restarts+1):
-                if i == 0:
-                    self.robot.SetDOFValues(q_wrapped)
-                else:
-                    # just keep trying random joint configs after initial guess
-                    self.robot.SetDOFValues(2*(np.random.rand(6)-0.5)*(2*np.pi))
-                #ikparam = IkParameterization(x.A, self.ikmodel6d)
-                if False:
-                    # use OpenRave
-                    sols = self.manip.FindIKSolutions(x.A, ik_options)
-                elif False:
-                    # use analytic
-                    sols = inverse_kin(x, UR10_A, UR10_D, UR10_L, q_guess[5])
-                    #print sols
-                else:
-                    sols = inverse(np.array(x), q_guess[5])
-                valid_sols = []
-                for sol in sols:
-                    test_sol = np.ones(6)*9999.
-                    for i in range(6):
-                        for add_ang in [-2.*np.pi, 0, 2.*np.pi]:
-                            test_ang = sol[i] + add_ang
-                            if (test_ang >= q_min[i] and test_ang <= q_max[i] and
-                                abs(test_ang) < 2.*np.pi and 
-                                abs(test_ang - q_guess[i]) < abs(test_sol[i] - q_guess[i])):
-                                test_sol[i] = test_ang
-                    if np.all(test_sol != 9999.):
-                        if True:
-                            # sanity check for inverse_kin stuff
-                            if np.allclose(np.linalg.inv(self.forward(test_sol)) * x, np.eye(4)):
-                                valid_sols.append(test_sol)
-                        else:
-                            valid_sols.append(test_sol)
-                if len(valid_sols) > 0:
-                    break
-            if len(valid_sols) == 0:
-                return self.kdl_kin.inverse(x, q_guess, 10, q_min, q_max)
-                #return None
-            best_sol_ind = np.argmin(np.sum((weights*(valid_sols - np.array(q_guess)))**2,1))
-            best_sol = valid_sols[best_sol_ind]
-            if False:
-                print 'q_guess', q_guess
-                print 'q_resid', q_resid
-                print 'sols', sols 
-                print 'valid_sols', valid_sols 
-                print 'best_sol', best_sol 
-            return best_sol
+        sols = inverse(np.array(x), q_guess[5])
+        closest_sols = []
+        for sol in sols:
+            test_sol = np.ones(6)*9999.
+            for i in range(6):
+                for add_ang in [-2.*np.pi, 0]:
+                    test_ang = sol[i] + add_ang
+                    if (test_ang >= q_min[i] and test_ang <= q_max[i] and
+                        abs(test_ang) < 2.*np.pi and 
+                        abs(test_ang - q_guess[i]) < abs(test_sol[i] - q_guess[i])):
+                        test_sol[i] = test_ang
+            if np.all(test_sol != 9999.):
+                # sanity check for inverse_kin stuff
+                if np.allclose(np.linalg.inv(self.forward(test_sol)) * x, np.eye(4)):
+                    closest_sols.append(test_sol)
+        return closest_sols
+
+    def inverse(self, x, q_guess=None, q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi], weights=6*[1.]):
+        closest_sols = self.inverse_all(x, q_guess=q_guess, 
+                                        q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi])
+        best_sol_ind = np.argmin(np.sum((weights*(closest_sols - np.array(q_guess)))**2,1))
+        best_sol = closest_sols[best_sol_ind]
+        if False:
+            print 'q_guess', q_guess
+            print 'q_resid', q_resid
+            print 'sols', sols 
+            print 'closest_sols', closest_sols 
+            print 'best_sol', best_sol 
+        return best_sol
 
     def inverse_rand_search(self, x, q_guess=None, pos_tol=0.01, rot_tol=20.0/180.0*np.pi, 
                             restarts=10, 

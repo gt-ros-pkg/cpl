@@ -601,7 +601,6 @@ int initialize_joints(double* delta_move)
       return -3;
     robotinterface_read_state_blocking();
     for (j=0; j<6; ++j) {
-      //speed_vector[j] = 0.25 * sin(((double)i) / 80.0);
       speed_vector[j] = (robotinterface_get_joint_mode(j) == 
           JOINT_INITIALISATION_MODE || robotinterface_get_joint_mode(j) ==
           JOINT_IDLE_MODE) ? delta_move[j] : 0.0;
