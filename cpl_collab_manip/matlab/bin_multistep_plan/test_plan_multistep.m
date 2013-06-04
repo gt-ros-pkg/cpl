@@ -18,10 +18,10 @@ distribs = [       2,       4,       30,      4,      1.00;
                    2,       4,       30,      4,      1.00;
                    2,       4,       30,      4,      1.00;
 ];
-bins = 1:7; % bin IDs
+% bins = 1:7; % bin IDs
 slot_states = [1, 0, 0]; % state of workspace slots (0 if empty, >0 if bin ID occupies)
 nowtimesec = 20; % time (s) of current time
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 probs = gen_data(distribs, rate, t_duration);
-action = multistep(probs, bins, slot_states, nowtimesec, rate, 1)
+action = multistep(probs, slot_states, nowtimesec, rate, 1)

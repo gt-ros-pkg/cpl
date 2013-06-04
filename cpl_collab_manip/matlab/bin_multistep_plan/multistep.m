@@ -1,4 +1,4 @@
-function [action] = multistep(probs, bins, slot_states, nowtimesec, rate, debug)
+function [action] = multistep(probs, slot_states, nowtimesec, rate, debug)
 
 planning_params
 
@@ -7,7 +7,7 @@ opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEva
 %opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
-deliv_seqs = gen_deliv_seqs(t, beam_counts, probs, bins, slot_states, nowtimeind, endedweight, notbranchweight);
+deliv_seqs = gen_deliv_seqs(t, beam_counts, probs, slot_states, nowtimeind, endedweight, notbranchweight);
 % These sequences are based on a beam search through
 % bins not in the workspace currently and weighted using a heuristic which prefers bins
 % whose expected start time is closer in the future, has not yet ended, and whose
@@ -79,9 +79,9 @@ for i = 1:size(deliv_seqs,1)
         figure(100+i)
         clf
         subplot(2,1,2)
-        visualize_bin_probs(t, bins, probs, nowtimesec, t(end)/2);
+        visualize_bin_probs(t, numbins, probs, nowtimesec, t(end)/2);
         subplot(2,1,1)
-        visualize_bin_activity(plan, [action_starts', action_ends'], bins, nowtimesec, t(end)/2);
+        visualize_bin_activity(plan, [action_starts', action_ends'], numbins, nowtimesec, t(end)/2);
         title(sprintf('Cost: %.1f | Action: %d', cost, actions(i)))
     end
 end
