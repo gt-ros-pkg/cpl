@@ -24,4 +24,4 @@ nowtimesec = 20; % time (s) of current time
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 probs = gen_data(distribs, rate, t_duration);
-action = multistep(probs, bins, slot_states, nowtimesec, rate, 0)
+action = multistep(probs, bins, slot_states, nowtimesec, rate, 1)

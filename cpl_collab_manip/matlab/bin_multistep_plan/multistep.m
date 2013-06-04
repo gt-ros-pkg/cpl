@@ -57,6 +57,7 @@ for i = 1:size(deliv_seqs,1)
     all_plans(i,:) = fullplan;
 end
 
+actions = [];
 [costs_sorted, cost_inds] = sort(all_costs);
 for i = 1:size(deliv_seqs,1)
     ind = cost_inds(i);
@@ -70,7 +71,7 @@ for i = 1:size(deliv_seqs,1)
     % if action == 0, wait
     % if action  > 0, deliver bin "action"
     % if action  < 0, remove bin "action"
-    action = plan_action(plan, action_starts, nowtimesec, planning_cycle);
+    actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
     if debug
         figure(100+i)
@@ -79,6 +80,8 @@ for i = 1:size(deliv_seqs,1)
         visualize_bin_probs(t, bins, probs, nowtimesec, t(end)/2);
         subplot(2,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bins, nowtimesec, t(end)/2);
-        title(sprintf('Cost: %.1f | Action: %d', cost, action))
+        title(sprintf('Cost: %.1f | Action: %d', cost, actions(i)))
     end
 end
+
+action = actions(1);
