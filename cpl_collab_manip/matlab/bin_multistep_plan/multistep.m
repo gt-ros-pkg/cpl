@@ -2,7 +2,9 @@ function [action] = multistep(probs, bins, slot_states, nowtimesec, rate, debug)
 
 planning_params
 
-opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
+% opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
+opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals);
+%opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
 deliv_seqs = gen_deliv_seqs(t, beam_counts, probs, bins, slot_states, nowtimeind, endedweight, notbranchweight);
@@ -44,7 +46,7 @@ for i = 1:size(deliv_seqs,1)
     lower_bounds = durations*rate;
     lower_bounds(1) = lower_bounds(1) + nowtimeind;
     x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, undodur, nowtimeind, 0), ...
-                    lower_bounds, [], [], [], [], lower_bounds, [], [], opt_options);
+                    lower_bounds*10, [], [], [], [], lower_bounds, [], [], opt_options);
     best_times = cumsum(x_sol / rate);
 
     % given the optimal timings, find the actual plan and its cost from the optimization function
