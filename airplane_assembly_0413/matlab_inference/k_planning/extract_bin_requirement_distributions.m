@@ -3,7 +3,7 @@ function bin_distributions = extract_bin_requirement_distributions( m )
 %   Detailed explanation goes here
 
 bin_id        = {3, 11, 10, 12, 2, 7, 14, 15, 13};
-symbol_names1 = {'body1', 'nose_a1', 'nose_h1', 'wing_at1', 'wing_ad1', 'wing_h1', 'tail_at1', 'tail_ad1', 'tail_h1'};
+symbol_names1 = {'Body', 'Nose_A', 'Nose_H', 'Wing_AT', 'Wing_AD', 'Wing_H', 'Tail_AT', 'Tail_AD', 'Tail_H'};
 symbol_types1 = {'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start'};
 symbol_names2 = {'body6', 'nose_a4', 'nose_h3', 'wing_at3', 'wing_ad4', 'wing_h6', 'tail_at3', 'tail_ad4', 'tail_h6'};
 symbol_types2 = {'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start'};
