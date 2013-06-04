@@ -1153,12 +1153,11 @@ class TabletopPushingPerceptionNode
       delete x;
     }
     ScoredIdx best_scored = pq.top();
-    int chosen_idx = -1;
-    ROS_INFO_STREAM("num position failures: " << num_position_failures);
     if (!previous_position_worked)
     {
       // TODO: Replace this with location history not simple count
       num_position_failures_++;
+      ROS_INFO_STREAM("Ignoring top: " << num_position_failures_ << " positions");
       for (int p = 0; p < num_position_failures_; ++p)
       {
         pq.pop();
