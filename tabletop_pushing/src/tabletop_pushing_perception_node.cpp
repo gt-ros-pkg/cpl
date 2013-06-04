@@ -755,9 +755,18 @@ class TabletopPushingPerceptionNode
       if (req.start_loc_param_path.length() > 0) // Choose start location using the learned classifier
       {
         ROS_INFO_STREAM("Finding learned push start loc");
-        ROS_INFO_STREAM("Using param path"<< req.start_loc_param_path);
-        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score,
-                                               req.previous_position_worked);
+        ROS_INFO_STREAM("Using param path "<< req.start_loc_param_path);
+
+        // HACK: We set the name to "rand" if we are testing with rand
+        if (req.start_loc_param_path.compare("rand") == 0)
+        {
+          chosen_loc = chooseRandomPushStartLoc(cur_obj, cur_state);
+        }
+        else
+        {
+          chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score,
+                                                 req.previous_position_worked);
+        }
       }
       else if (start_loc_use_fixed_goal_)
       {
@@ -1250,6 +1259,8 @@ class TabletopPushingPerceptionNode
       Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, loc, new_push_angle, false);
       if (goalPoseValid(goal_pose))
       {
+        // TODO: Display boundary with 0 scores
+        ROS_INFO_STREAM("Choosing random idx: " << chosen_idx);
         return loc;
       }
       available_indices.erase(available_indices.begin()+rand_idx);
