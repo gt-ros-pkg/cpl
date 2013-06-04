@@ -11,7 +11,14 @@ end
 orderx.costx = zeros(n, data.params.T);
 for i=1:n
     sid = actionname2symbolid(orderx.events(i).name, data.grammar);
-    d   = data.grammar.symbols(sid).(orderx.events(i).type);
+    
+    if isfield(orderx.events(i), 'distribution')
+        d = orderx.events(i).distribution;
+    else
+        d   = data.grammar.symbols(sid).(orderx.events(i).type);
+    end
+    
+    
     orderx.costx(i,:) = ef2(d, planning.cache_cost.(orderx.events(i).cost_type));
 end
 

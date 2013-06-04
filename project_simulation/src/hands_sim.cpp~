@@ -12,6 +12,7 @@
 #include <geometry_msgs/Quaternion.h>
 #include <tf/transform_listener.h>
 #include<std_msgs/UInt8MultiArray.h>
+#include<std_msgs/Int8.h>
 
 #include <math.h>
 
@@ -24,6 +25,15 @@
 #include <std_msgs/String.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+
+#include <stdio.h>  /* defines FILENAME_MAX */
+#ifdef WINDOWS
+    #include <direct.h>
+    #define GetCurrentDir _getcwd
+#else
+    #include <unistd.h>
+    #define GetCurrentDir getcwd
+ #endif
 
 #define EPSILON 8.8817841970012523e-016
 
@@ -57,7 +67,7 @@ private:
 
   void read_into_bin(string file_name, Bin* read_bin)
   {
-    string file_path = "src/tasks/bins/";
+    string file_path = "../src/tasks/bins/";
     string file = file_path + file_name + ".txt";
     (*read_bin).bin_name = file_name;
     
@@ -109,7 +119,7 @@ private:
   
   void read_task(string file)
   {
-    string file_path = "src/tasks/";
+    string file_path = "../src/tasks/";
     ifstream task_file;
     string file_n_path = file_path+file;
     task_file.open(file_n_path.c_str());
@@ -148,7 +158,7 @@ public:
   void read_file(string file)  {read_task(file);}
 
   //returns false if no step left
-  bool get_next_step(size_t* bin_no, double *dur_mean, double *dur_std, size_t* bin_id_to_go)//, string* b_nam, string* s_nam)
+  bool get_next_step(size_t* bin_no, double *dur_mean, double *dur_std, size_t* bin_id_to_go, string* t_nam)//, string* s_nam)
   {
     size_t cur_bin_no = *bin_no;
     Bin* cur_bin = &bin_list[cur_bin_no];
@@ -177,7 +187,7 @@ public:
     *bin_no = cur_bin_no;
     *dur_mean = cur_step.duration_mean;
     *dur_std = cur_step.duration_std;
-    
+    *t_nam = cur_step.step_name;
     //there is step to complete
     return true;
   }
@@ -199,14 +209,19 @@ private:
   
   vector<double> lh_cur;
   vector<double> rh_cur;
+  vector<double> lh_cheat_wait;
 
   ros::NodeHandle nh;
   ros::Publisher lh_pose;
   ros::Publisher rh_pose;
   ros::Publisher viz_pub;
+  ros::Publisher task_pub;
+  ros::Publisher picking_bin;
+
+  //Bin being picked right now, 0 if not started or ended, -1 if waiting.
+  int currently_picked_bin;
 
   ros::Subscriber ar_poses;
-  ros::Subscriber workspace_bins;
   
   project_simulation::AlvarMarkers cur_markers;
   
@@ -229,36 +244,196 @@ private:
   
   double motion_mean, motion_std;
   
-  vector<size_t> workspace_bin_list;
-
   //noise
   //this represents noise in the tracker
   double pub_noise_dev;
+  double walk_dev;
 
   //are hands at rest positions
   bool is_lh_rest, is_rh_rest;
 
+  //move hand to Position X while waiting
+  bool cheat_at_waiting;
+ 
+  //hand-offset learnt params
+  double hand_t_mean[3];
+  double hand_t_var[3];
+
+  //max hand velocity
+  double hand_max_vel;
 
 public:
+  handSim(string task_name, bool cheat);
+  
+  void set_arr_equal(double from[], double to[], int N);
+  
+  geometry_msgs::PoseStamped transform_view
+  (geometry_msgs::PoseStamped to_change);
 
-  handSim(string task_name)
+  void mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[], size_t mat_two_size[2], double mat_out[]);
+
+  void trans_homo_vec(double homo_vec[]);
+  void trans_homo_vec_hand_off(double homo_vec[], double translate[]);
+
+  void read_ar(project_simulation::AlvarMarkers msg);
+
+
+  //does tasks in list
+  void pub_hands();
+  
+  //pick out of given bin in correct time
+  double perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name);
+
+  
+  //calculate euclidean dist between two vectors
+  double calc_euclid_dist(vector<double> vec_one, vector<double> vec_two);
+
+  //return position of queried bin
+  vector<double> find_bin_pos(size_t bin_to_find);
+
+  //wait for bin to arrive
+  void wait_for_bin(size_t bin_to_chk);
+
+  //check if bin in position
+  bool bin_in_position(size_t chk_bin);
+  
+  //return only positive samples
+  double samp_gauss_pos(double mean, double std_dev);
+
+  //return sample
+  double samp_gauss(double mean, double std_dev);
+  
+  //publish present hand positions
+  void publish_cur_hand_pos();
+  
+  void add_tracker_noise(geometry_msgs::PoseStamped &message);
+
+  //publish a visualization marker at given location
+  void pub_viz_marker(geometry_msgs::PoseStamped lh_pose, geometry_msgs::PoseStamped rh_pose);
+
+  //brings hands to rest positions and then task is completed
+  void pub_hands_rest();
+  
+  //publish hands for given time in their current location
+  void wait_at_location(double wait_time);
+
+  //interpolate to given location in specified time
+  void move_to_loc(bool move_left, bool move_right, vector<double> left_pos, 
+		   vector<double> right_pos, double move_time);
+  
+  //at bin
+  double time_to_wait();
+  
+  void vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos);
+  
+  void vec_to_orientation(geometry_msgs::Quaternion &out_orient, 
+			  vector<double> in_orient);
+  /*
+    Quaternion to rotation matrix.
+    Adapted from:
+    `Christoph Gohlke <http://www.lfd.uci.edu/~gohlke/>`_
+  */
+  void quaternion_matrix(
+			double *quat,    /* double[4]  */
+			double *matrix);  /* double[16] */
+  void random_walking(double, double);
+
+  vector<double> vec_difference(vector<double> vec_a, vector<double> vec_b);
+  
+  void cheat_wait(size_t bin_id);
+
+  //change bin centroid position so hand can reach inside it
+  geometry_msgs::PoseStamped transform_for_hand
+  (geometry_msgs::PoseStamped bin_cur_pose);
+
+
+};
+
+//change bin centroid position so hand can reach inside it
+geometry_msgs::PoseStamped handSim::transform_for_hand
+(geometry_msgs::PoseStamped bin_cur_pose)
+{
+  double* bin_quaternion;
+  double temp[] = {bin_cur_pose.pose.orientation.w,
+		   bin_cur_pose.pose.orientation.x,
+		   bin_cur_pose.pose.orientation.y,
+		   bin_cur_pose.pose.orientation.z};
+  
+  bin_quaternion = temp;
+  double bin_rot_mat[16];
+  double* temp_rot_mat = bin_rot_mat;
+  quaternion_matrix(bin_quaternion, temp_rot_mat);
+
+  geometry_msgs::PoseStamped transformed;
+  transformed = bin_cur_pose;
+
+  //rotate
+  double homo_pos_vec[4] = {samp_gauss(hand_t_mean[0], hand_t_var[0]),
+			    samp_gauss(hand_t_mean[1], hand_t_var[1]),
+			    samp_gauss(hand_t_mean[2], hand_t_var[2]),
+			    1.0};
+  size_t size_mat[]={4,4}; size_t size_vec[]={4,1};
+  double homo_vec_out[4];
+
+  /*  //debug
+  cout<<"time for mat "<<endl;
+  for (int i=0; i<4; i++){
+    for(int j=0; j<4;j++)
+      {cout<<bin_rot_mat[4*i+j]<<"     ";}
+      cout<<endl;}*/
+
+  mat_mul(bin_rot_mat, size_mat, homo_pos_vec, size_vec, homo_vec_out);
+    
+  double translate_by[] = {bin_cur_pose.pose.position.x,
+		   bin_cur_pose.pose.position.y,
+		   bin_cur_pose.pose.position.z};
+  double* temp_translate_by;
+  temp_translate_by = translate_by;
+
+  //convert back from homogenous and translate
+  trans_homo_vec_hand_off(homo_vec_out, temp_translate_by);
+    
+  transformed.pose.position.x = homo_vec_out[0];
+  transformed.pose.position.y = homo_vec_out[1];
+  transformed.pose.position.z = homo_vec_out[2];
+
+  //debug
+  /*  cout<<"Hand positions initial:"<<bin_cur_pose<<endl;
+      cout<<"Hand positions transform:"<<transformed<<endl;*/
+  
+  //  transformed.header.frame_id = frame_of_reference;
+  
+  return transformed;
+
+}
+
+
+handSim::handSim(string task_name, bool cheat)
   {
+    //cheat at the waiting game?
+    cheat_at_waiting = cheat;
+
     //load tasks
     task_name += ".txt";
     to_perform.read_file(task_name);
 
-    //set workspace
-    workspace_bin_list.clear();
-    
     //set noise
     pub_noise_dev = 0.005;
-    
+    walk_dev = 0.1;
+
+    //picking which bin
+    currently_picked_bin = 0;
+
     //initialize rest positions
     double init_pos_l[]= {-0.0813459, 0.258325,1.86598};
     double init_pos_r[]= {-0.1813459, 0.258325,1.86598};
     lh_rest.assign(&init_pos_l[0], &init_pos_l[0]+3);
     rh_rest.assign(&init_pos_r[0], &init_pos_r[0]+3);
-    
+
+    //if cheating- waiting position
+    double cheat_l[]= {0.2813459, 0.308325,1.86598};
+    lh_cheat_wait.assign(&cheat_l[0], &cheat_l[0]+3);
+
     //initially, hands are at rest position
     lh_cur = lh_rest;
     rh_cur = rh_rest;
@@ -272,10 +447,6 @@ public:
     total_time_steps = 0;
     wait_time_steps = 0;
 
-
-    //workspace
-    vector<vector <double> > work_locs;
-
     //frame
     frame_of_reference = "/kinect0_rgb_optical_frame";
     ar_pose_frame = "/lifecam1_optical_frame";
@@ -283,19 +454,28 @@ public:
     //time for moving hand to location or back
     motion_mean = 1.0;
     motion_std = 0.01;
-
     
     //clear bin vectors
     cur_bin_locations.clear();
     temp_bin_locations.clear();
     
+    //hand-offset in bin frame
+    hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
+    hand_t_var[0]=0.00020556;hand_t_var[1]=0.00052374;hand_t_var[2]=0.00058416;  
+    
     //ros-stuff
     lh_pose = nh.advertise<geometry_msgs::PoseStamped>("left_hand",1);
     rh_pose = nh.advertise<geometry_msgs::PoseStamped>("right_hand",1);
     viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
+    task_pub = nh.advertise<std_msgs::String>("action_name", 1);
+    picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
     
-    ar_poses = nh.subscribe("ar_pose_marker", 0, &handSim::read_ar, this);  
-    workspace_bins = nh.subscribe("workspace_bins", 0, &handSim::listen_workspace, this);
+    ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
+
+    //max-magnitude of hand velocity, to be used for random walk in m/s. 
+    //TODO: maybe this should be checked every time the hand is published or 
+    //something
+    hand_max_vel = 1.0;
     
     //store transform
     tf::TransformListener tf_cam_to_kin;  
@@ -337,8 +517,8 @@ public:
     }
   }
   
-  //set values of one array to another
-  void set_arr_equal(double from[], double to[], int N)
+//set values of one array to another
+void handSim::set_arr_equal(double from[], double to[], int N)
   {
     if (sizeof(from) != sizeof(to))
       {
@@ -360,10 +540,11 @@ public:
     
   }
   
-  geometry_msgs::PoseStamped transform_view(geometry_msgs::PoseStamped to_change)
+geometry_msgs::PoseStamped handSim::transform_view(geometry_msgs::PoseStamped to_change)
   {
     geometry_msgs::PoseStamped transformed;
     transformed = to_change;
+
     //rotate
     double homo_pos_vec[4] = {to_change.pose.position.x,
 			      to_change.pose.position.y,
@@ -401,7 +582,7 @@ public:
     return transformed;
   }
   
-  void mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[], size_t mat_two_size[2], double mat_out[])
+void handSim::mat_mul(double mat_one[], size_t mat_one_size[2], double mat_two[], size_t mat_two_size[2], double mat_out[])
   { 
     if (mat_one_size[1]==mat_two_size[0])
       {
@@ -422,7 +603,7 @@ public:
       }else{cout<< "Can't multiple! Matrix size don't match" << endl;}
   }
 
-  void trans_homo_vec(double homo_vec[])
+  void handSim::trans_homo_vec(double homo_vec[])
   {
     //convert to regular vector
     homo_vec[0] /= homo_vec[3];
@@ -437,7 +618,24 @@ public:
 
   }
 
-  void read_ar(project_simulation::AlvarMarkers msg)
+void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
+  {
+    //convert to regular vector
+    homo_vec[0] /= homo_vec[3];
+    homo_vec[1] /= homo_vec[3];
+    homo_vec[2] /= homo_vec[3];
+    homo_vec[3] /= homo_vec[3];
+    
+
+    //translate
+    homo_vec[0] += translate[0];
+    homo_vec[1] += translate[1];
+    homo_vec[2] += translate[2];
+
+  }
+
+
+  void handSim::read_ar(project_simulation::AlvarMarkers msg)
   {
     geometry_msgs::Point temp_pos;
     geometry_msgs::PoseStamped temp_pose;
@@ -447,8 +645,18 @@ public:
 
     for (size_t i=0; i<msg.markers.size(); i++)
       {
-	//to transform ar-tags frame of reference
-	temp_pose = transform_view(msg.markers[i].pose);
+	
+	//to transform each bin acc to learnt params to simulate hand reaching
+	//into bin
+	//debug 
+	//cout<<"BIN ID::"<< msg.markers[i].id;
+	temp_pose = transform_for_hand(msg.markers[i].pose);
+
+	//to transform ar-tags frame of reference from webcam to kinect
+	temp_pose = transform_view(temp_pose);
+
+
+
 	temp_pos = temp_pose.pose.position;
 
 	temp_bin.id = msg.markers[i].id;
@@ -466,187 +674,124 @@ public:
     
   }
 
-
-  void listen_workspace(std_msgs::UInt8MultiArray work_bins)
-  {
-    size_t n_bins = work_bins.data.size();
-    vector<size_t> temp_work;
-    temp_work.clear();
-
-    //debug
-    //cout<<endl<<"Work bins: (";
-
-    for (size_t i=0; i<n_bins; ++i)
-      {
-	temp_work.push_back(work_bins.data[i]);
-	
-	//debug
-	//cout<<temp_work[i]<<',';
-      }
-    
-    //debug
-    //cout<<')'<<endl;
-
-    workspace_bin_list.clear();
-    workspace_bin_list = temp_work;    
-  }
-  
-  //returns t/f if bin is/not in human workspace
-  bool bin_in_workspace(size_t bin_id)
-  {
-    size_t n_bins = workspace_bin_list.size();
-    bool bin_found = false;
-
-    for (size_t i=0; i<n_bins; i++)
-      {
-	if(bin_id == workspace_bin_list[i])
-	  {
-	    bin_found = true;
-	    break;
-	  } 
-      }
-
-    return bin_found;
-
-  }
-
   //does tasks in list
-  void pub_hands()
+  void handSim::pub_hands()
   {
     
     size_t cur_bin_id, cur_bin_no=0;
-
+    string cur_task;
     double duration_m, duration_s;
+    double time_to_next_touch = 0.0;
+    bool pick_lefty = false; //start picking from right hand
 
     //pop next task
-    while(to_perform.get_next_step(&cur_bin_no, &duration_m, &duration_s, &cur_bin_id))
+    while(to_perform.get_next_step(&cur_bin_no, &duration_m, &duration_s, &cur_bin_id, &cur_task))
       {	
 	//debug
 	cout<< "Task - Bin-"<<cur_bin_id<<" ; mean std = "<<duration_m<<' '<<duration_s<<endl;
 	
-	perform_task(cur_bin_id, duration_m, duration_s);
+	time_to_next_touch = perform_task(cur_bin_id, duration_m, duration_s, 
+					  time_to_next_touch, pick_lefty, 
+					  cur_task);
+	pick_lefty = !pick_lefty;
       }
     
     //after tasks complete, just publish the rest position
+    currently_picked_bin =0;
     pub_hands_rest();
 	        
   }
   
   //pick out of given bin in correct time
-  void perform_task(size_t cur_bin, double dur_m, double dur_s)
+double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name)
   {
     vector<double> cur_bin_loc;
+    
+    //should be true only in case of picking the first bin
+    if (time_reach<=0)
+      {
+	time_reach = samp_gauss_pos(motion_mean, motion_std);
+	
+	//wait at current positions- for hand after touched a bin or initially 
+	//before reaching into the first bin
+	double waiting_time = time_to_wait();
+	wait_at_location(waiting_time);
+    	
+	//debug
+	cout<<"First bin"<<endl;
+      }
     
     //if bin to pick from unavailable
     if(!bin_in_position(cur_bin))
       {
-	wait_for_bin(cur_bin);
+	//waiting-so change current picked bin
+	int prev_bin = handSim::currently_picked_bin;
+	handSim::currently_picked_bin = -1;
+
+	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
+	else{cheat_wait(cur_bin);}
+
 	//always at rest after waiting
 	is_lh_rest =true;
 	is_rh_rest = true;
+	
+	//waiting over
+	handSim::currently_picked_bin = prev_bin;
       }
 
-    //after it becomes available
-    //sample gaussian to determine time to perform task
-    double time_task_rem = samp_gauss_pos(dur_m, dur_s);
 
-    //wait at current positions- for hand after touched a bin or initially 
-    //before reaching into the first bin
-    double waiting_time = time_to_wait();
-    time_task_rem -= waiting_time;
-    wait_at_location(waiting_time);
-    //add total time
-    total_time_steps += (waiting_time/PUB_RATE);
-    
-    //its more of a debugging measure- one hand at least be at rest
+    //after it becomes available    
     cur_bin_loc = find_bin_pos(cur_bin);
-    if(!is_lh_rest && !is_rh_rest)
-      {
-	cout<<"Both hands not at rest"<<endl;
-	exit(-1);
-      }
-    //should happen at the beginning of a task or after spending some time 
-    //waiting
-    else if(is_rh_rest && is_lh_rest)
-      {
-	//just go with righty
-	double to_bin_time = samp_gauss_pos(motion_mean, motion_std);
-	
-	//if sampled time > time remaining then spend remaining time on moving
-	if (to_bin_time>=time_task_rem){to_bin_time=time_task_rem;}
-	else{
-	  //wait before performing task
-	  wait_at_location(time_task_rem-to_bin_time);
-	}
-	
-	//then move right to bin
-	move_to_loc(false, true, lh_cur, cur_bin_loc, to_bin_time);
-	//right-hand was moved
-	is_rh_rest = false;
-      }
-    else if(is_rh_rest)
-      {
-	double to_bin_time = samp_gauss_pos(motion_mean, motion_std);
-	double to_rest_time = samp_gauss_pos(motion_mean, motion_std);
-	double motion_time = to_bin_time+to_rest_time;
-	double wait_bw_bins;
-	//if sampled time > time remaining then spend remaining time on moving
-	if (motion_time>=time_task_rem)
+    handSim::currently_picked_bin = int(cur_bin);
+
+    //time to wait at bin
+    double wait_at_bin = time_to_wait();
+
+    //sample gaussian to determine time till next bin touch after present one
+    double time_task_do = samp_gauss_pos(dur_m, dur_s);
+
+    //time for interpolating b/w rest and next bin
+    double to_next_motion = samp_gauss_pos(motion_mean, motion_std);
+    double time_back_rest = samp_gauss_pos(motion_mean, motion_std);
+
+    //if sampled time < time for motion and waiting
+    if ((wait_at_bin+to_next_motion+time_back_rest)>=time_task_do)
 	  {
-	    //scale both times for motion to just fit within the actual time
-	    double time_scale = time_task_rem/motion_time;
-	    to_bin_time *= time_scale;
-	    to_rest_time *= time_scale;
-	    wait_bw_bins = 0;
-	  }else{wait_bw_bins = time_task_rem-motion_time;}
+	    //scale both times to just fit within the actual time
+	    double time_scale = time_task_do
+	      /(wait_at_bin+to_next_motion+time_back_rest);
+	    wait_at_bin *= time_scale;
+	    to_next_motion *= time_scale;
+	    time_back_rest *= time_scale;
+	    time_task_do = 0;
+	  }else{time_task_do -= (wait_at_bin+to_next_motion+time_back_rest);}
 
-	//first bring left to rest
-	move_to_loc(true, false, lh_rest, rh_cur, to_rest_time);
-	is_lh_rest = true;
-	
-	//use the parts retrieved
-	wait_at_location(wait_bw_bins);
-	
-	//then move right to bin
-	move_to_loc(false, true, lh_cur, cur_bin_loc, to_bin_time);
-	is_rh_rest = false;
-      }
+    
+    move_to_loc(pick_lefty, !pick_lefty, cur_bin_loc, cur_bin_loc, time_reach);
+    is_lh_rest = !pick_lefty;
+    is_rh_rest = pick_lefty;
 
-    else if(is_lh_rest)
-      {
+    //publish action as soon as bin is touched
+    std_msgs::String task_msg;
+    task_msg.data= cur_task_name;
+    task_pub.publish(task_msg);
 
-	double to_bin_time = samp_gauss_pos(motion_mean, motion_std);
-	double to_rest_time = samp_gauss_pos(motion_mean, motion_std);
-	double motion_time = to_bin_time+to_rest_time;
-	double wait_bw_bins;
-	//if sampled time > time remaining then spend remaining time on moving
-	if (motion_time>=time_task_rem)
-	  {
-	    //scale both times for motion to just fit within the actual time
-	    double time_scale = time_task_rem/motion_time;
-	    to_bin_time *= time_scale;
-	    to_rest_time *= time_scale;
-	    wait_bw_bins = 0;
-	  }else{wait_bw_bins = time_task_rem-motion_time;}
+    //wait at the bin
+    wait_at_location(wait_at_bin);    
+    
+    //move back to rest position
+    move_to_loc(!is_lh_rest, !is_rh_rest, lh_rest, rh_rest, time_back_rest);
 
-	//first bring right to rest
-	move_to_loc(false, true, lh_cur, rh_rest, to_rest_time);
-	is_rh_rest = true;
-
-	//use the parts retrieved
-	wait_at_location(wait_bw_bins);
-	
-	//then move left to bin
-	move_to_loc(true, false, cur_bin_loc, rh_cur, to_bin_time);
-	is_lh_rest = false;
-
-      }
-
-
+    //use the parts retrieved
+    //wait_at_location(wait_bw_bins);
+    random_walking(time_task_do, walk_dev);
+    
+    //return the time for touching next bin
+    return to_next_motion;
   }
   
   //calculate euclidean dist between two vectors
-  double calc_euclid_dist(vector<double> vec_one, vector<double> vec_two)
+  double handSim::calc_euclid_dist(vector<double> vec_one, vector<double> vec_two)
   {
     if (vec_one.size()!=vec_two.size())
       {
@@ -667,7 +812,7 @@ public:
   }
 
   //return position of queried bin
-  vector<double> find_bin_pos(size_t bin_to_find)
+  vector<double> handSim::find_bin_pos(size_t bin_to_find)
   {
     ros::spinOnce();
     
@@ -686,7 +831,7 @@ public:
   }
 
   //wait for bin to arrive
-  void wait_for_bin(size_t bin_to_chk)
+  void handSim::wait_for_bin(size_t bin_to_chk)
   {
     ros::Rate loop_rate(PUB_RATE);
     
@@ -709,12 +854,22 @@ public:
 	++total_time_steps;
     
 	//debug
-	cout<<"Need Bin: "<<bin_to_chk<<endl;
+	cout<<"I Need Bin: "<<bin_to_chk<<endl;
+
+
+
+	//publish action as soon as bin is touched
+	std_msgs::String task_msg;
+	task_msg.data= "waiting";
+	task_pub.publish(task_msg);
+
+
+
       }while(ros::ok() && !bin_in_position(bin_to_chk));
   }
 
   //check if bin in position
-  bool bin_in_position(size_t chk_bin)
+  bool handSim::bin_in_position(size_t chk_bin)
   {
     ros::spinOnce();
     
@@ -722,15 +877,14 @@ public:
       {
 	if(cur_bin_locations[i].id == chk_bin)
 	  {
-	    if(bin_in_workspace(chk_bin)){return true;}
-	    else{break;}
+	    return true;
 	  }
       }
     return false;
   }
   
   //return only positive samples
-  double samp_gauss_pos(double mean, double std_dev)
+  double handSim::samp_gauss_pos(double mean, double std_dev)
   {
     double sample = mean + std_dev*NORM_GEN();
     while(sample<=0){sample = mean + std_dev*NORM_GEN();}
@@ -738,14 +892,14 @@ public:
   }
 
   //return sample
-  double samp_gauss(double mean, double std_dev)
+  double handSim::samp_gauss(double mean, double std_dev)
   {
     double sample = mean + std_dev*NORM_GEN();
     return sample;
   }
   
   //publish present hand positions
-  void publish_cur_hand_pos()
+  void handSim::publish_cur_hand_pos()
   {
     geometry_msgs::PoseStamped msg_l, msg_r;
 
@@ -764,11 +918,15 @@ public:
     lh_pose.publish(msg_l);
     rh_pose.publish(msg_r);
 
+    std_msgs::Int8 bin_2_pub;
+    bin_2_pub.data = currently_picked_bin;
+    picking_bin.publish(bin_2_pub);
+
     //publish visual markers
     pub_viz_marker(msg_l, msg_r);
   }
   
-  void add_tracker_noise(geometry_msgs::PoseStamped &message)
+  void handSim::add_tracker_noise(geometry_msgs::PoseStamped &message)
   {
     message.pose.position.x += samp_gauss(0.0, pub_noise_dev);
     message.pose.position.y += samp_gauss(0.0, pub_noise_dev);
@@ -776,7 +934,7 @@ public:
   }
 
   //publish a visualization marker at given location
-  void pub_viz_marker(geometry_msgs::PoseStamped lh_pose, geometry_msgs::PoseStamped rh_pose)
+  void handSim::pub_viz_marker(geometry_msgs::PoseStamped lh_pose, geometry_msgs::PoseStamped rh_pose)
   {
     //left hand
     visualization_msgs::Marker lh_marker;
@@ -824,8 +982,9 @@ public:
   }
 
   //brings hands to rest positions and then task is completed
-  void pub_hands_rest()
+  void handSim::pub_hands_rest()
   {
+    
     ros::Rate loop_rate(PUB_RATE);
 	    
     //TODO: make use of publish pose function to remove redundancy
@@ -861,7 +1020,7 @@ public:
   }
   
   //publish hands for given time in their current location
-  void wait_at_location(double wait_time)
+  void handSim::wait_at_location(double wait_time)
   {
     long tot_steps = floor(wait_time*double(PUB_RATE));
     long step_no=0;
@@ -872,14 +1031,15 @@ public:
 	publish_cur_hand_pos();
 	++step_no;
 	loop_rate.sleep();
-	//increment total time
-	++total_time_steps;
       }
+    //add to total time
+    total_time_steps += tot_steps;
+
   }
 
 
   //interpolate to given location in specified time
-  void move_to_loc(bool move_left, bool move_right, vector<double> left_pos, 
+  void handSim::move_to_loc(bool move_left, bool move_right, vector<double> left_pos, 
 		   vector<double> right_pos, double move_time)
   {
     long tot_steps = floor(move_time * PUB_RATE);
@@ -931,7 +1091,7 @@ public:
 
     //ensure at the correct positions after end of interpolation
     if(move_left){lh_cur = left_pos;}
-    if(move_right{rh_cur = right_pos;}
+    if(move_right){rh_cur = right_pos;}
   }
 
   /*bool is_lh_rest()
@@ -955,13 +1115,13 @@ public:
     }*/
 
   //at bin
-  double time_to_wait()
+  double handSim::time_to_wait()
   {
-    //wait a half-second for the moment
-    return 0.1;
+    //wait a third-a-second for the moment
+    return 0.3;
   }
 
-  void vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos)
+  void handSim::vec_to_position(geometry_msgs::Point &out_pos, vector<double> in_pos)
   {
     if(in_pos.size()==3)
       {
@@ -975,7 +1135,7 @@ public:
       }
   }
   
-  void vec_to_orientation(geometry_msgs::Quaternion &out_orient, 
+  void handSim::vec_to_orientation(geometry_msgs::Quaternion &out_orient, 
 			  vector<double> in_orient)
   {
     if(in_orient.size()==4)
@@ -997,7 +1157,7 @@ public:
     :Author:
     `Christoph Gohlke <http://www.lfd.uci.edu/~gohlke/>`_
   */
-  void quaternion_matrix(
+  void handSim::quaternion_matrix(
 			double *quat,    /* double[4]  */
 			double *matrix)  /* double[16] */
   {
@@ -1048,34 +1208,195 @@ public:
 	}
       }
     return ;
-  }  
+  }
 
-};
+//vec_a - vec_b
+vector<double> handSim::vec_difference(vector<double> vec_a, vector<double> vec_b)
+{
+  if (vec_a.size()!=vec_b.size())
+    {
+      cout<<"Error: Vecors can't be subtracted. Sizes don't march"<<endl;
+      exit(-1);
+    }
+  else
+    {
+      vector<double> difference;
+      difference.clear();
+      for(size_t i=0; i<vec_a.size(); ++i)
+	{
+	  difference.push_back(vec_a[i]-vec_b[i]);
+	}
+      return difference;
+    }
+}
+//randomly walks around current hand positions
+void handSim::random_walking(double walk_time, double std_dev)
+{
+    ros::Rate loop_rate(PUB_RATE);
+    
+    long time_steps = floor(walk_time*double(PUB_RATE));
+    long cur_step=0;
+    vector<double> lh_init = lh_cur;
+    vector<double> rh_init = rh_cur;
+    vector<double> diff_l;
+    vector<double> diff_r;
+    vector<double> temp_diff_r;
+    vector<double> temp_diff_l;
+    vector<double> zero_vec(3, 0.0);
+    double max_step_magnitude = handSim::hand_max_vel * (1.0/double(PUB_RATE));
+    double scale_l, scale_r;
+    double magnitude_l, magnitude_r;
 
+    while(cur_step<time_steps && ros::ok())
+      {
+	temp_diff_l.clear();
+	temp_diff_r.clear();
+
+	scale_l = 1.0;
+	scale_r = 1.0;
+
+	//differences
+	diff_l = vec_difference(lh_init, lh_cur);
+	diff_r = vec_difference(rh_init, rh_cur);
+	
+	//sample
+	temp_diff_l.push_back(samp_gauss(diff_l[0], std_dev));
+	temp_diff_l.push_back(samp_gauss(diff_l[1], std_dev));
+	temp_diff_l.push_back(samp_gauss(diff_l[2], std_dev));
+
+	//check magnitude
+	magnitude_l = calc_euclid_dist(temp_diff_l, zero_vec);
+	if (magnitude_l> max_step_magnitude)
+	  {scale_l = max_step_magnitude/magnitude_l;}
+
+	//sample
+	temp_diff_r.push_back(samp_gauss(diff_r[0], std_dev));
+	temp_diff_r.push_back(samp_gauss(diff_r[1], std_dev));
+	temp_diff_r.push_back(samp_gauss(diff_r[2], std_dev));
+
+	//magnitude of vector
+	magnitude_r = calc_euclid_dist(temp_diff_r, zero_vec);
+	if (magnitude_r> max_step_magnitude)
+	  {scale_r = max_step_magnitude/magnitude_r;}
+
+
+	lh_cur[0] += temp_diff_l[0]*scale_l;
+	lh_cur[1] += temp_diff_l[1]*scale_l;
+	lh_cur[2] += temp_diff_l[2]*scale_l;
+
+	rh_cur[0] += temp_diff_r[0]*scale_r;
+	rh_cur[1] += temp_diff_r[1]*scale_r;
+	rh_cur[2] += temp_diff_r[2]*scale_r;
+	
+	publish_cur_hand_pos();	
+	++cur_step;	
+	loop_rate.sleep();
+      }
+
+    //add to time
+    total_time_steps += time_steps;
+    
+    
+}
+
+//moves a hand to a predetermined position and waits there for bin to arrive
+void handSim::cheat_wait(size_t bin_to_chk)
+{
+  ros::Rate loop_rate(PUB_RATE);
+
+  if (!(is_lh_rest && is_rh_rest))
+    {
+      double move_time = samp_gauss_pos(motion_mean, motion_std);
+      move_to_loc(!is_lh_rest, !is_rh_rest, 
+		  lh_rest, rh_rest, move_time);
+      is_lh_rest = true; is_rh_rest=true;
+      wait_time_steps += move_time*PUB_RATE;
+      total_time_steps += move_time*PUB_RATE;
+    }
+  
+  //now, move left hand to predetermined position  
+  double move_time = samp_gauss_pos(motion_mean, motion_std);
+  move_to_loc(true, false, 
+	      lh_cheat_wait, rh_rest, move_time);
+  is_lh_rest = false; is_rh_rest=true;
+  wait_time_steps += move_time*PUB_RATE;
+  total_time_steps += move_time*PUB_RATE;
+      
+  do
+    {
+      publish_cur_hand_pos();
+      ros::spinOnce();
+      loop_rate.sleep();
+      //increment time
+      ++wait_time_steps;
+      ++total_time_steps;
+      
+      //debug
+      cout<<"we Need Bin: "<<bin_to_chk<<endl;
+
+
+
+	//publish action as soon as bin is touched
+	std_msgs::String task_msg;
+	task_msg.data= "waiting";
+	task_pub.publish(task_msg);
+
+
+
+    }while(ros::ok() && !bin_in_position(bin_to_chk));
+
+}
 
 
 int main(int argc, char** argv)
 {
+
+  /*debug- PWD
+  char cCurrentPath[FILENAME_MAX];
+
+  if (!GetCurrentDir(cCurrentPath, sizeof(cCurrentPath)))
+    {
+      return errno;
+    }
+  
+  cCurrentPath[sizeof(cCurrentPath) - 1] = '\0'; // not really required 
+  
+  printf ("The current working directory is %s", cCurrentPath);
+  debug over*/
+
   ros::init(argc, argv, "hand_simulator");
   char do_another='n';
 
   do{
     char correct = 'n';
     string task;
+
+    bool cheat;
+
     while(correct != 'y')
       {
-	cout<<"Which task? helicopter, airplane1, or airplane2"<<endl;
+	cheat = false;
+	cout<<"Which task?"<<endl;
 	cin>> task;
-	if(task=="helicopter" || task=="airplane1" || task=="airplane2")
+	if(1)
 	  {
+	    string cht_inp;
+	    cout<<"Cheat at waiting?(y/n)"<<endl;
+	    cin>>cht_inp;
+
+	    if(cht_inp[0]=='y'){cheat=true;}
+	    
 	    string input;
 	    cout<<"Ready?(y/n)";
 	    cin>>input;
 	    correct = input[0];
-	  }else{cout<<"Incorrect task entered, try again."<<endl;}
+	  }else{
+	  cout<<"Incorrect task entered, try again."<<endl;
+	  continue;
+	}
       }
   
-    handSim begin_it(task);
+    handSim begin_it(task, cheat);
     begin_it.pub_hands();
   
     cout<<endl<<"Do another Task?(y/n)"<<endl;
@@ -1084,4 +1405,4 @@ int main(int argc, char** argv)
   }while(do_another!='n');
   
   return 0;
-}}
+}

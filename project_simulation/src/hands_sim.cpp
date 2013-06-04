@@ -854,7 +854,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	++total_time_steps;
     
 	//debug
-	cout<<"Need Bin: "<<bin_to_chk<<endl;
+	cout<<"Need Bin: "<<bin_to_chk<<endl;zz
       }while(ros::ok() && !bin_in_position(bin_to_chk));
   }
 
