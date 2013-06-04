@@ -447,6 +447,25 @@ class StartLocPerformanceAnalysis:
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
         self.analyze_spin_push = self.analyze_spin_push_total_spin
 
+    def compare_predicted_and_observed_push_scores(self, in_file_name, out_file_name=None):
+        # Read in data
+        plio = CombinedPushLearnControlIO()
+        plio.read_in_data_file(in_file_name)
+        file_out = None
+        if out_file_name is not None:
+            file_out = file(out_file_name, 'w')
+        for i, p in enumerate(plio.push_trials):
+            pred_score = p.trial_start.score
+            # Compute observed push score
+            observed_score = self.analyze_straight_line_push(p)
+            if pred_score >= 0 and observed_score >= 0:
+                print 'Trial [',i,'] : Pred: ', pred_score, '\tObserved: ', observed_score
+                if file_out is not None:
+                    trial_line = str(pred_score) + ' ' + str(observed_score) + '\n'
+                    file_out.write(trial_line)
+        if file_out is not None:
+            file_out.close()
+
     def get_trial_features(self, file_name, use_spin=False):
         self.plio = CombinedPushLearnControlIO()
         self.plio.read_in_data_file(file_name)
@@ -1640,6 +1659,11 @@ def read_and_score_raw_files():
       slp = StartLocPerformanceAnalysis()
       slp.generate_example_file(file_in, file_out)
 
+def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
+    slp = StartLocPerformanceAnalysis()
+    slp.compare_predicted_and_observed_push_scores(in_file_name, out_file_name)
+
 if __name__ == '__main__':
+    pass
     # read_and_score_raw_files()
-    extract_shape_features_batch()
+    # extract_shape_features_batch()
