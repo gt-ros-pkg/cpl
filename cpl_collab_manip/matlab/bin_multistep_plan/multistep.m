@@ -2,7 +2,9 @@ function [action] = multistep(probs, bins, slot_states, nowtimesec, rate, debug)
 
 planning_params
 
-opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
+% opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
+opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals);
+%opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
 deliv_seqs = gen_deliv_seqs(t, beam_counts, probs, bins, slot_states, nowtimeind, endedweight, notbranchweight);
@@ -44,7 +46,7 @@ for i = 1:size(deliv_seqs,1)
     lower_bounds = durations*rate;
     lower_bounds(1) = lower_bounds(1) + nowtimeind;
     x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, undodur, nowtimeind, 0), ...
-                    lower_bounds, [], [], [], [], lower_bounds, [], [], opt_options);
+                    lower_bounds*10, [], [], [], [], lower_bounds, [], [], opt_options);
     best_times = cumsum(x_sol / rate);
 
     % given the optimal timings, find the actual plan and its cost from the optimization function
@@ -57,6 +59,7 @@ for i = 1:size(deliv_seqs,1)
     all_plans(i,:) = fullplan;
 end
 
+actions = [];
 [costs_sorted, cost_inds] = sort(all_costs);
 for i = 1:size(deliv_seqs,1)
     ind = cost_inds(i);
@@ -70,7 +73,7 @@ for i = 1:size(deliv_seqs,1)
     % if action == 0, wait
     % if action  > 0, deliver bin "action"
     % if action  < 0, remove bin "action"
-    action = plan_action(plan, action_starts, nowtimesec, planning_cycle);
+    actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
     if debug
         figure(100+i)
@@ -79,6 +82,8 @@ for i = 1:size(deliv_seqs,1)
         visualize_bin_probs(t, bins, probs, nowtimesec, t(end)/2);
         subplot(2,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bins, nowtimesec, t(end)/2);
-        title(sprintf('Cost: %.1f | Action: %d', cost, action))
+        title(sprintf('Cost: %.1f | Action: %d', cost, actions(i)))
     end
 end
+
+action = actions(1);

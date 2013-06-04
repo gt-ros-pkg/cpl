@@ -1,7 +1,7 @@
 
 %% load data
 addpath(genpath('.'));
-clc; clear; close all;
+clc; clear; % close all;
 m = gen_inference_net('s/model');
 
 %% const
@@ -14,7 +14,8 @@ MAX_NAME_LENGTH     = 20; % must match ROS node param
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 1;
 DRAW_DISTRIBUTION_FIGURE = 99;
-DRAW_START_DISTRIBUTION  = {'Body', 'body1','body2', 'nose_a1', 'nose_a2', 'Wing_AT', 'tail_at1', 'tail_at2', 'tail_at3'};
+DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'Nose_A', 'nose_a1', 'Wing_AT', 'wing_at1', 'Tail_AT','tail_at1', 'tail_at2', 'tail_at3'};
+DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'Nose_A', 'nose_a1', 'Wing_AT', 'Wing_H'};
 %DRAW_START_DISTRIBUTION  = {'space', 'body1', 'body2', 'body3', 'body4', 'body5', 'body6'};
 %DRAW_START_DISTRIBUTION  = {'Nose_A', 'Wing_AD', 'Tail_AT'};
 DRAW_END_DISTRIBUTION    = {'S'};
@@ -43,7 +44,7 @@ end
 
 %% init planning
 
-k = k_planning_init(m);
+n = n_planning_init(m);
 
 
 %% set up variables
@@ -55,6 +56,7 @@ inference_num   = 0;
 detection_raw_result  = ones(length(m.detection.result), m.params.T);
 m.start_conditions(:) = 1;
 
+action_names_gt = struct([]);
 
 %% LOOP
 
@@ -76,6 +78,11 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         
         % read data from ROS
         rosdata    = fread(ros_tcp_connection, 2 * 3 + BIN_NUM * 7, 'float');
+        
+        % read additional data
+        len = fread(ros_tcp_connection, 1, 'int');
+        additional_data = char(fread(ros_tcp_connection, len, 'char'))';
+        additional_data = nx_fromxmlstr(additional_data);
         
         % skip frame?
         if mod(t, m.params.downsample_ratio) ~= 0
@@ -100,19 +107,38 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         
         % update start condition
         for b=1:length(m.detection.detectors)
+            
             if ~isempty(frame_info.bins(b).H)
                 d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
-                % disp(d);
-                if d > 1
-                    for i=1:length(m.grammar.symbols)
-                        if m.grammar.symbols(i).detector_id == b,
-                            m.start_conditions(i,nt) = 0;
-                        end
+                condition_no = d > 1;
+            else
+                condition_no = 1;
+            end
+            
+            if condition_no
+                for i=1:length(m.grammar.symbols)
+                    if m.grammar.symbols(i).detector_id == b & m.grammar.symbols(i).is_terminal
+                        m.start_conditions(i,nt) = 0;
                     end
                 end
             end
+           
         end
 
+        % update action labels
+        if isfield(additional_data, 'current_action_name')
+            
+            if length(action_names_gt) == 0
+                
+                action_names_gt(1).name  = additional_data.current_action_name;
+                action_names_gt(1).start = nt;
+            
+            elseif ~strcmp(action_names_gt(end).name, additional_data.current_action_name)
+                
+                action_names_gt(end+1).name  = additional_data.current_action_name;
+                action_names_gt(end).start   = nt;
+            end
+        end
         
         continue;
     end
@@ -160,13 +186,13 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         
         % plot
         if DRAW_DISTRIBUTION_FIGURE > 0
-            nx_figure(DRAW_DISTRIBUTION_FIGURE); % subplot(2, 1, 1);
+            nx_figure(DRAW_DISTRIBUTION_FIGURE);  subplot(3, 1, 1);
+            cla;
             m_plot_distributions(m, DRAW_START_DISTRIBUTION, DRAW_END_DISTRIBUTION);
-            hold on; plot(nt, 0, '*'); hold off;
-            ylim([0 1]);
+            hold on; plot([nt nt], [-999 999], 'g'); hold off;
+            ylim([0 1.1]);
         end
-        % linkaxes([findall(figure(DRAW_DISTRIBUTION_FIGURE), 'type', 'axes')]);
-        pause(1);
+        
     end
     
     
@@ -174,7 +200,50 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-        k = k_planning_process(k, m, nt, frame_info);
+        n = n_planning_process(n, m, nt, frame_info);
+        
+        % draw
+        nx_figure(DRAW_DISTRIBUTION_FIGURE);
+        subplot(3, 1, 2);
+        xlim([0 m.params.T]);
+        plot_plan({n.executedplan, n.bestplans(end)}, nt);
+        hold on; plot([nt nt], [-999 999], 'g'); hold off;
+    end
+    
+    
+    % ground truth action label
+    if 1
+        nx_figure(DRAW_DISTRIBUTION_FIGURE);
+        subplot(3, 1, 3);
+        cla
+        ylim([-1 2]);
+        xlim([0 m.params.T]);
+        grid on;
+        hold on;
+        plot([nt nt], [-999 999], 'g');
+        for i=1:length(action_names_gt)
+            thestart = action_names_gt(i).start;
+            theend   = nt;
+            if i < length(action_names_gt)
+                theend = action_names_gt(i+1).start-1;
+            end
+            
+            thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
+            performaction = 1;
+            if isempty(thecolor)
+                performaction = 0;
+                thecolor = [0 0 0];
+            end
+            
+            plot([thestart thestart], [0 nxifelse(~performaction, 0, 0.5)], 'color', thecolor);
+            plot([thestart theend], [nxifelse(~performaction, 0, 0.5) 0], 'color', thecolor);
+            if action_names_gt(i).name(end) == '1'
+                text(thestart, 1, action_names_gt(i).name);
+            end
+            text(nt, 0, action_names_gt(end).name);
+        end
+        hold off;
+       
     end
     
     %------------------------------------------------
@@ -230,7 +299,7 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     end
     
     if ~isempty(findall(0,'Type','Figure'))
-        pause(0.1)
+        pause(1)
     end
     
 end
@@ -238,7 +307,7 @@ end
 
 %% close
 
-k = n_planning_terminate(k);
+n = n_planning_terminate(n);
 
 fclose(ros_tcp_connection);
 disp 'The End'
