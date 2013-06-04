@@ -5,7 +5,6 @@ function [] = m_plot_distributions(m, start_symbols, end_symbols, scale_max)
         scale_max = 1;
     end
 
-    cla
     hold on;
     for action = start_symbols
         d = m.grammar.symbols(actionname2symbolid(action{1}, m.grammar)).start_distribution;

@@ -13,6 +13,10 @@ function m = m_inference_v3( m )
                 else
                     m.g(i).obv_duration_likelihood = m.g(i).durationmat .* m.detection.result{m.g(i).detector_id};
                 end
+                
+                if strcmp(m.grammar.symbols(m.g(i).id).name, 'body3') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body3') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body4') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body5') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body6')
+                    m.g(i).obv_duration_likelihood = m.g(i).durationmat;
+                end
             end
         end
     end
@@ -95,15 +99,14 @@ function m = forward_phase( m , gid )
     g                                 = m.g(gid);
     g.i_forward.end_distribution      = nan(1, m.params.T);
     g.i_forward.log_pZ                = nan;
-                         
+   
     
     %% intergrate start condition
     if m.params.use_start_conditions,
         g.i_forward.start_distribution  = start_condition_probability_forward(g.i_forward.start_distribution , m.start_conditions(g.id,:));
         
         if ~isnan(m.params.trick.fakedummystep(1)) & g.is_terminal
-            g.i_forward.start_distribution = conv(g.i_forward.start_distribution, m.params.trick.fakedummystep);
-            g.i_forward.start_distribution = g.i_forward.start_distribution(1:m.params.T);
+            g.i_forward.start_distribution = my_forward_conv(g.i_forward.start_distribution, m.params.trick.fakedummystep);
         end
     end
     
@@ -193,7 +196,14 @@ function m = backward_phase( m, gid )
             
             % start condition
             if m.params.use_start_conditions,
+                
+                if ~isnan(m.params.trick.fakedummystep(1)) & m.g(i).is_terminal
+                	end_likelihood = my_backward_conv(end_likelihood, m.params.trick.fakedummystep);
+                end
+                
                 end_likelihood = start_condition_likelihood_backward(end_likelihood, m.start_conditions(m.g(i).id,:));
+                
+                
             end
         end
         
@@ -209,23 +219,43 @@ function m = backward_phase( m, gid )
             
         end
         
+%         g.i_backward.start_likelihood = zeros(1, m.params.T);
+%         for i=g.prule
+%             g.i_backward.start_likelihood = g.i_backward.start_likelihood  + ...
+%                 m.g(i).or_orweight * ...
+%                 exp(m.g(i).or_log_othersnull_likelihood) * ...
+%                 m.g(i).i_backward.start_likelihood;
+%         end
+%         
+%         % start condition
+%         if m.params.use_start_conditions,
+%             g.i_backward.start_likelihood = zeros(1, m.params.T);
+%             for i=g.prule
+%                 g.i_backward.start_likelihood = g.i_backward.start_likelihood  + ...
+%                     m.g(i).or_orweight * ...
+%                     exp(m.g(i).or_log_othersnull_likelihood) * ...
+%                     start_condition_likelihood_backward(m.g(i).i_backward.start_likelihood, m.start_conditions(m.g(i).id,:));
+%             end
+%         end
+
         g.i_backward.start_likelihood = zeros(1, m.params.T);
         for i=g.prule
+            
+            gi_i_backward_start_likelihood = m.g(i).i_backward.start_likelihood;
+            
+            if m.params.use_start_conditions
+                
+                if ~isnan(m.params.trick.fakedummystep(1)) & m.g(i).is_terminal
+                	gi_i_backward_start_likelihood = my_backward_conv(gi_i_backward_start_likelihood, m.params.trick.fakedummystep);
+                end
+                
+                gi_i_backward_start_likelihood = start_condition_likelihood_backward(gi_i_backward_start_likelihood, m.start_conditions(m.g(i).id,:));
+            end
+            
             g.i_backward.start_likelihood = g.i_backward.start_likelihood  + ...
                 m.g(i).or_orweight * ...
                 exp(m.g(i).or_log_othersnull_likelihood) * ...
-                m.g(i).i_backward.start_likelihood;
-        end
-        
-        % start condition
-        if m.params.use_start_conditions,
-            g.i_backward.start_likelihood = zeros(1, m.params.T);
-            for i=g.prule
-                g.i_backward.start_likelihood = g.i_backward.start_likelihood  + ...
-                    m.g(i).or_orweight * ...
-                    exp(m.g(i).or_log_othersnull_likelihood) * ...
-                    start_condition_likelihood_backward(m.g(i).i_backward.start_likelihood, m.start_conditions(m.g(i).id,:));
-            end
+                gi_i_backward_start_likelihood;
         end
     end
 
@@ -288,8 +318,24 @@ end
 
 
 
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function v = my_forward_conv(distribution, movement)
+    v = conv(distribution, movement);
+    v = v(1:length(distribution));
+end
 
 
+
+function v = my_backward_conv(distribution, movement)
+    v = conv(distribution(end:-1:1), movement);
+    v = v(length(distribution):-1:1);
+    
+    % second implementation
+    % v = xcorr(distribution, movement)
+    % v = v(length(distribution):end);
+end
 
 
 

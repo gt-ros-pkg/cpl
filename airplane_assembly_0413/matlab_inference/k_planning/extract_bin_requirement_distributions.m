@@ -15,21 +15,21 @@ for i=1:length(bin_id)
     bin_distributions(i).bin_needed          = zeros(1, m.params.T);
     bin_distributions(i).bin_nolonger_needed = zeros(1, m.params.T);
     
-    for g = m.grammar.symbols
+    for s = m.grammar.symbols
         
-        if strcmp(g.name, symbol_names1{i})
+        if strcmp(s.name, symbol_names1{i})
             if strcmp('start', symbol_types1{i})
-                bin_distributions(i).bin_needed = g.start_distribution;
+                bin_distributions(i).bin_needed = s.start_distribution;
             else
-                bin_distributions(i).bin_needed = g.end_distribution;
+                bin_distributions(i).bin_needed = s.end_distribution;
             end
         end
         
-        if strcmp(g.name, symbol_names2{i})
+        if strcmp(s.name, symbol_names2{i})
             if strcmp('start', symbol_types2{i})
-                bin_distributions(i).bin_nolonger_needed = g.start_distribution;
+                bin_distributions(i).bin_nolonger_needed = s.start_distribution;
             else
-                bin_distributions(i).bin_nolonger_needed = g.end_distribution;
+                bin_distributions(i).bin_nolonger_needed = s.end_distribution;
             end
             
         end
