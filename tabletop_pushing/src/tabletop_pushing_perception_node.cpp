@@ -98,6 +98,7 @@
 
 // STL
 #include <vector>
+#include <queue>
 #include <set>
 #include <string>
 #include <sstream>
@@ -145,6 +146,20 @@ typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
 typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
 typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
+struct ScoredIdx
+{
+  double score;
+  int idx;
+};
+
+class ScoredIdxComparison
+{
+ public:
+  bool operator() (const ScoredIdx& lhs, const ScoredIdx&rhs) const
+  {
+    return (lhs.score < rhs.score);
+  }
+};
 
 class TabletopPushingPerceptionNode
 {
@@ -164,8 +179,8 @@ class TabletopPushingPerceptionNode
       just_spun_(false), major_axis_spin_pos_scale_(0.75), object_not_moving_thresh_(0),
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
-      gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false)
-
+      gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false),
+      num_position_failures_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -182,6 +197,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("max_workspace_z", pcl_segmenter_->max_workspace_z_, 0.0);
     n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
     n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
+
+    // TODO: Tie these parameters with those in the tabletop_executive... (need to align goal and workspace names)
+    n_private_.param("min_goal_x", min_goal_x_, 0.425);
+    n_private_.param("max_goal_x", max_goal_x_, 0.8);
+    n_private_.param("min_goal_y", min_goal_y_, -0.3);
+    n_private_.param("max_goal_y", max_goal_y_, 0.3);
 
     n_private_.param("mps_min_inliers", pcl_segmenter_->mps_min_inliers_, 10000);
     n_private_.param("mps_min_angle_thresh", pcl_segmenter_->mps_min_angle_thresh_, 2.0);
@@ -621,6 +642,7 @@ class TabletopPushingPerceptionNode
 
       if (req.initialize)
       {
+        num_position_failures_ = 0;
         ROS_INFO_STREAM("Initializing");
         record_count_ = 0;
         learn_callback_count_ = 0;
@@ -1099,27 +1121,19 @@ class TabletopPushingPerceptionNode
                                           float& chosen_score, bool previous_position_worked)
   {
     // Get features for all of the boundary locations
+    // TODO: Set these values somewhere else
     float hull_alpha = 0.01;
-    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
     float gripper_spread = 0.05;
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                                 gripper_spread, hull_alpha,
                                                                                 point_cloud_hist_res_);
-    // Set parameters for prediction
-    // svm_parameter push_parameters;
-    // push_parameters.svm_type = EPSILON_SVR;
-    // push_parameters.kernel_type = PRECOMPUTED;
-    // push_parameters.C = 2.0; // NOTE: only needed for training
-    // push_parameters.p = 0.3; // NOTE: only needed for training
-    // push_model.param = push_parameters;
-
     // Read in model SVs and coefficients
     svm_model* push_model;
     push_model = svm_load_model(param_path.c_str());
 
     std::vector<double> pred_push_scores;
-    chosen_score = FLT_MAX;
-    int best_idx = -1;
+    std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq;
     // Perform prediction at all sample locations
     for (int i = 0; i < sds.size(); ++i)
     {
@@ -1132,28 +1146,53 @@ class TabletopPushingPerceptionNode
       }
       // Perform prediction and convert out of log spacex
       double pred_score = exp(svm_predict(push_model, x));
-      // Track the best score to know the location to return
-      if (pred_score < chosen_score)
-      {
-        chosen_score = pred_score;
-        best_idx = i;
-      }
-      pred_push_scores.push_back(pred_score);
+      ScoredIdx scored_idx;
+      scored_idx.score = pred_score;
+      scored_idx.idx = i;
+      pq.push(scored_idx);
       delete x;
     }
+    ScoredIdx best_scored = pq.top();
+    int chosen_idx = -1;
+    ROS_INFO_STREAM("num position failures: " << num_position_failures);
     if (!previous_position_worked)
     {
-      // TODO: Keep track of number of failures and iterate to the next best choice
+      // TODO: Replace this with location history not simple count
+      num_position_failures_++;
+      for (int p = 0; p < num_position_failures_; ++p)
+      {
+        pq.pop();
+      }
     }
-    ROS_INFO_STREAM("Chose best push location " << best_idx << " with score " << chosen_score);
-    // Return the location of the best score
-    ShapeLocation loc;
-    if (best_idx >= 0)
+    else
     {
-      loc.boundary_loc_ = hull_cloud[best_idx];
-      loc.descriptor_ = sds[best_idx];
+      num_position_failures_ = 0;
     }
-    return loc;
+
+    // TODO: Ensure goal pose is on the table
+    while (pq.size() > 0)
+    {
+      ScoredIdx chosen = pq.top();
+      pq.pop();
+
+      // Return the location of the best score
+      ShapeLocation loc;
+      loc.boundary_loc_ = hull_cloud[chosen.idx];
+      loc.descriptor_ = sds[chosen.idx];
+      float new_push_angle;
+      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, loc, new_push_angle, false);
+      if (goalPoseValid(goal_pose))
+      {
+        ROS_INFO_STREAM("Chose push location " << chosen.idx << " with score " << chosen.score);
+        return loc;
+      }
+    }
+    // No points wokred
+    ShapeLocation best_loc;
+    best_loc.boundary_loc_ = hull_cloud[best_scored.idx];
+    best_loc.descriptor_ = sds[best_scored.idx];
+    ROS_INFO_STREAM("Chose push location " << best_scored.idx << " with score " << best_scored.score);
+    return best_loc;
   }
 
   float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc)
@@ -1186,6 +1225,39 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("push_angle_obj_frame is: " << (push_angle_obj_frame));
     ROS_INFO_STREAM("push_angle_world_frame is: " << (push_angle_world_frame));
     return push_angle_world_frame;
+  }
+
+  Pose2D generateStartLocLearningGoalPose(PushTrackerState& cur_state, ShapeLocation& chosen_loc, float& new_push_angle,
+                                          bool rotate_push=false)
+  {
+    Pose2D goal_pose;
+    if (rotate_push)
+    {
+      // Set goal for rotate pushing angle and goal state; then get start location as usual below
+      new_push_angle = getRotatePushHeading(cur_state, chosen_loc);
+      goal_pose.x = cur_state.x.x;
+      goal_pose.y = cur_state.x.y;
+      // NOTE: Uncomment for visualization purposes
+      // res.goal_pose.x = cur_state.x.x+cos(new_push_angle)*start_loc_push_dist_;
+      // res.goal_pose.y = cur_state.x.y+sin(new_push_angle)*start_loc_push_dist_;
+      // TODO: Figure out +/- here
+      goal_pose.theta = cur_state.x.theta+M_PI;
+    }
+    else
+    {
+      // Set goal for pushing and then get start location as usual below
+      new_push_angle = atan2(cur_state.x.y - chosen_loc.boundary_loc_.y,
+                             cur_state.x.x - chosen_loc.boundary_loc_.x);
+      goal_pose.x = cur_state.x.x+cos(new_push_angle)*start_loc_push_dist_;
+      goal_pose.y = cur_state.x.y+sin(new_push_angle)*start_loc_push_dist_;
+    }
+    return goal_pose;
+  }
+
+  bool goalPoseValid(Pose2D goal_pose) const
+  {
+    return (goal_pose.x < max_goal_x_ && goal_pose.x > min_goal_x_ &&
+            goal_pose.y < max_goal_y_ && goal_pose.y > min_goal_y_);
   }
 
   ShapeLocation getStartLocDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state, geometry_msgs::Point start_pt)
@@ -1801,6 +1873,11 @@ class TabletopPushingPerceptionNode
   bool force_swap_;
   int mask_dilate_size_;
   double point_cloud_hist_res_;
+  int num_position_failures_;
+  double min_goal_x_;
+  double max_goal_x_;
+  double min_goal_y_;
+  double max_goal_y_;
 };
 
 int main(int argc, char ** argv)

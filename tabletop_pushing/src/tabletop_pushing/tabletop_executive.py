@@ -459,7 +459,7 @@ class TabletopExecutive:
                         rospy.loginfo('Not saving previous trial.')
                         if s.lower().startswith('q'):
                             return 'quit'
-                        position_worked = False
+                        position_worked = True
                     elif push_res.failed_pre_position:
                         rospy.loginfo('Not saving previous trial because of failed hand placement')
                         position_worked = False
