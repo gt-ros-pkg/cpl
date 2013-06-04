@@ -1,4 +1,4 @@
-function [] = visualize_bin_activity(bin_seq, times, numbins, tnow, maxtime)
+function [] = visualize_bin_activity(bin_seq, times, bin_names, numbins, tnow, maxtime)
 bar_width = 100/numbins;
 
 hold on
@@ -16,7 +16,7 @@ for i = 1:size(times,1)
 end
 plot([tnow, tnow], [0, numbins+1], 'g');
 for i = 1:numbins
-    ylabels{i} = sprintf('Bin %d', numbins-i+1);
+    ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
 end
 
 AX = gca;

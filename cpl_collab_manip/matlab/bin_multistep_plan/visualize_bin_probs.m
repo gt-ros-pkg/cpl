@@ -1,4 +1,4 @@
-function [] = visualize_bin_probs(t, numbins, probs, tnow, maxtime)
+function [] = visualize_bin_probs(t, numbins, probs, bin_names, tnow, maxtime)
 
 hold on
 axis([0, maxtime, 0, numbins])
@@ -11,7 +11,7 @@ end
 
 ylabels = {};
 for i = 1:numbins
-    ylabels{i} = sprintf('Bin %d', numbins-i+1);
+    ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
 end
 plot([tnow, tnow], [0, numbins], 'g');
 

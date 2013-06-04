@@ -1,9 +1,15 @@
-function [action] = multistep(probs, slot_states, nowtimesec, rate, debug)
+function [action] = multistep(probs, slot_states, bin_names, nowtimesec, rate, debug)
 
 planning_params
 
+if debug
+    display_arg = 'final-detailed';
+else
+    display_arg = 'off';
+end
 % opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
-opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals);
+opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals, ...
+                       'Display', display_arg);
 %opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
@@ -85,10 +91,17 @@ for i = 1:size(deliv_seqs,1)
         figure(100+i)
         clf
         subplot(2,1,2)
-        visualize_bin_probs(t, numbins, probs, nowtimesec, t(end)/2);
+        visualize_bin_probs(t, numbins, probs, bin_names, nowtimesec, t(end)/2);
         subplot(2,1,1)
-        visualize_bin_activity(plan, [action_starts', action_ends'], numbins, nowtimesec, t(end)/2);
-        title(sprintf('Cost: %.1f | Action: %d', cost, actions(i)))
+        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, numbins, nowtimesec, t(end)/2);
+        if actions(i) == 0
+            action_name = 'WAIT';
+        elseif actions(i) > 0
+            action_name = sprintf('DELIVER %s', bin_names{actions(i)});
+        else
+            action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
+        end
+        title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
     end
 end
 
