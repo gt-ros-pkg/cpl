@@ -1,7 +1,7 @@
 function [cost] = remove_cost(t, tr, startprobs, endprobs, binprob, undodur)
 
 if tr > numel(t)
-    cost = 1e10;
+    cost = 1e10*(1+tr-numel(t));
 else
 
     % plateau model:
