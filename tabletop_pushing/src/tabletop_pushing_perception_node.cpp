@@ -1766,6 +1766,26 @@ class TabletopPushingPerceptionNode
     }
   }
 
+  void displayLeanredPushLocScores(cv::Mat footprint, std::vector<double>& push_scores, ShapeLocations& locs)
+  {
+    std::string out_file_path;
+    for (int i = 0; i < push_scores.size(); ++i)
+    {
+      // TODO: project loc into the image
+      int x = 0;
+      int y = 0;
+      double score = -log(push_scores[i])/10;
+      cv::Scalar color(0, score*255, (1-score)*255);
+      cv::circle(footprint, cv::Point(x,y), 1, color, 3);
+      cv::circle(footprint, cv::Point(x,y), 2, color, 3);
+      cv::circle(footprint, cv::Point(x,y), 3, color, 3);
+    }
+    // ROS_INFO_STREAM("Max score is: " << max_score);
+    // ROS_INFO_STREAM("Writing image: " << out_file_path);
+
+    cv::imshow("Push score", footprint);
+    cv::imwrite(out_file_path, footprint);
+  }
 
   /**
    * Executive control function for launching the node.

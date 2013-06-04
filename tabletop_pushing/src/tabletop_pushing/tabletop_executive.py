@@ -389,12 +389,12 @@ class TabletopExecutive:
             j = 0
             position_worked = True
             while j  < num_pushes_per_sample:
-                rospy.loginfo('Performing push iteration: '+str(i*num_pushes_per_sample+j))
+                rospy.loginfo('Performing push iteration: '+str(start_loc_trials))
                 rospy.loginfo('Performing sample push ' + str(j) + ' for pose: ' + str(i-1))
                 rospy.loginfo('Sending param_path: ' + start_loc_param_path)
                 # NOTE: Get initial object pose here to make sure goal pose is far enough away
                 init_pose = self.get_feedback_push_initial_obj_pose()
-                if self.start_loc_use_fixed_goal and position_worked:
+                if self.start_loc_use_fixed_goal: # and position_worked:
                     reset = False
                     while not reset:
                         code_in = raw_input('Move object to initial test pose and press <Enter> to continue: ')
