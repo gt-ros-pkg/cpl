@@ -726,7 +726,8 @@ class TabletopPushingPerceptionNode
       {
         ROS_INFO_STREAM("Finding learned push start loc");
         ROS_INFO_STREAM("Using param path"<< req.start_loc_param_path);
-        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score);
+        chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score,
+                                               req.previous_position_worked);
       }
       else if (start_loc_use_fixed_goal_)
       {
@@ -1095,7 +1096,7 @@ class TabletopPushingPerceptionNode
   }
 
   ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, std::string param_path,
-                                          float& chosen_score)
+                                          float& chosen_score, bool previous_position_worked)
   {
     // Get features for all of the boundary locations
     float hull_alpha = 0.01;
@@ -1112,7 +1113,7 @@ class TabletopPushingPerceptionNode
     // push_parameters.p = 0.3; // NOTE: only needed for training
     // push_model.param = push_parameters;
 
-    // TODO: Read in model SVs and coefficients
+    // Read in model SVs and coefficients
     svm_model* push_model;
     push_model = svm_load_model(param_path.c_str());
 
@@ -1139,6 +1140,10 @@ class TabletopPushingPerceptionNode
       }
       pred_push_scores.push_back(pred_score);
       delete x;
+    }
+    if (!previous_position_worked)
+    {
+      // TODO: Keep track of number of failures and iterate to the next best choice
     }
     ROS_INFO_STREAM("Chose best push location " << best_idx << " with score " << chosen_score);
     // Return the location of the best score
