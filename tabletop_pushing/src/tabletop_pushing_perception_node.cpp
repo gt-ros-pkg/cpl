@@ -146,6 +146,14 @@ typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 typedef tabletop_pushing::VisFeedbackPushTrackingGoal PushTrackerGoal;
 typedef tabletop_pushing::VisFeedbackPushTrackingResult PushTrackerResult;
 typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
+
+#define FOOTPRINT_XY_RES 0.001
+
+inline int objLocToIdx(double val, double min_val, double max_val)
+{
+  return round((val-min_val)/FOOTPRINT_XY_RES);
+}
+
 struct ScoredIdx
 {
   double score;
@@ -175,7 +183,7 @@ class TabletopPushingPerceptionNode
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0),
-      frame_callback_count_(0),
+      frame_callback_count_(0), frame_set_count_(0),
       just_spun_(false), major_axis_spin_pos_scale_(0.75), object_not_moving_thresh_(0),
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
@@ -1134,6 +1142,12 @@ class TabletopPushingPerceptionNode
 
     std::vector<double> pred_push_scores;
     std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq;
+    XYZPointCloud hull_cloud_obj;
+    hull_cloud_obj.width = hull_cloud.size();
+    hull_cloud_obj.height = 1;
+    hull_cloud_obj.is_dense = false;
+    hull_cloud_obj.resize(hull_cloud_obj.width*hull_cloud_obj.height);
+
     // Perform prediction at all sample locations
     for (int i = 0; i < sds.size(); ++i)
     {
@@ -1150,8 +1164,16 @@ class TabletopPushingPerceptionNode
       scored_idx.score = pred_score;
       scored_idx.idx = i;
       pq.push(scored_idx);
+      pred_push_scores.push_back(pred_score);
+      // Center cloud at (0,0) but leave the orientation
+      hull_cloud_obj[i].x = hull_cloud[i].x - cur_state.x.x;
+      hull_cloud_obj[i].y = hull_cloud[i].y - cur_state.x.y;
       delete x;
     }
+
+    // TODO: Write SVM scores & descriptors to disk?
+    // writePredictedScoreToDisk(hull_cloud, sds, pred_scores);
+
     ScoredIdx best_scored = pq.top();
     if (!previous_position_worked)
     {
@@ -1183,6 +1205,8 @@ class TabletopPushingPerceptionNode
       if (goalPoseValid(goal_pose))
       {
         ROS_INFO_STREAM("Chose push location " << chosen.idx << " with score " << chosen.score);
+        pcl16::PointXYZ selected(hull_cloud_obj[chosen.idx].x, hull_cloud_obj[chosen.idx].y, 0.0);
+        displayLearnedPushLocScores(pred_push_scores, hull_cloud_obj, selected);
         return loc;
       }
     }
@@ -1766,25 +1790,42 @@ class TabletopPushingPerceptionNode
     }
   }
 
-  void displayLeanredPushLocScores(cv::Mat footprint, std::vector<double>& push_scores, ShapeLocations& locs)
+  void displayLearnedPushLocScores(std::vector<double>& push_scores, XYZPointCloud& locs, pcl16::PointXYZ selected)
   {
-    std::string out_file_path;
+    double max_y = 0.2;
+    double min_y = -0.2;
+    double max_x = 0.2;
+    double min_x = -0.2;
+    int rows = ceil((max_y-min_y)/FOOTPRINT_XY_RES);
+    int cols = ceil((max_x-min_x)/FOOTPRINT_XY_RES);
+    cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+
     for (int i = 0; i < push_scores.size(); ++i)
     {
-      // TODO: project loc into the image
-      int x = 0;
-      int y = 0;
+      int img_y = rows-objLocToIdx(locs[i].x, min_x, max_x);
+      int img_x = cols-objLocToIdx(locs[i].y, min_y, max_y);
       double score = -log(push_scores[i])/10;
-      cv::Scalar color(0, score*255, (1-score)*255);
-      cv::circle(footprint, cv::Point(x,y), 1, color, 3);
-      cv::circle(footprint, cv::Point(x,y), 2, color, 3);
-      cv::circle(footprint, cv::Point(x,y), 3, color, 3);
-    }
-    // ROS_INFO_STREAM("Max score is: " << max_score);
-    // ROS_INFO_STREAM("Writing image: " << out_file_path);
+      // ROS_INFO_STREAM("loc (" << x << ", " << y << ") : " << push_scores[i] << "\t" << score);
 
+      cv::Scalar color(0, score*255, (1-score)*255);
+      cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+      cv::circle(footprint, cv::Point(img_x, img_y), 2, color, 3);
+      cv::circle(footprint, cv::Point(img_x, img_y), 3, color, 3);
+    }
+
+    // TOOD: Set out_file_path correctly
+    std::stringstream score_file_name;
+    score_file_name << base_output_path_ << "score_footprint" << "_" << frame_set_count_ << ".png";
+    cv::imwrite(score_file_name.str(), footprint);
+
+    // Highlight selected pushing locationx
+    cv::Point selected_img(cols-objLocToIdx(selected.y, min_y, max_y), rows-objLocToIdx(selected.x, min_x, max_x));
+    cv::circle(footprint, selected_img, 5, cv::Scalar(0,0,0), 2);
     cv::imshow("Push score", footprint);
-    cv::imwrite(out_file_path, footprint);
+
+    std::stringstream score_selected_file_name;
+    score_selected_file_name << base_output_path_ << "score_footprint_selected" << "_" << frame_set_count_ << ".png";
+    cv::imwrite(score_selected_file_name.str(), footprint);
   }
 
   /**
