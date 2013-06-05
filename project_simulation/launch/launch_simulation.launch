@@ -1,4 +1,7 @@
 <launch>
+    <arg name="task" default="airplane1" />
+    <arg name="cheat" default="n" />
+
    <node name="fix_tf" pkg="project_simulation" type="fix_tf.py" 
           output="screen" ></node>
    <node name="ar_markers_publish" pkg="project_simulation" type="ar_markers_publish.py" 
@@ -7,6 +10,7 @@
           output="screen" ></node>
 	  
    <node name="hands_sim" pkg="project_simulation" type="hands_sim" cwd="node" 
+          args="$(arg task) $(arg cheat)"
           output="screen" ></node>
 
 
