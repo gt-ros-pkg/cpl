@@ -1,7 +1,13 @@
-function [] = visualize_bin_activity(bin_seq, times, bin_names, numbins, tnow, maxtime)
+function [] = visualize_bin_activity(bin_seq, times, bin_names, slot_states, numbins, tnow, maxtime)
 bar_width = 100/numbins;
 
 hold on
+for i = 1:size(times,1)
+    yval = numbins-(i-1);
+    if any(i == slot_states)
+        plot([tnow-5, tnow], [yval, yval],'g','LineWidth',bar_width/2);
+    end
+end
 for i = 1:size(times,1)
     bin = abs(bin_seq(i));
     isrm = bin_seq(i) < 0;

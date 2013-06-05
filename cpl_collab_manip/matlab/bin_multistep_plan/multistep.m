@@ -13,7 +13,8 @@ opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEva
 %opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
-deliv_seqs = gen_deliv_seqs(t, beam_counts, probs, slot_states, nowtimeind, endedweight, notbranchweight);
+bin_relevances = get_bin_relevances(t, probs, slot_states, nowtimeind, endedweight, notbranchweight);
+deliv_seqs = gen_deliv_seqs(bin_relevances, beam_counts);
 % These sequences are based on a beam search through
 % bins not in the workspace currently and weighted using a heuristic which prefers bins
 % whose expected start time is closer in the future, has not yet ended, and whose
@@ -87,13 +88,14 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug
+    if debug && i == 1
         figure(100+i)
         clf
         subplot(2,1,2)
-        visualize_bin_probs(t, numbins, probs, bin_names, nowtimesec, t(end)/2);
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, nowtimesec, max_time);
         subplot(2,1,1)
-        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, numbins, nowtimesec, t(end)/2);
+        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
+                               slot_states, numbins, nowtimesec, max_time);
         if actions(i) == 0
             action_name = 'WAIT';
         elseif actions(i) > 0
