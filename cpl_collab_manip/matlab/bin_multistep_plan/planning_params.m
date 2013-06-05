@@ -7,7 +7,7 @@ notbranchweight = 10; % beam heuristic penalty for not being on the same branch
 planning_cycle = 1; % seconds expected till next replan
 opt_fun_evals = 100; % max number of optimization function calls
 
-nowtimeind = nowtimesec*rate+1; % t-index of current time
+nowtimeind = round(nowtimesec*rate+1); % t-index of current time
 N = numel(probs{1,1});
 t = linspace(0,(N-1)/rate,N);
 numbins = size(probs,1);

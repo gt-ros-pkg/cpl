@@ -98,7 +98,6 @@ fwrite(n.ros_tcp_connection, planning_s, 'char');
 
 %% save
 n.executedplan  = executedplan;
-n.bestplans     = bestplan;
 if ~isfield(n, 'bestplans')
     n.bestplans = bestplan;
 else
