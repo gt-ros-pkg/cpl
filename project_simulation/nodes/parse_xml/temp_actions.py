@@ -28,6 +28,6 @@ if __name__ == '__main__':
                         bin_file.write("#parts sequence: <part name> <mean> <std-dev>\n")
                         first = False
                     
-                    bin_file.write(term_symbol['name']+' '+str(term_symbol['learntparams']['duration_mean']/30)+' '+ str(math.sqrt(term_symbol['learntparams']['duration_var']/30))+'\n')
+                    bin_file.write(term_symbol['name']+' '+str(term_symbol['learntparams']['duration_mean']/30)+' '+ str(math.sqrt(term_symbol['learntparams']['duration_var']/(30.0*30.0)))+'\n')
     
 
