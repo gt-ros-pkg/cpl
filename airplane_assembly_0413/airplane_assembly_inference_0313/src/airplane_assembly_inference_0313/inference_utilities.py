@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import rospy
 
-import roslib; roslib.load_manifest('airplane_assembly_0313')
+import roslib; roslib.load_manifest('airplane_assembly_inference_0313')
 import tf
 
 from std_msgs.msg import Float32MultiArray
@@ -63,7 +63,7 @@ def begin_time_cb(msg):
 
 def get_begin_time():
      if begin_time is None:
-          s = rospy.Subscriber("/inference/begin_time", std_msgs.msg.Int64, begin_time_cb)
+          s = rospy.Subscriber("/inference/begin_time", std_msgs.msg.Time, begin_time_cb)
           rospy.sleep(0.1)
           s.unregister()
      return begin_time
