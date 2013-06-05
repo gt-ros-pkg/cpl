@@ -556,7 +556,7 @@ class PositionFeedbackPushNode:
         # TODO: Create options for non-velocity control updates, separate things more
         # NOTE: Add new pushing visual feedback controllers here
         if feedback.controller_name == ROTATE_TO_HEADING:
-            update_twist = self.rotateHeadingController(feedback, self.desired_pose, which_arm)
+            update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_pose)
         elif feedback.controller_name == CENTROID_CONTROLLER:
             update_twist = self.centroidAlignmentController(feedback, self.desired_pose,
                                                             cur_pose)
@@ -638,7 +638,7 @@ class PositionFeedbackPushNode:
                           str(spin_y_dot) + ')')
         return u
 
-    def rotateHeadingController(self, cur_state, desired_state, which_arm):
+    def rotateHeadingController(self, cur_state, desired_state, which_arm, ee_pose):
         '''
         TODO: Change to align to a given point in object frame while pushing in direction perpendicular
         to the original orientation...?
@@ -657,6 +657,13 @@ class PositionFeedbackPushNode:
         ee = ee_pose.pose.position
         rotate_x_dot = 0.0
         rotate_y_dot = 0.0
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
+        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
 
         # Add in direction to corect for not pushing through the centroid
         goal_angle = atan2(goal_y_dot, goal_x_dot)
@@ -679,7 +686,7 @@ class PositionFeedbackPushNode:
                           str(contact_pt_y_dot) + ')')
         return u
 
-    def rotateHeadingControllerPalm(self, cur_state, desired_state, which_arm):
+    def rotateHeadingControllerPalm(self, cur_state, desired_state, which_arm, ee_pose):
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
         u.header.stamp = rospy.Time.now()
