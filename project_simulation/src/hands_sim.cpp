@@ -906,7 +906,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	++total_time_steps;
     
 	//debug
-	cout<<"Need Bin: "<<bin_to_chk<<endl;zz
+	cout<<"Need Bin: "<<bin_to_chk<<endl;
       }while(ros::ok() && !bin_in_position(bin_to_chk));
     
     //delete human waiting viz marker
@@ -1465,6 +1465,15 @@ int main(int argc, char** argv)
   rng.seed(time(0));
   rng_rep.seed(RNG_SEED);
 
+  bool noprompt;
+  if(argc == 1) {
+    noprompt = false;
+  } else if(argc == 3) {
+    noprompt = true;
+  } else {
+    printf("Usage: hands_sim <task> <cheat at waiting (y/n)>\n");
+    return -1;
+  }
 
 
   char do_another='n';
@@ -1479,19 +1488,36 @@ int main(int argc, char** argv)
       {
 	cheat = false;
 	cout<<"Which task?"<<endl;
-	cin>> task;
+  if(!noprompt)
+    cin>> task;
+  else {
+    task.assign(argv[1]);
+    cout << argv[1] << endl;
+  }
 	if(1)
 	  {
 	    string cht_inp;
-	    cout<<"Cheat at waiting?(y/n)"<<endl;
-	    cin>>cht_inp;
+      cout<<"Cheat at waiting?(y/n)"<<endl;
+      if(!noprompt)
+        cin>>cht_inp;
+      else {
+        cht_inp.assign(argv[2]);
+        cout << argv[2] << endl;
+      }
 
 	    if(cht_inp[0]=='y'){cheat=true;}
 	    
 	    string input;
 	    cout<<"Ready?(y/n)";
-	    cin>>input;
-	    correct = input[0];
+
+      if(!noprompt) {
+        cin>>input;
+        correct = input[0];
+      } else {
+        getchar();
+        cout << "y" << endl;
+        correct = 'y';
+      }
 	  }else{
 	  cout<<"Incorrect task entered, try again."<<endl;
 	  continue;

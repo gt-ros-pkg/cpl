@@ -1,20 +1,8 @@
-function [plans] = gen_deliv_seqs(t, beam_counts, probs, slot_states, ...
-                                  nowtimeind, endedweight, notbranchweight)
+function [plans] = gen_deliv_seqs(bin_relevances, beam_counts)
 
-numbins = size(probs,1);
-bin_relevances = zeros(1,numbins);
-for i = 1:numbins
-    binprob = sum(probs{i,1});
-    startprobs = probs{i,1} / binprob;
-    endprobs = probs{i,2} / binprob;
-    if any(i == slot_states)
-        bin_relevances(i) = -inf;
-    else
-        bin_relevances(i) = relevance_heur(t, startprobs, endprobs, binprob, nowtimeind, endedweight, notbranchweight);
-    end
-end
 [relev_sorted, relev_sorted_inds] = sort(bin_relevances,2,'descend');
 bins_sorted = relev_sorted_inds;
+numbins = numel(bin_relevances);
 %bin_relevances
 plans = zeros(prod(beam_counts), numel(beam_counts));
 bin_inds = [];

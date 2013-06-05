@@ -1,13 +1,20 @@
-function [action] = multistep(probs, slot_states, nowtimesec, rate, debug)
+function [action] = multistep(probs, slot_states, bin_names, nowtimesec, rate, debug)
 
 planning_params
 
+if debug
+    display_arg = 'final-detailed';
+else
+    display_arg = 'off';
+end
 % opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
-opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals);
+opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals, ...
+                       'Display', display_arg);
 %opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
-deliv_seqs = gen_deliv_seqs(t, beam_counts, probs, slot_states, nowtimeind, endedweight, notbranchweight);
+bin_relevances = get_bin_relevances(t, probs, slot_states, nowtimeind, endedweight, notbranchweight);
+deliv_seqs = gen_deliv_seqs(bin_relevances, beam_counts);
 % These sequences are based on a beam search through
 % bins not in the workspace currently and weighted using a heuristic which prefers bins
 % whose expected start time is closer in the future, has not yet ended, and whose
@@ -45,9 +52,11 @@ for i = 1:size(deliv_seqs,1)
     % as soon as the last action is completed
     lower_bounds = durations*rate;
     lower_bounds(1) = lower_bounds(1) + nowtimeind;
+    A = ones(numel(lower_bounds));
+    b = numel(t)*ones(numel(lower_bounds),1);
     x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, undodur, nowtimeind, 0), ...
-                                      lower_bounds*10, ...
-                                      ones(numel(lower_bounds)), t(end)*ones(numel(lower_bounds),1), ...
+                                      lower_bounds, ...
+                                      A, b, ...
                                       [], [], ...
                                       lower_bounds, [], ...
                                       [], opt_options);
@@ -79,14 +88,22 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug
+    if debug && i == 1
         figure(100+i)
         clf
         subplot(2,1,2)
-        visualize_bin_probs(t, numbins, probs, nowtimesec, t(end)/2);
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, nowtimesec, max_time);
         subplot(2,1,1)
-        visualize_bin_activity(plan, [action_starts', action_ends'], numbins, nowtimesec, t(end)/2);
-        title(sprintf('Cost: %.1f | Action: %d', cost, actions(i)))
+        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
+                               slot_states, numbins, nowtimesec, max_time);
+        if actions(i) == 0
+            action_name = 'WAIT';
+        elseif actions(i) > 0
+            action_name = sprintf('DELIVER %s', bin_names{actions(i)});
+        else
+            action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
+        end
+        title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
     end
 end
 
