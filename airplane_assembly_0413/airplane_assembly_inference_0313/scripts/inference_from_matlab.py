@@ -4,11 +4,14 @@ import rospy
 import roslib; roslib.load_manifest('airplane_assembly_inference_0313')
 import tf
 
-from std_msgs.msg import Float32MultiArray
-from std_msgs.msg import MultiArrayLayout
-from std_msgs.msg import MultiArrayDimension
+from std_msgs.msg import *
 
+from geometry_msgs.msg import *
 from project_simulation.msg import BinInference
+
+from rospy.numpy_msg import numpy_msg
+from rospy_tutorials.msg import Floats
+from ar_track_alvar.msg import *
 
 from math import *
 
@@ -20,13 +23,10 @@ import time
 import sys
 import pylab
 import struct
+from lxml import etree
 
-from geometry_msgs.msg import *
 pylab.ion()
 
-from rospy.numpy_msg import numpy_msg
-from rospy_tutorials.msg import Floats
-from ar_track_alvar.msg import *
 
 USE_ROS_RATE        = False
 
@@ -38,15 +38,18 @@ ROS_TOPIC_RIGHTHAND = "right_hand"
 ROS_TOPIC_BINMARKES = "ar_pose_marker"
 ROS_TOPIC_IMAGE     = "kinect/color_image"
 
+ROS_TOPIC_ACTION_NAME_GT = "action_name"
+
 TF_WORLD     = "base_link"
 TF_KINECT    = "kinect0_rgb_optical_frame"
 TF_WEBCAM    = "lifecam1_optical_frame"
 
 BIN_NUM      = 20
 
-T            = 900
+T            = 1000
 
 FPS          = 30
+DOWN_SAMPLING_RATE = 7
 
 MAX_NAME_LENGTH = 20
 
@@ -89,6 +92,7 @@ kinect_to_w      = 0
 lefthand         = None
 righthand        = None
 bins             = None
+action_name      = "N/A"
 
 lefthand_msgnum  = 0
 righthand_msgnum = 0
@@ -116,6 +120,10 @@ def right_hand_callback(data):
     if running:
         global righthand_msgnum
         righthand_msgnum = righthand_msgnum + 1
+
+def action_name_callback(data):
+    global action_name
+    action_name = data.data
 
 
 
@@ -159,10 +167,16 @@ def send_data_to_matlab():
 
     # send hands
     p = lefthand.pose.position
-    p = kinect_to_w.dot([p.x, p.y, p.z, 1])
+    if lefthand.header.frame_id == TF_WORLD:
+        p = [p.x, p.y, p.z, 1]
+    else:
+        p = kinect_to_w.dot([p.x, p.y, p.z, 1])
     send_matlab_floats([float(p[0]), float(p[1]), float(p[2])])
     p = righthand.pose.position
-    p = kinect_to_w.dot([p.x, p.y, p.z, 1])
+    if righthand.header.frame_id == TF_WORLD:
+        p = [p.x, p.y, p.z, 1]
+    else:
+        p = kinect_to_w.dot([p.x, p.y, p.z, 1])
     send_matlab_floats([float(p[0]), float(p[1]), float(p[2])])
 
     # send bins
@@ -184,6 +198,13 @@ def send_data_to_matlab():
         if bin_exist == False:
             send_matlab_floats([0, 0, 0, 0, 0, 0, 0])
 
+    # send additional xml string
+    additional_data = etree.Element('data')
+    additional_data.append(etree.Element('current_action_name'))
+    additional_data[0].text = action_name
+    s = etree.tostring(additional_data)
+    conn.sendall(struct.pack('>i', len(s)))
+    conn.sendall(s)
 
 
 #####################################################
@@ -351,8 +372,7 @@ def check_and_publish_inference():
              bin_inference_pub.publish(bin_inference_msg)
         
 
-
-            
+      
 #####################################################
 # MAIN
 #####################################################
@@ -368,6 +388,7 @@ def main():
     rospy.Subscriber(ROS_TOPIC_BINMARKES, AlvarMarkers, bins_callback)
     rospy.Subscriber(ROS_TOPIC_LEFTHAND, PoseStamped, left_hand_callback)
     rospy.Subscriber(ROS_TOPIC_RIGHTHAND, PoseStamped, right_hand_callback)
+    rospy.Subscriber(ROS_TOPIC_ACTION_NAME_GT, String, action_name_callback)
 
     # set up pub
     if PUBLISH_MULTIARRAY_ALLDISTRIBUTIONS :
@@ -380,7 +401,7 @@ def main():
 
     # publish time interval
     time_interval_length_pub = rospy.Publisher('inference/time_interval_length', std_msgs.msg.Duration, latch=True)
-    time_interval_length_pub.publish(std_msgs.msg.Duration(rospy.Duration.from_sec(1.0 / 30 * 5)))
+    time_interval_length_pub.publish(std_msgs.msg.Duration(rospy.Duration.from_sec(1.0 / FPS * DOWN_SAMPLING_RATE)))
 
 
     # look up transform of world <---> kinect & webcam
@@ -391,6 +412,10 @@ def main():
 
     # ready?
     raw_input("ready?")
+    print 'wait to receive first hand & bin msg'
+    while lefthand is None  or righthand is None or bins is None:
+        rospy.sleep(0.1)
+    print 'ok start!'
 
     # begin_time
     begin_time  = rospy.Time.now().to_nsec()

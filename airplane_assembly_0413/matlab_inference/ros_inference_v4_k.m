@@ -204,6 +204,42 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     end
     
     
+    % ground truth action label
+    if 1
+        nx_figure(DRAW_DISTRIBUTION_FIGURE);
+        subplot(3, 1, 3);
+        cla
+        ylim([-1 2]);
+        xlim([0 m.params.T]);
+        grid on;
+        hold on;
+        plot([nt nt], [-999 999], 'g');
+        for i=1:length(action_names_gt)
+            thestart = action_names_gt(i).start;
+            theend   = nt;
+            if i < length(action_names_gt)
+                theend = action_names_gt(i+1).start-1;
+            end
+            
+            thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
+            performaction = 1;
+            if isempty(thecolor)
+                performaction = 0;
+                thecolor = [0 0 0];
+            end
+            
+            plot([thestart thestart], [0 nxifelse(~performaction, 0, 0.5)], 'color', thecolor);
+            plot([thestart theend], [nxifelse(~performaction, 0, 0.5) 0], 'color', thecolor);
+            if action_names_gt(i).name(end) == '1'
+                text(thestart, 1, action_names_gt(i).name);
+            end
+            text(nt, 0, action_names_gt(end).name);
+        end
+        hold off;
+       
+    end
+    
+    
     %------------------------------------------------
     % misc
     %------------------------------------------------

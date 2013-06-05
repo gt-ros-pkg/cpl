@@ -2,7 +2,7 @@
 import rospy
 
 import roslib
-roslib.load_manifest('airplane_assembly_0313')
+roslib.load_manifest('airplane_assembly_inference_0313')
 import tf
 
 from std_msgs.msg import Float32MultiArray

@@ -14,9 +14,9 @@ function m = m_inference_v3( m )
                     m.g(i).obv_duration_likelihood = m.g(i).durationmat .* m.detection.result{m.g(i).detector_id};
                 end
                 
-                if strcmp(m.grammar.symbols(m.g(i).id).name, 'body3') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body3') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body4') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body5') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body6')
-                    m.g(i).obv_duration_likelihood = m.g(i).durationmat;
-                end
+%                 if strcmp(m.grammar.symbols(m.g(i).id).name, 'body3') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body3') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body4') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body5') | strcmp(m.grammar.symbols(m.g(i).id).name, 'body6')
+%                     m.g(i).obv_duration_likelihood = m.g(i).durationmat;
+%                 end
             end
         end
     end

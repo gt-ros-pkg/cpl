@@ -1,0 +1,20 @@
+
+Open Matlab
+addpath <where kelsey's functions are>
+goto 
+/airplane_assembly_0413/matlab_inference
+run ros_inference_v4_k.m
+
+
+Run rosrun airplane_assembly_inference_0313 inference_from_matlab.py [ready? hit enter]
+Run rosrun airplane_assembly_inference_0313 planning_from_matlab.py
+
+Finally, run Shray simulation launch file
+
+
+
+
+
+
+
+
