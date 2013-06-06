@@ -1,7 +1,7 @@
 function [durations] = create_durations(plan, traj_dur)
 
 remove_dur = traj_dur;
-deliver_dur = 3*traj_dur;
+deliver_dur = 2*traj_dur;
 
 durations = zeros(1,numel(plan));
 

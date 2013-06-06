@@ -91,11 +91,12 @@ for i = 1:size(deliv_seqs,1)
     if debug && i == 1
         figure(100+i)
         clf
-        subplot(2,1,2)
-        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, nowtimesec, max_time);
         subplot(2,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
                                slot_states, numbins, nowtimesec, max_time);
+        subplot(2,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time);
         if actions(i) == 0
             action_name = 'WAIT';
         elseif actions(i) > 0
