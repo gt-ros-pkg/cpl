@@ -1,4 +1,4 @@
-function [action] = multistep(probs, slot_states, bin_names, nowtimesec, rate, debug)
+function [action, best_plan] = multistep(probs, slot_states, bin_names, nowtimesec, rate, debug)
 
 planning_params
 
@@ -73,6 +73,9 @@ for i = 1:size(deliv_seqs,1)
 end
 
 actions = [];
+all_plans_sorted = [];
+all_action_starts = [];
+all_action_ends = [];
 [costs_sorted, cost_inds] = sort(all_costs);
 for i = 1:size(deliv_seqs,1)
     ind = cost_inds(i);
@@ -82,6 +85,10 @@ for i = 1:size(deliv_seqs,1)
     plan = all_plans(ind,:);
     action_starts = best_times-durations;
     action_ends = best_times;
+
+    all_plans_sorted(i,:) = plan;
+    all_action_starts(i,:) = action_starts;
+    all_action_ends(i,:) = action_ends;
 
     % if action == 0, wait
     % if action  > 0, deliver bin "action"
@@ -109,3 +116,4 @@ for i = 1:size(deliv_seqs,1)
 end
 
 action = actions(1);
+best_plan = [all_plans_sorted(1,:)', all_action_starts(1,:)', all_action_ends(1,:)'];
