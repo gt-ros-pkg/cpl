@@ -666,6 +666,13 @@ class TabletopPushingPerceptionNode
         res = getObjectPose();
         res.no_push = true;
         recording_input_ = false;
+        ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+        PushTrackerState cur_state;
+        cur_state.x.x = res.centroid.x;
+        cur_state.x.y = res.centroid.y;
+        cur_state.x.theta = res.theta;
+        cur_state.z = res.centroid.z;
+        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
         obj_tracker_->stopTracking();
       }
       else // NOTE: Assume pushing as default
@@ -1305,29 +1312,21 @@ class TabletopPushingPerceptionNode
     if (lineSegmentIntersection2D(box_p1, box_p2, phi_start, phi_tip, intersection)) // Intersects box_p1 -> box_p2
     {
       ROS_WARN_STREAM("Intesections side: p1 -> p2 at point: " << intersection);
-      ROS_INFO_STREAM("p1 angle = " << atan2(box_p1.y, box_p1.x));
-      ROS_INFO_STREAM("p2 angle = " << atan2(box_p2.y, box_p2.x));
       push_angle_obj_frame = atan2(-(box_p1.y+box_p2.y)*0.5, -(box_p1.x+box_p2.x)*0.5);
     }
     else if (lineSegmentIntersection2D(box_p2, box_p3, phi_start, phi_tip, intersection)) // Intersects box_p2 -> box_p3
     {
       ROS_WARN_STREAM("Intesections side: p2 -> p3 at point: " << intersection);
-      ROS_INFO_STREAM("p2 angle = " << atan2(box_p2.y, box_p2.x));
-      ROS_INFO_STREAM("p3 angle = " << atan2(box_p3.y, box_p3.x));
       push_angle_obj_frame = atan2(-(box_p3.y+box_p2.y)*0.5, -(box_p3.x+box_p2.x)*0.5);
     }
     else if (lineSegmentIntersection2D(box_p3, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p3 -> box_p4
     {
       ROS_WARN_STREAM("Intesections side: p3 -> p4 at point: " << intersection);
-      ROS_INFO_STREAM("p3 angle = " << atan2(box_p3.y, box_p3.x));
-      ROS_INFO_STREAM("p4 angle = " << atan2(box_p4.y, box_p4.x));
       push_angle_obj_frame = atan2(-(box_p3.y+box_p4.y)*0.5, -(box_p3.x+box_p4.x)*0.5);
     }
     else if (lineSegmentIntersection2D(box_p1, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p4 -> box_p1
     {
       ROS_WARN_STREAM("Intesections side: p4 -> p1 at point: " << intersection);
-      ROS_INFO_STREAM("p4 angle = " << atan2(box_p4.y, box_p4.x));
-      ROS_INFO_STREAM("p1 angle = " << atan2(box_p1.y, box_p1.x));
       push_angle_obj_frame = atan2(-(box_p1.y+box_p4.y)*0.5, -(box_p1.x+box_p4.x)*0.5);
     }
 
@@ -1450,6 +1449,13 @@ class TabletopPushingPerceptionNode
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
     res.theta = obj_tracker_->getThetaFromEllipse(obj_ellipse);
+    if(obj_tracker_->getSwapState())
+    {
+      if(res.theta > 0.0)
+        res.theta += - M_PI;
+      else
+        res.theta += M_PI;
+    }
 
     return res;
   }
