@@ -411,7 +411,7 @@ def main():
          return
 
     # ready?
-    raw_input("ready?")
+    # raw_input("ready?")
     print 'wait to receive first hand & bin msg'
     while lefthand is None  or righthand is None or bins is None:
         rospy.sleep(0.1)
@@ -463,15 +463,16 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-       main()
-    except Exception as e:
-       print e
-    finally:
-       conn.sendall('exit!'); # exist signal
-       conn.close()
-       s.close()
-       sys.exit()
+   main()
+    # try:
+    #    main()
+    # except Exception as e:
+    #    print e
+    # finally:
+    #    conn.sendall('exit!'); # exist signal
+    #    conn.close()
+    #    s.close()
+    #    sys.exit()
 
 
 

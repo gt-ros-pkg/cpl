@@ -67,7 +67,7 @@ function n = n_planning_process2( n, m, nt, frame_info )
     best_plan = planx;
     i1 = -1;
     
-    for i=1:10000
+    for i=1:1000
     %while 1   
         % change plan
         planx = best_plan;
