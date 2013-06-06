@@ -1,10 +1,17 @@
-function n = k_planning_process( n, m, nt, frame_info )
+function n = k_planning_process( n, m, nt, frame_info , bins_availability)
 %K_PLANNING_PROCESS Summary of this function goes here
 %   Detailed explanation goes here
 %   k
 %   m: inference structure
 %   nt: current timing point
 %   frame_info: current world state (bins & hands' position)
+
+
+
+n.bin_distributions = extract_bin_requirement_distributions( m );
+
+N = length(n.bin_distributions);
+    
 
 %% receive executed plan
 
@@ -22,11 +29,35 @@ if n.ros_tcp_connection.BytesAvailable > 0
 end
 
 
-%% kelsey optimization
-n.bin_distributions = extract_bin_requirement_distributions( m );
+%% create bin history
 
-N = length(n.bin_distributions);
+bins_history = struct([]);
+for i=1:length(n.bin_distributions)
     
+    bin_id = n.bin_distributions(i).bin_id;
+    
+    bins_history(i).start = [];
+    bins_history(i).end   = [];
+
+    for t=1:size(bins_availability,2)
+        
+        if bins_availability(bin_id,t) > 0
+            
+            if t == 1 || ~(bins_availability(bin_id,t-1) > 0)
+            	bins_history(i).start(end+1) = t;
+            end
+            
+            if t == size(bins_availability,2) || ~(bins_availability(bin_id,t+1) > 0)
+            	bins_history(i).end(end+1) = t;
+            end
+        end
+        
+    end
+end
+
+
+
+%% kelsey optimization
     
 probs       = {};
 slot_states = [];

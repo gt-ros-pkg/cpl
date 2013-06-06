@@ -56,7 +56,9 @@ inference_num   = 0;
 detection_raw_result  = ones(length(m.detection.result), m.params.T);
 m.start_conditions(:) = 1;
 
-action_names_gt = struct([]);
+action_names_gt   = struct([]);
+frames_info       = struct([]);
+bins_availability = nan(BIN_NUM, m.params.T);
 
 %% LOOP
 
@@ -99,6 +101,11 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
                 frame_info.bins(b+1).H  = pq2H(frame_info.bins(b+1).pq);
             end
         end
+        if length(frames_info) == 0
+            frames_info = frame_info;
+        else
+            frames_info(end+1) = frame_info;
+        end
         
         % run detection on new frame
         d = run_action_detections(frame_info, m.detection);
@@ -111,6 +118,9 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
             if ~isempty(frame_info.bins(b).H)
                 d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
                 condition_no = d > 1;
+                
+                bins_availability(b,nt) = ~condition_no;
+                
             else
                 condition_no = 1;
             end
@@ -200,7 +210,7 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-        k = k_planning_process(k, m, nt, frame_info);
+        k = k_planning_process(k, m, nt, frame_info, bins_availability);
     end
     
     
