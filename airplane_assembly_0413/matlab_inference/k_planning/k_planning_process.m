@@ -93,7 +93,7 @@ for i=length(slot_states)+1:3
 end;
 
 
-i = multistep(probs, slot_states, bin_names, nowtimesec, rate, debug);
+i = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, debug);
 
 if i == 0,
     disp nothing_To_do

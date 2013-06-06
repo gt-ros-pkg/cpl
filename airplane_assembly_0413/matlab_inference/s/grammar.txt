@@ -69,7 +69,7 @@ tail_h2 13
 tail_h3 13
 tail_h4 13
 tail_h5 13
-tail_h6	13
+tail_h6	13 999 888
 
 
 
