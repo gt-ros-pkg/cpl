@@ -892,7 +892,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	if (!(is_lh_rest && is_rh_rest))
 	  {
 	    double move_time = samp_gauss_pos(motion_mean, motion_std);
-	    move_to_loc(!is_lh_rest, !is_rh_rest, 
+	    move_to_loc(!is_lh_rest, !is_rh_rest,
 		       lh_rest, rh_rest, move_time);
 	    is_lh_rest = true; is_rh_rest=true;
 	    wait_time_steps += move_time*PUB_RATE;
