@@ -9,9 +9,10 @@
   </node>
 
   <include file="$(find cpl_collab_manip)/launch/kinect_publish.launch" />
-  <!--
-  <include file="$(find cpl_collab_manip)/launch/lifecam_publish.launch" >
-    <arg name="dev_ind" value="$(arg dev_ind)" />
-  </include>
-  -->
+
+  <node name="openni_tracker" type="openni_tracker" pkg="openni_tracker" output="screen" >
+    <param name="camera_frame_id" value="/kinect0_depth_frame" />
+  </node>
+
+  <node name="openni_tracker_repub" type="openni_tracker_repub.py" pkg="cpl_collab_manip" />
 </launch>
