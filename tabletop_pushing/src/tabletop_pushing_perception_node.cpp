@@ -474,7 +474,7 @@ class TabletopPushingPerceptionNode
     if (use_displays_)
     {
       cv::imshow("color", cur_color_frame_);
-      cv::imshow("self_mask", cur_self_mask_);
+      // cv::imshow("self_mask", cur_self_mask_);
       cv::imshow("arm_mask_crop", arm_mask_crop);
     }
     // Way too much disk writing!
@@ -1282,44 +1282,58 @@ class TabletopPushingPerceptionNode
     float phi = atan2(obj_pt.y, obj_pt.x);
     cv::RotatedRect bounding_box = obj_tracker_->findFootprintBox(cur_obj);
     float theta = obj_tracker_->getThetaFromEllipse(bounding_box);
-    pcl16::PointXYZ box_p1( bounding_box.size.height*0.5,  bounding_box.size.width*0.5, 0.0);
-    pcl16::PointXYZ box_p2( bounding_box.size.height*0.5, -bounding_box.size.width*0.5, 0.0);
-    pcl16::PointXYZ box_p3(-bounding_box.size.height*0.5,  bounding_box.size.width*0.5, 0.0);
-    pcl16::PointXYZ box_p4(-bounding_box.size.height*0.5, -bounding_box.size.width*0.5, 0.0);
+
+    cv::Point2f vertices[4];
+    bounding_box.points(vertices);
+    PushTrackerState fake_state(cur_state);
+    fake_state.x.theta = theta;
+    pcl16::PointXYZ box_p1 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[0].x, vertices[0].y, cur_state.z), fake_state);
+    pcl16::PointXYZ box_p2 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[1].x, vertices[1].y, cur_state.z), fake_state);
+    pcl16::PointXYZ box_p3 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[2].x, vertices[2].y, cur_state.z), fake_state);
+    pcl16::PointXYZ box_p4 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[3].x, vertices[3].y, cur_state.z), fake_state);
 
     // Choose pushing direction based on which of the bounding box sides the ray from center to boundary loc intersects
-    float radius = std::max(bounding_box.size.height, bounding_box.size.width);
+    float radius = std::max(bounding_box.size.height, bounding_box.size.width)*2.0;
     pcl16::PointXYZ phi_tip(radius*std::cos(phi), radius*std::sin(phi), 0.0);
     pcl16::PointXYZ phi_start(0.0, 0.0, 0.0);
     float push_angle_obj_frame;
+    ROS_INFO_STREAM("phi is: " << (phi));
+    ROS_INFO_STREAM("Box: [\n\t" << box_p1 << "\n\t" << box_p2 << "\n\t" << box_p3 << "\n\t" << box_p4 << "]");
+    ROS_INFO_STREAM("Ray: [\n\t" << phi_start << "\n\t" << phi_tip << "]");
+
     pcl16::PointXYZ intersection;
-    // ROS_INFO_STREAM("Box: [\n\t" << box_p1 << "\n\t" << box_p2 << "\n\t" << box_p3 << "\n\t" << box_p4 << "]");
-    // ROS_INFO_STREAM("Ray: [\n\t" << phi_start << "\n\t" << phi_tip << "]");
     if (lineSegmentIntersection2D(box_p1, box_p2, phi_start, phi_tip, intersection)) // Intersects box_p1 -> box_p2
     {
-      ROS_INFO_STREAM("Intesections side: p1 -> p2 at point: " << intersection);
-      push_angle_obj_frame = M_PI;
+      ROS_WARN_STREAM("Intesections side: p1 -> p2 at point: " << intersection);
+      ROS_INFO_STREAM("p1 angle = " << atan2(box_p1.y, box_p1.x));
+      ROS_INFO_STREAM("p2 angle = " << atan2(box_p2.y, box_p2.x));
+      push_angle_obj_frame = atan2(-(box_p1.y+box_p2.y)*0.5, -(box_p1.x+box_p2.x)*0.5);
     }
-    else if (lineSegmentIntersection2D(box_p2, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p2 -> box_p4
+    else if (lineSegmentIntersection2D(box_p2, box_p3, phi_start, phi_tip, intersection)) // Intersects box_p2 -> box_p3
     {
-      ROS_INFO_STREAM("Intesections side: p2 -> p4 at point: " << intersection);
-      push_angle_obj_frame = 0.5*M_PI;
-    }
-    else if (lineSegmentIntersection2D(box_p1, box_p3, phi_start, phi_tip, intersection)) // Intersects box_p1 -> box_p3
-    {
-      ROS_INFO_STREAM("Intesections side: p1 -> p3 at point: " << intersection);
-      push_angle_obj_frame = -0.5*M_PI;
+      ROS_WARN_STREAM("Intesections side: p2 -> p3 at point: " << intersection);
+      ROS_INFO_STREAM("p2 angle = " << atan2(box_p2.y, box_p2.x));
+      ROS_INFO_STREAM("p3 angle = " << atan2(box_p3.y, box_p3.x));
+      push_angle_obj_frame = atan2(-(box_p3.y+box_p2.y)*0.5, -(box_p3.x+box_p2.x)*0.5);
     }
     else if (lineSegmentIntersection2D(box_p3, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p3 -> box_p4
     {
-      ROS_INFO_STREAM("Intesections side: p3 -> p4 at point: " << intersection);
-      push_angle_obj_frame = 0;
+      ROS_WARN_STREAM("Intesections side: p3 -> p4 at point: " << intersection);
+      ROS_INFO_STREAM("p3 angle = " << atan2(box_p3.y, box_p3.x));
+      ROS_INFO_STREAM("p4 angle = " << atan2(box_p4.y, box_p4.x));
+      push_angle_obj_frame = atan2(-(box_p3.y+box_p4.y)*0.5, -(box_p3.x+box_p4.x)*0.5);
+    }
+    else if (lineSegmentIntersection2D(box_p1, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p4 -> box_p1
+    {
+      ROS_WARN_STREAM("Intesections side: p4 -> p1 at point: " << intersection);
+      ROS_INFO_STREAM("p4 angle = " << atan2(box_p4.y, box_p4.x));
+      ROS_INFO_STREAM("p1 angle = " << atan2(box_p1.y, box_p1.x));
+      push_angle_obj_frame = atan2(-(box_p1.y+box_p4.y)*0.5, -(box_p1.x+box_p4.x)*0.5);
     }
 
     // Shift push direction into world frame
-    float push_angle_world_frame = push_angle_obj_frame + cur_state.x.theta;
+    float push_angle_world_frame = subPIAngle(push_angle_obj_frame + cur_state.x.theta);
     ROS_INFO_STREAM("Object pose is (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.x.theta << ")");
-    ROS_INFO_STREAM("phi is: " << (phi));
     ROS_INFO_STREAM("push_angle_obj_frame is: " << (push_angle_obj_frame));
     ROS_INFO_STREAM("push_angle_world_frame is: " << (push_angle_world_frame));
     return push_angle_world_frame;
