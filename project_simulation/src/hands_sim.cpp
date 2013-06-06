@@ -71,6 +71,8 @@ double MOTION_STD = 0.01;
 double HAND_MAX_VEL = 1.0;// m/s    
 //amount of time the hand waits at a bin (simulate picking from it)
 double TIME_TO_WAIT_AT_BIN = 0.3; //seconds
+//time waiting before starting the first task
+double WAIT_FIRST_ACTION = 3.0; //seconds
 
 class Task{
 
@@ -759,7 +761,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	
 	//wait at current positions- for hand after touched a bin or initially 
 	//before reaching into the first bin
-	double waiting_time = time_to_wait();
+	double waiting_time = WAIT_FIRST_ACTION;
 	wait_at_location(waiting_time);
     	
 	//debug
@@ -1124,23 +1126,25 @@ void handSim::delete_wait_marker()
     cout<<"Total, wait  "<<total_time<<", "<<wait_time_total<<endl;
   }
   
-  //publish hands for given time in their current location
-  void handSim::wait_at_location(double wait_time)
-  {
-    long tot_steps = floor(wait_time*double(PUB_RATE));
-    long step_no=0;
-    ros::Rate loop_rate(PUB_RATE);
+//publish hands for given time in their current location
+void handSim::wait_at_location(double wait_time)
+{
+  long tot_steps = floor(wait_time*double(PUB_RATE));
+  long step_no=0;
+  ros::Rate loop_rate(PUB_RATE);
     
-    while(step_no < tot_steps && ros::ok())
-      {
-	publish_cur_hand_pos();
-	++step_no;
-	loop_rate.sleep();
-      }
-    //add to total time
-    total_time_steps += tot_steps;
+  while(step_no < tot_steps && ros::ok())
+    {
+      publish_cur_hand_pos();
+      ++step_no;
+      loop_rate.sleep();
+    }
 
-  }
+
+  //add to total time
+  total_time_steps += tot_steps;
+
+}
 
 
   //interpolate to given location in specified time
