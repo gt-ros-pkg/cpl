@@ -493,7 +493,7 @@ def find_close_location(std_loc, loc_list):
 def listen_tasks(task_msg):
     global task_list, empty_locations, work_space, cur_bin_list
 
-    if not empty(task_list):
+    if task_list.__len__() == 0:
         to_move_bin = task_msg.bin_id
         target_location = []
         #find bin
