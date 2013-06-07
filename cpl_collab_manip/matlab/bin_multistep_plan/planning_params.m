@@ -6,7 +6,7 @@ undo_dur = 2*traj_dur; % time (s) it takes to remove a bin and deliver it back
 undo_dur_ind = 2*traj_dur; % time (s) it takes to remove a bin and deliver it back
 endedweight = 10; % beam heuristic penalty for the step already ended
 notbranchweight = 10; % beam heuristic penalty for not being on the same branch
-planning_cycle = 1; % seconds expected till next replan
+planning_cycle = 3; % seconds expected till next replan
 opt_fun_evals = 100; % max number of optimization function calls
 max_time = 200; % maximum time to display in simulation
 

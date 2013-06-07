@@ -1,8 +1,9 @@
-function [] = visualize_bin_activity(bin_seq, times, bin_names, slot_states, numbins, tnow, maxtime)
+function [] = visualize_bin_activity(bin_seq, times, bin_names, bin_history, ...
+                                     slot_states, numbins, rate, tnow, maxtime)
 bar_width = 100/numbins;
 
 hold on
-for i = 1:size(times,1)
+for i = 1:numbins
     yval = numbins-(i-1);
     if any(i == slot_states)
         plot([tnow-5, tnow], [yval, yval],'g','LineWidth',bar_width/2);
@@ -18,6 +19,13 @@ for i = 1:size(times,1)
     else
         color = 'b';
     end
+    if 0
+    for j = 1:numel(bin_history(i).start)
+        plot([bin_history(i).start(j)/rate, bin_history(i).end(j)/rate], [yval, yval],'m','LineWidth',bar_width/2);
+    end
+    end
+
+    plot([times(i,1), times(i,2)], [yval, yval],color,'LineWidth',bar_width);
     plot([times(i,1), times(i,2)], [yval, yval],color,'LineWidth',bar_width);
 end
 plot([tnow, tnow], [0, numbins+1], 'g');
