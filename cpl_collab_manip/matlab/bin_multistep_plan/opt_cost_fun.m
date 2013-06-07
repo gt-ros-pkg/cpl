@@ -3,6 +3,7 @@ function [cost,varargout] = opt_cost_fun(times, slot_states, plan, t, probs, tra
 % all following values are durations of the following actions
 % times(1) + times(2) is the start of the second action
 action_times = cumsum(times);
+cur_slot_states = slot_states;
 
 cost = 0;
 
@@ -30,7 +31,11 @@ for plan_step = 1:numel(action_times)
             startprobs = probs{bin_id,1} / binprob;
             endprobs = probs{bin_id,2} / binprob;
             bin_depart_ind = act_ind_start + traj_dur_ind;
-            rm_costs(slot_id) = remove_cost(t, bin_depart_ind, startprobs, endprobs, binprob, undo_dur);
+            % if this bin was not in the workspace when we started,
+            % then it was delivered at some point
+            was_delivered = all(bin_id ~= cur_slot_states);
+            rm_costs(slot_id) = remove_cost(t, bin_depart_ind, startprobs, endprobs, ...
+                                            binprob, was_delivered, undo_dur);
         end
         % remove bin of least remove cost
         [cur_cost, rm_slot_id] = min(rm_costs);
