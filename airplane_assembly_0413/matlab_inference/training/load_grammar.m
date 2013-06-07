@@ -3,7 +3,7 @@
 
 function grammar = load_grammar(file)
 
-
+FPS = 30;
 
 grammar.starting    = 1;
 grammar.rules       = struct([]);
@@ -46,8 +46,8 @@ while ~feof(fid)
         grammar.symbols(left_id).detector_id = str2num(tokens{2});
         
         if length(tokens) == 4
-            grammar.symbols(left_id).manual_params.duration_mean = str2num(tokens{3});
-            grammar.symbols(left_id).manual_params.duration_var  = str2num(tokens{4});
+            grammar.symbols(left_id).manual_params.duration_mean = str2num(tokens{3}) * FPS;
+            grammar.symbols(left_id).manual_params.duration_var  = str2num(tokens{4}) * FPS * FPS;
             
         end
         

@@ -2,11 +2,17 @@ function bin_distributions = extract_bin_requirement_distributions( m )
 %EXTRACT_BIN_REQUIREMENT_DISTRIBUTIONS Summary of this function goes here
 %   Detailed explanation goes here
 
-bin_id        = {3, 11, 10, 12, 2, 7, 14, 15, 13};
-symbol_names1 = {'Body', 'Nose_A', 'Nose_H', 'Wing_AT', 'Wing_AD', 'Wing_H', 'Tail_AT', 'Tail_AD', 'Tail_H'};
-symbol_types1 = {'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start'};
-symbol_names2 = {'body6', 'nose_a4', 'nose_h3', 'wing_at3', 'wing_ad4', 'wing_h6', 'tail_at3', 'tail_ad4', 'tail_h6'};
-symbol_types2 = {'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start'};
+% bin_id        = {3, 11, 10, 12, 2, 7, 14, 15, 13};
+% symbol_names1 = {'Body', 'Nose_A', 'Nose_H', 'Wing_AT', 'Wing_AD', 'Wing_H', 'Tail_AT', 'Tail_AD', 'Tail_H'};
+% symbol_types1 = {'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start'};
+% symbol_names2 = {'body6', 'nose_a4', 'nose_h3', 'wing_at3', 'wing_ad4', 'wing_h6', 'tail_at3', 'tail_ad4', 'tail_h6'};
+% symbol_types2 = {'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start', 'start'};
+
+bin_id        = m.bin_req.bin_id;
+symbol_names1 = m.bin_req.symbol_names1;
+symbol_types1 = m.bin_req.symbol_types1;
+symbol_names2 = m.bin_req.symbol_names2;
+symbol_types2 = m.bin_req.symbol_types2;
 
 bin_distributions = struct;
 

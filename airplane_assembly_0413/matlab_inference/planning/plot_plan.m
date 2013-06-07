@@ -1,9 +1,9 @@
-function  plot_plan( plans, nt)
+function  plot_plan( plans)
 %PLOT_PLAN Summary of this function goes here
 %   Detailed explanation goes here
 
 if ~iscell(plans)
-    plot_plan({plans}, nt);
+    plot_plan({plans});
     return;
 end
 
@@ -12,7 +12,6 @@ ylim([2 6]);
 grid on;
 hold on;
 
-plot([nt nt], [-10 10], 'g');
 
 for k=1:length(plans)
     

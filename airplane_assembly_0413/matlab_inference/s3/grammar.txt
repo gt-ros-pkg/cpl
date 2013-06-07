@@ -8,9 +8,6 @@ Bin2    > b2_1
 Bin3    > b3_1
 Bin4    > b4_1 and b4_2 and b4_3 and b4_4 and b4_5 and b4_6 
 
-Bin2    > b2_1
-Bin3    > b3_1
-
 % primitive action
 
 b1_1    3       3   0.4
