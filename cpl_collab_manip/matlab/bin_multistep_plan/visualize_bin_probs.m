@@ -7,7 +7,7 @@ axis([0, maxtime, 0, numbins])
 ylabels = {};
 for i = 1:numbins
     maxprob = max([probs{i,1}, probs{i,2}]);
-    binprob = sum(probs{i,1})
+    binprob = sum(probs{i,1});
     plot(t,probs{i,1}/(1.1*maxprob)-i+numbins,'b')
     plot(t,probs{i,2}/(1.1*maxprob)-i+numbins,'r')
     plot(t,zeros(1,numel(t))-i+numbins,'k')
