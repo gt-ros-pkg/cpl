@@ -80,12 +80,12 @@ slocations = [
          ]
 
 bins_locs = [
-    {'bin_id':2, 'location':'L0'}
-    ,{'bin_id':3, 'location':'L1'}
-    ,{'bin_id':11, 'location':'L2'}
-    ,{'bin_id':10, 'location':'L3'}
+    {'bin_id':7, 'location':'L9'}
+    ,{'bin_id':10, 'location':'L10'}
+    ,{'bin_id':11, 'location':'L11'}
+    ,{'bin_id':3, 'location':'L3'}
     ,{'bin_id':12, 'location':'L4'}
-    ,{'bin_id':7, 'location':'L5'}
+    ,{'bin_id':2, 'location':'L5'}
     ,{'bin_id':14, 'location':'L6'}
     ,{'bin_id':15, 'location':'L7'}
     ,{'bin_id':13, 'location':'L8'}
