@@ -6,7 +6,7 @@ import roslib
 roslib.load_manifest('rospy')
 roslib.load_manifest('interactive_markers')
 roslib.load_manifest('hrl_geom')
-roslib.load_manifest('ur_cart_move')
+#roslib.load_manifest('ur_cart_move')
 
 import rospy
 from geometry_msgs.msg import Pose
@@ -18,12 +18,10 @@ from interactive_markers.interactive_marker_server import Marker
 from interactive_markers.menu_handler import MenuHandler
 
 from hrl_geom.pose_converter import PoseConv
-from ur_cart_move.ur_cart_move import load_ur_robot
 
 rospy.init_node('box_finder')
 imkr_srv = InteractiveMarkerServer('box_finder')
 
-#arm, kin, arm_behav = load_ur_robot()
 #box_quat = [0., 0., 0., 1.]
 box_size = np.array([1., 1., 1.])
 last_pose1 = [[0.,0.,0.],[0.,0.,0.,1.]]

@@ -7,6 +7,7 @@ function n = k_planning_init( m )
 PORT_NUMBER = 54321;
 
 n = struct;
+n.multistep_history = struct;
 
 %% connect to ROS node
 n.ros_tcp_connection                  = tcpip('localhost', PORT_NUMBER);

@@ -1,4 +1,4 @@
-function n = k_planning_process( n, m, nt, frame_info , bins_availability)
+function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail)
 %K_PLANNING_PROCESS Summary of this function goes here
 %   Detailed explanation goes here
 %   k
@@ -75,12 +75,13 @@ for i=1:length(n.bin_distributions)
     
     b = n.bin_distributions(i).bin_id;
     
-    if ~isempty(frame_info.bins(b).H)
-        d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
-        condition_no = d > 1;
-    else
-        condition_no = 1;
-    end
+    % if ~isempty(frame_info.bins(b).H)
+    %     d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
+    %     condition_no = d > 1;
+    % else
+    %     condition_no = 1;
+    % end
+    condition_no = ~any(b == bins_cur_avail); % true if bin not in ws
 
     if ~condition_no
         slot_states(end+1) = i;
@@ -92,8 +93,10 @@ for i=length(slot_states)+1:3
     slot_states(i) = 0;
 end;
 
-slot_states
-i = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, debug);
+
+
+[i, best_plan, n.multistep_history] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, n.multistep_history, debug);
+
 
 if i == 0,
     disp nothing_To_do

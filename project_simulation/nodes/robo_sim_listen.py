@@ -489,7 +489,6 @@ def find_close_location(std_loc, loc_list):
                     
     return closest_loc
     
-
 def listen_tasks(task_msg):
     global task_list, empty_locations, work_space, cur_bin_list
 
@@ -543,9 +542,12 @@ def listen_tasks(task_msg):
             return
                     
         if empty_works.__len__()>0:
-            target_location = find_close_location(targ_bin_cur_loc, empty_works)
-            task_list.append({'targ_loc' : target_location, 
+            if len(task_list)==0:
+                target_location = find_close_location(targ_bin_cur_loc, empty_works)
+                task_list.append({'targ_loc' : target_location, 
                               'bin_id' : task_msg.bin_id})
+            else:
+                print 'task already taking place'
             return
         else:
             print 'No empty slot in work-space'
@@ -560,13 +562,18 @@ def listen_tasks(task_msg):
             
         is_space_empty = False
         if empty_non_works.__len__()> 0:
-            target_location = find_close_location(targ_bin_cur_loc, empty_non_works)
-            task_list.append({'targ_loc' : target_location, 
-                              'bin_id' : task_msg.bin_id})
+            if len(task_list)==0:
+                target_location = find_close_location(targ_bin_cur_loc, empty_non_works)
+                task_list.append({'targ_loc' : target_location, 
+                                  'bin_id' : task_msg.bin_id})
+            else:
+                print 'Task already taking place'
             return
         else:
             print 'No empty slot'
             return
+
+
 
 
 if __name__=='__main__':

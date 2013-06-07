@@ -12,6 +12,7 @@ m.bin_req = bin_req;
 PORT_NUMBER         = 12341;  % must match ROS node param
 BIN_NUM             = 20;     % must match ROS node param
 MAX_NAME_LENGTH     = 20;     % must match ROS node param
+MAX_WS_BINS         = 20;
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 1;
@@ -69,14 +70,14 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     %------------------------------------------------
     % get new frame data
     %------------------------------------------------
-    if ros_tcp_connection.BytesAvailable >= 4 * (2 * 3 + BIN_NUM * 7)
+    if ros_tcp_connection.BytesAvailable >= 4 * (2 * 3 + BIN_NUM * 7 + 1 + MAX_WS_BINS)
         
         % new frame, update t
         t   = t + 1;
         nt  =  ceil(t / m.params.downsample_ratio);
         
         % read data from ROS
-        rosdata    = fread(ros_tcp_connection, 2 * 3 + BIN_NUM * 7, 'float');
+        rosdata    = fread(ros_tcp_connection, 2 * 3 + BIN_NUM * 7 + 1 + MAX_WS_BINS, 'float');
         
         % read additional data
         len = fread(ros_tcp_connection, 1, 'int');
@@ -103,6 +104,9 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         else
             frames_info(end+1) = frame_info;
         end
+        ws_bins_data = rosdata(end-MAX_WS_BINS:end);
+        ws_bins_len = round(ws_bins_data(1));
+        ws_bins = ws_bins_data(2:ws_bins_len+1);
         
         % run detection on new frame
         d = run_action_detections(frame_info, m.detection);
@@ -112,15 +116,16 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         % update start condition
         for b=1:length(m.detection.detectors)
             
-            if ~isempty(frame_info.bins(b).H)
-                d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
-                condition_no = d > 1;
-                
-                bins_availability(b,nt) = ~condition_no;
-                
-            else
-                condition_no = 1;
-            end
+            % if ~isempty(frame_info.bins(b).H)
+            %     % d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
+            %     % condition_no = d > 1;
+            %     
+            % else
+            %     condition_no = 1;
+            % end
+            condition_no = ~any(b == ws_bins); % true if bin not in ws
+            
+            bins_availability(b,nt) = ~condition_no;
             
             if condition_no
                 for i=1:length(m.grammar.symbols)
@@ -207,7 +212,7 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-        k = k_planning_process(k, m, nt, frame_info, bins_availability);
+        k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
     end
     
     

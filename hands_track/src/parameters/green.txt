@@ -1,0 +1,14 @@
+
+ **********Means********
+Hue
+86.0239
+Saturation
+187.56
+ **********Variances********
+Hue
+40.4317
+Saturation
+910.194
+ **********Covariance********
+Hue/Sat
+110.957

@@ -1,4 +1,11 @@
-function [action, best_plan] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, debug)
+function [action, best_plan, history] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, history, debug)
+
+if ~isfield(history, 'slots')
+    history.slots = [];
+    history.nowtimes = [];
+end
+history.slots(end+1,:) = slot_states;
+history.nowtimes(end+1) = nowtimesec;
 
 planning_params
 
@@ -102,7 +109,8 @@ for i = 1:size(deliv_seqs,1)
         clf
         subplot(2,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
-                               slot_states, numbins, nowtimesec, max_time);
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, max_time);
         subplot(2,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
                             nowtimesec, nowtimeind, max_time);
