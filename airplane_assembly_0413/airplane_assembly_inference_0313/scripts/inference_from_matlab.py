@@ -39,12 +39,14 @@ ROS_TOPIC_BINMARKES = "ar_pose_marker"
 ROS_TOPIC_IMAGE     = "kinect/color_image"
 
 ROS_TOPIC_ACTION_NAME_GT = "action_name"
+ROS_TOPIC_WORKSPACE_BINS = "workspace_bins"
 
 TF_WORLD     = "base_link"
 TF_KINECT    = "kinect0_rgb_optical_frame"
 TF_WEBCAM    = "lifecam1_optical_frame"
 
 BIN_NUM      = 20
+MAX_WS_BINS  = 20
 
 T            = 1000
 
@@ -93,6 +95,7 @@ lefthand         = None
 righthand        = None
 bins             = None
 action_name      = "N/A"
+workspace_bins   = None
 
 lefthand_msgnum  = 0
 righthand_msgnum = 0
@@ -125,6 +128,9 @@ def action_name_callback(data):
     global action_name
     action_name = data.data
 
+def workspace_bins_callback(data):
+    global workspace_bins
+    workspace_bins = data.data
 
 
 #####################################################
@@ -132,6 +138,7 @@ def action_name_callback(data):
 #####################################################
 
 # br = tf.TransformBroadcaster()
+
 
 def lookup_transforms():
     global webcam_to_w
@@ -159,7 +166,7 @@ def send_matlab_floats(v):
 
 def send_data_to_matlab():
 
-    if (lefthand is None  or righthand is None or bins is None):
+    if (lefthand is None  or righthand is None or bins is None or workspace_bins is None):
         return
 
     global framecount
@@ -197,6 +204,11 @@ def send_data_to_matlab():
 
         if bin_exist == False:
             send_matlab_floats([0, 0, 0, 0, 0, 0, 0])
+
+    # send workspace bins
+    send_matlab_floats([float(len(workspace_bins))] + 
+                       [float(ord(ws_bin)) for ws_bin in workspace_bins] +
+                       [float(0) for i in range(len(workspace_bins),MAX_WS_BINS)])
 
     # send additional xml string
     additional_data = etree.Element('data')
@@ -389,6 +401,7 @@ def main():
     rospy.Subscriber(ROS_TOPIC_LEFTHAND, PoseStamped, left_hand_callback)
     rospy.Subscriber(ROS_TOPIC_RIGHTHAND, PoseStamped, right_hand_callback)
     rospy.Subscriber(ROS_TOPIC_ACTION_NAME_GT, String, action_name_callback)
+    rospy.Subscriber(ROS_TOPIC_WORKSPACE_BINS, UInt8MultiArray, workspace_bins_callback)
 
     # set up pub
     if PUBLISH_MULTIARRAY_ALLDISTRIBUTIONS :
