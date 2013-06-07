@@ -92,7 +92,7 @@ for i=length(slot_states)+1:3
     slot_states(i) = 0;
 end;
 
-
+slot_states
 i = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, debug);
 
 if i == 0,
