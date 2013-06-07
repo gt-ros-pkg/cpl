@@ -1,4 +1,4 @@
-function [action, best_plan] = multistep(probs, slot_states, bin_names, nowtimesec, rate, debug)
+function [action, best_plan] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, debug)
 
 planning_params
 
