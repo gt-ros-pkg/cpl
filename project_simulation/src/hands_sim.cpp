@@ -777,7 +777,9 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 
 	//publish that human is currently waiting
 	std_msgs::String wait_task_msg;
-	wait_task_msg.data= "Waiting";
+        char int_name[10] = "Waiting_x";
+        int_name[8] = '0' + cur_bin;
+	wait_task_msg.data= int_name;
 	task_pub.publish(wait_task_msg);
 
 	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
