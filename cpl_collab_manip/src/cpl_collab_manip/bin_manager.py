@@ -362,7 +362,8 @@ class BinManager(object):
                   -2.28456617769, -1.5054511996, -1.1]
         q_init = self.arm_cmd.get_q()
         start_time = rospy.get_time()
-        t_knots, q_knots = self.traj_plan.min_jerk_interp_q_vel(q_init, q_home, self.pregrasp_vel)
+        t_knots, q_knots = self.traj_plan.min_jerk_interp_q_vel(q_init, q_home, self.pregrasp_vel/5.)
+        print t_knots, q_knots
         print 'Planning time:', rospy.get_time() - start_time
         home_traj = SplineTraj.generate(t_knots, q_knots)
         #print t_knots, q_knots
