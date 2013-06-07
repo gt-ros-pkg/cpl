@@ -8,7 +8,7 @@ DRAW_END_DISTRIBUTION    = {};
 
 
 
-bin_req.bin_id        = {3, 10, 7, 13};
+bin_req.bin_id        = {3, 10, 7, 14};
 bin_req.symbol_names1 = {'Bin1', 'Bin2', 'Bin3', 'Bin4'};
 bin_req.symbol_types1 = {'start', 'start', 'start', 'start'};
 bin_req.symbol_names2 = {'b1_6', 'b2_1', 'b3_1', 'b4_6'};
