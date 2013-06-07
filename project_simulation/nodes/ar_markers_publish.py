@@ -358,6 +358,15 @@ def pub_bins():
         
         #publish IDs of bins in workspace
         msg_work_bin_ids = std_msgs.msg.UInt8MultiArray()
+        #make sure no. of bins published equals the slot states
+        if  bins_in_workspace.__len__() < workspace.__len__():
+            zeros_to_append = workspace.__len__()-bins_in_workspace.__len__()
+            for count in range(zeros_to_append):
+                bins_in_workspace.append(0)
+        elif bins_in_workspace.__len__() > workspace.__len__():
+            print 'Exiting. More bins in workspace than the number of slots.'
+            return
+
         msg_work_bin_ids.data = bins_in_workspace
         pub_work_bin_ids.publish(msg_work_bin_ids)
         
