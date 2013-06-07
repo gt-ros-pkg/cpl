@@ -94,7 +94,7 @@ for i=length(slot_states)+1:3
 end;
 
 
-i = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, debug);
+[i, best_plan, n.multistep_history] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, n.multistep_history, debug);
 
 if i == 0,
     disp nothing_To_do
