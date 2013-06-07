@@ -16,9 +16,9 @@ for i = 1:numbins
     bin_prob = sum(probs{i,1});
     start_probs = probs{i,1}/bin_prob;
     end_probs = probs{i,2}/bin_prob;
-    prob_now_before_bin = sum(start_probs(nowtimeind+1:end))
-    prob_now_after_bin = sum(end_probs(1:nowtimeind))
-    prob_now_during_bin = (1-prob_now_before_bin) * (1-prob_now_after_bin)
+    prob_now_before_bin = sum(start_probs(nowtimeind+1:end));
+    prob_now_after_bin = sum(end_probs(1:nowtimeind));
+    prob_now_during_bin = (1-prob_now_before_bin) * (1-prob_now_after_bin);
     text(maxtime-10, 0.5-i+numbins, sprintf('B:%1.2f, D:%1.2f, A:%1.2f', ...
                                 prob_now_before_bin, prob_now_during_bin, prob_now_after_bin));
     ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});

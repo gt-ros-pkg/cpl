@@ -3,7 +3,8 @@ function [action, best_plan] = multistep(probs, slot_states, bins_history, bin_n
 planning_params
 
 if debug
-    display_arg = 'final-detailed';
+    display_arg = 'off';
+    % display_arg = 'final-detailed';
 else
     display_arg = 'off';
 end
@@ -84,8 +85,8 @@ for i = 1:size(deliv_seqs,1)
     best_times = all_best_times(ind,:);
     durations = traj_dur*2 * ones(1,numel(plan));
     plan = all_plans(ind,:);
-    action_starts = best_times-durations;
-    action_ends = best_times;
+    action_starts = best_times;
+    action_ends = best_times+durations;
 
     all_plans_sorted(i,:) = plan;
     all_action_starts(i,:) = action_starts;
