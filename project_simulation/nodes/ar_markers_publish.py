@@ -215,6 +215,9 @@ def pub_bins():
     
     #human gets actual bin positions
     pub_human = rospy.Publisher('ar_pose_marker_hum', project_simulation.msg.AlvarMarkers)
+
+    #IDs of bins in workspace
+    pub_work_bin_ids = rospy.Publisher('workspace_bins', std_msgs.msg.UInt8MultiArray)
     
     #workspace-bins
     pub_workspace = rospy.Publisher('reachable_bins', project_simulation.msg.StringArray)
@@ -235,6 +238,7 @@ def pub_bins():
     while not rospy.is_shutdown() :
         ar_markers = []
         hum_ar_markers = []
+        bins_in_workspace = []
         ar_viz_markers = []
         markers_robo = []
 
@@ -276,6 +280,7 @@ def pub_bins():
                             marker_human.pose.pose.position.y = hum_loc['position'][1]                       
                             marker_human.pose.pose.position.z = hum_loc['position'][2]
                             hum_ar_markers.append(marker_human)
+                            bins_in_workspace.append(marker_human.id)
                             break
                     
                     #add gaussian noise
@@ -350,6 +355,11 @@ def pub_bins():
         msg_hum.header.frame_id = frame_of_reference
         msg_hum.markers = hum_ar_markers
         pub_human.publish(msg_hum)
+        
+        #publish IDs of bins in workspace
+        msg_work_bin_ids = std_msgs.msg.UInt8MultiArray()
+        msg_work_bin_ids.data = bins_in_workspace
+        pub_work_bin_ids.publish(msg_work_bin_ids)
         
         #publish workspace
         temp_arr = []
