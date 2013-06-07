@@ -44,27 +44,28 @@ for i = 1:size(deliv_seqs,1)
     % in the delivery order
 
     % create the durations (s) for each action step, given a plan
-    durations = create_durations(plan, traj_dur);
+    % durations = create_durations(plan, traj_dur);
+    durations = traj_dur*2 * ones(1,numel(plan));
     
     % optimize the opt_cost_fun for a given plan over the timings each action is completed
-    % The solution is bounded below by the completion time of the first action, given
-    % it is executed now, and the duration of subsequent actions, given they execute
+    % The solution is bounded below by the start time of the first action, given
+    % it is executed now, and the duration of it and subsequent actions, given they execute
     % as soon as the last action is completed
-    lower_bounds = durations*rate;
-    lower_bounds(1) = lower_bounds(1) + nowtimeind;
-    A = ones(numel(lower_bounds));
-    b = numel(t)*ones(numel(lower_bounds),1);
-    x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, undodur, nowtimeind, 0), ...
-                                      lower_bounds, ...
-                                      A, b, ...
-                                      [], [], ...
-                                      lower_bounds, [], ...
-                                      [], opt_options);
+    lower_bounds = [nowtimeind, durations(1:end-1)*rate];
+    % the end time of the last action should be before the end of the distribution
+    A = ones(1, numel(lower_bounds));
+    b = numel(t)-durations(end)*rate;
+    x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, traj_dur_ind, undo_dur, nowtimeind, 0), ...
+                    lower_bounds, ...
+                    A, b, ...
+                    [], [], ...
+                    lower_bounds, [], ...
+                    [], opt_options);
     best_times = cumsum(x_sol / rate);
 
     % given the optimal timings, find the actual plan and its cost from the optimization function
     % this will fill in the bin removals from the original plan
-    [cost, fullplan] = opt_cost_fun(x_sol, slot_states, plan, t, probs, undodur, nowtimeind, 1);
+    [cost, fullplan] = opt_cost_fun(x_sol, slot_states, plan, t, probs, traj_dur_ind, undo_dur, nowtimeind, 1);
 
     deliver_sequence = deliv_seqs(i,:);
     all_best_times(i,:) = best_times;
@@ -81,7 +82,7 @@ for i = 1:size(deliv_seqs,1)
     ind = cost_inds(i);
     cost = all_costs(ind);
     best_times = all_best_times(ind,:);
-    durations = create_durations(plan, traj_dur);
+    durations = traj_dur*2 * ones(1,numel(plan));
     plan = all_plans(ind,:);
     action_starts = best_times-durations;
     action_ends = best_times;

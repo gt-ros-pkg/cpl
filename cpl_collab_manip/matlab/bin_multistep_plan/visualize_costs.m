@@ -19,7 +19,7 @@ lt_costs = [];
 for i = 1:numbins
     for tx = 1:numel(t)
         binprob = sum(probs{i,1});
-        rm_costs(i,tx) = remove_cost(t, tx, probs{i,1}/binprob, probs{i,2}/binprob, binprob, undodur);
+        rm_costs(i,tx) = remove_cost(t, tx, probs{i,1}/binprob, probs{i,2}/binprob, binprob, undo_dur);
         lt_costs(i,tx) = late_cost(t, tx, probs{i,1}/binprob, probs{i,2}/binprob, binprob, nowtimeind);
     end
 end
