@@ -1,4 +1,4 @@
-function [action, best_plan, history] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, history, debug)
+function [action, best_plan, history] = multistep(probs, slot_states, inf_k, bin_names, nowtimesec, rate, history, debug)
 
 if ~isfield(history, 'slots')
     history.slots = [];
@@ -71,7 +71,7 @@ for i = 1:size(deliv_seqs,1)
     A = ones(1, numel(lower_bounds));
     b = numel(t)-durations(end)*rate;
     x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, traj_dur_ind, undo_dur, nowtimeind, 0), ...
-                    lower_bounds+30, ...
+                    lower_bounds, ...
                     A, b, ...
                     [], [], ...
                     lower_bounds, [], ...
@@ -114,13 +114,15 @@ for i = 1:size(deliv_seqs,1)
     if debug && i == 1
         figure(100+i)
         clf
-        subplot(2,1,1)
+        subplot(3,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
                                history, slot_states, numbins, rate, ...
-                               nowtimesec, max_time);
-        subplot(2,1,2)
+                               nowtimesec, t, max_time, inf_k);
+        subplot(3,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
                             nowtimesec, nowtimeind, max_time);
+        subplot(3,1,3)
+        visualize_cost_funs(t, probs, undo_dur, nowtimesec, nowtimeind, max_time);
         if actions(i) == 0
             action_name = 'WAIT';
         elseif actions(i) > 0

@@ -4,10 +4,10 @@ if tr > numel(t)
     cost = 1e10*(1+tr-numel(t));
 else
 
-    if was_delivered
+    if was_delivered || true
         % flat top model (don't remove until done):
         % m = -0.001;
-        m = 0.0;
+        m = -0.001;
         cost = binprob * sum((m*(t(tr)-t(tr+1:end))+undo_dur).^2 .* endprobs(tr+1:end));
     else
         % plateau model (may or may not be needed):
