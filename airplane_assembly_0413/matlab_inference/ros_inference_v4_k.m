@@ -10,7 +10,7 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-adjust_detection_var; % for adjust detection variance, see that file
+% adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
@@ -20,8 +20,8 @@ MAX_NAME_LENGTH     = 20;     % must match ROS node param
 MAX_WS_BINS         = 20;
 
 DO_INFERENCE             = 1;
-SEND_INFERENCE_TO_ROS    = 1;
-DRAW_DISTRIBUTION_FIGURE = 99;
+SEND_INFERENCE_TO_ROS    = 0;
+DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
 DRAW_DETECTIONS_FIGURE   = 0;
