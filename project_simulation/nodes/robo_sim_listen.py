@@ -489,82 +489,91 @@ def find_close_location(std_loc, loc_list):
                     
     return closest_loc
     
-
 def listen_tasks(task_msg):
     global task_list, empty_locations, work_space, cur_bin_list
 
-    if task_list.__len__() == 0:
-        to_move_bin = task_msg.bin_id
-        target_location = []
-        #find bin
-        targ_bin_cur_loc = None
-        bin_found = False
-        for cur_bin in cur_bin_list:
-            if cur_bin['id'] == to_move_bin:
-                targ_bin_cur_loc = cur_bin['location']
-                bin_found = True
-                break
-        
-        if not bin_found:
-            #incase bin wasn't found, move to next task
-            print 'Bin not found for the task. Skipping task'
-            return
-
-        #check if already in workspace
-        is_bin_in_work = False
-        for work_loc in work_space:
-            if targ_bin_cur_loc == work_loc:
-                is_bin_in_work = True
-                break
-
-        #find empty work slots
-        empty_works = []
-        empty_non_works = []
+    to_move_bin = task_msg.bin_id
+    target_location = []
     
-        for empty_loc in empty_locations:
-            is_work = False
-            for work_loc in work_space:
-                if work_loc == empty_loc:
-                    is_work = True
-                    temp_location = work_loc
-                    empty_works.append(temp_location)
-                    break
-            if not is_work:
-                empty_non_works.append(empty_loc)
+    
+    #find bin
+    targ_bin_cur_loc = None
+    bin_found = False
+    for cur_bin in cur_bin_list:
+        if cur_bin['id'] == to_move_bin:
+            targ_bin_cur_loc = cur_bin['location']
+            bin_found = True
+            break
+        
+    if not bin_found:
+        #incase bin wasn't found, move to next task
+        print 'Bin not found for the task. Skipping task'
+        return
+
+    #check if already in workspace
+    is_bin_in_work = False
+    for work_loc in work_space:
+        if targ_bin_cur_loc == work_loc:
+            is_bin_in_work = True
+            break
+
+    #find empty work slots
+    empty_works = []
+    empty_non_works = []
+    
+    for empty_loc in empty_locations:
+        is_work = False
+        for work_loc in work_space:
+            if work_loc == empty_loc:
+                is_work = True
+                temp_location = work_loc
+                empty_works.append(temp_location)
+                break
+        if not is_work:
+            empty_non_works.append(empty_loc)
 
 
-        #move to the work list
-        if task_msg.move_near_human:
+    #move to the work list
+    if task_msg.move_near_human:
         
-            #do if bin in workspace already
-            if is_bin_in_work:
-                print "Bin already in workspace. Skipping task"
-                return
-        
-            if empty_works.__len__()>0:
+        #do if bin in workspace already
+        if is_bin_in_work:
+            print "Bin already in workspace. Skipping task"
+            return
+                    
+        if empty_works.__len__()>0:
+            if len(task_list)==0:
                 target_location = find_close_location(targ_bin_cur_loc, empty_works)
                 task_list.append({'targ_loc' : target_location, 
                               'bin_id' : task_msg.bin_id})
-                return
             else:
-                print 'No empty slot in work-space'
-                return
-
-        #move out of work list
+                print 'task already taking place'
+            return
         else:
-            if not is_bin_in_work:
-                print 'Bin already out of workspace. Skipping task.'
-                return
+            print 'No empty slot in work-space'
+            return
+
+    #move out of work list
+    else:
         
-            is_space_empty = False
-            if empty_non_works.__len__()> 0:
+        if not is_bin_in_work:
+            print 'Bin already out of workspace. Skipping task.'
+            return
+            
+        is_space_empty = False
+        if empty_non_works.__len__()> 0:
+            if len(task_list)==0:
                 target_location = find_close_location(targ_bin_cur_loc, empty_non_works)
                 task_list.append({'targ_loc' : target_location, 
                                   'bin_id' : task_msg.bin_id})
-                return
             else:
-                print 'No empty slot'
-                return
+                print 'Task already taking place'
+            return
+        else:
+            print 'No empty slot'
+            return
+
+
 
 
 if __name__=='__main__':

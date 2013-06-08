@@ -22,7 +22,14 @@ opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEva
 
 % Generate potential sequences of bin deliveries.
 bin_relevances = get_bin_relevances(t, probs, slot_states, nowtimeind, endedweight, notbranchweight);
-deliv_seqs = gen_deliv_seqs(bin_relevances, beam_counts);
+bin_relevances(bin_relevances < min_bin_relev) = -inf;
+if all(bin_relevances == -inf)
+    % no bins are relevant, robot should just wait
+    action = 0;
+    best_plan = [];
+    return
+end
+deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
 % These sequences are based on a beam search through
 % bins not in the workspace currently and weighted using a heuristic which prefers bins
 % whose expected start time is closer in the future, has not yet ended, and whose
@@ -64,7 +71,7 @@ for i = 1:size(deliv_seqs,1)
     A = ones(1, numel(lower_bounds));
     b = numel(t)-durations(end)*rate;
     x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, traj_dur_ind, undo_dur, nowtimeind, 0), ...
-                    lower_bounds, ...
+                    lower_bounds+30, ...
                     A, b, ...
                     [], [], ...
                     lower_bounds, [], ...
@@ -124,6 +131,8 @@ for i = 1:size(deliv_seqs,1)
         title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
     end
 end
+
+plan_costs = [costs_sorted', all_plans_sorted]
 
 action = actions(1);
 best_plan = [all_plans_sorted(1,:)', all_action_starts(1,:)', all_action_ends(1,:)'];

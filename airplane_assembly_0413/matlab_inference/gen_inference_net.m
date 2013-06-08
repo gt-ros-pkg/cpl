@@ -55,8 +55,15 @@ while 1
     
     if s.is_terminal
         
-        duration_mean = model.grammar.symbols(m.g(end).id).learntparams.duration_mean / m.params.downsample_ratio;
-        duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).learntparams.duration_var / m.params.downsample_ratio^2;
+        if isfield(model.grammar.symbols(m.g(end).id), 'learntparams')
+            duration_mean = model.grammar.symbols(m.g(end).id).learntparams.duration_mean / m.params.downsample_ratio;
+            duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).learntparams.duration_var / m.params.downsample_ratio^2;
+        else
+            duration_mean = model.grammar.symbols(m.g(end).id).manual_params.duration_mean / m.params.downsample_ratio;
+            duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).manual_params.duration_var / m.params.downsample_ratio^2;
+        end
+            
+            
         duration      = nxmakegaussian(m.params.T, duration_mean, duration_var);
         durationmat   = zeros(m.params.T,m.params.T);
         
@@ -75,7 +82,10 @@ while 1
         m.g(end).prule = r.right; % todo
         m.g(end).prule = length(x) + [1:length(r.right)];
         m.g(end).andrule = ~r.or_rule;
-        m.g(end).orweights = r.or_prob;
+        
+        if isfield(r, 'or_prob')
+            m.g(end).orweights = r.or_prob;
+        end;
         
         x = [x r.right];
     end
@@ -93,10 +103,11 @@ end
 %% set up root
 m.s =  m.grammar.starting;
 m.g(m.s).start_distribution = 0 * ones(1, m.params.T) / m.params.T;
-m.g(m.s).start_distribution(1:200) = 1 / 200;
+m.g(m.s).start_distribution(1:100) = 1 / 100;
 m.g(m.s).end_likelihood = ones(1, m.params.T) / m.params.T;
 
 %% set up detection result
+m.detection.result = cell(length(m.detection.detectors), 1);
 for i=unique([m.g.detector_id])
     m.detection.result{i} = ones(m.params.T);
 end;

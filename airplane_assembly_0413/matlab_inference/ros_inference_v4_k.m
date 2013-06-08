@@ -2,24 +2,23 @@
 %% load data
 addpath(genpath('.'));
 clc; clear; % close all;
-m = gen_inference_net('s/model');
+init_for_s3
+init_for_s
+m = gen_inference_net(MODEL_PATH);
+m.bin_req = bin_req;
+
+% adjust_detection_var;
 
 %% const
 
-PORT_NUMBER         = 12341;
-BIN_NUM             = 20;
+PORT_NUMBER         = 12341;  % must match ROS node param
+BIN_NUM             = 20;     % must match ROS node param
+MAX_NAME_LENGTH     = 20;     % must match ROS node param
 MAX_WS_BINS         = 20;
-
-MAX_NAME_LENGTH     = 20; % must match ROS node param
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 1;
 DRAW_DISTRIBUTION_FIGURE = 99;
-DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'Nose_A', 'nose_a1', 'Wing_AT', 'wing_at1', 'Tail_AT','tail_at1', 'tail_at2', 'tail_at3'};
-DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'Nose_A', 'nose_a1', 'Wing_AT', 'Wing_H'};
-%DRAW_START_DISTRIBUTION  = {'space', 'body1', 'body2', 'body3', 'body4', 'body5', 'body6'};
-%DRAW_START_DISTRIBUTION  = {'Nose_A', 'Wing_AD', 'Tail_AT'};
-DRAW_END_DISTRIBUTION    = {'S'};
 
 DRAW_POSITIONS_FIGURE    = 0;
 DRAW_DETECTIONS_FIGURE   = 0;
@@ -222,6 +221,12 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % ground truth action label
     if 1
         nx_figure(DRAW_DISTRIBUTION_FIGURE);
+        
+        if isfield(k, 'executedplan')
+            subplot(3, 1, 2);
+            plot_plan(k.executedplan);
+        end;
+        
         subplot(3, 1, 3);
         cla
         ylim([-1 2]);
