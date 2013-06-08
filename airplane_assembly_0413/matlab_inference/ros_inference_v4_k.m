@@ -7,6 +7,8 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
+% adjust_detection_var;
+
 %% const
 
 PORT_NUMBER         = 12341;  % must match ROS node param

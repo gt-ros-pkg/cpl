@@ -103,7 +103,7 @@ end
 %% set up root
 m.s =  m.grammar.starting;
 m.g(m.s).start_distribution = 0 * ones(1, m.params.T) / m.params.T;
-m.g(m.s).start_distribution(1:50) = 1 / 50;
+m.g(m.s).start_distribution(1:100) = 1 / 100;
 m.g(m.s).end_likelihood = ones(1, m.params.T) / m.params.T;
 
 %% set up detection result
