@@ -1,5 +1,5 @@
 function [] = visualize_bin_activity(bin_seq, times, bin_names, history, ...
-                                     slot_states, numbins, rate, tnow, maxtime)
+                                     slot_states, numbins, rate, tnow, t, maxtime, inf_k)
 bar_width = 100/numbins;
 
 hold on
@@ -9,6 +9,22 @@ hold on
 %         plot([tnow-5, tnow], [yval, yval],'g','LineWidth',bar_width/2);
 %     end
 % end
+if 0
+for act_names_ind = 1:numel(inf_k.action_names_gt)
+    cur_act = inf_k.action_names_gt(act_names_ind);
+    if strcmp(cur_act.name,'Waiting')
+        start_time = t(cur_act.start);
+        if act_names_ind >= numel(inf_k.action_names_gt)
+            end_time = tnow;
+        else
+            next_act = inf_k.action_names_gt(act_names_ind+1);
+            end_time = t(next_act.start);
+        end
+        plot([start_time, start_time], [yval-0.4, yval+0.4],'c-');
+        plot([end_time, end_time], [yval-0.4, yval+0.4],'c-');
+    end
+end
+end
     
 for hist_ind = 1:numel(history.nowtimes)
     for bin_id = history.slots(hist_ind,:)

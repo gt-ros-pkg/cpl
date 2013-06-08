@@ -95,7 +95,7 @@ end;
 
 
 
-[i, best_plan, n.multistep_history] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, n.multistep_history, debug);
+[i, best_plan, n.multistep_history] = multistep(probs, slot_states, n, bin_names, nowtimesec, rate, n.multistep_history, debug);
 
 
 if i == 0,

@@ -3,8 +3,10 @@
 addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
-init_for_s3
-% init_for_s
+
+init_for_s3 % linear chain
+%init_for_s % 3 tasks
+
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
@@ -215,7 +217,8 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-    	k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
+        k.action_names_gt = action_names_gt;
+        k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
     end
     
     
