@@ -1,10 +1,11 @@
 ssh root@192.168.0.100
 PW: easybot
+(might need to run ./stopurcontrol.sh if this doesn't work)
 rosrun ur_controller_manager ur_controller 0.1 0.1 -0.1 -0.1 0.1 0.1
 # the numbers should all be +/-0.1, represent the directions joints will move
 
 rosrun ur_joint_iface joint_iface_backend.py
-roslaunch ur_cart_move pose_finder.launch
+roslaunch ur_cart_move pose_finder.launch # optional
 
 
 Before shutting down, put the robot in a good configuration to start up again.
