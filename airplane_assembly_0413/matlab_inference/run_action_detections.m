@@ -21,7 +21,7 @@ function detections = run_action_detections( frame_info, data )
         
         % run detector
         if data.params.use_onedetector
-            detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_scale * data.onedetector.learnt.var) / data.detectors(d).mean_detection_score;
+            detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_scale * data.onedetector.learnt.var) / data.onedetector.mean_detection_score;
         else
             detections(d) = mvnpdf(closest_hand, data.detectors(d).learnt.mean, data.params.detector_var_scale * data.detectors(d).learnt.var) / data.detectors(d).mean_detection_score;
         end

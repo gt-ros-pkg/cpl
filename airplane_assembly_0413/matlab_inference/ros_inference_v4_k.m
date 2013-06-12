@@ -1,13 +1,16 @@
 
 %% load data
 addpath(genpath('.'));
+addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
+
 init_for_s3 % linear chain
 %init_for_s % 3 tasks
+
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-% adjust_detection_var;
+% adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
@@ -17,8 +20,8 @@ MAX_NAME_LENGTH     = 20;     % must match ROS node param
 MAX_WS_BINS         = 20;
 
 DO_INFERENCE             = 1;
-SEND_INFERENCE_TO_ROS    = 1;
-DRAW_DISTRIBUTION_FIGURE = 99;
+SEND_INFERENCE_TO_ROS    = 0;
+DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
 DRAW_DETECTIONS_FIGURE   = 0;
@@ -243,9 +246,8 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
             end
             
             thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
-            performaction = 1;
+            performaction = ~strcmp(action_names_gt(i).name, 'waiting');
             if isempty(thecolor)
-                performaction = 0;
                 thecolor = [0 0 0];
             end
             
@@ -273,15 +275,9 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
                 i = i + 1;
                 subplot(dnum, 1, i);
                 dr = detection_raw_result(d,:);
-                dr(detection_raw_result(d,:) < 0.1) = 0.1;
-                semilogy(dr);
+                plot(dr);
+                ylim([0, max(detection_raw_result(:))]);
                 legend({['Bin ' num2str(d)]});
-                
-                hold on;
-                x = (log(min(100, dr(nt))) - log(0.1)) / (log(100) - log(0.1));
-                semilogy(nt, dr(nt), '*r');
-                set(gca,'Color', x * [1 0.3 0.3] + (1 - x) * [1 1 1]);
-                hold off;
             end
         end
         
