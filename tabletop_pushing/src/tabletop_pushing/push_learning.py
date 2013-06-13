@@ -458,11 +458,10 @@ class StartLocPerformanceAnalysis:
             pred_score = p.trial_start.score
             # Compute observed push score
             observed_score = self.analyze_straight_line_push(p)
-            if pred_score >= 0 and observed_score >= 0:
-                print 'Trial [',i,'] : Pred: ', pred_score, '\tObserved: ', observed_score
-                if file_out is not None:
-                    trial_line = str(pred_score) + ' ' + str(observed_score) + '\n'
-                    file_out.write(trial_line)
+            print 'Trial [',i,'] : Pred: ', pred_score, '\tObserved: ', observed_score
+            if file_out is not None:
+                trial_line = str(pred_score) + ' ' + str(observed_score) + '\n'
+                file_out.write(trial_line)
         if file_out is not None:
             file_out.close()
 
@@ -1663,6 +1662,23 @@ def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None)
     slp = StartLocPerformanceAnalysis()
     slp.compare_predicted_and_observed_push_scores(in_file_name, out_file_name)
 
+def compare_predicted_and_observed_batch():
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0_offset07', 'small_brush0','soap_box0', 'toothpaste0']
+  out_dir = base_dir+'analysis/'
+  for c in class_dirs:
+      in_dir = base_dir+c+'/'
+      files = os.listdir(in_dir)
+      file_name = None
+      for f in files:
+          if f.startswith('aff_learn_out'):
+              file_name = f
+      if file_name is None:
+          continue
+      file_in = in_dir+file_name
+      file_out = out_dir+c+'.txt'
+      compare_predicted_and_observed_push_scores(file_in, file_out)
+
 def rank_straw_scores(file_path):
     straw_file = file(file_path, 'r')
     lines = [l.split() for l in straw_file.readlines()]
@@ -1697,7 +1713,7 @@ def rank_straw_scores_batch():
       print '\n'
 
 if __name__ == '__main__':
-    pass
+    compare_predicted_and_observed_batch()
     # read_and_score_raw_files()
     # extract_shape_features_batch()
     # rank_straw_scores_batch()
