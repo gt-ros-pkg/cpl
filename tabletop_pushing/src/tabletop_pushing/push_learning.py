@@ -445,7 +445,7 @@ class StartLocPerformanceAnalysis:
 
     def __init__(self):
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
-        self.analyze_spin_push = self.analyze_spin_push_total_spin
+        self.analyze_spin_push = self.analyze_spin_push_net_spin
 
     def compare_predicted_and_observed_push_scores(self, in_file_name, out_file_name=None):
         # Read in data
@@ -482,8 +482,9 @@ class StartLocPerformanceAnalysis:
             X.append(x)
         return (X,Y)
 
-    def generate_example_file(self, file_in_name, file_out_name, normalize=False, set_train=False, set_test=False):
-        (X, Y) = self.get_trial_features(file_in_name)
+    def generate_example_file(self, file_in_name, file_out_name, normalize=False, set_train=False,
+                              set_test=False, use_spin=False):
+        (X, Y) = self.get_trial_features(file_in_name, use_spin)
         print 'Read in', len(X), 'sample locations'
         self.plio.write_example_file(file_out_name, X, Y, normalize)
         if set_train:
@@ -674,7 +675,7 @@ class StartLocPerformanceAnalysis:
         '''
         Get the average change in heading aggregated over the entire trial
         '''
-        init_theta = push_trial.trial_start.init_theta
+        init_theta = push_trial.trial_start.init_orientation
         goal_theta = push_trial.trial_start.goal_pose.theta
 
         delta_thetas = []
@@ -690,7 +691,7 @@ class StartLocPerformanceAnalysis:
         return mean_delta_theta
 
     def analyze_spin_push_net_spin(self, push_trial):
-        init_theta = push_trial.trial_start.init_theta
+        init_theta = push_trial.trial_start.init_orientation
         final_theta = push_trial.trial_end.final_orientation
         return abs(final_theta - init_theta)
 
@@ -1640,9 +1641,13 @@ def extract_shape_features_batch():
       p.wait()
 
 def read_and_score_raw_files():
-  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
-  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
-  out_dir = base_dir+'examples_line_dist/'
+  # base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  # class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  # out_dir = base_dir+'examples_line_dist/'
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/beta_testing/'
+  class_dirs = ['camcorder_beta_rotate_train0']
+  out_dir = base_dir+'example_files/'
+  use_spin = True
   for c in class_dirs:
       in_dir = base_dir+c+'/'
       files = os.listdir(in_dir)
@@ -1656,7 +1661,7 @@ def read_and_score_raw_files():
       file_out = out_dir+c[:-1]+'.txt'
       print file_out
       slp = StartLocPerformanceAnalysis()
-      slp.generate_example_file(file_in, file_out)
+      slp.generate_example_file(file_in, file_out, use_spin=use_spin)
 
 def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
     slp = StartLocPerformanceAnalysis()
@@ -1715,7 +1720,7 @@ def rank_straw_scores_batch():
       print '\n'
 
 if __name__ == '__main__':
-    compare_predicted_and_observed_batch()
-    # read_and_score_raw_files()
+    # compare_predicted_and_observed_batch()
+    read_and_score_raw_files()
     # extract_shape_features_batch()
     # rank_straw_scores_batch()
