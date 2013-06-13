@@ -1236,6 +1236,7 @@ class TabletopPushingPerceptionNode
     best_loc.boundary_loc_ = hull_cloud[best_scored.idx];
     best_loc.descriptor_ = sds[best_scored.idx];
     ROS_INFO_STREAM("Chose default push location " << best_scored.idx << " with score " << best_scored.score);
+    chosen_score = best_scored.score;
     return best_loc;
   }
 

@@ -438,7 +438,8 @@ class TabletopExecutive:
                 self.push_loc_shape_features.append(shape_descriptor)
 
                 if _USE_LEARN_IO:
-                    # TODO: Write this to disk! push_vector_res.push.start_point
+                    # TODO: Check that the predicted_score is sent correctly
+                    ropsy.loginfo('Predicted score: ' + str(push_vec_res.predicted_score)
                     self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
                                                       goal_pose, push_vec_res.push.start_point, behavior_primitive,
                                                       controller_name, proxy_name, which_arm, trial_id,

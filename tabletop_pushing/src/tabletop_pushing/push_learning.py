@@ -1665,6 +1665,8 @@ def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None)
 def compare_predicted_and_observed_batch():
   base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
   class_dirs = ['camcorder0', 'food_box0', 'large_brush0_offset07', 'small_brush0','soap_box0', 'toothpaste0']
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
+  # class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
   out_dir = base_dir+'analysis/'
   for c in class_dirs:
       in_dir = base_dir+c+'/'
