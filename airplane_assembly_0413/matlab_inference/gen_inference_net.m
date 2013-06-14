@@ -30,8 +30,10 @@ m.params.min_duration           = 30;
 duration_mean = 50 / m.params.downsample_ratio;
 duration_var  = 400 * m.params.duration_var_scale / m.params.downsample_ratio^2;
 m.params.trick.fakedummystep    = nxmakegaussian(m.params.T, duration_mean, duration_var);
-% m.params.trick.fakedummystep    = NaN;
 
+
+% m.params.use_start_conditions = 0;
+% m.params.trick.fakedummystep  = NaN;
 
 m.start_conditions              = ones(length(model.grammar.symbols), m.params.T);
 

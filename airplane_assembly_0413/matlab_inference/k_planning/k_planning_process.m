@@ -138,11 +138,13 @@ fwrite(n.ros_tcp_connection, planning_s, 'char');
 
 %% save
 n.executedplan  = executedplan;
+
 if ~isfield(n, 'bestplans')
-    n.bestplans = bestplan;
-else
-    n.bestplans(end+1) = bestplan;
+    
+    n.bestplans = {};
+
 end
+n.bestplans{end+1} = bestplan;
 
 end
 

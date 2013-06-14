@@ -69,7 +69,9 @@ for i=1:length(plans)
     plans = nx_assign_struct(plans, i, find_optimal_timing_for_order(plans(i), m, n));
 
     % calculate score
-    if i == 1
+    if length(plans) == 1
+        plans(i).score = 1;
+    elseif i == 1
         s = get_symbol_by_name(m.grammar, 'Tail_H');
         plans(i).score = sum(s.start_distribution);
     elseif i == 2
@@ -87,8 +89,6 @@ for i=1:length(plans)
    
 end
 
-disp plan_score
-disp([plans(1).score plans(2).score plans(3).score]);
 
 %% send
 bestplan.costx = [];
@@ -99,9 +99,9 @@ fwrite(n.ros_tcp_connection, planning_s, 'char');
 %% save
 n.executedplan  = executedplan;
 if ~isfield(n, 'bestplans')
-    n.bestplans = bestplan;
+    n.bestplans = {bestplan};
 else
-    n.bestplans(end+1) = bestplan;
+    n.bestplans{end+1} = bestplan;
 end
 
 

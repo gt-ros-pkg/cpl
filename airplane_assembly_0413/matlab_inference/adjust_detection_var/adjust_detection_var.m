@@ -16,11 +16,13 @@ m.detection.onedetector.mean_detection_score
 % m.detection.params.mean_detection_score_factor = 0.02;
 
 % new value
-m.detection.params.detector_var_scale           = 12;
-m.detection.onedetector.mean_detection_score    = 0.0001;
-
 m.detection.params.detector_var_scale           = 25;
 m.detection.onedetector.mean_detection_score    = 1;
+m.detection.params.detector_var_scale           = 21;
+m.detection.onedetector.mean_detection_score    = 0.2;
+m.detection.params.detector_var_scale           = 12;
+m.detection.onedetector.mean_detection_score    = 0.001;
+
 
 return;
 % 

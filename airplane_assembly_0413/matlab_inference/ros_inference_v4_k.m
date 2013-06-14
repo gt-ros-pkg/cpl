@@ -5,7 +5,7 @@ addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
 
 init_for_s3 % linear chain
-%init_for_s % 3 tasks
+init_for_s % 3 tasks
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
@@ -24,7 +24,7 @@ SEND_INFERENCE_TO_ROS    = 0;
 DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
-DRAW_DETECTIONS_FIGURE   = 0;
+DRAW_DETECTIONS_FIGURE   = 1110;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
@@ -47,6 +47,7 @@ end
 
 %% init planning
 
+%k = n_planning2_init(m);
 k = k_planning_init(m);
 
 
@@ -219,6 +220,7 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     if nt > 1 & exist('frame_info')
         k.action_names_gt = action_names_gt;
         k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
+        %k = n_planning2_process(k, m, nt, frame_info);
     end
     
     
@@ -226,9 +228,11 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     if 1
         nx_figure(DRAW_DISTRIBUTION_FIGURE);
         
-        if isfield(k, 'executedplan')
+        if isfield(k, 'executedplan') & isfield(k, 'bestplans') 
             subplot(3, 1, 2);
-            plot_plan(k.executedplan);
+            xlim([0 m.params.T]);
+            plot_plan({k.executedplan k.bestplans{end}});
+            %plot_plan({k.executedplan});
         end;
         
         subplot(3, 1, 3);
@@ -246,13 +250,15 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
             end
             
             thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
-            performaction = ~strcmp(action_names_gt(i).name, 'waiting');
             if isempty(thecolor)
                 thecolor = [0 0 0];
             end
+            not_perform_action = strcmp(action_names_gt(i).name, 'N/A') | ...
+                strcmp(action_names_gt(i).name, 'Complete') | strcmp(action_names_gt(i).name, 'waiting') | ...
+                ~isempty(strfind(action_names_gt(i).name, 'Waiting')); 
             
-            plot([thestart thestart], [0 nxifelse(~performaction, 0, 0.5)], 'color', thecolor);
-            plot([thestart theend], [nxifelse(~performaction, 0, 0.5) 0], 'color', thecolor);
+            plot([thestart thestart], [0 nxifelse(not_perform_action, 0, 0.5)], 'color', thecolor);
+            plot([thestart theend], [nxifelse(not_perform_action, 0, 0.5) 0], 'color', thecolor);
             if action_names_gt(i).name(end) == '1'
                 text(thestart, 1, action_names_gt(i).name);
             end
