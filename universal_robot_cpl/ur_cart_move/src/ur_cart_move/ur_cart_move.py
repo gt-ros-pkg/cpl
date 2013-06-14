@@ -2,7 +2,7 @@
 
 from threading import Lock
 import numpy as np
-from openravepy import *
+#from openravepy import *
 
 import roslib
 roslib.load_manifest("ur_cart_move")
@@ -23,41 +23,41 @@ from ur_controller_manager.msg import URJointCommand, URModeStates, URJointState
 
 roslib.load_manifest("pykdl_utils")
 from pykdl_utils.kdl_kinematics import create_kdl_kin
-from ur_kin_py import inverse
+from ur_kin_py import inverse, forward
 
 from ur_analytical_ik import inverse_kin, UR10_A, UR10_D, UR10_L
 
 class RAVEKinematics(object):
     def __init__(self, robot_file='$(find ur10_description)/ur10_robot.dae', load_ik=True):
         robot_file = roslaunch.substitution_args.resolve_args(robot_file)
-        self.env = Environment()
-        self.env.Load(robot_file)
-        self.robot = self.env.GetRobots()[0] # get the first robot
+        #self.env = Environment()
+        #self.env.Load(robot_file)
+        #self.robot = self.env.GetRobots()[0] # get the first robot
         #self.manip = self.robot.SetActiveManipulator('arm')
-        self.manip = self.robot.GetManipulators()[0]
+        #self.manip = self.robot.GetManipulators()[0]
     #    self.ikmodel3d = databases.inversekinematics.InverseKinematicsModel(
     #                         self.robot,iktype=IkParameterization.Type.Translation3D)
-        self.ikmodel6d = databases.inversekinematics.InverseKinematicsModel(
-                             self.robot,iktype=IkParameterization.Type.Transform6D)
+        #self.ikmodel6d = databases.inversekinematics.InverseKinematicsModel(
+        #                     self.robot,iktype=IkParameterization.Type.Transform6D)
         robot_urdf = roslaunch.substitution_args.resolve_args(
                 '$(find ur10_description)/ur10_robot.urdf')
         self.kdl_kin = create_kdl_kin('/base_link', '/ee_link', robot_urdf)
-        if True:
-            self.ik_options = (IkFilterOptions.IgnoreCustomFilters |
-                               IkFilterOptions.IgnoreJointLimits)
-        else:
-            self.ik_options = IkFilterOptions.CheckEnvCollisions
+        #if True:
+        #    self.ik_options = (IkFilterOptions.IgnoreCustomFilters |
+        #                       IkFilterOptions.IgnoreJointLimits)
+        #else:
+        #    self.ik_options = IkFilterOptions.CheckEnvCollisions
 
-        if False and load_ik:
-            self.load_ik_model()
+        #if False and load_ik:
+        #    self.load_ik_model()
 
-    def load_ik_model(self):
-        if self.ikmodel6d.load():
-            print 'Model loaded'
-        else:
-            print 'No model, generating...',
-            self.ikmodel6d.autogenerate()
-            print 'model generated!'
+    #def load_ik_model(self):
+    #    if self.ikmodel6d.load():
+    #        print 'Model loaded'
+    #    else:
+    #        print 'No model, generating...',
+    #        self.ikmodel6d.autogenerate()
+    #        print 'model generated!'
     #    if self.ikmodel3d.load():
     #        print 'Model loaded'
     #    else:
@@ -66,8 +66,8 @@ class RAVEKinematics(object):
     #        print 'model generated!'
 
     def forward(self, q):
-        self.robot.SetDOFValues(q)
-        return np.mat(self.manip.GetEndEffectorTransform())
+        #self.robot.SetDOFValues(q)
+        return np.mat(forward(np.array(q)))
 
     def inverse_all(self, x, q_guess=None, q_min=6*[-2.*np.pi], q_max=6*[2.*np.pi]):
         if q_guess is None:
@@ -126,10 +126,10 @@ class RAVEKinematics(object):
             num_restart += 1
         return None
 
-    def jacobian(self, q):
-        self.robot.SetDOFValues(q)
-        return np.bmat([[self.manip.CalculateJacobian()],
-                       [self.manip.CalculateAngularVelocityJacobian()]])
+    #def jacobian(self, q):
+    #    #self.robot.SetDOFValues(q)
+    #    return np.bmat([[self.manip.CalculateJacobian()],
+    #                   [self.manip.CalculateAngularVelocityJacobian()]])
 
     def inverse_velocity(self, x_delta, q_cur):
         pos, euler = PoseConv.to_pos_euler(x_delta)
@@ -144,9 +144,9 @@ class RAVEKinematics(object):
         q_wrapped = q - q_resid
         return q_wrapped, q_resid
 
-    def is_self_colliding(self, q):
-        self.robot.SetDOFValues(q)
-        return self.robot.CheckSelfCollision()
+    #def is_self_colliding(self, q):
+    #    self.robot.SetDOFValues(q)
+    #    return self.robot.CheckSelfCollision()
 
 class ArmInterface(object):
     CONTROL_RATE = 125

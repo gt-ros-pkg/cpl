@@ -1,7 +1,7 @@
 <launch>
     <include file="$(find openni_launch)/launch/openni.launch">
       <arg name="camera"               value="kinect0" /> 
-      <arg name="device_id"            value="2@0" /> 
+      <arg name="device_id"            value="5@0" /> 
       <arg name="publish_tf"           value="false" /> 
     </include>
     <param name="/kinect0/driver/depth_ir_offset_x" value="-5.8" />
