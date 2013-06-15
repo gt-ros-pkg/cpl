@@ -1170,14 +1170,39 @@ class TabletopPushingPerceptionNode
     for (int i = 0; i < sds.size(); ++i)
     {
       // Set the data vector in libsvm format
-      svm_node* x = new svm_node[sds[i].size()];
+      int nonzero_count = 0;
       for (int j = 0; j < sds[i].size(); ++j)
       {
-        x[j].index = (j+1); // NOTE: 1 based indices
-        x[j].value = sds[i][j];
+        if (sds[i][j] > 0)
+        {
+          nonzero_count++;
+        }
+      }
+      svm_node* x = new svm_node[nonzero_count];
+      for (int j = 0, k = 0; j < sds[i].size() && k < nonzero_count; ++j)
+      {
+        if (sds[i][j] > 0)
+        {
+          x[k].index = (j+1); // NOTE: 1 based indices
+          x[k].value = sds[i][j];
+          if( x[k].index > 94)
+          {
+            ROS_WARN_STREAM("Sample " << i << " has non-zero index: " << x[j].index << " with value " << x[j].value);
+          }
+          k++;
+        }
       }
       // Perform prediction and convert out of log spacex
-      double pred_score = exp(svm_predict(push_model, x));
+      double raw_pred_score = svm_predict(push_model, x);
+      double pred_score = exp(raw_pred_score);
+      if (isnan(pred_score) || isinf(pred_score))
+      {
+        ROS_WARN_STREAM("Sample " << i <<  " has pred score: " << pred_score << "\traw pred score: " << raw_pred_score);
+      }
+      if (isinf(pred_score))
+      {
+        pred_score = raw_pred_score;
+      }
       ScoredIdx scored_idx;
       scored_idx.score = pred_score;
       scored_idx.idx = i;
