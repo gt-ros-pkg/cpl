@@ -1719,6 +1719,26 @@ def rank_straw_scores_batch():
       rank_straw_scores(file_path)
       print '\n'
 
+def convert_robot_attempts_to_example_file(in_file_name, out_file_name):
+    scores = []
+    feats = []
+    loc = []
+    in_file = file(in_file_name,'r')
+    raw_lines = in_file.readlines()
+    in_file.close()
+    for i, l in enumerate(raw_lines):
+        line = l.split()
+        loc.append((float(line[0]), float(line[1])))
+        scores.append(float(line[2]))
+        feats.append([float(f) for f in line[3:]])
+        print i, len(feats[i])
+    normalize = False
+    debug = False
+    write_example_file(out_file_name, feats, scores, normalize, debug)
+
+def convert_robot_attempts_file_batch():
+    pass
+
 if __name__ == '__main__':
     # compare_predicted_and_observed_batch()
     read_and_score_raw_files()
