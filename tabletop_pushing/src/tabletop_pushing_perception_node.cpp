@@ -1228,6 +1228,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Chose push location " << chosen.idx << " with score " << chosen.score);
         pcl16::PointXYZ selected(hull_cloud_obj[chosen.idx].x, hull_cloud_obj[chosen.idx].y, 0.0);
         displayLearnedPushLocScores(pred_push_scores, hull_cloud_obj, selected);
+        chosen_score = chosen.score;
         return loc;
       }
     }

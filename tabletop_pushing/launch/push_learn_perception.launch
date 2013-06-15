@@ -85,5 +85,6 @@
     <param name="object_not_between_count_limit" value="2" type="int"/>
     <param name="object_not_between_epsilon" value="0.02" type="double"/>
     <param name="object_not_between_tool_epsilon" value="0.05" type="double"/>
+    <param name="point_cloud_hist_res" value="0.0051" type="double"/>
   </node>
 </launch>

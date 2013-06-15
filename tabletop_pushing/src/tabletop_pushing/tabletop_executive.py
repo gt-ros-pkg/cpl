@@ -439,7 +439,7 @@ class TabletopExecutive:
 
                 if _USE_LEARN_IO:
                     # TODO: Check that the predicted_score is sent correctly
-                    ropsy.loginfo('Predicted score: ' + str(push_vec_res.predicted_score)
+                    rospy.loginfo('Predicted score: ' + str(push_vec_res.predicted_score))
                     self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
                                                       goal_pose, push_vec_res.push.start_point, behavior_primitive,
                                                       controller_name, proxy_name, which_arm, trial_id,
@@ -1188,11 +1188,12 @@ if __name__ == '__main__':
     # for hold_out_object in hold_out_objects:
     #     if not running:
     #         break
-    #     # rospy.loginfo('Testing with hold out object ' + hold_out_object)
-    #     # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_icdl_no_'+\
-    #     #     hold_out_object+'.model'
-    #     # start_loc_param_path = 'rand'
-    start_loc_param_path = ''
+    hold_out_object = 'soap_box'
+    rospy.loginfo('Testing with hold out object ' + hold_out_object)
+    start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_icdl_no_'+\
+        hold_out_object+'.model'
+    # start_loc_param_path = 'rand'
+    # start_loc_param_path = ''
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     elif use_learning:
