@@ -1150,6 +1150,8 @@ class TabletopPushingPerceptionNode
     // TODO: Set these values somewhere else
     float hull_alpha = 0.01;
     float gripper_spread = 0.05;
+    int local_length = 36;
+    int global_length = 60;
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                                 gripper_spread, hull_alpha,
@@ -1157,6 +1159,11 @@ class TabletopPushingPerceptionNode
     // Read in model SVs and coefficients
     svm_model* push_model;
     push_model = svm_load_model(param_path.c_str());
+    // Remove trailing .model
+    param_path.erase(param_path.size()-6, 6);
+    std::stringstream train_feat_path;
+    train_feat_path << param_path << "-feats.txt";
+    cv::Mat K = tabletop_pushing::precomputeChi2Kernel(sds, train_feat_path.str(), local_length, global_length);
 
     std::vector<double> pred_push_scores;
     std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq;
@@ -1167,32 +1174,16 @@ class TabletopPushingPerceptionNode
     hull_cloud_obj.resize(hull_cloud_obj.width*hull_cloud_obj.height);
 
     // Perform prediction at all sample locations
-    for (int i = 0; i < sds.size(); ++i)
+    for (int i = 0; i < K.rows; ++i)
     {
-      // Set the data vector in libsvm format
-      int nonzero_count = 0;
-      for (int j = 0; j < sds[i].size(); ++j)
+      svm_node* x = new svm_node[K.cols];
+      for (int j = 0; j < K.cols; ++j)
       {
-        if (sds[i][j] > 0)
-        {
-          nonzero_count++;
-        }
+        x[j].value = K.at<double>(i, j);
+        x[j].index = 0; // unused
       }
-      svm_node* x = new svm_node[nonzero_count];
-      for (int j = 0, k = 0; j < sds[i].size() && k < nonzero_count; ++j)
-      {
-        if (sds[i][j] > 0)
-        {
-          x[k].index = (j+1); // NOTE: 1 based indices
-          x[k].value = sds[i][j];
-          if( x[k].index > 94)
-          {
-            ROS_WARN_STREAM("Sample " << i << " has non-zero index: " << x[j].index << " with value " << x[j].value);
-          }
-          k++;
-        }
-      }
-      // Perform prediction and convert out of log spacex
+      // Perform prediction and convert out of log space
+      // TODO: Collapse below once we get the bugs worked out
       double raw_pred_score = svm_predict(push_model, x);
       double pred_score = exp(raw_pred_score);
       if (isnan(pred_score) || isinf(pred_score))

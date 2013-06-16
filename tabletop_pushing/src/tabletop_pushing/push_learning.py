@@ -1606,6 +1606,7 @@ def write_example_file(file_name, X, Y, normalize=False, debug=False):
         data_line +='\n'
         data_out.write(data_line)
     data_out.close()
+    return (X,Y)
 
 def rewrite_example_file_features(original_file_name, feat_file_name, out_file_name, normalize=False, debug=False):
     old_X, Y = read_example_file(original_file_name)
@@ -1734,7 +1735,7 @@ def convert_robot_attempts_to_example_file(in_file_name, out_file_name):
         print i, len(feats[i])
     normalize = False
     debug = False
-    write_example_file(out_file_name, feats, scores, normalize, debug)
+    return write_example_file(out_file_name, feats, scores, normalize, debug)
 
 def convert_robot_attempts_file_batch():
     pass

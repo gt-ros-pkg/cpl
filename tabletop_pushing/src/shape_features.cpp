@@ -1232,4 +1232,59 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
   return min_idx;
 }
 
+ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_length)
+{
+  std::ifstream data_in(feature_path.c_str());
+  ShapeDescriptors train_feats;
+  while (data_in.good())
+  {
+    ShapeDescriptor feat(feat_length, 0.0);
+    char c_line[4096];
+    data_in.getline(c_line, 4096);
+    std::stringstream line;
+    line << c_line;
+    int idx;
+    double val;
+    int num_feats = 0;
+    // std::stringstream debug_display;
+    while (line >> idx)
+    {
+      if (line.peek() == ':')
+      {
+        line.ignore();
+        line >> val;
+        feat[idx-1] = val;
+        num_feats++;
+        // debug_display << "[" << idx-1 << "] = " << val << " ";
+      }
+      if (line.peek() == ' ')
+      {
+        line.ignore();
+      }
+    }
+    // ROS_INFO_STREAM(debug_display.str());
+    if (num_feats > 0)
+    {
+      train_feats.push_back(feat);
+    }
+  }
+  data_in.close();
+  return train_feats;
+}
+
+cv::Mat precomputeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length)
+{
+  ShapeDescriptors train_feats = loadSVRTrainingFeatures(feat_path, local_length + global_length);
+  // cv::Mat K(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
+  // TODO: Apply chi2 kernel to test & train data,
+  // TODO: gamma_local 2.5
+  // TODO: gamma_global 2
+  cv::Mat K_local;
+  cv::Mat K_global;
+  // TODO: apply kernel weights
+  double mixture_weight = 0.7;
+  cv::Mat K = mixture_weight * K_global + (1 - mixture_weight) * K_local;
+  return K;
+}
+
 };
