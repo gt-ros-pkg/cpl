@@ -55,6 +55,10 @@ rosbuild_link_boost(tabletop_pushing_perception_node signals)
 rosbuild_link_boost(tabletop_pushing_perception_node signals)
 target_link_libraries(tabletop_pushing_perception_node ${LIBSVM_LIBRARIES})
 
+rosbuild_add_executable(test_svm src/test_svm.cpp)
+target_link_libraries(test_svm ${LIBSVM_LIBRARIES})
+target_link_libraries(test_svm shape_features)
+
 rosbuild_add_executable(object_singulation_node src/object_singulation_node.cpp)
 target_link_libraries(object_singulation_node point_cloud_segmentation)
 target_link_libraries(object_singulation_node ${OpenCV_LIBRARIES})
