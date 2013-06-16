@@ -1259,18 +1259,24 @@ ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_leng
   return train_feats;
 }
 
-cv::Mat precomputeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length)
+cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length)
 {
   ShapeDescriptors train_feats = loadSVRTrainingFeatures(feat_path, local_length + global_length);
-  // TODO: Apply chi2 kernel to test & train data,
-  // TODO: gamma_local 2.5
-  // TODO: gamma_global 2
+  const double gamma_local = 2.5;
+  const double gamma_global = 2.0;
   cv::Mat K_local(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
   cv::Mat K_global(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
   for (int i = 0; i < sds.size(); ++i)
   {
+    ShapeDescriptor a_local(sds[i].begin(), sds[i].begin()+local_length);
+    ShapeDescriptor a_global(sds[i].begin()+local_length, sds[i].end());
     for (int j = 0; j < train_feats.size(); ++j)
     {
+      ShapeDescriptor b_local(train_feats[j].begin(), train_feats[j].begin()+local_length);
+      ShapeDescriptor b_global(train_feats[j].begin()+local_length, train_feats[j].end());
+
+      K_local.at<double>(i,j) = shapeFeatureChiSquareDist(a_local, b_local, gamma_local);
+      K_global.at<double>(i,j) = shapeFeatureChiSquareDist(a_global, b_global, gamma_global);
     }
   }
   // Linear combination of local and global kernels

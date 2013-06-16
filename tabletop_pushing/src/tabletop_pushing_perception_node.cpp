@@ -1163,7 +1163,7 @@ class TabletopPushingPerceptionNode
     param_path.erase(param_path.size()-6, 6);
     std::stringstream train_feat_path;
     train_feat_path << param_path << "-feats.txt";
-    cv::Mat K = tabletop_pushing::precomputeChi2Kernel(sds, train_feat_path.str(), local_length, global_length);
+    cv::Mat K = tabletop_pushing::computeChi2Kernel(sds, train_feat_path.str(), local_length, global_length);
 
     std::vector<double> pred_push_scores;
     std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq;
