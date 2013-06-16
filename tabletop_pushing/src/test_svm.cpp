@@ -50,6 +50,21 @@ int main(int argc, char** argv)
   ROS_INFO_STREAM("size(K): (" << K.rows << ", " << K.cols << ")");
 
   // TODO: Compare K here to MATLAB K
-  
+  std::vector<double> pred_push_scores;
+  for (int i = 0; i < K.rows; ++i)
+  {
+    svm_node* x = new svm_node[K.cols];
+    for (int j = 0; j < K.cols; ++j)
+    {
+      x[j].value = K.at<double>(i, j);
+      x[j].index = 0; // unused
+    }
+    // Perform prediction and convert out of log space
+    // TODO: Collapse below once we get the bugs worked out
+    double raw_pred_score = svm_predict(push_model, x);
+    pred_push_scores.push_back(raw_pred_score);
+    ROS_INFO_STREAM("\t" << raw_pred_score << "\t" << exp(raw_pred_score));
+  }
+
   return 0;
 }
