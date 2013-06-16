@@ -73,7 +73,7 @@ cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& sa
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 
-double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
+double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b, double gamma=0.0);
 
 double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
 

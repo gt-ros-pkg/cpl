@@ -1100,43 +1100,30 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center)
  *
  * @param a The first descriptor
  * @param b The second descriptor
+ * @param gamma Optional scaling value for exponential chi-square kernel
  *
  * @return The distance between a and b
  */
-double shapeFeatureChiSquareDist(ShapeDescriptor& a, ShapeDescriptor& b)
+double shapeFeatureChiSquareDist(ShapeDescriptor& a, ShapeDescriptor& b, double gamma)
 {
-  // compute affinity between shape context i and j
+  // compute dist between shape features a and b
   // using chi-squared test statistic
-  double d_affinity = 0;
+  double chi = 0;
 
-  double a_sum = 0.0;
-  double b_sum = 0.0;
   for (unsigned int k=0; k < a.size(); k++)
   {
-    a_sum += a[k];
-    b_sum += b[k];
-  }
-  if (a_sum == 0.0)
-  {
-    a_sum = 1.0;
-  }
-  if (b_sum == 0.0)
-  {
-    b_sum = 1.0;
-  }
-  for (unsigned int k=0; k < a.size(); k++)
-  {
-    // NOTE: Normalizing to have L1 of 1 for comparison
-    const double a_k = a[k]/a_sum;
-    const double b_k = b[k]/b_sum;
-    const double a_plus_b = a_k + b_k;
+    const double a_plus_b = a[k] + b[k];
     if (a_plus_b > 0)
     {
-      d_affinity += pow(a_k - b_k, 2) / (a_plus_b);
+      chi += pow(a[k] - b[k], 2) / (a_plus_b);
     }
   }
-  d_affinity = d_affinity/2;
-  return d_affinity;
+  chi = chi;
+  if (gamma != 0.0)
+  {
+    chi = exp(-gamma*chi);
+  }
+  return chi;
 }
 
 /**
@@ -1275,13 +1262,18 @@ ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_leng
 cv::Mat precomputeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length)
 {
   ShapeDescriptors train_feats = loadSVRTrainingFeatures(feat_path, local_length + global_length);
-  // cv::Mat K(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
   // TODO: Apply chi2 kernel to test & train data,
   // TODO: gamma_local 2.5
   // TODO: gamma_global 2
-  cv::Mat K_local;
-  cv::Mat K_global;
-  // TODO: apply kernel weights
+  cv::Mat K_local(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
+  cv::Mat K_global(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
+  for (int i = 0; i < sds.size(); ++i)
+  {
+    for (int j = 0; j < train_feats.size(); ++j)
+    {
+    }
+  }
+  // Linear combination of local and global kernels
   double mixture_weight = 0.7;
   cv::Mat K = mixture_weight * K_global + (1 - mixture_weight) * K_local;
   return K;
