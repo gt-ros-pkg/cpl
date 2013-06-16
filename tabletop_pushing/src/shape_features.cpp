@@ -1264,8 +1264,8 @@ cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int loca
   ShapeDescriptors train_feats = loadSVRTrainingFeatures(feat_path, local_length + global_length);
   const double gamma_local = 2.5;
   const double gamma_global = 2.0;
-  cv::Mat K_local(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
-  cv::Mat K_global(sds.size(), train_feats.size(), CV_64FC1, cv::Scalar(0.0));
+  cv::Mat K_local(train_feats.size(), sds.size(), CV_64FC1, cv::Scalar(0.0));
+  cv::Mat K_global(train_feats.size(), sds.size(), CV_64FC1, cv::Scalar(0.0));
   for (int i = 0; i < sds.size(); ++i)
   {
     ShapeDescriptor a_local(sds[i].begin(), sds[i].begin()+local_length);
@@ -1275,8 +1275,8 @@ cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int loca
       ShapeDescriptor b_local(train_feats[j].begin(), train_feats[j].begin()+local_length);
       ShapeDescriptor b_global(train_feats[j].begin()+local_length, train_feats[j].end());
 
-      K_local.at<double>(i,j) = shapeFeatureChiSquareDist(a_local, b_local, gamma_local);
-      K_global.at<double>(i,j) = shapeFeatureChiSquareDist(a_global, b_global, gamma_global);
+      K_local.at<double>(j, i) = shapeFeatureChiSquareDist(a_local, b_local, gamma_local);
+      K_global.at<double>(j, i) = shapeFeatureChiSquareDist(a_global, b_global, gamma_global);
     }
   }
   // Linear combination of local and global kernels

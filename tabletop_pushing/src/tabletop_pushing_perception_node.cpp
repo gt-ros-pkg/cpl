@@ -1174,13 +1174,15 @@ class TabletopPushingPerceptionNode
     hull_cloud_obj.resize(hull_cloud_obj.width*hull_cloud_obj.height);
 
     // Perform prediction at all sample locations
-    for (int i = 0; i < K.rows; ++i)
+    for (int i = 0; i < K.cols; ++i)
     {
-      svm_node* x = new svm_node[K.cols];
-      for (int j = 0; j < K.cols; ++j)
+      svm_node* x = new svm_node[K.rows+1];
+      x[0].value = 0;
+      x[0].index = 0;
+      for (int j = 0; j < K.rows; ++j)
       {
-        x[j].value = K.at<double>(i, j);
-        x[j].index = 0; // unused
+        x[j+1].value = K.at<double>(j, i);
+        x[j+1].index = 0; // unused
       }
       // Perform prediction and convert out of log space
       // TODO: Collapse below once we get the bugs worked out
