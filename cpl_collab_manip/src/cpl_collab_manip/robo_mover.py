@@ -4,7 +4,7 @@ roslib.load_manifest("project_simulation")
 import rospy
 import yaml
 from roslaunch.substitution_args import resolve_args
-
+from std_msgs.msg import UInt8MultiArray
 from project_simulation.msg import move_bin as move_bin_msg
 from cpl_collab_manip.bin_manager import BinManager 
 
@@ -128,10 +128,21 @@ def main():
 
     #setup listening
     task_listen_sub = rospy.Subscriber('move_bin', move_bin_msg, listen_task)
+    #publish work-bins
+    pub_work_bins = rospy.Publisher('workspace_bins', UInt8MultiArray)
     
-    rospy.spin()
+    bins_wrk_msg = UInt8MultiArray()
 
-    
+    #rospy.spin()
+    loop_rate = rospy.Rate(PUB_RATE)
+    while not rospy.is_shutdown():
+        bins_near_human = bm.ar_man.get_filled_slots(True)
+        for i in range(len(bins_near_human)):
+            if bins_near_human[i] < 0:
+                bins_near_human[i] = 0
+        bins_wrk_msg.data = bins_near_human
+        pub_work_msg.publish(bins_wrk_msg)
+        loop_rate.sleep()
 
 if __name__=='__main__':
     main()
