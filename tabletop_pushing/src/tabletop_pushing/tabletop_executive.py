@@ -1188,10 +1188,11 @@ if __name__ == '__main__':
     # for hold_out_object in hold_out_objects:
     #     if not running:
     #         break
-    hold_out_object = 'soap_box'
-    rospy.loginfo('Testing with hold out object ' + hold_out_object)
-    start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_icdl_no_'+\
-        hold_out_object+'.model'
+    # hold_out_object = 'soap_box'
+    # rospy.loginfo('Testing with hold out object ' + hold_out_object)
+    # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_icdl_no_'+\
+    #     hold_out_object+'.model'
+    start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_1.model'
     # start_loc_param_path = 'rand'
     # start_loc_param_path = ''
     if use_singulation:
