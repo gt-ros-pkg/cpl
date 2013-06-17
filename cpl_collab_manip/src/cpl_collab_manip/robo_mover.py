@@ -8,6 +8,7 @@ from std_msgs.msg import UInt8MultiArray
 from project_simulation.msg import move_bin as move_bin_msg
 from cpl_collab_manip.bin_manager import BinManager 
 
+PUB_RATE = 30
 #if task is taking place currently or not
 DOING_TASK = False
 bm = None
@@ -127,11 +128,13 @@ def main():
     print '*'*50'''
 
     #setup listening
-    task_listen_sub = rospy.Subscriber('move_bin', move_bin_msg, listen_task)
+    task_listen_sub = rospy.Subscriber('move_bin', move_bin_msg, listen_task, queue_size=1)
     #publish work-bins
     pub_work_bins = rospy.Publisher('workspace_bins', UInt8MultiArray)
     
+
     bins_wrk_msg = UInt8MultiArray()
+    no_of_work_bins = len(bm.ar_man.human_slots)
 
     #rospy.spin()
     loop_rate = rospy.Rate(PUB_RATE)
@@ -140,8 +143,10 @@ def main():
         for i in range(len(bins_near_human)):
             if bins_near_human[i] < 0:
                 bins_near_human[i] = 0
+        for i in range(no_of_work_bins-len(bins_near_human)):
+            bins_near_human.append(0)
         bins_wrk_msg.data = bins_near_human
-        pub_work_msg.publish(bins_wrk_msg)
+        pub_work_bins.publish(bins_wrk_msg)
         loop_rate.sleep()
 
 if __name__=='__main__':
