@@ -1185,41 +1185,40 @@ if __name__ == '__main__':
     node = TabletopExecutive(use_singulation, use_learning)
     # Set the path to the learned parameter file here to use the learned SVM parameters
     hold_out_objects = ['toothpaste', 'soap_box', 'camcorder', 'large_brush', 'small_brush', 'food_box']
-    # for hold_out_object in hold_out_objects:
-    #     if not running:
-    #         break
-    # hold_out_object = 'soap_box'
-    # rospy.loginfo('Testing with hold out object ' + hold_out_object)
-    # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_icdl_no_'+\
-    #     hold_out_object+'.model'
-    start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/push_svm_1.model'
-    # start_loc_param_path = 'rand'
-    # start_loc_param_path = ''
-    if use_singulation:
-        node.run_singulation(max_pushes, use_guided)
-    elif use_learning:
-        while running:
-            running = True
-            need_object_id = True
-            while need_object_id:
-                code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
-                if len(code_in) > 0:
-                    need_object_id = False
+    for hold_out_object in hold_out_objects:
+        if not running:
+            break
+        # hold_out_object = 'soap_box'
+        rospy.loginfo('Testing with hold out object ' + hold_out_object)
+        start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
+            hold_out_object+'.model'
+        # start_loc_param_path = 'rand'
+        # start_loc_param_path = ''
+        if use_singulation:
+            node.run_singulation(max_pushes, use_guided)
+        elif use_learning:
+            while running:
+                running = True
+                need_object_id = True
+                while need_object_id:
+                    code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+                    if len(code_in) > 0:
+                        need_object_id = False
+                    else:
+                        rospy.logwarn("No object id given.")
+                if code_in.lower().startswith('q'):
+                    running = False
+                    break
+                if learn_start_loc:
+                    node.init_loc_learning()
+                    clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
+                                                                    num_start_loc_sample_locs, start_loc_param_path)
+                    node.finish_learning()
                 else:
-                    rospy.logwarn("No object id given.")
-            if code_in.lower().startswith('q'):
-                running = False
-                break
-            if learn_start_loc:
-                node.init_loc_learning()
-                clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
-                                                                num_start_loc_sample_locs, start_loc_param_path)
-                node.finish_learning()
-            else:
-                clean_exploration = node.run_push_exploration(object_id=code_in)
-            if not clean_exploration:
-                rospy.loginfo('Not clean end to pushing stuff')
-                running = False
-                node.finish_learning()
-                break
+                    clean_exploration = node.run_push_exploration(object_id=code_in)
+                if not clean_exploration:
+                    rospy.loginfo('Not clean end to pushing stuff')
+                    running = False
+                    node.finish_learning()
+                    break
 

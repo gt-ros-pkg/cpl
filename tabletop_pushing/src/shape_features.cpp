@@ -976,7 +976,7 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
     for (int c = 0; c < local_smooth.cols; ++c)
     {
       smooth_hist << " " << local_smooth.at<double>(r,c);
-      if(local_smooth.at<double>(r,c) < 0.0)
+      if(local_smooth.at<double>(r,c) < 0)
       {
         local_smooth.at<double>(r,c) = 0.0;
       }
@@ -1007,6 +1007,7 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   // ROS_INFO_STREAM("smooth:\n" << smooth_hist.str());
   // ROS_INFO_STREAM("smooth_clip:\n" << smooth_hist_clip.str());
   // ROS_INFO_STREAM("l1_normed:\n" << l1_hist.str());
+  // ROS_INFO_STREAM("Local raw size: " << local_raw.size());
 
   // ROS_INFO_STREAM("Global");
   ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);

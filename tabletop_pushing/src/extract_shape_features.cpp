@@ -626,7 +626,7 @@ int main(int argc, char** argv)
 
     ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, trials[i].start_pt);
     std::string param_path = "/home/thermans/Dropbox/Data/start_loc_learning/point_push/examples_line_dist/push_svm_1.model";
-    ShapeLocation chosen = predictPushLocation(cloud_path.str(), init_loc, init_theta, trials[i].start_pt, param_path);
+    // ShapeLocation chosen = predictPushLocation(cloud_path.str(), init_loc, init_theta, trials[i].start_pt, param_path);
 
     if (draw_scores)
     {
@@ -731,11 +731,11 @@ int main(int argc, char** argv)
   // ROS_INFO_STREAM("feat: " << line_out.str());
 
   // std::stringstream out_file;
-  // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
+  writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
   if (draw_scores)
   {
     // TODO: Pass in info to write these to disk again?
-    drawScores(push_scores, out_file_path);
+    // drawScores(push_scores, out_file_path);
     // drawScores(push_scores);
   }
   return 0;

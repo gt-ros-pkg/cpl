@@ -1614,7 +1614,7 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     write_example_file(out_file_name, X, Y, normalize, debug)
 
 def extract_shape_features_batch():
-  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
   class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
   # class_dirs = ['toothpaste3']
   out_dir = base_dir+'examples_line_dist/'
@@ -1634,7 +1634,7 @@ def extract_shape_features_batch():
           continue
       aff_file = class_dir+data_file
       score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
-      file_out = out_dir+c[:-1]+'_gt_scores.png'
+      file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
       print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
           class_dir, file_out, score_file
       p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',
@@ -1742,6 +1742,6 @@ def convert_robot_attempts_file_batch():
 
 if __name__ == '__main__':
     # compare_predicted_and_observed_batch()
-    read_and_score_raw_files()
-    # extract_shape_features_batch()
+    # read_and_score_raw_files()
+    extract_shape_features_batch()
     # rank_straw_scores_batch()
