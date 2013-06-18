@@ -1296,6 +1296,7 @@ class PositionFeedbackPushNode:
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
+            # TODO: Add in IK position like in gripper_pre_push
 
         # Move to offset pose
         self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
