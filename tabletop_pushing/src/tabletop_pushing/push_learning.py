@@ -465,6 +465,26 @@ class StartLocPerformanceAnalysis:
         if file_out is not None:
             file_out.close()
 
+    def compute_observed_push_scores_final_errors(self, in_file_name, out_file_name=None):
+        # Read in data
+        plio = CombinedPushLearnControlIO()
+        plio.read_in_data_file(in_file_name)
+        file_out = None
+        if out_file_name is not None:
+            file_out = file(out_file_name, 'w')
+        for i, p in enumerate(plio.push_trials):
+            final_pose = p.trial_end.final_centroid
+            goal_pose = p.trial_start.goal_pose
+            # Compute observed push score
+            err_x = goal_pose.x - final_pose.x
+            err_y = goal_pose.y - final_pose.y
+            final_error = hypot(err_x, err_y)
+            if file_out is not None:
+                trial_line = str(final_error)+'\n'
+                file_out.write(trial_line)
+        if file_out is not None:
+            file_out.close()
+
     def get_trial_features(self, file_name, use_spin=False):
         self.plio = CombinedPushLearnControlIO()
         self.plio.read_in_data_file(file_name)
@@ -1668,11 +1688,15 @@ def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None)
     slp = StartLocPerformanceAnalysis()
     slp.compare_predicted_and_observed_push_scores(in_file_name, out_file_name)
 
-def compare_predicted_and_observed_batch():
-  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
-  class_dirs = ['camcorder0', 'food_box0', 'large_brush0_offset07', 'small_brush0','soap_box0', 'toothpaste0']
-  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
-  # class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+def compute_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
+    slp = StartLocPerformanceAnalysis()
+    slp.compute_observed_push_scores_final_errors(in_file_name, out_file_name)
+
+def analyze_predicted_and_observed_batch():
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
+  # class_dirs = ['camcorder1', 'food_box1', 'large_brush1', 'small_brush1','soap_box1', 'toothpaste1']
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
   out_dir = base_dir+'analysis/'
   for c in class_dirs:
       in_dir = base_dir+c+'/'
@@ -1685,7 +1709,9 @@ def compare_predicted_and_observed_batch():
           continue
       file_in = in_dir+file_name
       file_out = out_dir+c+'.txt'
-      compare_predicted_and_observed_push_scores(file_in, file_out)
+      file_out_final_error = out_dir+c+'-final-error.txt'
+      # compare_predicted_and_observed_push_scores(file_in, file_out)
+      compute_predicted_and_observed_push_scores(file_in, file_out_final_error)
 
 def rank_straw_scores(file_path):
     straw_file = file(file_path, 'r')
@@ -1741,7 +1767,7 @@ def convert_robot_attempts_file_batch():
     pass
 
 if __name__ == '__main__':
-    # compare_predicted_and_observed_batch()
+    analyze_predicted_and_observed_batch()
     # read_and_score_raw_files()
-    extract_shape_features_batch()
+    # extract_shape_features_batch()
     # rank_straw_scores_batch()
