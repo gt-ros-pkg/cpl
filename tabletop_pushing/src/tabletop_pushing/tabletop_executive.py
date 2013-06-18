@@ -1173,9 +1173,9 @@ if __name__ == '__main__':
     random.seed()
     learn_start_loc = True
     # Used for training data collection:
-    num_start_loc_sample_locs = 32
+    # num_start_loc_sample_locs = 32
     # Used for testing data collection:
-    # num_start_loc_sample_locs = 5
+    num_start_loc_sample_locs = 5
     num_start_loc_pushes_per_sample = 3
     use_singulation = False
     use_learning = True
@@ -1184,7 +1184,7 @@ if __name__ == '__main__':
     max_pushes = 500
     node = TabletopExecutive(use_singulation, use_learning)
     # Set the path to the learned parameter file here to use the learned SVM parameters
-    hold_out_objects = ['toothpaste', 'soap_box', 'camcorder', 'large_brush', 'small_brush', 'food_box']
+    hold_out_objects = ['camcorder', 'food_box', 'large_brush', 'small_brush', 'soap_box', 'toothpaste']
     for hold_out_object in hold_out_objects:
         if not running:
             break
@@ -1197,28 +1197,27 @@ if __name__ == '__main__':
         if use_singulation:
             node.run_singulation(max_pushes, use_guided)
         elif use_learning:
-            while running:
-                running = True
-                need_object_id = True
-                while need_object_id:
-                    code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
-                    if len(code_in) > 0:
-                        need_object_id = False
-                    else:
-                        rospy.logwarn("No object id given.")
-                if code_in.lower().startswith('q'):
-                    running = False
-                    break
-                if learn_start_loc:
-                    node.init_loc_learning()
-                    clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
-                                                                    num_start_loc_sample_locs, start_loc_param_path)
-                    node.finish_learning()
+            running = True
+            need_object_id = True
+            while need_object_id:
+                code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+                if len(code_in) > 0:
+                    need_object_id = False
                 else:
-                    clean_exploration = node.run_push_exploration(object_id=code_in)
-                if not clean_exploration:
-                    rospy.loginfo('Not clean end to pushing stuff')
-                    running = False
-                    node.finish_learning()
-                    break
+                    rospy.logwarn("No object id given.")
+            if code_in.lower().startswith('q'):
+                running = False
+                break
+            if learn_start_loc:
+                node.init_loc_learning()
+                clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
+                                                                num_start_loc_sample_locs, start_loc_param_path)
+                node.finish_learning()
+            else:
+                clean_exploration = node.run_push_exploration(object_id=code_in)
+            if not clean_exploration:
+                rospy.loginfo('Not clean end to pushing stuff')
+                running = False
+                node.finish_learning()
+                break
 
