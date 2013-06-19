@@ -254,6 +254,7 @@ class PositionFeedbackPushNode:
 
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
+        self.k_rotate_spin_x = rospy.get_param('~rotate_to_heading_hand_spin_gain', 0.0)
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
         self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.015)
@@ -692,7 +693,7 @@ class PositionFeedbackPushNode:
         u.header.stamp = rospy.Time.now()
         u.twist.linear.x = 0.0
         # TODO: Track object rotation with gripper angle
-        u.twist.angular.x = 0.0
+        u.twist.angular.x = cur_state.x_dot.theta*self.k_rotate_spin_x
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
         t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
