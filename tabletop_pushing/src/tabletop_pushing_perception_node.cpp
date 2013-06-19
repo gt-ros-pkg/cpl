@@ -439,8 +439,8 @@ class TabletopPushingPerceptionNode
 
       displayPushVector(cur_color_frame_, start_point, end_point);
       // displayRobotGripperPoses(cur_color_frame_);
-      // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-      //                    tracker_goal_pose_.theta);
+      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                         tracker_goal_pose_.theta);
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
@@ -465,8 +465,8 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point, "goal_vector", true);
       // displayRobotGripperPoses(cur_color_frame_);
-      // displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-      //                    tracker_goal_pose_.theta);
+      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                         tracker_goal_pose_.theta);
     }
 
     // Display junk
