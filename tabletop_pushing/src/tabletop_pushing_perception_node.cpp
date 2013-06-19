@@ -1353,33 +1353,69 @@ class TabletopPushingPerceptionNode
     float radius = std::max(bounding_box.size.height, bounding_box.size.width)*2.0;
     pcl16::PointXYZ phi_tip(radius*std::cos(phi), radius*std::sin(phi), 0.0);
     pcl16::PointXYZ phi_start(0.0, 0.0, 0.0);
-    float push_angle_obj_frame;
+    float push_angle_obj_frame = 0.0;
     ROS_INFO_STREAM("phi is: " << (phi));
     ROS_INFO_STREAM("Box: [\n\t" << box_p1 << "\n\t" << box_p2 << "\n\t" << box_p3 << "\n\t" << box_p4 << "]");
     ROS_INFO_STREAM("Ray: [\n\t" << phi_start << "\n\t" << phi_tip << "]");
 
+    int chosen_idx = 0;
     pcl16::PointXYZ intersection;
     if (lineSegmentIntersection2D(box_p1, box_p2, phi_start, phi_tip, intersection)) // Intersects box_p1 -> box_p2
     {
       ROS_WARN_STREAM("Intesections side: p1 -> p2 at point: " << intersection);
       push_angle_obj_frame = atan2(-(box_p1.y+box_p2.y)*0.5, -(box_p1.x+box_p2.x)*0.5);
+      chosen_idx = 0;
     }
     else if (lineSegmentIntersection2D(box_p2, box_p3, phi_start, phi_tip, intersection)) // Intersects box_p2 -> box_p3
     {
       ROS_WARN_STREAM("Intesections side: p2 -> p3 at point: " << intersection);
       push_angle_obj_frame = atan2(-(box_p3.y+box_p2.y)*0.5, -(box_p3.x+box_p2.x)*0.5);
+      chosen_idx = 1;
     }
     else if (lineSegmentIntersection2D(box_p3, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p3 -> box_p4
     {
       ROS_WARN_STREAM("Intesections side: p3 -> p4 at point: " << intersection);
       push_angle_obj_frame = atan2(-(box_p3.y+box_p4.y)*0.5, -(box_p3.x+box_p4.x)*0.5);
+      chosen_idx = 2;
     }
     else if (lineSegmentIntersection2D(box_p1, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p4 -> box_p1
     {
       ROS_WARN_STREAM("Intesections side: p4 -> p1 at point: " << intersection);
       push_angle_obj_frame = atan2(-(box_p1.y+box_p4.y)*0.5, -(box_p1.x+box_p4.x)*0.5);
+      chosen_idx = 3;
     }
 
+    cv::Mat display_frame;
+    cur_color_frame_.copyTo(display_frame);
+    for(int i = 0; i < 4; ++i)
+    {
+      PointStamped a_world;
+      a_world.header.frame_id = cur_obj.cloud.header.frame_id;
+      // a_world.header.stamp = ros::Time::now();
+      a_world.point.x = vertices[i].x;
+      a_world.point.y = vertices[i].y;
+      a_world.point.z = cur_state.z;
+      PointStamped b_world;
+      b_world.header.frame_id = cur_obj.cloud.header.frame_id;
+      // b_world.header.stamp = ros::Time::now();
+      b_world.point.x = vertices[(i+1)%4].x;
+      b_world.point.y = vertices[(i+1)%4].y;
+      b_world.point.z = cur_state.z;
+      cv::Point a_img = pcl_segmenter_->projectPointIntoImage(a_world);
+      cv::Point b_img = pcl_segmenter_->projectPointIntoImage(b_world);
+      cv::line(display_frame, a_img, b_img, cv::Scalar(0,0,0),3);
+      if (i == chosen_idx)
+      {
+        cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,255),1);
+      }
+      else
+      {
+        cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,0),1);
+      }
+    }
+    cv::imshow("footprint_box", display_frame);
+    // TODO: write to disk?
+    
     // Shift push direction into world frame
     float push_angle_world_frame = subPIAngle(push_angle_obj_frame + cur_state.x.theta);
     ROS_INFO_STREAM("Object pose is (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.x.theta << ")");
