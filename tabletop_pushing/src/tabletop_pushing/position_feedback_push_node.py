@@ -1158,6 +1158,7 @@ class PositionFeedbackPushNode:
             rospy.logwarn('IK Failed, not at desired initial pose')
             response.failed_pre_position = True
             # self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+            return response
         else:
             response.failed_pre_position = False
 
@@ -1296,11 +1297,15 @@ class PositionFeedbackPushNode:
             # Lower arm to table
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
-            # TODO: Add in IK position like in gripper_pre_push
 
-        # Move to offset pose
-        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
-        rospy.loginfo('Done moving to start point')
+        # Move to start pose
+        if not self.move_to_cart_pose_ik(start_pose, which_arm):
+            rospy.logwarn('IK Failed, not at desired initial pose')
+            response.failed_pre_position = True
+            # self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+        else:
+            response.failed_pre_position = False
+            rospy.loginfo('Done moving to start point')
 
         return response
 

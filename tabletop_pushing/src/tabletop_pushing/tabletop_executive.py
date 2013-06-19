@@ -377,9 +377,9 @@ class TabletopExecutive:
 
         start_loc_trials = 0
         self.start_loc_goal_y_delta = 0
-        # HACK: Currently quit after half the locations, assuming pushing on symmetric objects
-        # N_PUSH = num_sample_locs/2+1
         N_PUSH = num_sample_locs
+        # HACK: Currently quit after half the locations, assuming pushing on symmetric objects
+        N_PUSH = num_sample_locs/2+1
         i = 0
         while i < N_PUSH:
             rospy.loginfo('Performing push at new pose: ' + str(i))
@@ -820,6 +820,9 @@ class TabletopExecutive:
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
             push_res = FeedbackPushResponse()
+        elif pre_push_res.failed_pre_position:
+            rospy.logwarn('Failed to properly position in pre-push, aborting push')
+            push_res = pre_push_res
         else:
             push_res = self.overhead_feedback_push_proxy(push_req)
         rospy.loginfo("Calling overhead feedback post push service")
@@ -1173,9 +1176,9 @@ if __name__ == '__main__':
     random.seed()
     learn_start_loc = True
     # Used for training data collection:
-    # num_start_loc_sample_locs = 32
+    num_start_loc_sample_locs = 32
     # Used for testing data collection:
-    num_start_loc_sample_locs = 5
+    # num_start_loc_sample_locs = 5
     num_start_loc_pushes_per_sample = 3
     use_singulation = False
     use_learning = True
@@ -1184,16 +1187,17 @@ if __name__ == '__main__':
     max_pushes = 500
     node = TabletopExecutive(use_singulation, use_learning)
     # Set the path to the learned parameter file here to use the learned SVM parameters
-    hold_out_objects = ['camcorder', 'food_box', 'large_brush', 'small_brush', 'soap_box', 'toothpaste']
+    hold_out_objects = ['toothpaste', 'food_box', 'large_brush', 'small_brush', 'soap_box'] #, 'camcorder']
     for hold_out_object in hold_out_objects:
         if not running:
             break
         # hold_out_object = 'soap_box'
-        rospy.loginfo('Testing with hold out object ' + hold_out_object)
-        start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
-            hold_out_object+'.model'
+        # rospy.loginfo('Testing with hold out object ' + hold_out_object)
+        rospy.loginfo('Collecting training data for object ' + hold_out_object)
+        # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
+        #     hold_out_object+'.model'
         # start_loc_param_path = 'rand'
-        # start_loc_param_path = ''
+        start_loc_param_path = ''
         if use_singulation:
             node.run_singulation(max_pushes, use_guided)
         elif use_learning:
