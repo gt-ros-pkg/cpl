@@ -662,18 +662,48 @@ class TabletopPushingPerceptionNode
       }
       else if (req.analyze_previous || req.get_pose_only)
       {
-        ROS_INFO_STREAM("Getting current object pose\n");
+        ROS_INFO_STREAM("Getting current object pose");
         res = getObjectPose();
         res.no_push = true;
         recording_input_ = false;
         ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+        if (cur_obj.cloud.header.frame_id.size() == 0)
+        {
+          ROS_INFO_STREAM("cur_obj.cloud.header.frame_id is blank, setting to workspace_frame_");
+          cur_obj.cloud.header.frame_id = workspace_frame_;
+        }
         PushTrackerState cur_state;
         cur_state.x.x = res.centroid.x;
         cur_state.x.y = res.centroid.y;
         cur_state.x.theta = res.theta;
         cur_state.z = res.centroid.z;
-        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
-        obj_tracker_->stopTracking();
+        if (req.analyze_previous)
+        {
+          // Display different color to signal swap available
+          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
+          ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
+          ROS_INFO_STREAM("Presss 's' to swap orientation: ");
+          char key_press = cv::waitKey(2000);
+          if (key_press == 's')
+          {
+            // TODO: Is this correct?
+            force_swap_ = !obj_tracker_->getSwapState();
+            cur_state = startTracking(force_swap_);
+            ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+            res.theta = cur_state.x.theta;
+            obj_tracker_->stopTracking();
+            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+            // NOTE: Try and force redraw
+            cv::waitKey(3);
+          }
+        }
+        else
+        {
+          ROS_INFO_STREAM("Calling tracker display");
+          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+          obj_tracker_->stopTracking();
+        }
+        ROS_INFO_STREAM("Done getting current pose\n");
       }
       else // NOTE: Assume pushing as default
       {
@@ -711,7 +741,7 @@ class TabletopPushingPerceptionNode
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     if (req.learn_start_loc)
     {
-      obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+      obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
       ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
       ROS_INFO_STREAM("Presss 's' to swap orientation: ");
       char key_press = cv::waitKey(2000);

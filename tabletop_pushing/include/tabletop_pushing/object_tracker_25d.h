@@ -160,7 +160,8 @@ class ObjectTracker25D
 
   void trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse);
 
-  void trackerDisplay(cv::Mat& in_frame, tabletop_pushing::VisFeedbackPushTrackingFeedback& state, ProtoObject& obj);
+  void trackerDisplay(cv::Mat& in_frame, tabletop_pushing::VisFeedbackPushTrackingFeedback& state, ProtoObject& obj,
+                      bool other_color=false);
 
  protected:
   boost::shared_ptr<PointCloudSegmentation> pcl_segmenter_;

@@ -671,7 +671,7 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   }
 }
 
-void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj)
+void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj, bool other_color)
 {
   cv::Mat centroid_frame;
   in_frame.copyTo(centroid_frame);
@@ -694,9 +694,17 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
       table_maj_point, obj.cloud.header.frame_id, camera_frame_);
   cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  if( other_color)
+  {
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(255, 255,0),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0, 255, 255),1);
+  }
+  else
+  {
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  }
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                              std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
