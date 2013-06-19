@@ -1332,59 +1332,43 @@ class TabletopPushingPerceptionNode
     return chosen_loc;
   }
 
-  float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc, ProtoObject& cur_obj)
+  // TODO: Return the axis aligned rectangle
+  void /*cv::RotatedRect*/ drawAxisAlignedBoundingBox(PushTrackerState& cur_state, ShapeLocation& chosen_loc, ProtoObject& cur_obj)
   {
-    // Get chosen_loc angle in object frame
-    pcl16::PointXYZ obj_pt = worldPointInObjectFrame(chosen_loc.boundary_loc_, cur_state);
-    float phi = atan2(obj_pt.y, obj_pt.x);
-    cv::RotatedRect bounding_box = obj_tracker_->findFootprintBox(cur_obj);
-    float theta = obj_tracker_->getThetaFromEllipse(bounding_box);
-
-    cv::Point2f vertices[4];
-    bounding_box.points(vertices);
-    PushTrackerState fake_state(cur_state);
-    fake_state.x.theta = theta;
-    pcl16::PointXYZ box_p1 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[0].x, vertices[0].y, cur_state.z), fake_state);
-    pcl16::PointXYZ box_p2 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[1].x, vertices[1].y, cur_state.z), fake_state);
-    pcl16::PointXYZ box_p3 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[2].x, vertices[2].y, cur_state.z), fake_state);
-    pcl16::PointXYZ box_p4 = worldPointInObjectFrame(pcl16::PointXYZ(vertices[3].x, vertices[3].y, cur_state.z), fake_state);
-
-    // Choose pushing direction based on which of the bounding box sides the ray from center to boundary loc intersects
-    float radius = std::max(bounding_box.size.height, bounding_box.size.width)*2.0;
-    pcl16::PointXYZ phi_tip(radius*std::cos(phi), radius*std::sin(phi), 0.0);
-    pcl16::PointXYZ phi_start(0.0, 0.0, 0.0);
-    float push_angle_obj_frame = 0.0;
-    ROS_INFO_STREAM("phi is: " << (phi));
-    ROS_INFO_STREAM("Box: [\n\t" << box_p1 << "\n\t" << box_p2 << "\n\t" << box_p3 << "\n\t" << box_p4 << "]");
-    ROS_INFO_STREAM("Ray: [\n\t" << phi_start << "\n\t" << phi_tip << "]");
-
-    int chosen_idx = 0;
-    pcl16::PointXYZ intersection;
-    if (lineSegmentIntersection2D(box_p1, box_p2, phi_start, phi_tip, intersection)) // Intersects box_p1 -> box_p2
+    // Get cloud in object frame
+    XYZPointCloud object_frame_cloud;
+    worldPointsInObjectFrame(cur_obj.cloud, cur_state, object_frame_cloud);
+    // Find min max x and y
+    double min_x = FLT_MAX;
+    double max_x = -FLT_MAX;
+    double min_y = FLT_MAX;
+    double max_y = -FLT_MAX;
+    for (int i = 0; i < object_frame_cloud.size(); ++i)
     {
-      ROS_WARN_STREAM("Intesections side: p1 -> p2 at point: " << intersection);
-      push_angle_obj_frame = atan2(-(box_p1.y+box_p2.y)*0.5, -(box_p1.x+box_p2.x)*0.5);
-      chosen_idx = 0;
+      if (object_frame_cloud[i].x < min_x)
+      {
+        min_x = object_frame_cloud[i].x;
+      }
+      if (object_frame_cloud[i].x > max_x)
+      {
+        max_x = object_frame_cloud[i].x;
+      }
+      if (object_frame_cloud[i].y < min_y)
+      {
+        min_y = object_frame_cloud[i].y;
+      }
+      if (object_frame_cloud[i].y > max_y)
+      {
+        max_y = object_frame_cloud[i].y;
+      }
     }
-    else if (lineSegmentIntersection2D(box_p2, box_p3, phi_start, phi_tip, intersection)) // Intersects box_p2 -> box_p3
-    {
-      ROS_WARN_STREAM("Intesections side: p2 -> p3 at point: " << intersection);
-      push_angle_obj_frame = atan2(-(box_p3.y+box_p2.y)*0.5, -(box_p3.x+box_p2.x)*0.5);
-      chosen_idx = 1;
-    }
-    else if (lineSegmentIntersection2D(box_p3, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p3 -> box_p4
-    {
-      ROS_WARN_STREAM("Intesections side: p3 -> p4 at point: " << intersection);
-      push_angle_obj_frame = atan2(-(box_p3.y+box_p4.y)*0.5, -(box_p3.x+box_p4.x)*0.5);
-      chosen_idx = 2;
-    }
-    else if (lineSegmentIntersection2D(box_p1, box_p4, phi_start, phi_tip, intersection)) // Intersects box_p4 -> box_p1
-    {
-      ROS_WARN_STREAM("Intesections side: p4 -> p1 at point: " << intersection);
-      push_angle_obj_frame = atan2(-(box_p1.y+box_p4.y)*0.5, -(box_p1.x+box_p4.x)*0.5);
-      chosen_idx = 3;
-    }
-
+    std::vector<pcl16::PointXYZ> vertices;
+    vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(max_x, max_y, 0.0), cur_state));
+    vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(max_x, min_y, 0.0), cur_state));
+    vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(min_x, min_y, 0.0), cur_state));
+    vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(min_x, max_y, 0.0), cur_state));
+    // cv::RotatedRect bounding_box;
+    // Get object frame point
     cv::Mat display_frame;
     cur_color_frame_.copyTo(display_frame);
     for(int i = 0; i < 4; ++i)
@@ -1394,7 +1378,7 @@ class TabletopPushingPerceptionNode
       // a_world.header.stamp = ros::Time::now();
       a_world.point.x = vertices[i].x;
       a_world.point.y = vertices[i].y;
-      a_world.point.z = cur_state.z;
+      a_world.point.z = vertices[i].z;
       PointStamped b_world;
       b_world.header.frame_id = cur_obj.cloud.header.frame_id;
       // b_world.header.stamp = ros::Time::now();
@@ -1404,8 +1388,66 @@ class TabletopPushingPerceptionNode
       cv::Point a_img = pcl_segmenter_->projectPointIntoImage(a_world);
       cv::Point b_img = pcl_segmenter_->projectPointIntoImage(b_world);
       cv::line(display_frame, a_img, b_img, cv::Scalar(0,0,0),3);
+      // if (i == chosen_idx)
+      // {
+      //   ROS_INFO_STREAM("chosen_idx is: " << chosen_idx);
+      //   cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,255),1);
+      // }
+      // else
+      {
+        cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,0),1);
+      }
+    }
+    cv::imshow("axis_aligned_footprint_box", display_frame);
+  }
+
+  float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc, ProtoObject& cur_obj)
+  {
+    cv::RotatedRect bounding_box = obj_tracker_->findFootprintBox(cur_obj);
+    float theta = obj_tracker_->getThetaFromEllipse(bounding_box);
+    /*cv::RotatedRect aligned_bounding_box = */drawAxisAlignedBoundingBox(cur_state, chosen_loc, cur_obj);
+
+    cv::Point2f vertices[4];
+    bounding_box.points(vertices);
+    PushTrackerState fake_state(cur_state);
+    fake_state.x.theta = theta;
+    double min_dist = FLT_MAX;
+    int chosen_idx = 0;
+    float push_angle_world_frame = 0.0;
+    for (int i = 0; i < 4; ++i)
+    {
+      int j = (i+1)%4;
+      pcl16::PointXYZ a(vertices[i].x, vertices[i].y, cur_state.z);
+      pcl16::PointXYZ b(vertices[j].x, vertices[j].y, cur_state.z);
+      double line_dist = cpl_visual_features::pointLineDistance2D(chosen_loc.boundary_loc_, a, b);
+      if (line_dist < min_dist)
+      {
+        min_dist = line_dist;
+        chosen_idx = i;
+        // TODO: Correctly set the pushing angle once the side is chosen
+        push_angle_world_frame = atan2(cur_state.x.y-(a.y+b.y)*0.5, cur_state.x.x-(a.x+b.x)*0.5);;
+      }
+    }
+    cv::Mat display_frame;
+    cur_color_frame_.copyTo(display_frame);
+    for(int i = 0; i < 4; ++i)
+    {
+      PointStamped a_world;
+      a_world.header.frame_id = cur_obj.cloud.header.frame_id;
+      a_world.point.x = vertices[i].x;
+      a_world.point.y = vertices[i].y;
+      a_world.point.z = cur_state.z;
+      PointStamped b_world;
+      b_world.header.frame_id = cur_obj.cloud.header.frame_id;
+      b_world.point.x = vertices[(i+1)%4].x;
+      b_world.point.y = vertices[(i+1)%4].y;
+      b_world.point.z = cur_state.z;
+      cv::Point a_img = pcl_segmenter_->projectPointIntoImage(a_world);
+      cv::Point b_img = pcl_segmenter_->projectPointIntoImage(b_world);
+      cv::line(display_frame, a_img, b_img, cv::Scalar(0,0,0),3);
       if (i == chosen_idx)
       {
+        ROS_INFO_STREAM("chosen_idx is: " << chosen_idx);
         cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,255),1);
       }
       else
@@ -1415,12 +1457,8 @@ class TabletopPushingPerceptionNode
     }
     cv::imshow("footprint_box", display_frame);
     // TODO: write to disk?
-    
+
     // Shift push direction into world frame
-    float push_angle_world_frame = subPIAngle(push_angle_obj_frame + cur_state.x.theta);
-    ROS_INFO_STREAM("Object pose is (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.x.theta << ")");
-    ROS_INFO_STREAM("push_angle_obj_frame is: " << (push_angle_obj_frame));
-    ROS_INFO_STREAM("push_angle_world_frame is: " << (push_angle_world_frame));
     return push_angle_world_frame;
   }
 
@@ -1476,6 +1514,18 @@ class TabletopPushingPerceptionNode
     }
     ROS_WARN_STREAM("Chose loc " << locs[loc_idx].boundary_loc_ << " with distance " << min_dist << "m");
     return locs[loc_idx];
+  }
+
+  void worldPointsInObjectFrame(XYZPointCloud& world_cloud, PushTrackerState& cur_state, XYZPointCloud& object_cloud)
+  {
+    object_cloud.width = world_cloud.size();
+    object_cloud.height = 1;
+    object_cloud.is_dense = false;
+    object_cloud.resize(object_cloud.width);
+    for (int i = 0; i < world_cloud.size(); ++i)
+    {
+      object_cloud[i] = worldPointInObjectFrame(world_cloud[i], cur_state);
+    }
   }
 
   pcl16::PointXYZ worldPointInObjectFrame(pcl16::PointXYZ world_pt, PushTrackerState& cur_state)
