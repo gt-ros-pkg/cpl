@@ -1332,8 +1332,7 @@ class TabletopPushingPerceptionNode
     return chosen_loc;
   }
 
-  // TODO: Return the axis aligned rectangle
-  void /*cv::RotatedRect*/ drawAxisAlignedBoundingBox(PushTrackerState& cur_state, ShapeLocation& chosen_loc, ProtoObject& cur_obj)
+  std::vector<pcl16::PointXYZ> findAxisAlignedBoundingBox(PushTrackerState& cur_state, ProtoObject& cur_obj)
   {
     // Get cloud in object frame
     XYZPointCloud object_frame_cloud;
@@ -1367,81 +1366,50 @@ class TabletopPushingPerceptionNode
     vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(max_x, min_y, 0.0), cur_state));
     vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(min_x, min_y, 0.0), cur_state));
     vertices.push_back(objectPointInWorldFrame(pcl16::PointXYZ(min_x, max_y, 0.0), cur_state));
-    // cv::RotatedRect bounding_box;
-    // Get object frame point
+    return vertices;
+  }
+
+  float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc, ProtoObject& cur_obj)
+  {
+    // cv::RotatedRect bounding_box = obj_tracker_->findFootprintBox(cur_obj);
+    // cv::Point2f vertices[4];
+    // bounding_box.points(vertices);
+
+    std::vector<pcl16::PointXYZ> vertices = findAxisAlignedBoundingBox(cur_state, cur_obj);
+    double min_dist = FLT_MAX;
+    int chosen_idx = 0;
+    float push_angle_world_frame = 0.0;
+
+    for (int i = 0; i < 4; ++i)
+    {
+      int j = (i+1)%4;
+      double line_dist = cpl_visual_features::pointLineDistance2D(chosen_loc.boundary_loc_, vertices[i], vertices[j]);
+      if (line_dist < min_dist)
+      {
+        min_dist = line_dist;
+        chosen_idx = i;
+        // NOTE: Push the direction from the chosen side's midpoint through the object center (ensures axis-aligned direction)
+        push_angle_world_frame = atan2(cur_state.x.y-(vertices[i].y + vertices[j].y)*0.5,
+                                       cur_state.x.x-(vertices[i].x + vertices[j].x)*0.5);
+      }
+    }
+
     cv::Mat display_frame;
     cur_color_frame_.copyTo(display_frame);
-    for(int i = 0; i < 4; ++i)
+    for (int i = 0; i < 4; ++i)
     {
+      int j = (i+1)%4;
+
       PointStamped a_world;
       a_world.header.frame_id = cur_obj.cloud.header.frame_id;
-      // a_world.header.stamp = ros::Time::now();
       a_world.point.x = vertices[i].x;
       a_world.point.y = vertices[i].y;
       a_world.point.z = vertices[i].z;
       PointStamped b_world;
       b_world.header.frame_id = cur_obj.cloud.header.frame_id;
-      // b_world.header.stamp = ros::Time::now();
-      b_world.point.x = vertices[(i+1)%4].x;
-      b_world.point.y = vertices[(i+1)%4].y;
-      b_world.point.z = cur_state.z;
-      cv::Point a_img = pcl_segmenter_->projectPointIntoImage(a_world);
-      cv::Point b_img = pcl_segmenter_->projectPointIntoImage(b_world);
-      cv::line(display_frame, a_img, b_img, cv::Scalar(0,0,0),3);
-      // if (i == chosen_idx)
-      // {
-      //   ROS_INFO_STREAM("chosen_idx is: " << chosen_idx);
-      //   cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,255),1);
-      // }
-      // else
-      {
-        cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,0),1);
-      }
-    }
-    cv::imshow("axis_aligned_footprint_box", display_frame);
-  }
-
-  float getRotatePushHeading(PushTrackerState& cur_state, ShapeLocation& chosen_loc, ProtoObject& cur_obj)
-  {
-    cv::RotatedRect bounding_box = obj_tracker_->findFootprintBox(cur_obj);
-    float theta = obj_tracker_->getThetaFromEllipse(bounding_box);
-    /*cv::RotatedRect aligned_bounding_box = */drawAxisAlignedBoundingBox(cur_state, chosen_loc, cur_obj);
-
-    cv::Point2f vertices[4];
-    bounding_box.points(vertices);
-    PushTrackerState fake_state(cur_state);
-    fake_state.x.theta = theta;
-    double min_dist = FLT_MAX;
-    int chosen_idx = 0;
-    float push_angle_world_frame = 0.0;
-    for (int i = 0; i < 4; ++i)
-    {
-      int j = (i+1)%4;
-      pcl16::PointXYZ a(vertices[i].x, vertices[i].y, cur_state.z);
-      pcl16::PointXYZ b(vertices[j].x, vertices[j].y, cur_state.z);
-      double line_dist = cpl_visual_features::pointLineDistance2D(chosen_loc.boundary_loc_, a, b);
-      if (line_dist < min_dist)
-      {
-        min_dist = line_dist;
-        chosen_idx = i;
-        // TODO: Correctly set the pushing angle once the side is chosen
-        push_angle_world_frame = atan2(cur_state.x.y-(a.y+b.y)*0.5, cur_state.x.x-(a.x+b.x)*0.5);;
-      }
-    }
-    cv::Mat display_frame;
-    cur_color_frame_.copyTo(display_frame);
-    for(int i = 0; i < 4; ++i)
-    {
-      PointStamped a_world;
-      a_world.header.frame_id = cur_obj.cloud.header.frame_id;
-      a_world.point.x = vertices[i].x;
-      a_world.point.y = vertices[i].y;
-      a_world.point.z = cur_state.z;
-      PointStamped b_world;
-      b_world.header.frame_id = cur_obj.cloud.header.frame_id;
-      b_world.point.x = vertices[(i+1)%4].x;
-      b_world.point.y = vertices[(i+1)%4].y;
-      b_world.point.z = cur_state.z;
+      b_world.point.x = vertices[j].x;
+      b_world.point.y = vertices[j].y;
+      b_world.point.z = vertices[j].z;
       cv::Point a_img = pcl_segmenter_->projectPointIntoImage(a_world);
       cv::Point b_img = pcl_segmenter_->projectPointIntoImage(b_world);
       cv::line(display_frame, a_img, b_img, cv::Scalar(0,0,0),3);
@@ -1457,8 +1425,6 @@ class TabletopPushingPerceptionNode
     }
     cv::imshow("footprint_box", display_frame);
     // TODO: write to disk?
-
-    // Shift push direction into world frame
     return push_angle_world_frame;
   }
 
