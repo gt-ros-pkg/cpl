@@ -466,7 +466,7 @@ class TabletopPushingPerceptionNode
       displayPushVector(cur_color_frame_, start_point, end_point, "goal_vector", true);
       // displayRobotGripperPoses(cur_color_frame_);
       displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+                         tracker_goal_pose_.theta, true);
     }
 
     // Display junk
@@ -1909,7 +1909,8 @@ class TabletopPushingPerceptionNode
   }
 
 
-  void displayGoalHeading(cv::Mat& img, PointStamped& centroid, double theta, double goal_theta)
+  void displayGoalHeading(cv::Mat& img, PointStamped& centroid, double theta, double goal_theta,
+                          bool force_no_write=false)
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
@@ -1952,7 +1953,7 @@ class TabletopPushingPerceptionNode
     {
       cv::imshow("goal_heading", disp_img);
     }
-    if (write_to_disk_)
+    if (write_to_disk_ && !force_no_write)
     {
       // Write to disk to create video output
       std::stringstream push_out_name;
