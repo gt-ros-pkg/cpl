@@ -21,12 +21,28 @@ end
 
 executedplan = n.executedplan;
 
-if n.ros_tcp_connection.BytesAvailable > 0
+while n.ros_tcp_connection.BytesAvailable > 0
     disp receive_executedplan
     len = fread(n.ros_tcp_connection, 1, 'int');
     executedplan = char(fread(n.ros_tcp_connection, len, 'char'))';
     executedplan = nx_fromxmlstr(executedplan);
 end
+
+
+n.executedplan  = executedplan;
+
+nt = ceil(nt);
+
+% check robot moving
+if 0
+    if isfield(n, 'executedplan') & isfield(n.executedplan, 'events') & length(n.executedplan.events) > 0
+        if n.executedplan.events(end).matlab_finish_time < 0
+            disp 'Robot moving, skip planning';
+            return;
+        end
+    end
+end
+
 
 
 %% create bin history

@@ -5,12 +5,12 @@ addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
 
 init_for_s3 % linear chain
-init_for_s % 3 tasks
+%init_for_s % 3 tasks
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-% adjust_detection_var; % for adjust detection variance, see that file
+adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
@@ -24,7 +24,7 @@ SEND_INFERENCE_TO_ROS    = 0;
 DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
-DRAW_DETECTIONS_FIGURE   = 1110;
+DRAW_DETECTIONS_FIGURE   = 34;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
