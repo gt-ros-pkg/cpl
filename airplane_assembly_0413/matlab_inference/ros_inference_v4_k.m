@@ -47,8 +47,8 @@ end
 
 %% init planning
 
-%k = n_planning2_init(m);
-k = k_planning_init(m);
+k = n_planning2_init(m);
+%k = k_planning_init(m);
 
 
 %% set up variables
@@ -218,9 +218,9 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-        k.action_names_gt = action_names_gt;
-        k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
-        %k = n_planning2_process(k, m, nt, frame_info);
+        %k.action_names_gt = action_names_gt;
+        %k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
+        k = n_planning2_process(k, m, nt, frame_info);
     end
     
     

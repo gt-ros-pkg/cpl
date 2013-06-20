@@ -187,6 +187,10 @@ def check_for_new_planning():
                      if e1.tag == 'events' and e2.tag == 'events' and e1.find('bin_id').text == e2.find('bin_id').text :
                          # valid_new_plan = False
                          aaaaaaaa = 1
+
+             if len(my_plan) > 0 and len(new_matlab_plan) > 0 and my_plan[-1].find('sname').text == new_matlab_plan[0].find('sname').text:
+                 valid_new_plan = False
+
              if valid_new_plan:
                  matlab_plan = new_matlab_plan
                  print 'received a valid plan'
@@ -232,7 +236,7 @@ def execute_plan():
         conn.sendall(s)
 
         # lets the robot MOVE
-        supposed_duration = int(e.find('pre_duration').text) + int(e.find('post_duration').text) 
+        supposed_duration = float(e.find('pre_duration').text) + float(e.find('post_duration').text) 
         supposed_duration = supposed_duration * DOWN_SAMPLE_FACTOR / FPS
         print '>>> start action: ' + my_plan[-1].find('sname').text + ' (' + str(supposed_duration) + 's)'
         move_bin_msg = move_bin()

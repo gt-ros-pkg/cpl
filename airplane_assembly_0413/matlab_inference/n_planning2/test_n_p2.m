@@ -22,6 +22,19 @@ for i=1:N
         end
     end
     
+    
+    % use executed action
+    if 1 & isfield(n, 'executedplan')
+        for j=length(n.executedplan.events):-1:max(1, length(n.executedplan.events)-1)
+            if n.executedplan.events(j).bin_id == b,
+                if n.executedplan.events(j).sname(1) == 'A'
+                	n.bin_distributions(i).bin_available = 1;
+                else
+                	n.bin_distributions(i).bin_available = 0;   
+                end
+            end
+        end
+    end
 end
 
 % cut the past
@@ -80,11 +93,15 @@ for i=1:10
     
     % add plan
     plans{end+1} = plan;
-    disp ------------new_plan---
-    [n.bin_distributions.bin_available]
-    for a=plan.actions
-        %disp([a.action_str '  ' num2str(a.bin_id)]);
-        disp([a.action_str '  ' binid2name( n.bin_distributions(a.bin_id).bin_id )]);
+    
+    % disp
+    if 0
+        disp ------------new_plan---
+        [n.bin_distributions.bin_available]
+        for a=plan.actions
+            %disp([a.action_str '  ' num2str(a.bin_id)]);
+            disp([a.action_str '  ' binid2name( n.bin_distributions(a.bin_id).bin_id )]);
+        end
     end
 end
 

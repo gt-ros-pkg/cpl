@@ -32,7 +32,7 @@ test_n_p2
 
 % check plan valid
 if length(n.executedplan.events) > 0 & strcmp(n.executedplan.events(end).sname, bestplan.events(1).sname)
-    disp 'skip best plan';
+    warning 'skip best plan';
     return;
 end
 
