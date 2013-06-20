@@ -782,7 +782,10 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	int_temp += temp_int_stream.str();
 	wait_task_msg.data= int_temp;
 	task_pub.publish(wait_task_msg);
-
+	
+	//debug
+	cout<<"Waiting for bin "<<cur_bin;
+	
 	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
 	else{cheat_wait(cur_bin);}
 
@@ -911,7 +914,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	++total_time_steps;
     
 	//debug
-	cout<<"Need Bin: "<<bin_to_chk<<endl;
+	//cout<<"Need Bin: "<<bin_to_chk<<endl;
       }while(ros::ok() && !bin_in_position(bin_to_chk));
     
     //delete human waiting viz marker
