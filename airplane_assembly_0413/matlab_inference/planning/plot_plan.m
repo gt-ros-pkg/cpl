@@ -25,9 +25,16 @@ for k=1:length(plans)
         if isfield(e, 'matlab_execute_time')
             exe_time = e.matlab_execute_time;
         end
+        
+        end_time = exe_time + e.pre_duration + e.post_duration;
+        if isfield(e, 'matlab_finish_time') & e.matlab_finish_time > exe_time
+            end_time = e.matlab_finish_time;
+        end
+        
+        opt_time = exe_time + e.pre_duration / (e.pre_duration + e.post_duration) * (end_time - exe_time);
             
-        plot([exe_time exe_time+e.pre_duration], 2*k+[0 0.5], 'color', nxtocolor(e.bin_id));
-        plot([exe_time+e.pre_duration exe_time+e.pre_duration+e.post_duration], 2*k+[0.5 0], 'color', nxtocolor(e.bin_id));
+        plot([exe_time opt_time], 2*k+[0 0.5], 'color', nxtocolor(e.bin_id));
+        plot([opt_time end_time], 2*k+[0.5 0], 'color', nxtocolor(e.bin_id));
         text(double(exe_time) , 2*k+0.5+0.5*mod(i,3), e.sname);
     end
 
