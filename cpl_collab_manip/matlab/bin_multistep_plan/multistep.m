@@ -48,8 +48,21 @@ deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
 % notbranchweight: The penalty weight representing the number of seconds to penalize 
 %                  the bin if the probability the bin is on this branch is 0.5
 
+for bin_ind = 1:numbins
+    binprob = sum(probs{bin_ind,1});
+    startprobs = probs{bin_ind,1} / binprob;
+    endprobs = probs{bin_ind,2} / binprob;
+    lastrmind = nowtimeind; % TODO FIX THIS
+    is_delivered(bin_ind) = any(bin_ind == deliv_seqs(1,:));
+    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, endprobs, binprob, ...
+                                                 undo_dur, is_delivered(bin_ind));
+    lt_cost_fns(bin_ind,:) = late_cost_precomp(t, startprobs, endprobs, binprob, ...
+                                               nowtimeind, lastrmind, undo_dur_ind);
+end
+
 all_best_times = [];
 all_costs = [];
+all_costs_split = [];
 all_plans = [];
 for i = 1:size(deliv_seqs,1)
     % create a template action plan given a delivery sequence
@@ -67,25 +80,40 @@ for i = 1:size(deliv_seqs,1)
     % it is executed now, and the duration of it and subsequent actions, given they execute
     % as soon as the last action is completed
     lower_bounds = [nowtimeind, durations(1:end-1)*rate];
+
     % the end time of the last action should be before the end of the distribution
     A = ones(1, numel(lower_bounds));
     b = numel(t)-durations(end)*rate;
-    x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, t, probs, traj_dur_ind, undo_dur, nowtimeind, 0), ...
-                    lower_bounds, ...
-                    A, b, ...
-                    [], [], ...
-                    lower_bounds, [], ...
-                    [], opt_options);
-    best_times = cumsum(x_sol / rate);
+    best_cost = inf;
+    for start_off = 0:10:0
+        x_start = lower_bounds;
+        x_start(1) = x_start(1) + start_off;
+        % x_start = x_start + 20*rate;
+        x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, ...
+                                          rm_cost_fns, lt_cost_fns, traj_dur_ind, 0), ...
+                        x_start, ...
+                        A, b, ...
+                        [], [], ...
+                        lower_bounds, [], ...
+                        [], opt_options);
+        cur_times = cumsum(x_sol / rate);
 
-    % given the optimal timings, find the actual plan and its cost from the optimization function
-    % this will fill in the bin removals from the original plan
-    [cost, fullplan] = opt_cost_fun(x_sol, slot_states, plan, t, probs, traj_dur_ind, undo_dur, nowtimeind, 1);
+        % given the optimal timings, find the actual plan and its cost from the optimization function
+        % this will fill in the bin removals from the original plan
+        [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, traj_dur_ind, 1);
+        if cost < best_cost
+            best_cost = cost;
+            best_costs = cur_costs;
+            best_times = cur_times;
+            best_plan = cur_plan;
+        end
+    end
 
     deliver_sequence = deliv_seqs(i,:);
     all_best_times(i,:) = best_times;
-    all_costs(i) = cost;
-    all_plans(i,:) = fullplan;
+    all_costs(i) = best_cost;
+    all_costs_split(i,:) = best_costs;
+    all_plans(i,:) = best_plan;
 end
 
 actions = [];
@@ -99,6 +127,7 @@ for i = 1:size(deliv_seqs,1)
     best_times = all_best_times(ind,:);
     durations = traj_dur*2 * ones(1,numel(plan));
     plan = all_plans(ind,:);
+    costs_split = all_costs_split(ind,:);
     action_starts = best_times;
     action_ends = best_times+durations;
 
@@ -111,7 +140,7 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug && i == 1
+    if debug % && i == 1
         figure(100+i)
         clf
         subplot(3,1,1)
@@ -122,7 +151,7 @@ for i = 1:size(deliv_seqs,1)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
                             nowtimesec, nowtimeind, max_time);
         subplot(3,1,3)
-        visualize_cost_funs(t, probs, undo_dur, nowtimesec, nowtimeind, max_time);
+        visualize_cost_funs(t, probs, is_delivered, undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
         if actions(i) == 0
             action_name = 'WAIT';
         elseif actions(i) > 0
@@ -134,7 +163,13 @@ for i = 1:size(deliv_seqs,1)
     end
 end
 
-plan_costs = [costs_sorted', all_plans_sorted]
+plan_costs = nan*zeros(size(all_plans_sorted,1)*2,size(all_plans_sorted,2)+1);
+for i = 1:size(all_plans_sorted,1)
+    plan_costs(2*i-1,1) = costs_sorted(i);
+    plan_costs(2*i-1,2:end) = all_plans_sorted(i,:);
+    plan_costs(2*i,2:end) = all_costs_split(i,:);
+end
+plan_costs
 
 action = actions(1);
 best_plan = [all_plans_sorted(1,:)', all_action_starts(1,:)', all_action_ends(1,:)'];

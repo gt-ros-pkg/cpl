@@ -12,7 +12,7 @@ for i = 1:numbins
     plot(t,probs{i,2}/(1.1*maxprob)-i+numbins,'r')
     plot(t,zeros(1,numel(t))-i+numbins,'k')
     plot([maxtime-10, maxtime],(binprob/1.1-i+numbins)*ones(1,2),'m')
-    text(nowtimesec+3, 0.5-i+numbins, sprintf('%d (%.1f)', bin_ranks(i), bin_relevs(i)));
+    text(nowtimesec+3, 0.5-i+numbins, sprintf('%d (%.1f)', find(bin_ranks==i), bin_relevs(i)));
     bin_prob = sum(probs{i,1});
     start_probs = probs{i,1}/bin_prob;
     end_probs = probs{i,2}/bin_prob;
