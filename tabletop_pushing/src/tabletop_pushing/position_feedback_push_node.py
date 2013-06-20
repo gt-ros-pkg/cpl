@@ -580,7 +580,10 @@ class PositionFeedbackPushNode:
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
                           str(update_twist.twist.linear.y) + ', ' +
-                          str(update_twist.twist.linear.z) + ')\n')
+                          str(update_twist.twist.linear.z) + ')')
+            rospy.loginfo('omega: (' + str(update_twist.twist.angular.x) + ', ' +
+                          str(update_twist.twist.angular.y) + ', ' +
+                          str(update_twist.twist.angular.z) + ')\n')
 
         if _USE_CONTROLLER_IO:
             self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
