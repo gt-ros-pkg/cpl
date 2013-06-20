@@ -223,12 +223,20 @@ def execute_plan():
 
         # add to my plan
         my_plan.append(e) # remove e from matlab_plan and add to my_plan
+
         my_plan[-1].append(etree.Element('execute_time'))
-        my_plan[-1].append(etree.Element('matlab_execute_time'))
         my_plan[-1].find('execute_time').text = str(execute_time)
+
+        my_plan[-1].append(etree.Element('matlab_execute_time'))
         my_plan[-1].find('matlab_execute_time').text = str(int((execute_time - get_begin_time().secs) * FPS / DOWN_SAMPLE_FACTOR))
         my_plan[-1].find('matlab_execute_time').set('rows', '1')
         my_plan[-1].find('matlab_execute_time').set('cols', '1')
+
+
+        my_plan[-1].append(etree.Element('matlab_finish_time'))
+        my_plan[-1].find('matlab_finish_time').text = str(int(-1))
+        my_plan[-1].find('matlab_finish_time').set('rows', '1')
+        my_plan[-1].find('matlab_finish_time').set('cols', '1')
         
         # send to matlab
         s = etree.tostring(my_plan)
@@ -252,6 +260,14 @@ def execute_plan():
             rospy.sleep(0.1)
         a2 = rospy.Time.now().to_nsec() / 1000000000.0
         print '>>> finish action in ', (a2 - a1), ' (s) '
+
+        # send updated plan
+        finish_time = rospy.Time.now().secs
+        my_plan[-1].find('matlab_finish_time').text = str(int((finish_time - get_begin_time().secs) * FPS / DOWN_SAMPLE_FACTOR))
+        s = etree.tostring(my_plan)
+        conn.sendall(struct.pack('>i', len(s)))
+        conn.sendall(s)
+ 
             
 #####################################################
 # MAIN
