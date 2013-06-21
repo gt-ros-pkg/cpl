@@ -1,4 +1,4 @@
-function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail)
+function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail, debug)
 %K_PLANNING_PROCESS Summary of this function goes here
 %   Detailed explanation goes here
 %   k
@@ -79,7 +79,6 @@ probs       = {};
 slot_states = [];
 bin_names   = {};
 rate        = 30 / m.params.downsample_ratio;
-debug       = 1;
 nowtimesec  = nt * m.params.downsample_ratio / 30;
 
 for i=1:length(n.bin_distributions)

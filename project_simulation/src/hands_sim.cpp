@@ -1471,31 +1471,35 @@ int main(int argc, char** argv)
 
   ros::init(argc, argv, "hand_simulator");
 
-  //seed generators
-  rng.seed(time(0));
-  rng_rep.seed(RNG_SEED);
-
   bool noprompt;
   if(argc == 1) {
     noprompt = false;
-  } else if(argc == 3) {
+  } else if(argc >= 3) {
     noprompt = true;
+    rng_rep.seed(RNG_SEED);
+  } else if(argc >= 4) {
+    rng_rep.seed(atoi(argv[3]));
   } else {
-    printf("Usage: hands_sim <task> <cheat at waiting (y/n)>\n");
+    printf("Usage: hands_sim <task> <cheat at waiting (y/n)> <duration seed>\n");
     return -1;
   }
 
+  //seed generators
+  rng.seed(time(0));
 
+  /*
   char do_another='n';
-
   do{
     char correct = 'n';
+  */
     string task;
 
     bool cheat;
 
+  /*
     while(correct != 'y')
       {
+  */
 	cheat = false;
 	cout<<"Which task?"<<endl;
   if(!noprompt)
@@ -1532,15 +1536,18 @@ int main(int argc, char** argv)
 	  cout<<"Incorrect task entered, try again."<<endl;
 	  continue;
 	}
-      }
+  
+  //    }
   
     handSim begin_it(task, cheat);
     begin_it.pub_hands();
   
+  /*
     cout<<endl<<"Do another Task?(y/n)"<<endl;
     cin>>do_another;
   
   }while(do_another!='n');
+  */
   
   return 0;
 }
