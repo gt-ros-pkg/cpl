@@ -443,6 +443,7 @@ def main():
     waittime    = 0
     r           = rospy.Rate(FPS)
 
+    task_completed_frame = -1
 
     # processing loop
     global running
@@ -467,9 +468,12 @@ def main():
         if framecount >= (T - 20) * DOWN_SAMPLING_RATE:
             print 'Max time exceeded. Quit inference_from_matlab'
             break
-        if action_name == 'Complete' and framecount % 100 == 1:
+        if action_name == 'Complete' and task_completed_frame < 0:
+            task_completed_frame = framecount
+        if task_completed_frame > 0 and framecount - task_completed_frame > 100:
             print 'Task completed. Quit inference_from_matlab'
             break
+      
 
 
     running = False
@@ -491,7 +495,7 @@ if __name__ == '__main__':
         print e
      finally:
         conn.sendall('exit!'); # exist signal
-        rospy.sleep(1)
+        rospy.sleep(2)
         conn.close()
         s.close()
         sys.exit()

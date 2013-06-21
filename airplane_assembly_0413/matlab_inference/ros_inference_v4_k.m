@@ -5,7 +5,7 @@ addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
 
 init_for_s3 % linear chain
-%init_for_s % 3 tasks
+% init_for_s % 3 tasks
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
@@ -26,7 +26,7 @@ DRAW_DISTRIBUTION_FIGURE = 000;
 DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
-DRAW_DETECTIONS_FIGURE   = 0000;
+DRAW_DETECTIONS_FIGURE   = 3310;
 
 DRAW_GT_ACTIONS          = 1;
 
