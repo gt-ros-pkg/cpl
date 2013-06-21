@@ -17,7 +17,7 @@ m.bin_req = bin_req;
 PORT_NUMBER         = 12341;  % must match ROS node param
 BIN_NUM             = 20;     % must match ROS node param
 MAX_NAME_LENGTH     = 20;     % must match ROS node param
-MAX_WS_BINS         = 20;
+MAX_WS_BINS         = 20;     % must match ROS node param
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
@@ -343,8 +343,11 @@ end
 k = k_planning_terminate(k);
 
 fclose(ros_tcp_connection);
+
 disp 'The End'
 disp([num2str(inference_num * 30 / t) ' inferences per second']);
+
+
 pause(1);
 
 

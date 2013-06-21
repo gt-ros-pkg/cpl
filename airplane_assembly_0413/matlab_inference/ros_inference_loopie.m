@@ -10,6 +10,10 @@ while 1
     end
     
     %fclose(ros_tcp_connection);
+    
+    
+    save_batch;
+    
     disp 'Start again in 5 seconds...'
     pause(5);
 end
