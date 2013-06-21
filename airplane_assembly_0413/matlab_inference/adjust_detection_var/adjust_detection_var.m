@@ -23,6 +23,14 @@ m.detection.onedetector.mean_detection_score    = 0.2;
 m.detection.params.detector_var_scale           = 12;
 m.detection.onedetector.mean_detection_score    = 0.001;
 
+m.detection.params.detector_var_prior           = 5;
+m.detection.onedetector.mean_detection_score    = 0.001;
+
+m.detection.params.detector_var_prior           = 0.1;
+m.detection.params.latent_noise                 = 0.02;
+
+% m.detection.params.detector_var_prior           = 1;
+% m.detection.params.latent_noise                 = 0.2;
 
 return;
 % 

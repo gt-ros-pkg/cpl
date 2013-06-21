@@ -2,7 +2,7 @@
 %% load data
 addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
-clc; clear; %close all;
+clc; clear; % close all;
 
 init_for_s3 % linear chain
 %init_for_s % 3 tasks
