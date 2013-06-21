@@ -42,12 +42,6 @@ end
 %% optimize
 test_n_p2
 
-% check plan valid
-if length(n.executedplan.events) > 0 & strcmp(n.executedplan.events(end).sname, bestplan.events(1).sname)
-    warning 'skip best plan';
-    return;
-end
-
 %% send
 planning_s     = nx_toxmlstr(bestplan);
 fwrite(n.ros_tcp_connection, length(planning_s), 'int'); 

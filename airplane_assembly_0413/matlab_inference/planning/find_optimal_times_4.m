@@ -12,10 +12,19 @@ if n == 0
     return;
 end;
 
+assert(t0 < size(costx,2));
+
+if t0 + d(1) > size(costx,2)
+    d(1) = size(costx,2) - t0;
+end
+
 costx(1, 1:t0+d(1)) = inf;
 
 if n == 1
     [mintotalcost optimalcost_id] = min(costx);
+    if isinf(mintotalcost)
+        optimalcost_id = size(costx,2);
+    end
     return;
 end
 
@@ -41,7 +50,11 @@ new_d     = [d(1)+d(2), d(3:end)];
 [optimalcost_id mintotalcost] = find_optimal_times_4(new_costx, t0, new_d);
 
 % get back the first two
-optimalcost_id = [fromid2_to_best_id1(optimalcost_id(1)) optimalcost_id];
+if isnan(fromid2_to_best_id1(optimalcost_id(1)))
+    optimalcost_id = [optimalcost_id(1) optimalcost_id];
+else
+    optimalcost_id = [fromid2_to_best_id1(optimalcost_id(1)) optimalcost_id];
+end
 
 end
 

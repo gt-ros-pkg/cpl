@@ -10,7 +10,7 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-adjust_detection_var; % for adjust detection variance, see that file
+% adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
@@ -66,12 +66,14 @@ bins_availability = nan(BIN_NUM, m.params.T);
 
 %% LOOP
 
-while t < m.params.T * m.params.downsample_ratio & t < 6000
+while t < m.params.T * m.params.downsample_ratio
     
     % exist signal
     if ros_tcp_connection.BytesAvailable == 5
+        disp 'Exit signal received'
         break;
     end
+    assert(nt < m.params.T - 10);
     
     %------------------------------------------------
     % get new frame data
