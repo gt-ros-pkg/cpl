@@ -1658,8 +1658,9 @@ def extract_shape_features_batch():
           print 'ERROR: No data file in directory:', c
           continue
       aff_file = class_dir+data_file
-      score_file = base_dir+'examples_line_dist/'+c+'.txt'
-      file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
+      score_file = base_dir+'example_files/'+c+'.txt'
+      # file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
+      file_out = base_dir+'analysis/'+c+'_gt_scores.png'
       print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
           class_dir, file_out, score_file
       p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',

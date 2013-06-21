@@ -569,7 +569,9 @@ void drawScores(std::vector<double>& push_scores, std::string out_file_path)
   {
     int x = objLocToIdx(start_loc_history_[i].boundary_loc_.x, min_x, max_x);
     int y = objLocToIdx(start_loc_history_[i].boundary_loc_.y, min_y, max_y);
-    double score = -log(push_scores[i])/10;
+    // double score = -log(push_scores[i])/10;
+    double score = push_scores[i]/M_PI;
+    ROS_INFO_STREAM("Score " << score);
     cv::Scalar color(0, score*255, (1-score)*255);
     // color[0] = 0.5;
     // color[1] = score;
@@ -580,8 +582,8 @@ void drawScores(std::vector<double>& push_scores, std::string out_file_path)
     cv::circle(footprint, cv::Point(x,y), 3, color, 3);
   }
   // ROS_INFO_STREAM("Max score is: " << max_score);
-  // ROS_INFO_STREAM("Writing image: " << out_file_path);
-  // cv::imwrite(out_file_path, footprint);
+  ROS_INFO_STREAM("Writing image: " << out_file_path);
+  cv::imwrite(out_file_path, footprint);
 
   cv::imshow("Push score", footprint);
   cv::waitKey();
@@ -625,45 +627,47 @@ int main(int argc, char** argv)
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
 
     ShapeDescriptor sd = getTrialDescriptor(cloud_path.str(), init_loc, init_theta, trials[i].start_pt);
-    std::string param_path = "/home/thermans/Dropbox/Data/start_loc_learning/point_push/examples_line_dist/push_svm_1.model";
+    // std::string param_path = "/home/thermans/Dropbox/Data/start_loc_learning/point_push/examples_line_dist/push_svm_1.model";
     // ShapeLocation chosen = predictPushLocation(cloud_path.str(), init_loc, init_theta, trials[i].start_pt, param_path);
 
-    if (draw_scores)
-    {
-      // TODO: Get the image, draw the shape context, highlight score color
-      // TODO: Get projection matrix
-      std::stringstream hull_img_path;
-      hull_img_path << data_directory_path << trial_id << "_obj_hull_disp.png";
-      cv::Mat disp_img;
-      ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
-      disp_img = cv::imread(hull_img_path.str());
-      double score = -log(push_scores[i])/10;
-      cv::Vec3b score_color(0, score*255, (1-score)*255);
-      for (int r = 0; r < disp_img.rows; ++r)
-      {
-        for (int c = 0; c < disp_img.cols; ++c)
-        {
-          if (disp_img.at<cv::Vec3b>(r,c)[0] == 0 && disp_img.at<cv::Vec3b>(r,c)[1] == 0 &&
-              disp_img.at<cv::Vec3b>(r,c)[2] == 255)
-          {
-            disp_img.at<cv::Vec3b>(r,c) = score_color;
-          }
-          else if (disp_img.at<cv::Vec3b>(r,c)[0] == 0 && disp_img.at<cv::Vec3b>(r,c)[1] == 255 &&
-                   disp_img.at<cv::Vec3b>(r,c)[2] == 0)
-          {
-            disp_img.at<cv::Vec3b>(r,c) = cv::Vec3b(255,0,0);
-          }
+    // if (draw_scores)
+    // {
+    //   // TODO: Get the image, draw the shape context, highlight score color
+    //   // TODO: Get projection matrix
+    //   std::stringstream hull_img_path;
+    //   hull_img_path << data_directory_path << trial_id << "_obj_hull_disp.png";
+    //   cv::Mat disp_img;
+    //   ROS_INFO_STREAM("Reading image: " << hull_img_path.str());
+    //   disp_img = cv::imread(hull_img_path.str());
+    //   ROS_INFO_STREAM("Read image: " << hull_img_path.str());
+    //   // double score = -log(push_scores[i])/10;
+    //   double score = push_scores[i]/M_PI;
+    //   cv::Vec3b score_color(0, score*255, (1-score)*255);
+    //   for (int r = 0; r < disp_img.rows; ++r)
+    //   {
+    //     for (int c = 0; c < disp_img.cols; ++c)
+    //     {
+    //       if (disp_img.at<cv::Vec3b>(r,c)[0] == 0 && disp_img.at<cv::Vec3b>(r,c)[1] == 0 &&
+    //           disp_img.at<cv::Vec3b>(r,c)[2] == 255)
+    //       {
+    //         disp_img.at<cv::Vec3b>(r,c) = score_color;
+    //       }
+    //       else if (disp_img.at<cv::Vec3b>(r,c)[0] == 0 && disp_img.at<cv::Vec3b>(r,c)[1] == 255 &&
+    //                disp_img.at<cv::Vec3b>(r,c)[2] == 0)
+    //       {
+    //         disp_img.at<cv::Vec3b>(r,c) = cv::Vec3b(255,0,0);
+    //       }
 
-        }
-      }
-      ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
-      cv::imshow("hull", disp_img);
-      // cv::waitKey();
-      if (push_scores[i] > max_score)
-      {
-        max_score = push_scores[i];
-      }
-    }
+    //     }
+    //   }
+    //   ROS_INFO_STREAM("Score is " << push_scores[i] << "\n");
+    //   cv::imshow("hull", disp_img);
+    //   // cv::waitKey();
+    //   if (push_scores[i] > max_score)
+    //   {
+    //     max_score = push_scores[i];
+    //   }
+    // }
     descriptors.push_back(sd);
   }
   // Feature testing below
@@ -731,11 +735,11 @@ int main(int argc, char** argv)
   // ROS_INFO_STREAM("feat: " << line_out.str());
 
   // std::stringstream out_file;
-  writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
+  // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
   if (draw_scores)
   {
     // TODO: Pass in info to write these to disk again?
-    // drawScores(push_scores, out_file_path);
+    drawScores(push_scores, out_file_path);
     // drawScores(push_scores);
   }
   return 0;
