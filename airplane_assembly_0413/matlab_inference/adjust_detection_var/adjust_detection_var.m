@@ -16,45 +16,25 @@ m.detection.onedetector.mean_detection_score
 % m.detection.params.mean_detection_score_factor = 0.02;
 
 % new value
-m.detection.params.detector_var_scale           = 25;
-m.detection.onedetector.mean_detection_score    = 1;
 m.detection.params.detector_var_scale           = 21;
 m.detection.onedetector.mean_detection_score    = 0.2;
+m.detection.params.detector_var_scale           = 25;
+m.detection.onedetector.mean_detection_score    = 1;
 m.detection.params.detector_var_scale           = 12;
-m.detection.onedetector.mean_detection_score    = 0.001;
+m.detection.onedetector.mean_detection_score    = 0.01;
 
-m.detection.params.detector_var_prior           = 5;
-m.detection.onedetector.mean_detection_score    = 0.001;
+%m.detection.params.detector_var_prior           = 5;
+%m.detection.onedetector.mean_detection_score    = 0.001;
 
 % Low noise
-m.detection.params.detector_var_prior           = 0.1;
+m.detection.params.detector_var_prior           = 0.1 * eye(3);
 m.detection.params.latent_noise                 = 0.02;
 
 % High noise
-% m.detection.params.detector_var_prior           = 1;
+% m.detection.params.detector_var_prior           = 1 * eye(3);
 % m.detection.params.latent_noise                 = 0.2;
 
 return;
-% 
-% load training_data
-% 
-% %% update mean detection score
-% 
-% dr = [];
-% 
-% for i=1:size(onedetector.data, 2)
-%     
-%     dr(end+1) = mvnpdf(onedetector.data(:,i), onedetector.learnt.mean, m.detection.params.detector_var_scale * onedetector.learnt.var);
-%     
-% end
-% 
-% m.detection.onedetector.mean_detection_score = mean(dr) * m.detection.params.mean_detection_score_factor;
-% 
-% %%
-% disp 'new params'
-% m.detection.onedetector.learnt.var
-% m.detection.params.detector_var_scale
-% m.detection.onedetector.mean_detection_score
 
 
 

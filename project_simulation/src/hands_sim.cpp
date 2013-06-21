@@ -136,13 +136,14 @@ private:
 		    
 		    (*read_bin).step_list.push(cur_step);
 		  }
-
+		
 	      }
 	    getline(bin_file, cur_line);
 	    
 	  }
       }
-
+    bin_file.close();
+    
   }
   
   void read_task(string file)
@@ -174,6 +175,7 @@ private:
 	    
 	  }
       }
+    task_file.close();
   }
 
 public:
@@ -1474,10 +1476,11 @@ int main(int argc, char** argv)
   bool noprompt;
   if(argc == 1) {
     noprompt = false;
-  } else if(argc >= 3) {
+  } else if(argc == 3) {
     noprompt = true;
     rng_rep.seed(RNG_SEED);
-  } else if(argc >= 4) {
+  } else if(argc == 4) {
+    noprompt = true;
     rng_rep.seed(atoi(argv[3]));
   } else {
     printf("Usage: hands_sim <task> <cheat at waiting (y/n)> <duration seed>\n");
@@ -1492,25 +1495,27 @@ int main(int argc, char** argv)
   do{
     char correct = 'n';
   */
-    string task;
-
-    bool cheat;
+  string task;
+  
+  bool cheat=false;
 
   /*
     while(correct != 'y')
       {
   */
-	cheat = false;
-	cout<<"Which task?"<<endl;
+  
+  //char correct='n';
+    
+  cout<<"Which task?"<<endl;
   if(!noprompt)
     cin>> task;
   else {
     task.assign(argv[1]);
     cout << argv[1] << endl;
   }
-	if(1)
-	  {
-	    string cht_inp;
+  if(1)
+    {
+      string cht_inp;
       cout<<"Cheat at waiting?(y/n)"<<endl;
       if(!noprompt)
         cin>>cht_inp;
@@ -1519,10 +1524,10 @@ int main(int argc, char** argv)
         cout << argv[2] << endl;
       }
 
-	    if(cht_inp[0]=='y'){cheat=true;}
+      if(cht_inp[0]=='y'){cheat=true;}
 	    
-	    string input;
-	    cout<<"Ready?(y/n)";
+      string input;
+      cout<<"Ready?(y/n)";
 
       /*
       if(!noprompt) {
@@ -1533,9 +1538,12 @@ int main(int argc, char** argv)
         cout << "y" << endl;
         correct = 'y';
       }
-      */
-	  }  
-  //    }
+    }else{
+    cout<<"Incorrect task entered, try again."<<endl;
+    continue;
+    }*/
+  
+      }
   
     handSim begin_it(task, cheat);
     begin_it.pub_hands();
