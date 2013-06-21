@@ -382,10 +382,12 @@ class CombinedPushLearnControlIO:
                 if _DEBUG_IO:
                     print 'None of these?'
         data_in.close()
-        print 'object_comments',object_comments
+        # print 'object_comments',object_comments
+        print 'Read in', file_name
         print 'trial_starts',trial_starts
         print 'bad_stops',bad_stops
-        print 'control_headers',control_headers
+        # print 'control_headers',control_headers
+        print 'num trials', len(self.push_trials), '\n'
 
     def write_example_file(self, file_name, X, Y, normalize=False, debug=False):
         data_out = file(file_name, 'w')
@@ -713,7 +715,7 @@ class StartLocPerformanceAnalysis:
     def analyze_spin_push_net_spin(self, push_trial):
         init_theta = push_trial.trial_start.init_orientation
         final_theta = push_trial.trial_end.final_orientation
-        return abs(final_theta - init_theta)
+        return abs(subPIAngle(final_theta - init_theta))
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
@@ -1637,9 +1639,12 @@ def extract_shape_features_batch():
   base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
   class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
   # class_dirs = ['toothpaste3']
+  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+
   out_dir = base_dir+'examples_line_dist/'
   feat_dir = base_dir+'examples_line_dist/'
-  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
 
   for c in class_dirs:
       print 'Class:', c
@@ -1653,7 +1658,7 @@ def extract_shape_features_batch():
           print 'ERROR: No data file in directory:', c
           continue
       aff_file = class_dir+data_file
-      score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
+      score_file = base_dir+'examples_line_dist/'+c+'.txt'
       file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
       print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
           class_dir, file_out, score_file
@@ -1662,14 +1667,15 @@ def extract_shape_features_batch():
       p.wait()
 
 def read_and_score_raw_files():
-  # base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/point_push/'
   # class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
   # out_dir = base_dir+'examples_line_dist/'
-  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/beta_testing/'
-  class_dirs = ['camcorder_beta_rotate_train0']
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+  repair_ends = [[56, 75,76,77,78], [39], [], [24, 48], [6, 41, 44], [26, 33]]
   out_dir = base_dir+'example_files/'
   use_spin = True
-  for c in class_dirs:
+  for i, c in enumerate(class_dirs):
       in_dir = base_dir+c+'/'
       files = os.listdir(in_dir)
       file_name = None
@@ -1679,10 +1685,17 @@ def read_and_score_raw_files():
       if file_name is None:
           continue
       file_in = in_dir+file_name
-      file_out = out_dir+c[:-1]+'.txt'
-      print file_out
+      file_out = out_dir+c+'.txt'
+      # print 'Out file:', file_out
       slp = StartLocPerformanceAnalysis()
       slp.generate_example_file(file_in, file_out, use_spin=use_spin)
+      # (X, Y) = slp.get_trial_features(file_in, use_spin)
+      # for j in repair_ends[i]:
+      #     print slp.plio.push_trials[j].trial_start.object_id, ' : ', \
+      #         slp.plio.push_trials[j].trial_end.final_orientation, ' to ', \
+      #         subPIAngle(slp.plio.push_trials[j].trial_end.final_orientation+pi)
+      #     print 'init: ', slp.plio.push_trials[j].trial_start.init_orientation
+      # print ''
 
 def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
     slp = StartLocPerformanceAnalysis()
@@ -1767,7 +1780,7 @@ def convert_robot_attempts_file_batch():
     pass
 
 if __name__ == '__main__':
-    analyze_predicted_and_observed_batch()
+    # analyze_predicted_and_observed_batch()
     # read_and_score_raw_files()
-    # extract_shape_features_batch()
+    extract_shape_features_batch()
     # rank_straw_scores_batch()
