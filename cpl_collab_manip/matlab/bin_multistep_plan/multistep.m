@@ -3,20 +3,31 @@ function [action, best_plan, history] = multistep(probs, slot_states, inf_k, bin
 if ~isfield(history, 'slots')
     history.slots = [];
     history.nowtimes = [];
+    history.probs = {};
+    history.slot_states = {};
+    history.inf_k = {};
+    history.bin_names = bin_names;
+    history.rate = rate;
+    history.debug = debug;
 end
 history.slots(end+1,:) = slot_states;
 history.nowtimes(end+1) = nowtimesec;
+history.probs{end+1} = probs;
+history.slot_states{end+1} = slot_states;
+history.inf_k{end+1} = inf_k;
 
 planning_params
 
 if debug
     display_arg = 'off';
-    % display_arg = 'final-detailed';
+    %display_arg = 'final-detailed';
 else
     display_arg = 'off';
 end
 % opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
-opt_options = optimset('Algorithm', 'active-set', 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals, ...
+% opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals, ...
+% opt_options = optimset('Algorithm', 'interior-point', 'MaxFunEvals', opt_fun_evals, ...
+opt_options = optimset('Algorithm', 'interior-point', 'FinDiffRelStep', 1, 'DiffMinChange', 1, 'MaxFunEvals', opt_fun_evals, ...
                        'Display', display_arg);
 %opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
@@ -38,6 +49,7 @@ if all(bin_relevances == -inf)
                         nowtimesec, nowtimeind, max_time);
     subplot(3,1,3)
     visualize_cost_funs(t, probs, zeros(1,numbins), undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
+    pause(0.05)
     return
 end
 deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
@@ -93,25 +105,41 @@ for i = 1:size(deliv_seqs,1)
     lower_bounds = [nowtimeind, durations(1:end-1)*rate];
 
     % the end time of the last action should be before the end of the distribution
-    A = ones(1, numel(lower_bounds));
-    b = numel(t)-durations(end)*rate;
+    % A = ones(1, numel(lower_bounds));
+    % b = numel(t)-durations(end)*rate;
+
+    A = diag(ones(1,numel(durations)-1),-1) + diag(-ones(1,numel(durations)));
+    b = -lower_bounds;
+
     best_cost = inf;
-    for start_off = 0:10:0
-        x_start = lower_bounds;
-        x_start(1) = x_start(1) + start_off;
-        % x_start = x_start + 20*rate;
+    for start_off = 0:10:40
+        x_start = cumsum(lower_bounds);
+        % x_start(1) = x_start(1) + 40*rate;
+        lower_bounds;
+        x_start = x_start + start_off*rate;
         x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, ...
                                           rm_cost_fns, lt_cost_fns, traj_dur_ind, 0), ...
                         x_start, ...
                         A, b, ...
                         [], [], ...
-                        lower_bounds, [], ...
+                        [], (numel(t)-10-2*traj_dur_ind)*ones(1,numel(x_start)), ...
                         [], opt_options);
-        cur_times = cumsum(x_sol / rate);
+
+        % move early delivers to the beginning of the line
+        for plan_ind = 1:numel(plan)
+            if plan(plan_ind) > 0
+                x_sol(plan_ind) = sum(lower_bounds(1:plan_ind));
+            else
+                break
+            end
+        end
+        % cur_times = cumsum(x_sol / rate);
+        cur_times = x_sol / rate;
 
         % given the optimal timings, find the actual plan and its cost from the optimization function
         % this will fill in the bin removals from the original plan
         [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, traj_dur_ind, 1);
+
         if cost < best_cost
             best_cost = cost;
             best_costs = cur_costs;
@@ -151,7 +179,7 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug % && i == 1
+    if debug && i == 1
         figure(100+i)
         clf
         subplot(3,1,1)
@@ -171,6 +199,7 @@ for i = 1:size(deliv_seqs,1)
             action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
         end
         title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
+        pause(0.05)
     end
 end
 
