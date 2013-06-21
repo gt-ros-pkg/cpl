@@ -3,6 +3,7 @@ function k = k_planning_terminate( k )
 %   Detailed explanation goes here
 
 % close ros tcp connection
+fclose(k.ros_tcp_connection);
 
 end
 

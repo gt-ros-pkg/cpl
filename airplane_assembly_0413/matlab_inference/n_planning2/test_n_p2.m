@@ -2,8 +2,8 @@
 % clc;
 % load d2;
 
-ACTION_PRE_DURATION  = round(6 * 30 / m.params.downsample_ratio);
-ACTION_POST_DURATION = round(4.5 * 30 / m.params.downsample_ratio);
+ACTION_PRE_DURATION  = round(7 * 30 / m.params.downsample_ratio);
+ACTION_POST_DURATION = round(4 * 30 / m.params.downsample_ratio);
 
 % compute bin distribution
 n.bin_distributions = extract_bin_requirement_distributions( m );
@@ -131,7 +131,7 @@ end
 for i=1:length(plans)
     
     % calculate cost and distance
-    distances = zeros(length(plans{i}.actions));
+    distances = zeros(1, length(plans{i}.actions));
     for j=1:length(plans{i}.actions)
        distances(j) = plans{i}.actions(j).pre_duration;
     end

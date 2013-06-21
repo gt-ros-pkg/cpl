@@ -10,32 +10,30 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-adjust_detection_var; % for adjust detection variance, see that file
+% adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
 PORT_NUMBER         = 12341;  % must match ROS node param
 BIN_NUM             = 20;     % must match ROS node param
 MAX_NAME_LENGTH     = 20;     % must match ROS node param
-MAX_WS_BINS         = 20;
+MAX_WS_BINS         = 20;     % must match ROS node param
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
+
 DRAW_DISTRIBUTION_FIGURE = 000;
-% DRAW_DISTRIBUTION_FIGURE = 399;
+DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
-<<<<<<< Updated upstream
-DRAW_DETECTIONS_FIGURE   = 34;
-=======
-% DRAW_DETECTIONS_FIGURE   = 1110;
 DRAW_DETECTIONS_FIGURE   = 0000;
->>>>>>> Stashed changes
+
+DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-kelsey_planning = 1;
-kelsey_viz = 1;
+kelsey_planning = 0;
+kelsey_viz      = 1;
 
 %% open connection
 
@@ -77,12 +75,14 @@ bins_availability = nan(BIN_NUM, m.params.T);
 
 %% LOOP
 
-while t < m.params.T * m.params.downsample_ratio & t < 6000
+while t < m.params.T * m.params.downsample_ratio
     
     % exist signal
     if ros_tcp_connection.BytesAvailable == 5
+        disp 'Exit signal received'
         break;
     end
+    assert(nt < m.params.T - 10);
     
     %------------------------------------------------
     % get new frame data
@@ -239,7 +239,7 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     
     
     % ground truth action label
-    if 0
+    if DRAW_DISTRIBUTION_FIGURE & DRAW_GT_ACTIONS
         nx_figure(DRAW_DISTRIBUTION_FIGURE);
         
         if isfield(k, 'executedplan') & isfield(k, 'bestplans') 
@@ -343,8 +343,11 @@ end
 k = k_planning_terminate(k);
 
 fclose(ros_tcp_connection);
+
 disp 'The End'
 disp([num2str(inference_num * 30 / t) ' inferences per second']);
+
+
 pause(1);
 
 

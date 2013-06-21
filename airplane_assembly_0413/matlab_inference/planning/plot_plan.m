@@ -18,6 +18,7 @@ for k=1:length(plans)
     plan = plans{k};
     i    = 0;
     
+    if isfield(plan, 'events') 
     for e=plan.events
         i = i + 1;
         
@@ -37,7 +38,7 @@ for k=1:length(plans)
         plot([opt_time end_time], 2*k+[0.5 0], 'color', nxtocolor(e.bin_id));
         text(double(exe_time) , 2*k+0.5+0.5*mod(i,3), e.sname);
     end
-
+    end
 end
 
 hold off;

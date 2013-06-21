@@ -18,7 +18,7 @@ import copy
 import tf
 
 #Average time for completing a robotic action
-AVG_TIME_BIN_MOVE = 3.542032597;
+AVG_TIME_BIN_MOVE = 7;
 
 #publish Hz
 PUB_RATE = 60
