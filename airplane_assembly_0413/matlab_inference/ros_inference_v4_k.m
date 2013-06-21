@@ -2,7 +2,7 @@
 %% load data
 addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
-clc; clear; % close all;
+clc; clear; %close all;
 
 init_for_s3 % linear chain
 %init_for_s % 3 tasks
@@ -21,13 +21,21 @@ MAX_WS_BINS         = 20;
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
-DRAW_DISTRIBUTION_FIGURE = 399;
+DRAW_DISTRIBUTION_FIGURE = 000;
+% DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
+<<<<<<< Updated upstream
 DRAW_DETECTIONS_FIGURE   = 34;
+=======
+% DRAW_DETECTIONS_FIGURE   = 1110;
+DRAW_DETECTIONS_FIGURE   = 0000;
+>>>>>>> Stashed changes
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
+kelsey_planning = 1;
+kelsey_viz = 1;
 
 %% open connection
 
@@ -47,8 +55,11 @@ end
 
 %% init planning
 
-k = n_planning2_init(m);
-%k = k_planning_init(m);
+if kelsey_planning
+    k = k_planning_init(m);
+else
+    k = n_planning2_init(m);
+end
 
 
 %% set up variables
@@ -220,14 +231,17 @@ while t < m.params.T * m.params.downsample_ratio
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-        %k.action_names_gt = action_names_gt;
-        %k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
-        k = n_planning2_process(k, m, nt, frame_info);
+        if kelsey_planning
+            k.action_names_gt = action_names_gt;
+            k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz);
+        else
+            k = n_planning2_process(k, m, nt, frame_info);
+        end
     end
     
     
     % ground truth action label
-    if 1
+    if 0
         nx_figure(DRAW_DISTRIBUTION_FIGURE);
         
         if isfield(k, 'executedplan') & isfield(k, 'bestplans') 
@@ -317,8 +331,10 @@ while t < m.params.T * m.params.downsample_ratio
         hold off
     end
     
-    if ~isempty(findall(0,'Type','Figure'))
-        pause(1)
+    if ~kelsey_planning
+        if ~isempty(findall(0,'Type','Figure'))
+            pause(1)
+        end
     end
     
 end

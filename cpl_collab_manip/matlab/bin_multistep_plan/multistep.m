@@ -27,6 +27,17 @@ if all(bin_relevances == -inf)
     % no bins are relevant, robot should just wait
     action = 0;
     best_plan = [];
+    figure(101)
+    clf
+    subplot(3,1,1)
+    visualize_bin_activity([], [], bin_names, ...
+                           history, slot_states, numbins, rate, ...
+                           nowtimesec, t, max_time, inf_k);
+    subplot(3,1,2)
+    visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                        nowtimesec, nowtimeind, max_time);
+    subplot(3,1,3)
+    visualize_cost_funs(t, probs, zeros(1,numbins), undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
     return
 end
 deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
