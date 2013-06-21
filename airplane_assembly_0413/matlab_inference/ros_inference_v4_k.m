@@ -21,21 +21,19 @@ MAX_WS_BINS         = 20;
 
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
+
 DRAW_DISTRIBUTION_FIGURE = 000;
-% DRAW_DISTRIBUTION_FIGURE = 399;
+DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
-<<<<<<< Updated upstream
-DRAW_DETECTIONS_FIGURE   = 34;
-=======
-% DRAW_DETECTIONS_FIGURE   = 1110;
 DRAW_DETECTIONS_FIGURE   = 0000;
->>>>>>> Stashed changes
+
+DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-kelsey_planning = 1;
-kelsey_viz = 1;
+kelsey_planning = 0;
+kelsey_viz      = 1;
 
 %% open connection
 
@@ -241,7 +239,7 @@ while t < m.params.T * m.params.downsample_ratio
     
     
     % ground truth action label
-    if 0
+    if DRAW_DISTRIBUTION_FIGURE & DRAW_GT_ACTIONS
         nx_figure(DRAW_DISTRIBUTION_FIGURE);
         
         if isfield(k, 'executedplan') & isfield(k, 'bestplans') 

@@ -221,6 +221,8 @@ def execute_plan():
     
     if execute_time-0.1 <= current_time:
 
+        execute_time = rospy.Time.now().secs
+
         # add to my plan
         my_plan.append(e) # remove e from matlab_plan and add to my_plan
 
