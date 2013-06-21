@@ -10,7 +10,7 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-% adjust_detection_var; % for adjust detection variance, see that file
+adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
@@ -32,7 +32,7 @@ DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-kelsey_planning = 0;
+kelsey_planning = 1;
 kelsey_viz      = 1;
 
 %% open connection
