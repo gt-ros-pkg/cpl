@@ -136,13 +136,14 @@ private:
 		    
 		    (*read_bin).step_list.push(cur_step);
 		  }
-
+		
 	      }
 	    getline(bin_file, cur_line);
 	    
 	  }
       }
-
+    bin_file.close();
+    
   }
   
   void read_task(string file)
@@ -174,6 +175,7 @@ private:
 	    
 	  }
       }
+    task_file.close();
   }
 
 public:
