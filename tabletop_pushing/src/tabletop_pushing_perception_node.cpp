@@ -1380,6 +1380,9 @@ class TabletopPushingPerceptionNode
     int chosen_idx = 0;
     float push_angle_world_frame = 0.0;
 
+    cv::Point2f box_center;
+    box_center.x = (vertices[0].x+vertices[2].x)*0.5;
+    box_center.y = (vertices[0].y+vertices[2].y)*0.5;
     for (int i = 0; i < 4; ++i)
     {
       int j = (i+1)%4;
@@ -1388,9 +1391,9 @@ class TabletopPushingPerceptionNode
       {
         min_dist = line_dist;
         chosen_idx = i;
-        // NOTE: Push the direction from the chosen side's midpoint through the object center (ensures axis-aligned direction)
-        push_angle_world_frame = atan2(cur_state.x.y-(vertices[i].y + vertices[j].y)*0.5,
-                                       cur_state.x.x-(vertices[i].x + vertices[j].x)*0.5);
+        // NOTE: Push the direction from the chosen side's midpoint through the Box's center
+        push_angle_world_frame = atan2(box_center.y-(vertices[i].y + vertices[j].y)*0.5,
+                                       box_center.x-(vertices[i].x + vertices[j].x)*0.5);
       }
     }
 
