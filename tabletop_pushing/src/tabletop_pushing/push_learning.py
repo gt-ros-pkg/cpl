@@ -1673,7 +1673,6 @@ def read_and_score_raw_files():
   # out_dir = base_dir+'examples_line_dist/'
   base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
   class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
-  repair_ends = [[56, 75,76,77,78], [39], [], [24, 48], [6, 41, 44], [26, 33]]
   out_dir = base_dir+'example_files/'
   use_spin = True
   for i, c in enumerate(class_dirs):
@@ -1687,16 +1686,9 @@ def read_and_score_raw_files():
           continue
       file_in = in_dir+file_name
       file_out = out_dir+c+'.txt'
-      # print 'Out file:', file_out
+      print 'Out file:', file_out
       slp = StartLocPerformanceAnalysis()
       slp.generate_example_file(file_in, file_out, use_spin=use_spin)
-      # (X, Y) = slp.get_trial_features(file_in, use_spin)
-      # for j in repair_ends[i]:
-      #     print slp.plio.push_trials[j].trial_start.object_id, ' : ', \
-      #         slp.plio.push_trials[j].trial_end.final_orientation, ' to ', \
-      #         subPIAngle(slp.plio.push_trials[j].trial_end.final_orientation+pi)
-      #     print 'init: ', slp.plio.push_trials[j].trial_start.init_orientation
-      # print ''
 
 def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
     slp = StartLocPerformanceAnalysis()
