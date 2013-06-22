@@ -54,6 +54,5 @@ else
     n.bestplans{end+1} = bestplan;
 end
 
-
 end
 

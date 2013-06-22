@@ -1,21 +1,22 @@
 
 clc;
 
-SKIP_FIRST_WAITING = 1;
+SKIP_FIRST_WAITING = 0;
 
-file_name = 'a1';
+file_name = 'lc1_LH_original';
 
 load(file_name)
 
 
 for b=1:length(batch_data) 
     
-    %assert(strcmp(b.action_name_gt(end).name, 'Complete'));
+    assert(strcmp(batch_data(b).action_name_gt(end).name, 'Complete'));
     
-    batch_data(b).task_time           = 0;
+    batch_data(b).task_time           = batch_data(b).action_name_gt(end).start;
     batch_data(b).total_wait_time     = 0;
     batch_data(b).longest_wait_time   = 0;
     batch_data(b).total_cost          = 0;
+    
     batch_data(b).wait_times          = [];
     
     for i=1:length(batch_data(b).action_name_gt)-1
@@ -24,7 +25,7 @@ for b=1:length(batch_data)
         end
     end
     
-    if SKIP_FIRST_WAITING
+    if SKIP_FIRST_WAITING & length(batch_data(b).wait_times) > 0
         batch_data(b).wait_times(1) = [];
     end
     
@@ -35,4 +36,5 @@ end
 disp(file_name)
 disp(['total_wait_time: ' num2str(mean([batch_data.total_wait_time])    * 7 / 30)]);
 disp(['longest_wait_time: ' num2str(mean([batch_data.longest_wait_time])  * 7 / 30)]);
+disp(['task_time: ' num2str(mean([batch_data.task_time])  * 7 / 30)]);
 

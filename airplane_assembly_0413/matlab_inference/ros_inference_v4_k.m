@@ -10,7 +10,7 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-% adjust_detection_var; % for adjust detection variance, see that file
+adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
@@ -327,7 +327,10 @@ while t < m.params.T * m.params.downsample_ratio
         end
 
         hold off
+        
     end
+    
+    % ------
     
     if ~kelsey_planning
         if ~isempty(findall(0,'Type','Figure'))
