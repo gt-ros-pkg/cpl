@@ -165,10 +165,20 @@ struct ScoredIdx
 class ScoredIdxComparison
 {
  public:
+  ScoredIdxComparison(const bool& descend=false) : descend_(descend) {}
   bool operator() (const ScoredIdx& lhs, const ScoredIdx&rhs) const
   {
-    return (lhs.score > rhs.score);
+    if (descend_)
+    {
+      return (lhs.score > rhs.score);
+    }
+    else
+    {
+      return (lhs.score > rhs.score);
+    }
   }
+ protected:
+  bool descend_;
 };
 
 class TabletopPushingPerceptionNode
@@ -804,7 +814,7 @@ class TabletopPushingPerceptionNode
         else
         {
           chosen_loc = chooseLearnedPushStartLoc(cur_obj, cur_state, req.start_loc_param_path, predicted_score,
-                                                 req.previous_position_worked);
+                                                 req.previous_position_worked, rotate_push);
         }
       }
       else if (start_loc_use_fixed_goal_)
@@ -1174,7 +1184,8 @@ class TabletopPushingPerceptionNode
   }
 
   ShapeLocation chooseLearnedPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, std::string param_path,
-                                          float& chosen_score, bool previous_position_worked)
+                                          float& chosen_score, bool previous_position_worked,
+                                          bool rotate_push)
   {
     // Get features for all of the boundary locations
     // TODO: Set these values somewhere else
@@ -1193,10 +1204,23 @@ class TabletopPushingPerceptionNode
     param_path.erase(param_path.size()-6, 6);
     std::stringstream train_feat_path;
     train_feat_path << param_path << "-feats.txt";
-    cv::Mat K = tabletop_pushing::computeChi2Kernel(sds, train_feat_path.str(), local_length, global_length);
+
+    // TODO: Get these parameters from disk
+    double gamma_local = 2.5;
+    double gamma_global = 2.0;
+    double mixture_weight = 0.7;
+    if (rotate_push)
+    {
+      gamma_local = 0.05;
+      gamma_global = 0.25;
+      mixture_weight = 0.6;
+    }
+    cv::Mat K = tabletop_pushing::computeChi2Kernel(sds, train_feat_path.str(), local_length, global_length,
+                                                    gamma_local, gamma_global, mixture_weight);
 
     std::vector<double> pred_push_scores;
-    std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq;
+    std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq(
+        (ScoredIdxComparison()) );
     XYZPointCloud hull_cloud_obj;
     hull_cloud_obj.width = hull_cloud.size();
     hull_cloud_obj.height = 1;
@@ -1214,10 +1238,17 @@ class TabletopPushingPerceptionNode
         x[j+1].value = K.at<double>(j, i);
         x[j+1].index = 0; // unused
       }
-      // Perform prediction and convert out of log space
-      // TODO: Collapse below once we get the bugs worked out
+      // Perform prediction and convert into appropriate space
       double raw_pred_score = svm_predict(push_model, x);
-      double pred_score = exp(raw_pred_score);
+      double pred_score;
+      if (rotate_push)
+      {
+        pred_score = raw_pred_score;
+      }
+      else
+      {
+        pred_score = exp(raw_pred_score);
+      }
       if (isnan(pred_score) || isinf(pred_score))
       {
         ROS_WARN_STREAM("Sample " << i <<  " has pred score: " << pred_score << "\traw pred score: " << raw_pred_score);
@@ -1270,12 +1301,12 @@ class TabletopPushingPerceptionNode
       loc.boundary_loc_ = hull_cloud[chosen.idx];
       loc.descriptor_ = sds[chosen.idx];
       float new_push_angle;
-      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, loc, new_push_angle, false);
-      if (goalPoseValid(goal_pose))
+      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, cur_obj, loc, new_push_angle, rotate_push);
+      if (rotate_push || goalPoseValid(goal_pose))
       {
         ROS_INFO_STREAM("Chose push location " << chosen.idx << " with score " << chosen.score);
         pcl16::PointXYZ selected(hull_cloud_obj[chosen.idx].x, hull_cloud_obj[chosen.idx].y, 0.0);
-        displayLearnedPushLocScores(pred_push_scores, hull_cloud_obj, selected);
+        displayLearnedPushLocScores(pred_push_scores, hull_cloud_obj, selected, rotate_push);
         chosen_score = chosen.score;
         return loc;
       }
@@ -1315,7 +1346,7 @@ class TabletopPushingPerceptionNode
       loc.boundary_loc_ = hull_cloud[chosen_idx];
       loc.descriptor_ = sds[chosen_idx];
       float new_push_angle;
-      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, loc, new_push_angle, false);
+      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, cur_obj, loc, new_push_angle, false);
       if (goalPoseValid(goal_pose))
       {
         // TODO: Display boundary with 0 scores
@@ -1431,15 +1462,14 @@ class TabletopPushingPerceptionNode
     return push_angle_world_frame;
   }
 
-  Pose2D generateStartLocLearningGoalPose(PushTrackerState& cur_state, ShapeLocation& chosen_loc, float& new_push_angle,
-                                          bool rotate_push=false)
+  Pose2D generateStartLocLearningGoalPose(PushTrackerState& cur_state, ProtoObject& cur_obj,
+                                          ShapeLocation& chosen_loc, float& new_push_angle, bool rotate_push=false)
   {
     Pose2D goal_pose;
     if (rotate_push)
     {
       // Set goal for rotate pushing angle and goal state; then get start location as usual below
-      // new_push_angle = getRotatePushHeading(cur_state, chosen_loc, cur_obj);
-      new_push_angle = 0.0f;
+      new_push_angle = getRotatePushHeading(cur_state, chosen_loc, cur_obj);
       goal_pose.x = cur_state.x.x;
       goal_pose.y = cur_state.x.y;
       // NOTE: Uncomment for visualization purposes
@@ -1992,7 +2022,8 @@ class TabletopPushingPerceptionNode
     }
   }
 
-  void displayLearnedPushLocScores(std::vector<double>& push_scores, XYZPointCloud& locs, pcl16::PointXYZ selected)
+  void displayLearnedPushLocScores(std::vector<double>& push_scores, XYZPointCloud& locs, pcl16::PointXYZ selected,
+                                   bool rotate_push)
   {
     double max_y = 0.2;
     double min_y = -0.2;
@@ -2006,9 +2037,16 @@ class TabletopPushingPerceptionNode
     {
       int img_y = rows-objLocToIdx(locs[i].x, min_x, max_x);
       int img_x = cols-objLocToIdx(locs[i].y, min_y, max_y);
-      double score = -log(push_scores[i])/10;
+      double score;
+      if(rotate_push)
+      {
+        score = score/M_PI;
+      }
+      else
+      {
+        score = -log(push_scores[i])/10;
+      }
       // ROS_INFO_STREAM("loc (" << x << ", " << y << ") : " << push_scores[i] << "\t" << score);
-
       cv::Scalar color(0, score*255, (1-score)*255);
       cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
       cv::circle(footprint, cv::Point(img_x, img_y), 2, color, 3);

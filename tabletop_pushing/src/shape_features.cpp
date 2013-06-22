@@ -1260,11 +1260,10 @@ ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_leng
   return train_feats;
 }
 
-cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length)
+cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length,
+                          double gamma_local, double gamma_global, double mixture_weight)
 {
   ShapeDescriptors train_feats = loadSVRTrainingFeatures(feat_path, local_length + global_length);
-  const double gamma_local = 2.5;
-  const double gamma_global = 2.0;
   cv::Mat K_local(train_feats.size(), sds.size(), CV_64FC1, cv::Scalar(0.0));
   cv::Mat K_global(train_feats.size(), sds.size(), CV_64FC1, cv::Scalar(0.0));
   for (int i = 0; i < sds.size(); ++i)
@@ -1281,7 +1280,6 @@ cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int loca
     }
   }
   // Linear combination of local and global kernels
-  double mixture_weight = 0.7;
   cv::Mat K = mixture_weight * K_global + (1 - mixture_weight) * K_local;
   return K;
 }

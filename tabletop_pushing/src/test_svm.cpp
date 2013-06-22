@@ -43,7 +43,12 @@ int main(int argc, char** argv)
   train_feat_path << param_path << "-feats.txt";
   ROS_INFO_STREAM(train_feat_path.str());
 
-  cv::Mat K = tabletop_pushing::computeChi2Kernel(sds, train_feat_path.str(), local_length, global_length);
+  double gamma_local = 2.5;
+  double gamma_global = 2.0;
+  double mixture_weight = 0.7;
+
+  cv::Mat K = tabletop_pushing::computeChi2Kernel(sds, train_feat_path.str(), local_length, global_length,
+                                                  gamma_local, gamma_global, mixture_weight);
   // cv::imshow("K matrix", K);
   // cv::waitKey();
 

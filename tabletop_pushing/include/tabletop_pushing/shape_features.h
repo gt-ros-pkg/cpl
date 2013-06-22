@@ -86,7 +86,8 @@ int closestShapeFeatureCluster(cpl_visual_features::ShapeDescriptor& descriptor,
 
 cpl_visual_features::ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_length);
 
-cv::Mat computeChi2Kernel(cpl_visual_features::ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length);
+cv::Mat computeChi2Kernel(cpl_visual_features::ShapeDescriptors& sds, std::string feat_path, int local_length,
+                          int global_length, double gamma_local, double gamma_global, double mixture_weight);
 
 };
 #endif // shape_features_h_DEFINED
