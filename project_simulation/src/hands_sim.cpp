@@ -42,13 +42,13 @@
 using namespace std;
 
 //GLOBAL VARIABLES
-int PUB_RATE=20;
+int PUB_RATE=30;
 boost::mt19937 rng;
 boost::normal_distribution<> nd(0.0, 1.0);
 boost::variate_generator<boost::mt19937&, 
 			 boost::normal_distribution<> > NORM_GEN(rng, nd);
 
-int RNG_SEED = 5;
+int RNG_SEED = 5;//in case no seed is input as an argument
 boost::mt19937 rng_rep;
 boost::normal_distribution<> nd_rep(0.0, 1.0);
 boost::variate_generator<boost::mt19937&, 
@@ -57,7 +57,7 @@ boost::variate_generator<boost::mt19937&,
 
 //-------------PARAMETERS
 //standard deviation of the gaussian for simulated sensor noise
-double PUB_NOISE_DEV = 0.005;
+double PUB_NOISE_DEV = 0.05;
 //standard deviation of the gaussian for random noise when performing 
 //task with a part
 double WALK_DEV = 0.1;
@@ -73,6 +73,12 @@ double HAND_MAX_VEL = 1.0;// m/s
 double TIME_TO_WAIT_AT_BIN = 0.3; //seconds
 //time waiting before starting the first task
 double WAIT_FIRST_ACTION = 3.0; //seconds
+//probability of perceptual screw-up
+double PROB_PERCEPT_SCREW = 0.0;
+//both hands screw up occuring together
+double PROB_PERCEPT_SCREW_BOTH = PROB_PERCEPT_SCREW/10;
+//Duration of the screw-up, mean & standard-dev
+double SCREW_M=3.0, SCREW_STD=1.0;
 
 class Task{
 
@@ -262,6 +268,8 @@ private:
   long total_time_steps;
   long wait_time_steps;
   
+  long longest_wait;
+  
   struct Bin_n_Loc
   {
     size_t id;
@@ -292,6 +300,13 @@ private:
 
   //max hand velocity
   double hand_max_vel;
+
+  //screw-up variables
+  bool cur_screw_l, cur_screw_r;
+  vector<double> pos_screw_l, pos_screw_r;
+  size_t screw_counter_l;
+  size_t screw_counter_r;
+  double duration_screw_l, duration_screw_r;
 
 public:
   handSim(string task_name, bool cheat);
@@ -385,6 +400,9 @@ public:
   geometry_msgs::PoseStamped transform_for_hand
   (geometry_msgs::PoseStamped bin_cur_pose);
 
+  //choose location for perceptual screw-up
+  vector<double> pick_percept_pos();
+
 
 };
 
@@ -448,119 +466,123 @@ geometry_msgs::PoseStamped handSim::transform_for_hand
 
 
 handSim::handSim(string task_name, bool cheat)
-  {
-    //cheat at the waiting game?
-    cheat_at_waiting = cheat;
+{
+  //cheat at the waiting game?
+  cheat_at_waiting = cheat;
 
-    //load tasks
-    task_name += ".txt";
-    to_perform.read_file(task_name);
+  //load tasks
+  task_name += ".txt";
+  to_perform.read_file(task_name);
 
-    //set noise
-    pub_noise_dev = PUB_NOISE_DEV;
-    walk_dev = WALK_DEV;
+  //set noise
+  pub_noise_dev = PUB_NOISE_DEV;
+  walk_dev = WALK_DEV;
 
-    //picking which bin
-    currently_picked_bin = 0;
+  //picking which bin
+  currently_picked_bin = 0;
 
-    //initialize rest positions
-    double init_pos_l[]= {-0.0813459, 0.258325,1.86598};
-    double init_pos_r[]= {-0.1813459, 0.258325,1.86598};
-    lh_rest.assign(&init_pos_l[0], &init_pos_l[0]+3);
-    rh_rest.assign(&init_pos_r[0], &init_pos_r[0]+3);
+  //initialize rest positions
+  double init_pos_l[]= {-0.0813459, 0.258325,1.86598};
+  double init_pos_r[]= {-0.1813459, 0.258325,1.86598};
+  lh_rest.assign(&init_pos_l[0], &init_pos_l[0]+3);
+  rh_rest.assign(&init_pos_r[0], &init_pos_r[0]+3);
 
-    //if cheating- waiting position
-    double cheat_l[]= {0.6813459, 0.308325,1.86598};
-    lh_cheat_wait.assign(&cheat_l[0], &cheat_l[0]+3);
+  //if cheating- waiting position
+  double cheat_l[]= {0.6813459, 0.308325,1.86598};
+  lh_cheat_wait.assign(&cheat_l[0], &cheat_l[0]+3);
 
-    //initially, hands are at rest position
-    lh_cur = lh_rest;
-    rh_cur = rh_rest;
-    is_lh_rest = true;
-    is_rh_rest = true;
+  //initially, hands are at rest position
+  lh_cur = lh_rest;
+  rh_cur = rh_rest;
+  is_lh_rest = true;
+  is_rh_rest = true;
 
-    //initialize fixed hands orientation
-    double init_pose[] = {1.0, 0.0, 0.0, 0.0};
-    fix_hand_orient.assign( &init_pose[0], &init_pose[0]+4);
+  //initialize fixed hands orientation
+  double init_pose[] = {1.0, 0.0, 0.0, 0.0};
+  fix_hand_orient.assign( &init_pose[0], &init_pose[0]+4);
     
-    total_time_steps = 0;
-    wait_time_steps = 0;
+  total_time_steps = 0;
+  wait_time_steps = 0;
+  longest_wait = 0;
+  //frame
+  frame_of_reference = "/kinect0_rgb_optical_frame";
+  ar_pose_frame = "/lifecam1_optical_frame";
+    
+  //time for moving hand to location or back
+  motion_mean = MOTION_MEAN;
+  motion_std = MOTION_STD;
+    
+  //clear bin vectors
+  cur_bin_locations.clear();
+  temp_bin_locations.clear();
+    
+  //hand-offset in bin frame
+  hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
+  hand_t_var[0]=0.00020556;hand_t_var[1]=0.00052374;hand_t_var[2]=0.00058416;  
 
-    //frame
-    frame_of_reference = "/kinect0_rgb_optical_frame";
-    ar_pose_frame = "/lifecam1_optical_frame";
-    
-    //time for moving hand to location or back
-    motion_mean = MOTION_MEAN;
-    motion_std = MOTION_STD;
-    
-    //clear bin vectors
-    cur_bin_locations.clear();
-    temp_bin_locations.clear();
-    
-    //hand-offset in bin frame
-    hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
-    hand_t_var[0]=0.00020556;hand_t_var[1]=0.00052374;hand_t_var[2]=0.00058416;  
-    
-    //ros-stuff
-    lh_pose = nh.advertise<geometry_msgs::PoseStamped>("left_hand",1);
-    rh_pose = nh.advertise<geometry_msgs::PoseStamped>("right_hand",1);
-    viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
-    task_pub = nh.advertise<std_msgs::String>("action_name", 1);
-    picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
-    human_wait_text = nh.advertise<visualization_msgs::Marker>("waiting_text",1);
+  //percept screw-up
+  cur_screw_l = false;
+  cur_screw_r = false;
 
-    ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
+  //ros-stuff
+  lh_pose = nh.advertise<geometry_msgs::PoseStamped>("left_hand",1);
+  rh_pose = nh.advertise<geometry_msgs::PoseStamped>("right_hand",1);
+  viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
+  task_pub = nh.advertise<std_msgs::String>("action_name", 1);
+  picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
+  human_wait_text = nh.advertise<visualization_msgs::Marker>("waiting_text",1);
 
-    //publish name of the task
-    std_msgs::String start_task_msg;
-    start_task_msg.data= task_name;
-    task_pub.publish(start_task_msg);
+  ar_poses = nh.subscribe("ar_pose_marker_hum", 0, &handSim::read_ar, this);  
 
-    //max-magnitude of hand velocity, to be used for random walk in m/s. 
-    //TODO: maybe this should be checked every time the hand is published or 
-    //something
-    hand_max_vel = HAND_MAX_VEL;
+  //publish name of the task
+  std_msgs::String start_task_msg;
+  start_task_msg.data= task_name;
+  task_pub.publish(start_task_msg);
+
+  //max-magnitude of hand velocity, to be used for random walk in m/s. 
+  //TODO: maybe this should be checked every time the hand is published or 
+  //something
+  hand_max_vel = HAND_MAX_VEL;
     
-    //store transform
-    tf::TransformListener tf_cam_to_kin;  
-    try
-      {
-	ros::Time now = ros::Time(0);
-	tf_cam_to_kin.waitForTransform(frame_of_reference, ar_pose_frame,
-				        now,
-				       ros::Duration(5.0));
+  //store transform
+  tf::TransformListener tf_cam_to_kin;  
+  try
+    {
+      ros::Time now = ros::Time(0);
+      tf_cam_to_kin.waitForTransform(frame_of_reference, ar_pose_frame,
+				     now,
+				     ros::Duration(5.0));
 	
-	tf::StampedTransform temp_pos;
-	tf_cam_to_kin.lookupTransform(frame_of_reference, ar_pose_frame, 
-				       now,
-				      temp_pos);
-	double cam_to_kin_translate[] = {temp_pos.getOrigin().x(), 
-					 temp_pos.getOrigin().y(),
-					 temp_pos.getOrigin().z()};
+      tf::StampedTransform temp_pos;
+      tf_cam_to_kin.lookupTransform(frame_of_reference, ar_pose_frame, 
+				    now,
+				    temp_pos);
+      double cam_to_kin_translate[] = {temp_pos.getOrigin().x(), 
+				       temp_pos.getOrigin().y(),
+				       temp_pos.getOrigin().z()};
 	
-	int N = (sizeof(cam_to_kin_translate)/sizeof(double));
-	set_arr_equal(cam_to_kin_translate, transform_translate, N);
+      int N = (sizeof(cam_to_kin_translate)/sizeof(double));
+      set_arr_equal(cam_to_kin_translate, transform_translate, N);
 	
-	double* cam_to_kin_quaternion;
-	double temp[] = {temp_pos.getRotation().w(),
-			 temp_pos.getRotation().x(), 
-			 temp_pos.getRotation().y(),
-			 temp_pos.getRotation().z()
-			 };
+      double* cam_to_kin_quaternion;
+      double temp[] = {temp_pos.getRotation().w(),
+		       temp_pos.getRotation().x(), 
+		       temp_pos.getRotation().y(),
+		       temp_pos.getRotation().z()
+      };
 	
-	cam_to_kin_quaternion = temp;
-	double* rot_mat = transform_rot_mat;
-	quaternion_matrix(cam_to_kin_quaternion, rot_mat);
+      cam_to_kin_quaternion = temp;
+      double* rot_mat = transform_rot_mat;
+      quaternion_matrix(cam_to_kin_quaternion, rot_mat);
 	
-      }
-
-    catch (tf::TransformException ex){
-      ROS_ERROR("%s",ex.what());
-      cout<< "Can't get transformation"<<endl;
-      exit(-1);
     }
+
+  catch (tf::TransformException ex){
+    ROS_ERROR("%s",ex.what());
+    cout<< "Can't get transformation"<<endl;
+    exit(-1);
   }
+}
   
 //set values of one array to another
 void handSim::set_arr_equal(double from[], double to[], int N)
@@ -786,7 +808,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	task_pub.publish(wait_task_msg);
 	
 	//debug
-	cout<<"Waiting for bin "<<cur_bin;
+	cout<<"Waiting for bin "<<cur_bin<<endl;
 	
 	if(!cheat_at_waiting){wait_for_bin(cur_bin);}
 	else{cheat_wait(cur_bin);}
@@ -896,6 +918,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     
     //display viz marker saying human waits
     display_wait_marker();
+    long temp_wait=0;
 
     do
       {
@@ -903,22 +926,23 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	  {
 	    double move_time = samp_gauss_pos(motion_mean, motion_std);
 	    move_to_loc(!is_lh_rest, !is_rh_rest,
-		       lh_rest, rh_rest, move_time);
+			lh_rest, rh_rest, move_time);
 	    is_lh_rest = true; is_rh_rest=true;
-	    wait_time_steps += move_time*PUB_RATE;
-	    total_time_steps += move_time*PUB_RATE;
+	    temp_wait += move_time*PUB_RATE;
 	  }
 	publish_cur_hand_pos();
 	ros::spinOnce();
 	loop_rate.sleep();
 	//increment time
-	++wait_time_steps;
-	++total_time_steps;
-    
+	++temp_wait;
 	//debug
 	//cout<<"Need Bin: "<<bin_to_chk<<endl;
       }while(ros::ok() && !bin_in_position(bin_to_chk));
     
+    if(temp_wait>handSim::longest_wait){handSim::longest_wait=temp_wait;}
+    
+    wait_time_steps+= temp_wait;
+    total_time_steps += temp_wait;
     //delete human waiting viz marker
     delete_wait_marker();
 
@@ -973,17 +997,99 @@ double handSim::samp_gauss_pos_rep(double mean, double std_dev)
   //publish present hand positions
   void handSim::publish_cur_hand_pos()
   {
+    
     geometry_msgs::PoseStamped msg_l, msg_r;
 
     msg_l.header.frame_id = frame_of_reference;
     msg_r.header.frame_id = frame_of_reference;
 	
-    vec_to_position(msg_l.pose.position, lh_cur);
-    vec_to_position(msg_r.pose.position, rh_cur);
-
     vec_to_orientation(msg_l.pose.orientation, fix_hand_orient);
     vec_to_orientation(msg_r.pose.orientation, fix_hand_orient);
     
+    
+    double screw_chance;
+
+    if(!handSim::cur_screw_l)
+      {
+	if (handSim::cur_screw_r){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
+	else{screw_chance=PROB_PERCEPT_SCREW;}
+      
+	if((rand()/double(RAND_MAX))>(1.0-screw_chance))
+	  {
+	    handSim::cur_screw_l = true;
+	    
+	    handSim::duration_screw_l = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
+	    handSim::screw_counter_l=0;
+	    if (double(handSim::screw_counter_l)>handSim::duration_screw_l)
+	      {handSim::cur_screw_l=false;}
+	    else{handSim::pos_screw_l = handSim::pick_percept_pos();}
+	  }
+      }
+    
+    if(handSim::cur_screw_l)
+      {if(handSim::screw_counter_l>=handSim::duration_screw_l)
+	{
+	  if (handSim::cur_screw_r){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
+	  else{screw_chance=PROB_PERCEPT_SCREW;}
+      
+	  if((rand()/double(RAND_MAX))>(1.0-screw_chance))
+	    {
+	      handSim::cur_screw_l = true;
+	      
+	      handSim::duration_screw_l = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
+	      handSim::screw_counter_l=0;
+	      if (double(handSim::screw_counter_l)>handSim::duration_screw_l)
+		{handSim::cur_screw_l=false;}
+	      else{handSim::pos_screw_l = handSim::pick_percept_pos();}
+	    }
+	  else{handSim::cur_screw_l = false;}
+	}
+	else{handSim::cur_screw_r = false;}
+      }
+
+    if(!handSim::cur_screw_r)
+      {
+	if (handSim::cur_screw_l){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
+	else{screw_chance=PROB_PERCEPT_SCREW;}
+      
+	if((rand()/double(RAND_MAX))>(1.0-screw_chance))
+	  {
+	    handSim::cur_screw_r = true;
+	    
+	    handSim::duration_screw_r = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
+	    handSim::screw_counter_r=0;
+	    if (double(handSim::screw_counter_r)>handSim::duration_screw_r)
+	      {handSim::cur_screw_r=false;}
+	    else{handSim::pos_screw_r = handSim::pick_percept_pos();}
+	  }
+      }
+    
+    if(handSim::cur_screw_r)
+      {if(handSim::screw_counter_r>=handSim::duration_screw_r)
+	  {
+	    if (handSim::cur_screw_l){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
+	    else{screw_chance=PROB_PERCEPT_SCREW;}
+	    
+	    if((rand()/double(RAND_MAX))>(1.0-screw_chance))
+	      {
+		handSim::cur_screw_r = true;
+		
+		handSim::duration_screw_r = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
+		handSim::screw_counter_r=0;
+		if (double(handSim::screw_counter_r)>handSim::duration_screw_r)
+		  {handSim::cur_screw_r=false;}
+		else{handSim::pos_screw_r = handSim::pick_percept_pos();}
+	      }
+	    else{handSim::cur_screw_r = false;}
+	  }
+	else{handSim::cur_screw_r = false;}
+      }
+    
+    if (!cur_screw_l){vec_to_position(msg_l.pose.position, lh_cur);}
+    else{screw_counter_l++; vec_to_position(msg_l.pose.position, pos_screw_l);}
+    if (!cur_screw_r)vec_to_position(msg_r.pose.position, rh_cur);
+    else{screw_counter_r++; vec_to_position(msg_r.pose.position, pos_screw_r);}
+
     add_tracker_noise(msg_l);
     add_tracker_noise(msg_r);
     
@@ -997,6 +1103,18 @@ double handSim::samp_gauss_pos_rep(double mean, double std_dev)
     //publish visual markers
     pub_viz_marker(msg_l, msg_r);
   }
+
+//randomly pick a position for the hand to appear to be in when the perceptual
+//screw up occurs
+vector<double> handSim::pick_percept_pos()
+{
+  //debug
+  cout<<"Screw-up in lefty:"<<cur_screw_l<<"  Duration:"<<duration_screw_l<<endl;
+  cout<<"Screw-up in righty:"<<cur_screw_r<<"  Duration:"<<duration_screw_r<<endl;
+  //getchar(); 
+  return lh_cheat_wait;
+
+}
   
   void handSim::add_tracker_noise(geometry_msgs::PoseStamped &message)
   {
@@ -1116,7 +1234,8 @@ void handSim::delete_wait_marker()
     
     double total_time = double(total_time_steps)/double(PUB_RATE);
     double wait_time_total = double(wait_time_steps)/double(PUB_RATE);
-    
+    double longest_wait_time = double(longest_wait)/double(PUB_RATE);
+
     if(!(is_lh_rest && is_rh_rest))
       {
 	double to_wait = time_to_wait();
@@ -1132,6 +1251,14 @@ void handSim::delete_wait_marker()
 
     cout<<"TASKS COMPLETE"<<endl;
     cout<<"Total, wait  "<<total_time<<", "<<wait_time_total<<endl;
+
+    ofstream stats_file;
+    stats_file.open("stats_Lbel_Hnoise.txt", ios_base::app);  
+    if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
+    stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<endl;
+    stats_file.close();
+  
+
   }
   
 //publish hands for given time in their current location
@@ -1478,7 +1605,7 @@ int main(int argc, char** argv)
     noprompt = false;
   } else if(argc == 3) {
     noprompt = true;
-    rng_rep.seed(RNG_SEED);
+    rng_rep.seed(time(0));
   } else if(argc == 4) {
     noprompt = true;
     rng_rep.seed(atoi(argv[3]));
@@ -1489,7 +1616,8 @@ int main(int argc, char** argv)
 
   //seed generators
   rng.seed(time(0));
-
+  //rng for perceptual screw-up
+  srand(time(0));
   /*
   char do_another='n';
   do{
@@ -1543,11 +1671,12 @@ int main(int argc, char** argv)
     continue;
     }*/
   
+
       }
   
     handSim begin_it(task, cheat);
     begin_it.pub_hands();
-  
+    
   /*
     cout<<endl<<"Do another Task?(y/n)"<<endl;
     cin>>do_another;
