@@ -32,7 +32,7 @@ DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-kelsey_planning = 0;
+kelsey_planning = 1;
 kelsey_viz      = 1;
 
 %% open connection

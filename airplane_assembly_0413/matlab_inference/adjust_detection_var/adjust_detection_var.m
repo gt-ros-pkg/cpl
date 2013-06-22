@@ -23,12 +23,14 @@ m.detection.onedetector.mean_detection_score    = 1;
 m.detection.params.detector_var_scale           = 12;
 m.detection.onedetector.mean_detection_score    = 0.001;
 
-% m.detection.params.detector_var_prior           = 5;
-% m.detection.onedetector.mean_detection_score    = 0.001;
-% 
-% m.detection.params.detector_var_prior           = 0.1 * eye(3);
-% m.detection.params.latent_noise                 = 0.02;
-% 
+%m.detection.params.detector_var_prior           = 5;
+%m.detection.onedetector.mean_detection_score    = 0.001;
+
+% Low noise
+m.detection.params.detector_var_prior           = 0.1 * eye(3);
+m.detection.params.latent_noise                 = 0.02;
+
+% High noise
 % m.detection.params.detector_var_prior           = 1 * eye(3);
 % m.detection.params.latent_noise                 = 0.2;
 

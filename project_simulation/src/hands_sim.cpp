@@ -1504,7 +1504,7 @@ int main(int argc, char** argv)
       {
   */
   
-  char correct='n';
+  //char correct='n';
     
   cout<<"Which task?"<<endl;
   if(!noprompt)
@@ -1529,6 +1529,7 @@ int main(int argc, char** argv)
       string input;
       cout<<"Ready?(y/n)";
 
+      /*
       if(!noprompt) {
         cin>>input;
         correct = input[0];
@@ -1537,12 +1538,12 @@ int main(int argc, char** argv)
         cout << "y" << endl;
         correct = 'y';
       }
-    }/*else{
+    }else{
     cout<<"Incorrect task entered, try again."<<endl;
     continue;
     }*/
   
-  //    }
+      }
   
     handSim begin_it(task, cheat);
     begin_it.pub_hands();

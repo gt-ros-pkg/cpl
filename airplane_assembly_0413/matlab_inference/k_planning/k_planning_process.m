@@ -34,7 +34,7 @@ n.executedplan  = executedplan;
 nt = ceil(nt);
 
 % check robot moving
-if 0
+if 1
     if isfield(n, 'executedplan') & isfield(n.executedplan, 'events') & length(n.executedplan.events) > 0
         if n.executedplan.events(end).matlab_finish_time < 0
             disp 'Robot moving, skip planning';
@@ -110,7 +110,9 @@ end;
 
 
 
-[i, best_plan, n.multistep_history] = multistep(probs, slot_states, n, bin_names, nowtimesec, rate, n.multistep_history, debug);
+[i, best_plan, n.multistep_history] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
+                                                n.executedplan, n.action_names_gt, ...
+                                                n.multistep_history, debug);
 
 
 if i == 0,
@@ -145,6 +147,7 @@ bestplan.events(end).sname      = [action.a '   bin  ' num2str(action.bin_id)];
 bestplan.events(end).pre_duration  = 0;
 bestplan.events(end).post_duration = 0;
 bestplan.events(end).optimal_t     = nt;
+bestplan.events(end).bin_ind       = find(action.bin_id == [n.bin_distributions.bin_id], 1);
 
 %% send
 planning_s     = nx_toxmlstr(bestplan);

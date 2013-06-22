@@ -1,22 +1,40 @@
-function [action, best_plan, history] = multistep(probs, slot_states, inf_k, bin_names, nowtimesec, rate, history, debug)
-
-if ~isfield(history, 'slots')
-    history.slots = [];
-    history.nowtimes = [];
-    history.probs = {};
-    history.slot_states = {};
-    history.inf_k = {};
-    history.bin_names = bin_names;
-    history.rate = rate;
-    history.debug = debug;
-end
-history.slots(end+1,:) = slot_states;
-history.nowtimes(end+1) = nowtimesec;
-history.probs{end+1} = probs;
-history.slot_states{end+1} = slot_states;
-history.inf_k{end+1} = inf_k;
+function [action, best_plan, history] = multistep(probs, slot_states, bin_names, ...
+                                                  nowtimesec, rate, ...
+                                                  executedplan, action_names_gt, history, debug)
 
 planning_params
+
+if ~isfield(history, 'slots')
+    history.probs = {};
+    history.slots = [];
+    history.bin_names = bin_names;
+    history.nowtimes = [];
+    history.rate = rate;
+    history.executedplan = {};
+    history.action_names_gt = {};
+    history.debug = debug;
+    history.numbins = numbins;
+    history.nowtimesec = nowtimesec;
+    history.nowtimeind = nowtimeind;
+    history.max_time = max_time;
+    history.t = t;
+    history.undo_dur = undo_dur;
+    history.undo_dur_ind = undo_dur_ind;
+
+    history.actions_sorted = {}
+    history.all_plans_sorted = {};
+    history.all_action_starts = {};
+    history.all_action_ends = {};
+    history.costs_sorted = {};
+    history.all_costs_split = {};
+    history.is_delivered = {};
+    history.bin_relevances = {};
+end
+history.probs{end+1} = probs;
+history.slots(end+1,:) = slot_states;
+history.nowtimes(end+1) = nowtimesec;
+history.executedplan{end+1} = executedplan;
+history.action_names_gt{end+1} = action_names_gt;
 
 if debug
     display_arg = 'off';
@@ -38,18 +56,20 @@ if all(bin_relevances == -inf)
     % no bins are relevant, robot should just wait
     action = 0;
     best_plan = [];
-    figure(101)
-    clf
-    subplot(3,1,1)
-    visualize_bin_activity([], [], bin_names, ...
-                           history, slot_states, numbins, rate, ...
-                           nowtimesec, t, max_time, inf_k);
-    subplot(3,1,2)
-    visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                        nowtimesec, nowtimeind, max_time);
-    subplot(3,1,3)
-    visualize_cost_funs(t, probs, zeros(1,numbins), undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
-    pause(0.05)
+    if debug
+        figure(101)
+        clf
+        subplot(3,1,1)
+        visualize_bin_activity([], [], bin_names, ...
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, t, max_time, executedplan, action_names_gt);
+        subplot(3,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time);
+        subplot(3,1,3)
+        visualize_cost_funs(t, probs, zeros(1,numbins), undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
+        pause(0.05)
+    end
     return
 end
 deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
@@ -185,7 +205,7 @@ for i = 1:size(deliv_seqs,1)
         subplot(3,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
                                history, slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, inf_k);
+                               nowtimesec, t, max_time, executedplan, action_names_gt);
         subplot(3,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
                             nowtimesec, nowtimeind, max_time);
@@ -213,3 +233,12 @@ plan_costs
 
 action = actions(1);
 best_plan = [all_plans_sorted(1,:)', all_action_starts(1,:)', all_action_ends(1,:)'];
+
+history.actions_sorted{end+1} = actions;
+history.all_plans_sorted{end+1} = all_plans_sorted;
+history.all_action_starts{end+1} = all_action_starts;
+history.all_action_ends{end+1} = all_action_ends;
+history.costs_sorted{end+1} = costs_sorted;
+history.all_costs_split{end+1} = all_costs_split;
+history.is_delivered{end+1} = is_delivered;
+history.bin_relevances{end+1} = bin_relevances;
