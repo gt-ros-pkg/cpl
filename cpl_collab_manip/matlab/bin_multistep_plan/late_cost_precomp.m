@@ -25,4 +25,4 @@ costs_early = costsfull(numel(t):-1:1);
 
 costs = binprob * (costs_early + costs_late + costs_now);
 costs(1:nowtimeind) = 0;
-costs(costs>80) = 80+0.3*sqrt(costs(costs>80)-80);
+% costs(costs>80) = 80+0.3*sqrt(costs(costs>80)-80);

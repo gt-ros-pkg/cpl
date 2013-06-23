@@ -1,5 +1,5 @@
 #!/bin/bash
-for i in {1..10}
+for i in {1..20}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -14,7 +14,7 @@ do
 	rosrun project_simulation robo_sim_listen.py &
 	PID3=$!
 
-	echo y | rosrun project_simulation hands_sim linear_chain_1 n &
+	echo y | rosrun project_simulation hands_sim linear_chain_1 n $i &
 	PID4=$!
 
 	rosrun airplane_assembly_inference_0313 planning_from_matlab.py &

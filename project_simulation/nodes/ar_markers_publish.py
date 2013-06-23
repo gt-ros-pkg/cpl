@@ -83,7 +83,7 @@ bins_locs = [
     {'bin_id':7, 'location':'L9'}
     ,{'bin_id':10, 'location':'L10'}
     ,{'bin_id':11, 'location':'L11'}
-    ,{'bin_id':3, 'location':'L3'}
+    ,{'bin_id':3, 'location':'L0'}
     ,{'bin_id':12, 'location':'L4'}
     ,{'bin_id':2, 'location':'L5'}
     ,{'bin_id':14, 'location':'L6'}

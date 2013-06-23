@@ -1,5 +1,5 @@
 
-SAVE_BATH_FILE_NAME = 'save_batch_and_calculate_stats/a1.mat';
+SAVE_BATH_FILE_NAME = 'save_batch_and_calculate_stats/saved_Lbel_Hnoise.mat';
 
 % load old data
 try

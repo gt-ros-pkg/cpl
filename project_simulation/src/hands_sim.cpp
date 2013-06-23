@@ -57,7 +57,7 @@ boost::variate_generator<boost::mt19937&,
 
 //-------------PARAMETERS
 //standard deviation of the gaussian for simulated sensor noise
-double PUB_NOISE_DEV = 0.05;
+double PUB_NOISE_DEV = 0.005;
 //standard deviation of the gaussian for random noise when performing 
 //task with a part
 double WALK_DEV = 0.1;
@@ -74,11 +74,15 @@ double TIME_TO_WAIT_AT_BIN = 0.3; //seconds
 //time waiting before starting the first task
 double WAIT_FIRST_ACTION = 3.0; //seconds
 //probability of perceptual screw-up
-double PROB_PERCEPT_SCREW = 0.0;
-//both hands screw up occuring together
-double PROB_PERCEPT_SCREW_BOTH = PROB_PERCEPT_SCREW/10;
+double PROB_PERCEPT_SCREW;
 //Duration of the screw-up, mean & standard-dev
 double SCREW_M=3.0, SCREW_STD=1.0;
+//Probability of the hand-marker jumping when a screw-up occurs
+double PROB_JUMP=0.5;
+//Constant-factor multiplying the std-dev of the duration
+double MULT_DUR_STD;
+//Constant-factor multiplying the std-dev of the hand-offset variance
+double MULT_HAND_OFF_STD;
 
 class Task{
 
@@ -246,6 +250,7 @@ private:
   vector<double> lh_cur;
   vector<double> rh_cur;
   vector<double> lh_cheat_wait;
+  vector<double> rh_cheat_wait;
 
   ros::NodeHandle nh;
   ros::Publisher lh_pose;
@@ -254,7 +259,8 @@ private:
   ros::Publisher task_pub;
   ros::Publisher picking_bin;
   ros::Publisher human_wait_text;
-
+  ros::Publisher lh_actual;
+  ros::Publisher rh_actual;
   //Bin being picked right now, 0 if not started or ended, -1 if waiting.
   int currently_picked_bin;
 
@@ -401,7 +407,7 @@ public:
   (geometry_msgs::PoseStamped bin_cur_pose);
 
   //choose location for perceptual screw-up
-  vector<double> pick_percept_pos();
+  vector<double> pick_percept_pos(bool is_left);
 
 
 };
@@ -491,6 +497,9 @@ handSim::handSim(string task_name, bool cheat)
   double cheat_l[]= {0.6813459, 0.308325,1.86598};
   lh_cheat_wait.assign(&cheat_l[0], &cheat_l[0]+3);
 
+  double cheat_r[]= {-0.4813459, 0.308325,1.86598};
+  rh_cheat_wait.assign(&cheat_r[0], &cheat_r[0]+3);
+  
   //initially, hands are at rest position
   lh_cur = lh_rest;
   rh_cur = rh_rest;
@@ -518,8 +527,8 @@ handSim::handSim(string task_name, bool cheat)
     
   //hand-offset in bin frame
   hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
-  hand_t_var[0]=0.00020556;hand_t_var[1]=0.00052374;hand_t_var[2]=0.00058416;  
-
+  hand_t_var[0]=0.00020556*MULT_HAND_OFF_STD;hand_t_var[1]=0.00052374*MULT_HAND_OFF_STD;hand_t_var[2]=0.00058416*MULT_HAND_OFF_STD;  
+  
   //percept screw-up
   cur_screw_l = false;
   cur_screw_r = false;
@@ -527,6 +536,9 @@ handSim::handSim(string task_name, bool cheat)
   //ros-stuff
   lh_pose = nh.advertise<geometry_msgs::PoseStamped>("left_hand",1);
   rh_pose = nh.advertise<geometry_msgs::PoseStamped>("right_hand",1);
+  lh_actual = nh.advertise<geometry_msgs::PoseStamped>("actual_left_hand",1);
+  rh_actual = nh.advertise<geometry_msgs::PoseStamped>("actual_right_hand",1);
+
   viz_pub = nh.advertise<visualization_msgs::MarkerArray>("hands_viz", 1);
   task_pub = nh.advertise<std_msgs::String>("action_name", 1);
   picking_bin = nh.advertise<std_msgs::Int8>("bin_being_picked", 1);
@@ -754,6 +766,11 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
       {	
 	//debug
 	cout<< "Task - Bin-"<<cur_bin_id<<" ; mean std = "<<duration_m<<' '<<duration_s<<endl;
+
+	//debug
+	duration_m *=3.0;
+	//multiply duration std-dev with constant factor
+	duration_s *= MULT_DUR_STD;
 	
 	time_to_next_touch = perform_task(cur_bin_id, duration_m, duration_s, 
 					  time_to_next_touch, pick_lefty, 
@@ -994,125 +1011,114 @@ double handSim::samp_gauss_pos_rep(double mean, double std_dev)
     return sample;
   }
   
-  //publish present hand positions
-  void handSim::publish_cur_hand_pos()
-  {
+//publish present hand positions
+void handSim::publish_cur_hand_pos()
+{
     
-    geometry_msgs::PoseStamped msg_l, msg_r;
+  geometry_msgs::PoseStamped msg_l, msg_r, msg_l_actual, msg_r_actual;
+  
+  msg_l.header.frame_id = frame_of_reference;
+  msg_r.header.frame_id = frame_of_reference;
+  
+  vec_to_orientation(msg_l.pose.orientation, fix_hand_orient);
+  vec_to_orientation(msg_r.pose.orientation, fix_hand_orient);
+  
+  
+  double screw_chance;
+  bool temp_screw_l=false, temp_screw_r=false;
 
-    msg_l.header.frame_id = frame_of_reference;
-    msg_r.header.frame_id = frame_of_reference;
-	
-    vec_to_orientation(msg_l.pose.orientation, fix_hand_orient);
-    vec_to_orientation(msg_r.pose.orientation, fix_hand_orient);
-    
-    
-    double screw_chance;
+  //check if not in screw-up mode
+  if(!handSim::cur_screw_l){temp_screw_l = true;}
+  if(!handSim::cur_screw_r){temp_screw_r=true;}
 
-    if(!handSim::cur_screw_l)
+  //in case mode just ended
+  if(handSim::cur_screw_l)
+    if(handSim::screw_counter_l>=handSim::duration_screw_l)
       {
-	if (handSim::cur_screw_r){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
-	else{screw_chance=PROB_PERCEPT_SCREW;}
-      
-	if((rand()/double(RAND_MAX))>(1.0-screw_chance))
-	  {
-	    handSim::cur_screw_l = true;
-	    
-	    handSim::duration_screw_l = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
-	    handSim::screw_counter_l=0;
-	    if (double(handSim::screw_counter_l)>handSim::duration_screw_l)
-	      {handSim::cur_screw_l=false;}
-	    else{handSim::pos_screw_l = handSim::pick_percept_pos();}
-	  }
+	temp_screw_l=true; handSim::cur_screw_l=false;
       }
-    
-    if(handSim::cur_screw_l)
-      {if(handSim::screw_counter_l>=handSim::duration_screw_l)
+  if(handSim::cur_screw_r)
+    if(handSim::screw_counter_r>=handSim::duration_screw_r)
+      {
+	temp_screw_r=true; cur_screw_r=false;
+      }
+  if(temp_screw_l)
+    {
+      screw_chance=PROB_PERCEPT_SCREW;
+      if((rand()/double(RAND_MAX))>(1.0-screw_chance))
 	{
-	  if (handSim::cur_screw_r){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
-	  else{screw_chance=PROB_PERCEPT_SCREW;}
-      
-	  if((rand()/double(RAND_MAX))>(1.0-screw_chance))
-	    {
-	      handSim::cur_screw_l = true;
-	      
-	      handSim::duration_screw_l = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
-	      handSim::screw_counter_l=0;
-	      if (double(handSim::screw_counter_l)>handSim::duration_screw_l)
-		{handSim::cur_screw_l=false;}
-	      else{handSim::pos_screw_l = handSim::pick_percept_pos();}
-	    }
-	  else{handSim::cur_screw_l = false;}
+	  handSim::cur_screw_l = true;
+	  handSim::duration_screw_l = samp_gauss_pos(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
+	  handSim::screw_counter_l=0;
+	  handSim::pos_screw_l = handSim::pick_percept_pos(true);
 	}
-	else{handSim::cur_screw_r = false;}
-      }
+    }
 
-    if(!handSim::cur_screw_r)
-      {
-	if (handSim::cur_screw_l){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
-	else{screw_chance=PROB_PERCEPT_SCREW;}
-      
-	if((rand()/double(RAND_MAX))>(1.0-screw_chance))
-	  {
-	    handSim::cur_screw_r = true;
-	    
-	    handSim::duration_screw_r = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
-	    handSim::screw_counter_r=0;
-	    if (double(handSim::screw_counter_r)>handSim::duration_screw_r)
-	      {handSim::cur_screw_r=false;}
-	    else{handSim::pos_screw_r = handSim::pick_percept_pos();}
-	  }
-      }
-    
-    if(handSim::cur_screw_r)
-      {if(handSim::screw_counter_r>=handSim::duration_screw_r)
-	  {
-	    if (handSim::cur_screw_l){screw_chance=PROB_PERCEPT_SCREW_BOTH;}
-	    else{screw_chance=PROB_PERCEPT_SCREW;}
-	    
-	    if((rand()/double(RAND_MAX))>(1.0-screw_chance))
-	      {
-		handSim::cur_screw_r = true;
-		
-		handSim::duration_screw_r = samp_gauss(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
-		handSim::screw_counter_r=0;
-		if (double(handSim::screw_counter_r)>handSim::duration_screw_r)
-		  {handSim::cur_screw_r=false;}
-		else{handSim::pos_screw_r = handSim::pick_percept_pos();}
-	      }
-	    else{handSim::cur_screw_r = false;}
-	  }
-	else{handSim::cur_screw_r = false;}
-      }
-    
-    if (!cur_screw_l){vec_to_position(msg_l.pose.position, lh_cur);}
-    else{screw_counter_l++; vec_to_position(msg_l.pose.position, pos_screw_l);}
-    if (!cur_screw_r)vec_to_position(msg_r.pose.position, rh_cur);
-    else{screw_counter_r++; vec_to_position(msg_r.pose.position, pos_screw_r);}
+  if(temp_screw_r)
+    {
+      screw_chance=PROB_PERCEPT_SCREW;
+      if((rand()/double(RAND_MAX))>(1.0-screw_chance))
+	{
+	  handSim::cur_screw_r = true;
+	  handSim::duration_screw_r = samp_gauss_pos(SCREW_M, SCREW_STD)*PUB_RATE;//in terms of frames not seconds
+	  handSim::screw_counter_r=0;
+	  handSim::pos_screw_r = handSim::pick_percept_pos(false);
+	}
+    }
+  
+  if (!cur_screw_l){vec_to_position(msg_l.pose.position, lh_cur);}
+  else{screw_counter_l++; vec_to_position(msg_l.pose.position, pos_screw_l);}
+  if (!cur_screw_r)vec_to_position(msg_r.pose.position, rh_cur);
+  else{screw_counter_r++; vec_to_position(msg_r.pose.position, pos_screw_r);}
+  
+  add_tracker_noise(msg_l);
+  add_tracker_noise(msg_r);
+  
+  lh_pose.publish(msg_l);
+  rh_pose.publish(msg_r);
 
-    add_tracker_noise(msg_l);
-    add_tracker_noise(msg_r);
-    
-    lh_pose.publish(msg_l);
-    rh_pose.publish(msg_r);
+  //publish actual hands
+  msg_l_actual = msg_l;
+  msg_r_actual = msg_r;
+  vec_to_position(msg_l_actual.pose.position, lh_cur);  
+  vec_to_position(msg_r_actual.pose.position, rh_cur);  
+  lh_actual.publish(msg_l_actual);
+  rh_actual.publish(msg_r_actual);
 
-    std_msgs::Int8 bin_2_pub;
-    bin_2_pub.data = currently_picked_bin;
-    picking_bin.publish(bin_2_pub);
-
-    //publish visual markers
-    pub_viz_marker(msg_l, msg_r);
-  }
+  
+  std_msgs::Int8 bin_2_pub;
+  bin_2_pub.data = currently_picked_bin;
+  picking_bin.publish(bin_2_pub);
+  
+  //publish visual markers
+  pub_viz_marker(msg_l, msg_r);
+}
 
 //randomly pick a position for the hand to appear to be in when the perceptual
 //screw up occurs
-vector<double> handSim::pick_percept_pos()
+vector<double> handSim::pick_percept_pos(bool is_left)
 {
   //debug
   cout<<"Screw-up in lefty:"<<cur_screw_l<<"  Duration:"<<duration_screw_l<<endl;
   cout<<"Screw-up in righty:"<<cur_screw_r<<"  Duration:"<<duration_screw_r<<endl;
   //getchar(); 
-  return lh_cheat_wait;
+
+  bool stay=false;
+
+  //flip for stay at current positiion or jump
+  if ((rand()/double(RAND_MAX))>PROB_JUMP){stay=true;}
+  //debug
+  cout<<"Stay is "<<stay<<endl;
+  if(is_left)
+    {
+      if(stay){return lh_cur;}
+      else{return lh_cheat_wait;}
+    }
+  else
+    {
+      if(stay){return rh_cur;}
+      else{return rh_cheat_wait;}
+    }
 
 }
   
@@ -1599,6 +1605,10 @@ int main(int argc, char** argv)
   debug over*/
 
   ros::init(argc, argv, "hand_simulator");
+
+  ros::param::param<double>("/prob_percept_screw", PROB_PERCEPT_SCREW, 0.001);
+  ros::param::param<double>("/multiply_hand_offset", MULT_HAND_OFF_STD, 2.0);
+  ros::param::param<double>("/multiply_duration", MULT_DUR_STD, 2.0);
 
   bool noprompt;
   if(argc == 1) {

@@ -21,14 +21,23 @@ function detections = run_action_detections( frame_info, data )
         
         % run detector
         if data.params.use_onedetector
-            detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_scale * data.onedetector.learnt.var) / data.onedetector.mean_detection_score;
-            % detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_prior + data.onedetector.learnt.var) / data.onedetector.mean_detection_score;
-            % detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_prior + data.onedetector.learnt.var) + data.params.latent_noise;
+            if data.params.nam_noise_model
+                cur_mean = data.onedetector.learnt.mean;
+                cur_var = data.params.detector_var_scale * data.onedetector.learnt.var;
+                detect_score = data.onedetector.mean_detection_score;
+                detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / detect_score;
+            else
+                cur_mean = data.onedetector.learnt.mean;
+                cur_var = data.params.detector_var_prior + data.onedetector.learnt.var;
+                latent_noise = data.params.latent_noise;
+                detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / latent_noise;
+            end
         else
-            % detections(d) = mvnpdf(closest_hand, data.detectors(d).learnt.mean, data.params.detector_var_scale * data.detectors(d).learnt.var) / data.detectors(d).mean_detection_score;
-            disp('THIS SHOULD NOT RUN')
-            detections(d) = mvnpdf(closest_hand, data.detectors(d).learnt.mean, data.params.detector_var_prior + data.detectors(d).learnt.var) / data.detectors(d).mean_detection_score;
-            disp('THIS SHOULD NOT RUN')
+            cur_mean = data.onedetector.learnt.mean;
+            cur_var = data.params.detector_var_scale * data.detectors(d).learnt.var;
+            detect_score = data.detectors(d).mean_detection_score;
+            detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / detect_score;
+            % disp('THIS SHOULD NOT RUN')
         end
     end
     end

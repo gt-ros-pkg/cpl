@@ -23,10 +23,10 @@ DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
 
 DRAW_DISTRIBUTION_FIGURE = 000;
-DRAW_DISTRIBUTION_FIGURE = 399;
+DRAW_DISTRIBUTION_FIGURE = 000;
 
 DRAW_POSITIONS_FIGURE    = 0;
-DRAW_DETECTIONS_FIGURE   = 3310;
+DRAW_DETECTIONS_FIGURE   = 0000;
 
 DRAW_GT_ACTIONS          = 1;
 
@@ -126,6 +126,7 @@ while t < m.params.T * m.params.downsample_ratio
         ws_bins = ws_bins_data(2:ws_bins_len+1);
         
         % run detection on new frame
+        m.detection.params.nam_noise_model = NAM_NOISE_MODEL;
         d = run_action_detections(frame_info, m.detection);
         d(find(isnan(d))) = 1;
         detection_raw_result(:,nt) = d;
