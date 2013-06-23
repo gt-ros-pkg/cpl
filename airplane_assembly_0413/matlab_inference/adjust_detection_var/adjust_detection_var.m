@@ -3,9 +3,9 @@
 % For noisy: use 25, 1
 % For not noisy: use 12, 0.0001
 %
-NAM_NOISE_MODEL = 1;
+NAM_NOISE_MODEL = 0;
 NAM_NOISY = 0;
-KPH_NOISY = 1;
+KPH_NOISY = 0;
 
 clc;
 learnt_var = m.detection.onedetector.learnt.var
@@ -38,12 +38,14 @@ else
 
     if KPH_NOISY
         % High noise
-        m.detection.params.detector_var_prior           = 0.01 * eye(3);
+        m.detection.params.detector_var_prior           = 0.03 * eye(3);
         m.detection.params.latent_noise                 = 0.2;
+        m.detection.params.future_weight                = 0.01;
     else
         % Low noise
-        m.detection.params.detector_var_prior           = 0.0 * eye(3);
+        m.detection.params.detector_var_prior           = 0.01 * eye(3);
         m.detection.params.latent_noise                 = 0.0;
+        m.detection.params.future_weight                = 0.01;
     end
 end
 

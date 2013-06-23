@@ -80,9 +80,9 @@ double SCREW_M=3.0, SCREW_STD=1.0;
 //Probability of the hand-marker jumping when a screw-up occurs
 double PROB_JUMP=0.5;
 //Constant-factor multiplying the std-dev of the duration
-double MULT_DUR_STD;
+double ADD_DUR_STD;
 //Constant-factor multiplying the std-dev of the hand-offset variance
-double MULT_HAND_OFF_STD;
+double ADD_HAND_OFF_STD;
 
 class Task{
 
@@ -527,7 +527,7 @@ handSim::handSim(string task_name, bool cheat)
     
   //hand-offset in bin frame
   hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
-  hand_t_var[0]=0.00020556*MULT_HAND_OFF_STD;hand_t_var[1]=0.00052374*MULT_HAND_OFF_STD;hand_t_var[2]=0.00058416*MULT_HAND_OFF_STD;  
+  hand_t_var[0]=0.00020556+ADD_HAND_OFF_STD;hand_t_var[1]=0.00052374+ADD_HAND_OFF_STD;hand_t_var[2]=0.00058416+ADD_HAND_OFF_STD;  
   
   //percept screw-up
   cur_screw_l = false;
@@ -768,9 +768,9 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
 	cout<< "Task - Bin-"<<cur_bin_id<<" ; mean std = "<<duration_m<<' '<<duration_s<<endl;
 
 	//debug
-	duration_m *=3.0;
+	//duration_m *=3.0;
 	//multiply duration std-dev with constant factor
-	duration_s *= MULT_DUR_STD;
+	duration_s += ADD_DUR_STD;
 	
 	time_to_next_touch = perform_task(cur_bin_id, duration_m, duration_s, 
 					  time_to_next_touch, pick_lefty, 
@@ -1259,7 +1259,7 @@ void handSim::delete_wait_marker()
     cout<<"Total, wait  "<<total_time<<", "<<wait_time_total<<endl;
 
     ofstream stats_file;
-    stats_file.open("stats_Lbel_Hnoise.txt", ios_base::app);  
+    stats_file.open("stats_LLLL_new.txt", ios_base::app);  
     if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
     stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<endl;
     stats_file.close();
@@ -1607,8 +1607,8 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "hand_simulator");
 
   ros::param::param<double>("/prob_percept_screw", PROB_PERCEPT_SCREW, 0.001);
-  ros::param::param<double>("/multiply_hand_offset", MULT_HAND_OFF_STD, 2.0);
-  ros::param::param<double>("/multiply_duration", MULT_DUR_STD, 2.0);
+  ros::param::param<double>("/add_hand_offset", ADD_HAND_OFF_STD, 2.0);
+  ros::param::param<double>("/add_duration", ADD_DUR_STD, 2.0);
 
   bool noprompt;
   if(argc == 1) {

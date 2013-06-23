@@ -30,7 +30,9 @@ function detections = run_action_detections( frame_info, data )
                 cur_mean = data.onedetector.learnt.mean;
                 cur_var = data.params.detector_var_prior + data.onedetector.learnt.var;
                 latent_noise = data.params.latent_noise;
-                detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / latent_noise;
+                future_weight = data.params.future_weight;
+                detections(d) = (mvnpdf(closest_hand, cur_mean, cur_var) + latent_noise) ...
+                                 / future_weight;
             end
         else
             cur_mean = data.onedetector.learnt.mean;
