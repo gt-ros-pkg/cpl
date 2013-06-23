@@ -315,6 +315,9 @@ private:
   size_t screw_counter_r;
   double duration_screw_l, duration_screw_r;
 
+  //bin-remove mistakes
+  size_t bin_rmv_mistakes;
+
 public:
   handSim(string task_name, bool cheat);
   
@@ -337,7 +340,7 @@ public:
   void pub_hands();
   
   //pick out of given bin in correct time
-  double perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name);
+  double perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name, bool is_same_bin);
 
   
   //calculate euclidean dist between two vectors
@@ -534,6 +537,9 @@ handSim::handSim(string task_name, bool cheat)
   //percept screw-up
   cur_screw_l = false;
   cur_screw_r = false;
+  
+  //mistakes in bin-removal
+  bin_rmv_mistakes = 0;
 
   //ros-stuff
   lh_pose = nh.advertise<geometry_msgs::PoseStamped>("left_hand",1);
@@ -757,15 +763,19 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
   void handSim::pub_hands()
   {
     
-    size_t cur_bin_id, cur_bin_no=0;
+    size_t cur_bin_id, cur_bin_no=0, prev_bin=0;
     string cur_task;
     double duration_m, duration_s;
     double time_to_next_touch = 0.0;
-    bool pick_lefty = false; //start picking from right hand
+    bool pick_lefty = false, same_old_bin=false; //start picking from right hand
 
     //pop next task
     while(to_perform.get_next_step(&cur_bin_no, &duration_m, &duration_s, &cur_bin_id, &cur_task))
       {	
+
+	same_old_bin = (cur_bin_id==prev_bin);
+	prev_bin = cur_bin_id;
+
 	//debug
 	cout<< "Task - Bin-"<<cur_bin_id<<" ; mean std = "<<duration_m<<' '<<duration_s<<endl;
 
@@ -776,7 +786,7 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
 	
 	time_to_next_touch = perform_task(cur_bin_id, duration_m, duration_s, 
 					  time_to_next_touch, pick_lefty, 
-					  cur_task);
+					  cur_task, same_old_bin);
 	
 	
 	pick_lefty = !pick_lefty;
@@ -793,7 +803,7 @@ void handSim::trans_homo_vec_hand_off(double homo_vec[], double translate[])
   }
   
 //pick out of given bin in correct time
-double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name)
+double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double time_reach, bool pick_lefty, string cur_task_name, bool is_same_bin)
   {
     vector<double> cur_bin_loc;
     
@@ -814,6 +824,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     //if bin to pick from unavailable
     if(!bin_in_position(cur_bin))
       {
+	if (is_same_bin){++handSim::bin_rmv_mistakes;}
 	//waiting-so change current picked bin
 	int prev_bin = handSim::currently_picked_bin;
 	handSim::currently_picked_bin = -1;
@@ -939,7 +950,7 @@ void handSim::end_the_task()
   ofstream stats_file;
   stats_file.open("stats_big.txt", ios_base::app);  
   if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
-  stats_file<<"aborted"<<endl;
+  stats_file<<"aborted"<<','<<handSim::bin_rmv_mistakes<<endl;
   stats_file.close();
   
   exit(0);
@@ -1280,7 +1291,7 @@ void handSim::delete_wait_marker()
     ofstream stats_file;
     stats_file.open("stats_big.txt", ios_base::app);  
     if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
-    stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<endl;
+    stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','<<handSim::bin_rmv_mistakes<<endl;
     stats_file.close();
   
 
