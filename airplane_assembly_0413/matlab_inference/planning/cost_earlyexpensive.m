@@ -7,7 +7,7 @@ function c = cost_earlyexpensive( d )
     end
     
     if d < 0 % early
-        c = 10 * abs(d) ^ 3;
+        c = 10 * abs(d) ^ 2.5;
     else % late
         c = 1 * abs(d) ^ 1;
     end

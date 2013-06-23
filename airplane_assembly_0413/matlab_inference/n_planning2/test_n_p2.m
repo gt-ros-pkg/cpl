@@ -2,7 +2,9 @@
 % clc;
 % load d2;
 
-ACTION_PRE_DURATION  = round(7 * 30 / m.params.downsample_ratio);
+MAX_BIN_AVAILABLE_NUM = 3;
+
+ACTION_PRE_DURATION  = round(9 * 30 / m.params.downsample_ratio);
 ACTION_POST_DURATION = round(4 * 30 / m.params.downsample_ratio);
 
 % compute bin distribution
@@ -25,7 +27,7 @@ for i=1:N
     
     % use executed action
     if 1 & isfield(n, 'executedplan')
-        for j=length(n.executedplan.events):-1:max(1, length(n.executedplan.events)-1)
+        for j=length(n.executedplan.events):-1:max(1, length(n.executedplan.events))
             if n.executedplan.events(j).bin_id == b,
                 if n.executedplan.events(j).sname(1) == 'A'
                 	n.bin_distributions(i).bin_available = 1;
@@ -49,7 +51,81 @@ for i=1:N
     end
 end
 
-% cost integration
+
+% calculate expected start & end
+for i=1:N
+    d = n.bin_distributions(i).bin_needed;
+    d = d / sum(d);
+    n.bin_distributions(i).expected_start = ceil(sum(d .* [1:length(d)]));
+    
+    d = n.bin_distributions(i).bin_nolonger_needed;
+    d = d / sum(d);
+    n.bin_distributions(i).expected_end = ceil(sum(d .* [1:length(d)]));
+end
+
+
+%% special case: early-remove (ER94)
+for i=1:N
+    n.bin_distributions(i).ER94 = 0;
+end
+
+earliest_bin_id        = nan;
+earliest_bin_start     = inf;
+earliest_wsbin_id      = nan;
+earliest_wsbin_start   = inf;
+latest_wsbin_id        = nan;
+latest_wsbin_start     = -inf;
+bin_available_num      = 0;
+ws_probs               = [];
+ws_starts              = [];
+
+for i=1:N
+    
+    if n.bin_distributions(i).bin_available
+        bin_available_num = bin_available_num + 1;
+        ws_probs(end+1)   = n.bin_distributions(i).prob_not_finished;
+        ws_starts(end+1)  = n.bin_distributions(i).expected_start;
+    end
+    
+    if n.bin_distributions(i).prob_not_finished > 0.5 & ...
+            ~n.bin_distributions(i).bin_available & ...
+            n.bin_distributions(i).expected_start < earliest_bin_start
+        
+        earliest_bin_id    = i;
+        earliest_bin_start = n.bin_distributions(i).expected_start;
+  
+    end
+    
+    if n.bin_distributions(i).bin_available & ...
+            n.bin_distributions(i).expected_start < earliest_wsbin_start
+        
+        earliest_wsbin_id    = i;
+        earliest_wsbin_start = n.bin_distributions(i).expected_start;
+  
+    end
+    
+    if n.bin_distributions(i).bin_available & n.bin_distributions(i).expected_start > latest_wsbin_start 
+        latest_wsbin_id    = i;
+        latest_wsbin_start = n.bin_distributions(i).expected_start;
+    end
+end
+
+if  ~isnan(earliest_bin_id) & ...
+    sum(ws_probs >= n.bin_distributions(earliest_bin_id).prob_not_finished) >= MAX_BIN_AVAILABLE_NUM & ...
+        sum(ws_starts >= n.bin_distributions(earliest_bin_id).expected_start) >= MAX_BIN_AVAILABLE_NUM
+    
+    warning(['ER94, remove ' num2str(latest_wsbin_id) ' for ' num2str(earliest_bin_id)]);
+	
+    n.bin_distributions(latest_wsbin_id).prob_not_finished      = 1;
+    n.bin_distributions(latest_wsbin_id).bin_needed(:)          = 0;
+    n.bin_distributions(latest_wsbin_id).bin_needed(1)          = 1;
+    n.bin_distributions(latest_wsbin_id).bin_nolonger_needed(:) = 0;
+    n.bin_distributions(latest_wsbin_id).bin_nolonger_needed(1) = 1;
+    
+end
+
+
+%% cost integration
 nx_figure(1312);
 for i=1:N
     n.bin_distributions(i).bin_needed_cost = ef2(n.bin_distributions(i).bin_needed, n.cache_cost.cost_lateexpensive);
@@ -65,7 +141,6 @@ for i=1:N
     hold on;
     semilogy(n.bin_distributions(i).bin_nolonger_needed_cost, 'r');
     hold off;
-    
 end
 
 %% gen plan
@@ -105,12 +180,6 @@ for i=1:10
     end
 end
 
-for i=1:length(plans)
-   for j=1:length(plans{i}.actions)
-        plans{i}.actions(j).pre_duration  = ACTION_PRE_DURATION;
-        plans{i}.actions(j).post_duration = ACTION_POST_DURATION;
-   end
-end
 
 %% optimize plan
 
@@ -121,8 +190,13 @@ for i=1:length(plans)
     distances = zeros(length(plans{i}.actions));
     
    for j=1:length(plans{i}.actions)
-       plans{i}.actions(j).pre_duration  = ACTION_PRE_DURATION;
-       plans{i}.actions(j).post_duration = ACTION_POST_DURATION;
+       if plans{i}.actions(j).action_str(1) == 'A'
+           plans{i}.actions(j).pre_duration  = ACTION_PRE_DURATION;
+           plans{i}.actions(j).post_duration = ACTION_POST_DURATION;
+       else
+           plans{i}.actions(j).pre_duration  = ACTION_POST_DURATION;
+           plans{i}.actions(j).post_duration = ACTION_PRE_DURATION;
+       end
    end
     
 end

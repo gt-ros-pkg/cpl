@@ -3,7 +3,7 @@ clc;
 
 SKIP_FIRST_WAITING = 0;
 
-file_name = 'lc1_LH_original';
+file_name = 'lc1_LH';
 
 load(file_name)
 

@@ -4,8 +4,10 @@ addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
 
-init_for_s3 % linear chain
+%init_for_s3 % linear chain
 % init_for_s % 3 tasks
+init_for_linear_chain_7;
+
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
@@ -249,37 +251,98 @@ while t < m.params.T * m.params.downsample_ratio
             %plot_plan({k.executedplan});
         end;
         
-        subplot(3, 1, 3);
-        cla
-        ylim([-1 2]);
-        xlim([0 m.params.T]);
-        grid on;
-        hold on;
-        plot([nt nt], [-999 999], 'g');
-        for i=1:length(action_names_gt)
-            thestart = action_names_gt(i).start;
-            theend   = nt;
-            if i < length(action_names_gt)
-                theend = action_names_gt(i+1).start-1;
+        % plot kelsey graph
+        if 1 & isfield(k, 'executedplan') & isfield(k, 'bestplans') 
+            subplot(3, 1, 2);
+            cla;
+            hold on;
+            
+            for i=1:length(k.bin_distributions)
+            
+                % plot waiting
+                for j=1:length(action_names_gt)
+                    if length(action_names_gt(j).name) >= 7 & strcmp( action_names_gt(j).name(1:7), 'Waiting')
+                        if j < length(action_names_gt)
+                            h=plot([action_names_gt(j).start action_names_gt(j+1).start], [0 0], 'y', 'LineWidth', 1000);
+                            uistack(h, 'bottom');
+                        else
+                            h=plot([action_names_gt(j).start nt], [0 0], 'y', 'LineWidth', 1000);
+                            uistack(h, 'bottom');
+                        end
+                    end
+                end
+                
+                % plot actions
+                for a = k.executedplan.events
+                    if a.bin_id == k.bin_distributions(i).bin_id
+                        plot([a.matlab_execute_time nxifelse(a.matlab_finish_time < 0, a.matlab_execute_time+a.pre_duration+a.post_duration, a.matlab_finish_time)], ...
+                            [-i -i], nxifelse( a.sname(1) == 'A' , 'b', 'r'), 'LineWidth', 20);
+                    end
+                end
+                if isfield(k.bestplans{end}, 'events')
+                for a = k.bestplans{end}.events
+                    if a.bin_id == k.bin_distributions(i).bin_id
+                        plot([a.optimal_t-a.pre_duration a.optimal_t+a.post_duration], ...
+                            [-i -i], nxifelse( a.sname(1) == 'A' , 'b', 'r'), 'LineWidth', 20);
+                        plot([a.optimal_t-1 a.optimal_t+1], ...
+                            [-i -i], 'w', 'LineWidth', 20);
+                        text(a.optimal_t+a.post_duration, -i, a.sname);
+                    end
+                end
+                end
+                
+                % plot bin available
+                s = nan;
+                for j=1:m.params.T
+                    if isnan(s) & bins_availability(k.bin_distributions(i).bin_id,j) == 1
+                        s = j;
+                    end
+                    if ~isnan(s) & bins_availability(k.bin_distributions(i).bin_id,j) ~= 1
+                    	plot([s j-1], [-i -i], 'g', 'LineWidth', 10);
+                        s = nan;
+                    end
+                end
+                
             end
             
-            thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
-            if isempty(thecolor)
-                thecolor = [0 0 0];
-            end
-            not_perform_action = strcmp(action_names_gt(i).name, 'N/A') | ...
-                strcmp(action_names_gt(i).name, 'Complete') | strcmp(action_names_gt(i).name, 'waiting') | ...
-                ~isempty(strfind(action_names_gt(i).name, 'Waiting')); 
-            
-            plot([thestart thestart], [0 nxifelse(not_perform_action, 0, 0.5)], 'color', thecolor);
-            plot([thestart theend], [nxifelse(not_perform_action, 0, 0.5) 0], 'color', thecolor);
-            if action_names_gt(i).name(end) == '1'
-                text(thestart, 1, action_names_gt(i).name);
-            end
-            text(nt, 0, action_names_gt(end).name);
+            plot([nt nt], [-999 999], 'g');
+            hold off;
+            ylim([-length(k.bin_distributions)-1 0]);
         end
-        hold off;
-       
+        
+        
+        if 1 % plot action_names_gt
+            subplot(3, 1, 3);
+            cla
+            ylim([-1 2]);
+            xlim([0 m.params.T]);
+            grid on;
+            hold on;
+            plot([nt nt], [-999 999], 'g');
+            for i=1:length(action_names_gt)
+                thestart = action_names_gt(i).start;
+                theend   = nt;
+                if i < length(action_names_gt)
+                    theend = action_names_gt(i+1).start-1;
+                end
+
+                thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
+                if isempty(thecolor)
+                    thecolor = [0 0 0];
+                end
+                not_perform_action = strcmp(action_names_gt(i).name, 'N/A') | ...
+                    strcmp(action_names_gt(i).name, 'Complete') | strcmp(action_names_gt(i).name, 'waiting') | ...
+                    ~isempty(strfind(action_names_gt(i).name, 'Waiting')); 
+
+                plot([thestart thestart], [0 nxifelse(not_perform_action, 0, 0.5)], 'color', thecolor);
+                plot([thestart theend], [nxifelse(not_perform_action, 0, 0.5) 0], 'color', thecolor);
+                if action_names_gt(i).name(end) == '1'
+                    text(thestart, 1, action_names_gt(i).name);
+                end
+                text(nt, 0, action_names_gt(end).name);
+            end
+            hold off;
+        end
     end
     
     
