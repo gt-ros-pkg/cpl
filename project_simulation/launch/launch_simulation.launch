@@ -16,6 +16,6 @@
   <node name="inference_from_matlab" pkg="airplane_assembly_inference_0313" 
         type="inference_from_matlab.py" />
   <node name="planning_from_matlab" pkg="airplane_assembly_inference_0313" 
-        type="planning_from_matlab.py" />
+        type="planning_from_matlab.py" output="screen" />
 
 </launch>

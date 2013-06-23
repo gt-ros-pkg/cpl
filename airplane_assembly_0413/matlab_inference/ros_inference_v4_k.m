@@ -2,7 +2,7 @@
 %% load data
 addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
-clc; clear; % close all;
+%clc; clear; % close all;
 
 init_for_s3 % linear chain
 % init_for_s % 3 tasks
@@ -32,8 +32,10 @@ DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-kelsey_planning = 1;
-kelsey_viz      = 0;
+if 0
+    kelsey_planning = 1;
+    kelsey_viz      = 1;
+end
 
 %% open connection
 

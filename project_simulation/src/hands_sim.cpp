@@ -83,7 +83,8 @@ double PROB_JUMP=0.5;
 double ADD_DUR_STD;
 //Constant-factor multiplying the std-dev of the hand-offset variance
 double ADD_HAND_OFF_STD;
-
+//timer-limit
+size_t TIMER_LIMIT = 100;
 class Task{
 
 private:
@@ -408,7 +409,8 @@ public:
 
   //choose location for perceptual screw-up
   vector<double> pick_percept_pos(bool is_left);
-
+  
+  void end_the_task();
 
 };
 
@@ -527,7 +529,7 @@ handSim::handSim(string task_name, bool cheat)
     
   //hand-offset in bin frame
   hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
-  hand_t_var[0]=0.00020556+ADD_HAND_OFF_STD;hand_t_var[1]=0.00052374+ADD_HAND_OFF_STD;hand_t_var[2]=0.00058416+ADD_HAND_OFF_STD;  
+  hand_t_var[0]=0.0006461+ADD_HAND_OFF_STD;hand_t_var[1]=0.0005190+ADD_HAND_OFF_STD;hand_t_var[2]=0.0001483+ADD_HAND_OFF_STD;  
   
   //percept screw-up
   cur_screw_l = false;
@@ -928,6 +930,21 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 
   }
 
+void handSim::end_the_task()
+{
+  std_msgs::String end_task_msg;
+  end_task_msg.data= "Complete";
+  handSim::task_pub.publish(end_task_msg);
+  
+  ofstream stats_file;
+  stats_file.open("stats_big.txt", ios_base::app);  
+  if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
+  stats_file<<"aborted"<<endl;
+  stats_file.close();
+  
+  exit(0);
+}
+
   //wait for bin to arrive
   void handSim::wait_for_bin(size_t bin_to_chk)
   {
@@ -954,6 +971,8 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	++temp_wait;
 	//debug
 	//cout<<"Need Bin: "<<bin_to_chk<<endl;
+	if (temp_wait/PUB_RATE > TIMER_LIMIT)
+	  {end_the_task();}
       }while(ros::ok() && !bin_in_position(bin_to_chk));
     
     if(temp_wait>handSim::longest_wait){handSim::longest_wait=temp_wait;}
@@ -1259,7 +1278,7 @@ void handSim::delete_wait_marker()
     cout<<"Total, wait  "<<total_time<<", "<<wait_time_total<<endl;
 
     ofstream stats_file;
-    stats_file.open("stats_LLLL_new.txt", ios_base::app);  
+    stats_file.open("stats_big.txt", ios_base::app);  
     if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
     stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<endl;
     stats_file.close();
