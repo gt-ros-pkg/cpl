@@ -10,6 +10,22 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
+if ~exist('NAM_NOISE_MODEL')
+    NAM_NOISE_MODEL = 1;
+end
+if ~exist('NAM_NOISY')
+    NAM_NOISY = 0;
+end
+if ~exist('kelsey_planning')
+    kelsey_planning = 1;
+end
+if ~exist('kelsey_viz')
+    kelsey_viz = 1;
+end
+if ~exist('KPH_NOISY')
+    KPH_NOISY = 1;
+end
+
 adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
@@ -31,11 +47,6 @@ DRAW_DETECTIONS_FIGURE   = 0000;
 DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
-
-if 0
-    kelsey_planning = 1;
-    kelsey_viz      = 1;
-end
 
 %% open connection
 

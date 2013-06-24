@@ -58,13 +58,16 @@ while 1
     
     if s.is_terminal
         
-        if isfield(model.grammar.symbols(m.g(end).id), 'learntparams')
-            duration_mean = model.grammar.symbols(m.g(end).id).learntparams.duration_mean / m.params.downsample_ratio;
-            duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).learntparams.duration_var / m.params.downsample_ratio^2;
-        else
-            duration_mean = model.grammar.symbols(m.g(end).id).manual_params.duration_mean / m.params.downsample_ratio;
-            duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).manual_params.duration_var / m.params.downsample_ratio^2;
-        end
+        % if isfield(model.grammar.symbols(m.g(end).id), 'learntparams')
+        %     duration_mean = model.grammar.symbols(m.g(end).id).learntparams.duration_mean / m.params.downsample_ratio;
+        %     duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).learntparams.duration_var / m.params.downsample_ratio^2;
+        % else
+        %     duration_mean = model.grammar.symbols(m.g(end).id).manual_params.duration_mean / m.params.downsample_ratio;
+        %     duration_var  = m.params.duration_var_scale * model.grammar.symbols(m.g(end).id).manual_params.duration_var / m.params.downsample_ratio^2;
+        % end
+        s.name
+        duration_mean = 40;
+        duration_var = sqrt(0.01);
             
             
         duration      = nxmakegaussian(m.params.T, duration_mean, duration_var);
