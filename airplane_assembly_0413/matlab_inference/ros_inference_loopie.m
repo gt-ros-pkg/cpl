@@ -3,24 +3,25 @@ loop_var = 1;
 save('loop_var.mat', 'loop_var');
 
 while 1
+    clc; clear; % close all;
+    try
+    kelsey_planning = 1;
+    kelsey_viz      = 1;
+    NAM_NOISE_MODEL = 0;
+    NAM_NOISY = 0;
+    num_trials = 1;
+    
     load('loop_var.mat')
-    if loop_var<=80
-        KPH_NOISY=0;
-        
-    elseif loop_var>80 && loop_var<=160
+    if loop_var<=num_trials*4
         KPH_NOISY=1;
-    elseif loop_var>160 && loop_var<=240
-        KPH_NOISY=-1;    
+    elseif loop_var<=num_trials*4*2
+        KPH_NOISY=0;
+    elseif loop_var<=num_trials*4*3
+        KPH_NOISY=-1;
     else
         exit
     end
-    clc; clear; % close all;
-    try
-    KPH_NOISY = 0;
-    kelsey_planning = 1;
-    kelsey_viz      = 0;
-    NAM_NOISE_MODEL = 0;
-    NAM_NOISY = 0;
+    
     ros_inference_v4_k
             %fclose(ros_tcp_connection);
             %disp 'Inference ended'

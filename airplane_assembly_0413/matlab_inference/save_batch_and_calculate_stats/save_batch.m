@@ -17,7 +17,7 @@ end
 % add
 batch_data(end).action_name_gt = action_names_gt;
 batch_data(end).executedplan   = k.executedplan;
-batch_data(end).multistep_history = k.multistep_history;
+%batch_data(end).multistep_history = k.multistep_history;
 
 
 % save

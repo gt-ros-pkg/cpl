@@ -950,7 +950,14 @@ void handSim::end_the_task()
   ofstream stats_file;
   stats_file.open("stats_big.txt", ios_base::app);  
   if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
-  stats_file<<"aborted"<<','<<handSim::bin_rmv_mistakes<<endl;
+  //stats_file<<"aborted"<<','<<handSim::bin_rmv_mistakes<<endl;
+    
+  double total_time = double(total_time_steps)/double(PUB_RATE);
+  double wait_time_total = double(wait_time_steps)/double(PUB_RATE);
+  double longest_wait_time = double(longest_wait)/double(PUB_RATE);
+
+  stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','
+            <<handSim::bin_rmv_mistakes<<1<<endl;
   stats_file.close();
   
   exit(0);
@@ -964,6 +971,7 @@ void handSim::end_the_task()
     //display viz marker saying human waits
     display_wait_marker();
     long temp_wait=0;
+    bool exit_task = false;
 
     do
       {
@@ -983,8 +991,8 @@ void handSim::end_the_task()
 	//debug
 	//cout<<"Need Bin: "<<bin_to_chk<<endl;
 	if (temp_wait/PUB_RATE > TIMER_LIMIT)
-	  {end_the_task();}
-      }while(ros::ok() && !bin_in_position(bin_to_chk));
+	  exit_task = true;
+    }while(ros::ok() && !bin_in_position(bin_to_chk) || exit_task);
     
     if(temp_wait>handSim::longest_wait){handSim::longest_wait=temp_wait;}
     
@@ -992,6 +1000,9 @@ void handSim::end_the_task()
     total_time_steps += temp_wait;
     //delete human waiting viz marker
     delete_wait_marker();
+
+    if(exit_task)
+      end_the_task();
 
   }
 
@@ -1291,7 +1302,8 @@ void handSim::delete_wait_marker()
     ofstream stats_file;
     stats_file.open("stats_big.txt", ios_base::app);  
     if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
-    stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','<<handSim::bin_rmv_mistakes<<endl;
+    stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','
+              <<handSim::bin_rmv_mistakes<<0<<endl;
     stats_file.close();
   
 
