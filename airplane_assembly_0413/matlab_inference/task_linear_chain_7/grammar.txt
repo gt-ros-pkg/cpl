@@ -1,0 +1,30 @@
+
+
+% grammar rule
+
+S       > Bin1 and Bin2 and Bin3 and Bin4
+Bin1    > b1_1 and b1_2 and b1_3 and b1_4 and b1_5 and b1_6
+Bin2    > b2_1
+Bin3    > b3_1
+Bin4    > b4_1 and b4_2 and b4_3 and b4_4 and b4_5 and b4_6 
+
+% primitive action
+
+b1_1    3       7  2
+b1_2    3       7  2
+b1_3    3       7  2
+b1_4    3       7  2
+b1_5    3       7  2
+b1_6    3       7  2
+
+b2_1    10      3   0.5
+
+b3_1    7       3   0.5
+
+b4_1    14      3   0.5
+b4_2    14      3   0.3
+b4_3    14      3   0.3
+b4_4    14      5   0.3
+b4_5    14      3   0.3
+b4_6    14      3   0.3
+

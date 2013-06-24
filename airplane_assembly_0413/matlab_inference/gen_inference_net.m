@@ -24,13 +24,16 @@ m.params.compute_terminal_joint = 0;
 m.params.downsample_ratio       = 7;
 m.params.duration_var_scale     = 3;
 m.params.use_start_conditions   = 1;
+m.params.min_duration           = 30;
 
 
 duration_mean = 50 / m.params.downsample_ratio;
 duration_var  = 400 * m.params.duration_var_scale / m.params.downsample_ratio^2;
 m.params.trick.fakedummystep    = nxmakegaussian(m.params.T, duration_mean, duration_var);
-% m.params.trick.fakedummystep    = NaN;
 
+
+% m.params.use_start_conditions = 0;
+% m.params.trick.fakedummystep  = NaN;
 
 m.start_conditions              = ones(length(model.grammar.symbols), m.params.T);
 
@@ -65,6 +68,7 @@ while 1
             
             
         duration      = nxmakegaussian(m.params.T, duration_mean, duration_var);
+        duration(1:round(m.params.min_duration/m.params.downsample_ratio)) = 0;
         durationmat   = zeros(m.params.T,m.params.T);
         
         for j=1:m.params.T

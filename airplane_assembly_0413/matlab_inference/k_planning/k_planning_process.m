@@ -1,4 +1,4 @@
-function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail)
+function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail, debug)
 %K_PLANNING_PROCESS Summary of this function goes here
 %   Detailed explanation goes here
 %   k
@@ -21,12 +21,28 @@ end
 
 executedplan = n.executedplan;
 
-if n.ros_tcp_connection.BytesAvailable > 0
+while n.ros_tcp_connection.BytesAvailable > 0
     disp receive_executedplan
     len = fread(n.ros_tcp_connection, 1, 'int');
     executedplan = char(fread(n.ros_tcp_connection, len, 'char'))';
     executedplan = nx_fromxmlstr(executedplan);
 end
+
+
+n.executedplan  = executedplan;
+
+nt = ceil(nt);
+
+% check robot moving
+if 1
+    if isfield(n, 'executedplan') & isfield(n.executedplan, 'events') & length(n.executedplan.events) > 0
+        if n.executedplan.events(end).matlab_finish_time < 0
+            disp 'Robot moving, skip planning';
+            return;
+        end
+    end
+end
+
 
 
 %% create bin history
@@ -63,7 +79,6 @@ probs       = {};
 slot_states = [];
 bin_names   = {};
 rate        = 30 / m.params.downsample_ratio;
-debug       = 1;
 nowtimesec  = nt * m.params.downsample_ratio / 30;
 
 for i=1:length(n.bin_distributions)
@@ -95,7 +110,9 @@ end;
 
 
 
-[i, best_plan, n.multistep_history] = multistep(probs, slot_states, bins_history, bin_names, nowtimesec, rate, n.multistep_history, debug);
+[i, best_plan, n.multistep_history] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
+                                                n.executedplan, n.action_names_gt, ...
+                                                n.multistep_history, debug);
 
 
 if i == 0,
@@ -130,6 +147,7 @@ bestplan.events(end).sname      = [action.a '   bin  ' num2str(action.bin_id)];
 bestplan.events(end).pre_duration  = 0;
 bestplan.events(end).post_duration = 0;
 bestplan.events(end).optimal_t     = nt;
+bestplan.events(end).bin_ind       = find(action.bin_id == [n.bin_distributions.bin_id], 1);
 
 %% send
 planning_s     = nx_toxmlstr(bestplan);
@@ -138,11 +156,13 @@ fwrite(n.ros_tcp_connection, planning_s, 'char');
 
 %% save
 n.executedplan  = executedplan;
+
 if ~isfield(n, 'bestplans')
-    n.bestplans = bestplan;
-else
-    n.bestplans(end+1) = bestplan;
+    
+    n.bestplans = {};
+
 end
+n.bestplans{end+1} = bestplan;
 
 end
 

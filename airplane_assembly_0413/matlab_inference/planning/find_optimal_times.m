@@ -2,7 +2,7 @@ function [optimalcost_id mintotalcost] = find_optimal_times(costx, t0, d)
 %FIND_OPTIMAL_TIMES Summary of this function goes here
 %   Detailed explanation goes here
 
-[optimalcost_id  mintotalcost] = find_optimal_times_3(costx, t0, d);
+[optimalcost_id  mintotalcost] = find_optimal_times_4(costx, t0, d);
 return;
 
 n  = size(costx, 1);

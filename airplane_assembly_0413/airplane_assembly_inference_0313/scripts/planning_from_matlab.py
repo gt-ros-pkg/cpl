@@ -187,6 +187,10 @@ def check_for_new_planning():
                      if e1.tag == 'events' and e2.tag == 'events' and e1.find('bin_id').text == e2.find('bin_id').text :
                          # valid_new_plan = False
                          aaaaaaaa = 1
+
+             if len(my_plan) > 0 and len(new_matlab_plan) > 0 and my_plan[-1].find('sname').text == new_matlab_plan[0].find('sname').text:
+                 valid_new_plan = False
+
              if valid_new_plan:
                  matlab_plan = new_matlab_plan
                  print 'received a valid plan'
@@ -217,14 +221,24 @@ def execute_plan():
     
     if execute_time-0.1 <= current_time:
 
+        execute_time = rospy.Time.now().secs
+
         # add to my plan
         my_plan.append(e) # remove e from matlab_plan and add to my_plan
+
         my_plan[-1].append(etree.Element('execute_time'))
-        my_plan[-1].append(etree.Element('matlab_execute_time'))
         my_plan[-1].find('execute_time').text = str(execute_time)
+
+        my_plan[-1].append(etree.Element('matlab_execute_time'))
         my_plan[-1].find('matlab_execute_time').text = str(int((execute_time - get_begin_time().secs) * FPS / DOWN_SAMPLE_FACTOR))
         my_plan[-1].find('matlab_execute_time').set('rows', '1')
         my_plan[-1].find('matlab_execute_time').set('cols', '1')
+
+
+        my_plan[-1].append(etree.Element('matlab_finish_time'))
+        my_plan[-1].find('matlab_finish_time').text = str(int(-1))
+        my_plan[-1].find('matlab_finish_time').set('rows', '1')
+        my_plan[-1].find('matlab_finish_time').set('cols', '1')
         
         # send to matlab
         s = etree.tostring(my_plan)
@@ -232,7 +246,7 @@ def execute_plan():
         conn.sendall(s)
 
         # lets the robot MOVE
-        supposed_duration = int(e.find('pre_duration').text) + int(e.find('post_duration').text) 
+        supposed_duration = float(e.find('pre_duration').text) + float(e.find('post_duration').text) 
         supposed_duration = supposed_duration * DOWN_SAMPLE_FACTOR / FPS
         print '>>> start action: ' + my_plan[-1].find('sname').text + ' (' + str(supposed_duration) + 's)'
         move_bin_msg = move_bin()
@@ -248,6 +262,14 @@ def execute_plan():
             rospy.sleep(0.1)
         a2 = rospy.Time.now().to_nsec() / 1000000000.0
         print '>>> finish action in ', (a2 - a1), ' (s) '
+
+        # send updated plan
+        finish_time = rospy.Time.now().secs
+        my_plan[-1].find('matlab_finish_time').text = str(int((finish_time - get_begin_time().secs) * FPS / DOWN_SAMPLE_FACTOR))
+        s = etree.tostring(my_plan)
+        conn.sendall(struct.pack('>i', len(s)))
+        conn.sendall(s)
+ 
             
 #####################################################
 # MAIN

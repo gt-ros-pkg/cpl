@@ -24,9 +24,10 @@ for i = 1:size(distribs,1)
     bin_names{i} = sprintf('Bin %d', i);
 end
 slot_states = [1, 0, 0]; % state of workspace slots (0 if empty, >0 if bin ID occupies)
-nowtimesec = 20; % time (s) of current time
+nowtimesec = 30; % time (s) of current time
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 probs = gen_data(distribs, rate, t_duration);
 history = struct;
-action = multistep(probs, slot_states, [], bin_names, nowtimesec, rate, history, 1)
+debug = 1;
+action = multistep(probs, slot_states, [], bin_names, nowtimesec, rate, history, debug)

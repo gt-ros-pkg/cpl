@@ -14,7 +14,8 @@ end
 er = conv(x, cache_e);
 er = er(T+1:2*T);
 
-assert(nxis_convex(er) == 1);
+
+% assert(nxis_convex(er) == 1);
 
 end
 

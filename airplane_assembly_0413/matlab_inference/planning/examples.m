@@ -1,4 +1,4 @@
-
+clc
 close all;
 addpath(genpath('./../'));
 
@@ -45,7 +45,7 @@ d_costs(6,:) = ef2(distributions(6,:), planning.cache_cost.cost_earlyexpensive);
 
 %% joint optimization
 distance_constraints = [50, 60, 30, 100, 30, 80]; % distance constraints between points
-[optimal_t mintotalcost] = find_optimal_times(d_costs, 10, distance_constraints);
+[optimal_t mintotalcost] = find_optimal_times(d_costs, 10, distance_constraints)
 
 %% drawing
 

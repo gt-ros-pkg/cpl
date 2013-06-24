@@ -1,30 +1,41 @@
 
 %% load data
 addpath(genpath('.'));
+addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 clc; clear; % close all;
-init_for_s3
-init_for_s
+
+%init_for_s3 % linear chain
+% init_for_s % 3 tasks
+init_for_linear_chain_7;
+
+
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-% adjust_detection_var;
+adjust_detection_var; % for adjust detection variance, see that file
 
 %% const
 
 PORT_NUMBER         = 12341;  % must match ROS node param
 BIN_NUM             = 20;     % must match ROS node param
 MAX_NAME_LENGTH     = 20;     % must match ROS node param
-MAX_WS_BINS         = 20;
+MAX_WS_BINS         = 20;     % must match ROS node param
 
 DO_INFERENCE             = 1;
-SEND_INFERENCE_TO_ROS    = 1;
-DRAW_DISTRIBUTION_FIGURE = 99;
+SEND_INFERENCE_TO_ROS    = 0;
+
+DRAW_DISTRIBUTION_FIGURE = 000;
+DRAW_DISTRIBUTION_FIGURE = 399;
 
 DRAW_POSITIONS_FIGURE    = 0;
-DRAW_DETECTIONS_FIGURE   = 0;
+DRAW_DETECTIONS_FIGURE   = 3310;
+
+DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
+kelsey_planning = 1;
+kelsey_viz      = 1;
 
 %% open connection
 
@@ -44,7 +55,11 @@ end
 
 %% init planning
 
-k = k_planning_init(m);
+if kelsey_planning
+    k = k_planning_init(m);
+else
+    k = n_planning2_init(m);
+end
 
 
 %% set up variables
@@ -62,12 +77,14 @@ bins_availability = nan(BIN_NUM, m.params.T);
 
 %% LOOP
 
-while t < m.params.T * m.params.downsample_ratio & t < 6000
+while t < m.params.T * m.params.downsample_ratio
     
     % exist signal
     if ros_tcp_connection.BytesAvailable == 5
+        disp 'Exit signal received'
         break;
     end
+    assert(nt < m.params.T - 10);
     
     %------------------------------------------------
     % get new frame data
@@ -214,49 +231,118 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
     % planning
     %------------------------------------------------
     if nt > 1 & exist('frame_info')
-        k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins);
+        if kelsey_planning
+            k.action_names_gt = action_names_gt;
+            k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz);
+        else
+            k = n_planning2_process(k, m, nt, frame_info);
+        end
     end
     
     
     % ground truth action label
-    if 1
+    if DRAW_DISTRIBUTION_FIGURE & DRAW_GT_ACTIONS
         nx_figure(DRAW_DISTRIBUTION_FIGURE);
         
-        if isfield(k, 'executedplan')
+        if isfield(k, 'executedplan') & isfield(k, 'bestplans') 
             subplot(3, 1, 2);
-            plot_plan(k.executedplan);
+            xlim([0 m.params.T]);
+            plot_plan({k.executedplan k.bestplans{end}});
+            %plot_plan({k.executedplan});
         end;
         
-        subplot(3, 1, 3);
-        cla
-        ylim([-1 2]);
-        xlim([0 m.params.T]);
-        grid on;
-        hold on;
-        plot([nt nt], [-999 999], 'g');
-        for i=1:length(action_names_gt)
-            thestart = action_names_gt(i).start;
-            theend   = nt;
-            if i < length(action_names_gt)
-                theend = action_names_gt(i+1).start-1;
+        % plot kelsey graph
+        if 1 & isfield(k, 'executedplan') & isfield(k, 'bestplans') 
+            subplot(3, 1, 2);
+            cla;
+            hold on;
+            
+            for i=1:length(k.bin_distributions)
+            
+                % plot waiting
+                for j=1:length(action_names_gt)
+                    if length(action_names_gt(j).name) >= 7 & strcmp( action_names_gt(j).name(1:7), 'Waiting')
+                        if j < length(action_names_gt)
+                            h=plot([action_names_gt(j).start action_names_gt(j+1).start], [0 0], 'y', 'LineWidth', 1000);
+                            uistack(h, 'bottom');
+                        else
+                            h=plot([action_names_gt(j).start nt], [0 0], 'y', 'LineWidth', 1000);
+                            uistack(h, 'bottom');
+                        end
+                    end
+                end
+                
+                % plot actions
+                for a = k.executedplan.events
+                    if a.bin_id == k.bin_distributions(i).bin_id
+                        plot([a.matlab_execute_time nxifelse(a.matlab_finish_time < 0, a.matlab_execute_time+a.pre_duration+a.post_duration, a.matlab_finish_time)], ...
+                            [-i -i], nxifelse( a.sname(1) == 'A' , 'b', 'r'), 'LineWidth', 20);
+                    end
+                end
+                if isfield(k.bestplans{end}, 'events')
+                for a = k.bestplans{end}.events
+                    if a.bin_id == k.bin_distributions(i).bin_id
+                        plot([a.optimal_t-a.pre_duration a.optimal_t+a.post_duration], ...
+                            [-i -i], nxifelse( a.sname(1) == 'A' , 'b', 'r'), 'LineWidth', 20);
+                        plot([a.optimal_t-1 a.optimal_t+1], ...
+                            [-i -i], 'w', 'LineWidth', 20);
+                        text(a.optimal_t+a.post_duration, -i, a.sname);
+                    end
+                end
+                end
+                
+                % plot bin available
+                s = nan;
+                for j=1:m.params.T
+                    if isnan(s) & bins_availability(k.bin_distributions(i).bin_id,j) == 1
+                        s = j;
+                    end
+                    if ~isnan(s) & bins_availability(k.bin_distributions(i).bin_id,j) ~= 1
+                    	plot([s j-1], [-i -i], 'g', 'LineWidth', 10);
+                        s = nan;
+                    end
+                end
+                
             end
             
-            thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
-            performaction = 1;
-            if isempty(thecolor)
-                performaction = 0;
-                thecolor = [0 0 0];
-            end
-            
-            plot([thestart thestart], [0 nxifelse(~performaction, 0, 0.5)], 'color', thecolor);
-            plot([thestart theend], [nxifelse(~performaction, 0, 0.5) 0], 'color', thecolor);
-            if action_names_gt(i).name(end) == '1'
-                text(thestart, 1, action_names_gt(i).name);
-            end
-            text(nt, 0, action_names_gt(end).name);
+            plot([nt nt], [-999 999], 'g');
+            hold off;
+            ylim([-length(k.bin_distributions)-1 0]);
         end
-        hold off;
-       
+        
+        
+        if 1 % plot action_names_gt
+            subplot(3, 1, 3);
+            cla
+            ylim([-1 2]);
+            xlim([0 m.params.T]);
+            grid on;
+            hold on;
+            plot([nt nt], [-999 999], 'g');
+            for i=1:length(action_names_gt)
+                thestart = action_names_gt(i).start;
+                theend   = nt;
+                if i < length(action_names_gt)
+                    theend = action_names_gt(i+1).start-1;
+                end
+
+                thecolor = nxtocolor(actionname2detectorid(action_names_gt(i).name, m.grammar ));
+                if isempty(thecolor)
+                    thecolor = [0 0 0];
+                end
+                not_perform_action = strcmp(action_names_gt(i).name, 'N/A') | ...
+                    strcmp(action_names_gt(i).name, 'Complete') | strcmp(action_names_gt(i).name, 'waiting') | ...
+                    ~isempty(strfind(action_names_gt(i).name, 'Waiting')); 
+
+                plot([thestart thestart], [0 nxifelse(not_perform_action, 0, 0.5)], 'color', thecolor);
+                plot([thestart theend], [nxifelse(not_perform_action, 0, 0.5) 0], 'color', thecolor);
+                if action_names_gt(i).name(end) == '1'
+                    text(thestart, 1, action_names_gt(i).name);
+                end
+                text(nt, 0, action_names_gt(end).name);
+            end
+            hold off;
+        end
     end
     
     
@@ -272,15 +358,9 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
                 i = i + 1;
                 subplot(dnum, 1, i);
                 dr = detection_raw_result(d,:);
-                dr(detection_raw_result(d,:) < 0.1) = 0.1;
-                semilogy(dr);
+                plot(dr);
+                ylim([0, max(detection_raw_result(:))]);
                 legend({['Bin ' num2str(d)]});
-                
-                hold on;
-                x = (log(min(100, dr(nt))) - log(0.1)) / (log(100) - log(0.1));
-                semilogy(nt, dr(nt), '*r');
-                set(gca,'Color', x * [1 0.3 0.3] + (1 - x) * [1 1 1]);
-                hold off;
             end
         end
         
@@ -310,10 +390,15 @@ while t < m.params.T * m.params.downsample_ratio & t < 6000
         end
 
         hold off
+        
     end
     
-    if ~isempty(findall(0,'Type','Figure'))
-        pause(1)
+    % ------
+    
+    if ~kelsey_planning
+        if ~isempty(findall(0,'Type','Figure'))
+            pause(1)
+        end
     end
     
 end
@@ -324,8 +409,11 @@ end
 k = k_planning_terminate(k);
 
 fclose(ros_tcp_connection);
+
 disp 'The End'
 disp([num2str(inference_num * 30 / t) ' inferences per second']);
+
+
 pause(1);
 
 

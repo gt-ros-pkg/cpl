@@ -443,6 +443,7 @@ def main():
     waittime    = 0
     r           = rospy.Rate(FPS)
 
+    task_completed_frame = -1
 
     # processing loop
     global running
@@ -453,7 +454,7 @@ def main():
         send_data_to_matlab()
 	check_and_publish_inference()
 
-        print 'Frame ', framecount, ', lefthand_msgnum ', lefthand_msgnum, ', righthand_msgnum ', righthand_msgnum, ', bin_msgnum ', bin_msgnum, 'Inference_num ', inference_num, ', ', (rospy.Time.now().to_nsec() / 1000000000.0)
+        # print 'Frame ', framecount, ', lefthand_msgnum ', lefthand_msgnum, ', righthand_msgnum ', righthand_msgnum, ', bin_msgnum ', bin_msgnum, 'Inference_num ', inference_num, ', ', (rospy.Time.now().to_nsec() / 1000000000.0)
 
         # sleep till next frame
         if USE_ROS_RATE:
@@ -462,8 +463,19 @@ def main():
             elapsedtime = rospy.Time.now().to_nsec() - begin_time
             waittime    = framecount * 1000000000 / FPS - elapsedtime;
             rospy.sleep(waittime / 1000000000.0)
-        
-   
+
+        # check for the end
+        if framecount >= (T - 20) * DOWN_SAMPLING_RATE:
+            print 'Max time exceeded. Quit inference_from_matlab'
+            break
+        if action_name == 'Complete' and task_completed_frame < 0:
+            task_completed_frame = framecount
+        if task_completed_frame > 0 and framecount - task_completed_frame > 100:
+            print 'Task completed. Quit inference_from_matlab'
+            break
+      
+
+
     running = False
 
     # final sumary
@@ -476,16 +488,17 @@ def main():
 
 
 if __name__ == '__main__':
-   main()
-    # try:
-    #    main()
-    # except Exception as e:
-    #    print e
-    # finally:
-    #    conn.sendall('exit!'); # exist signal
-    #    conn.close()
-    #    s.close()
-    #    sys.exit()
+
+     try:
+        main()
+     except Exception as e:
+        print e
+     finally:
+        conn.sendall('exit!'); # exist signal
+        rospy.sleep(2)
+        conn.close()
+        s.close()
+        sys.exit()
 
 
 

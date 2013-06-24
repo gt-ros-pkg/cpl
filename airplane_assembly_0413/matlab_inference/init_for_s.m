@@ -2,9 +2,8 @@
 MODEL_PATH = 's/model';
 
 DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'Nose_A', 'nose_a1', 'Wing_AT', 'wing_at1', 'Tail_AT','tail_at1', 'tail_at2', 'tail_at3'};
-DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'nose_h1', 'nose_a1', 'Wing_AT', 'Wing_AD', 'Wing_H'};
+DRAW_START_DISTRIBUTION  = {'Body', 'body1','body6', 'nose_h1', 'nose_a1', 'wing_at1', 'wing_ad1', 'wing_h1'};
 DRAW_END_DISTRIBUTION    = {'S'};
-
 
 
 bin_req.bin_id        = {3, 11, 10, 12, 2, 7, 14, 15, 13};
