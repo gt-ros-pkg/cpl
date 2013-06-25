@@ -11,7 +11,7 @@ do
 for j in {1..4}
 do
 
-for k in {1..5}
+for k in {1..1}
 do
 
    echo "Noise $i, simulation case $j, trial $k"

@@ -13,11 +13,9 @@ while 1
     
     load('loop_var.mat')
     if loop_var<=num_trials*4
-        KPH_NOISY=0;
+        KPH_NOISY=-1;
     elseif loop_var<=num_trials*4*2
         KPH_NOISY=0;
-    elseif loop_var<=num_trials*4*3
-        KPH_NOISY=-1;
     else
         exit
     end

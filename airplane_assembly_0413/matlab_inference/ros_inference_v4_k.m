@@ -10,12 +10,12 @@ init_for_s3 % linear chain
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-if 1
+if 0
     kelsey_planning = 1;
     kelsey_viz      = 1;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
-    KPH_NOISY=0;
+    KPH_NOISY=-1;
 end
 
 adjust_detection_var; % for adjust detection variance, see that file
