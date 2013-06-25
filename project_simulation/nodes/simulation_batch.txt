@@ -2,18 +2,16 @@
 
 #MPL_LD_SPL_LD
 rosparam set /prob_percept_screw 0.0
-rosparam set /add_hand_off 0.0002
+rosparam set /add_hand_off 0.0
 rosparam set /add_duration 0.0
 
-num_trials=1
-
-for i in {1..3}
+for i in {1..2}
 do
 
 for j in {1..4}
 do
 
-for k in {1..$num_trials}
+for k in {1..5}
 do
 
    echo "Noise $i, simulation case $j, trial $k"
@@ -36,18 +34,18 @@ do
 	PID5=$!
 
     sleep 5
-    if [$j -eq 1] then
+    if [ $j -eq 1 ]; then
         echo "No perceptual, no durational"
-        rosrun project_simulation hands_sim linear_chain_1 n $i
-    if [$j -eq 2] then
+        rosrun project_simulation hands_sim linear_chain_1 n $k
+    elif [ $j -eq 2 ]; then
         echo "No perceptual, high durational"
-        rosrun project_simulation hands_sim linear_chain_8 n $i
-    if [$j -eq 3] then
+        rosrun project_simulation hands_sim linear_chain_8 n $k
+    elif [ $j -eq 3 ]; then
         echo "High perceptual, no durational"
-        rosrun project_simulation hands_sim linear_chain_9 n $i
+        rosrun project_simulation hands_sim linear_chain_9 n $k
     else
         echo "High perceptual, high durational"
-        rosrun project_simulation hands_sim linear_chain_10 n $i
+        rosrun project_simulation hands_sim linear_chain_10 n $k
     fi
     sleep 5
 
