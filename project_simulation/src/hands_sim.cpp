@@ -57,7 +57,7 @@ boost::variate_generator<boost::mt19937&,
 
 //-------------PARAMETERS
 //standard deviation of the gaussian for simulated sensor noise
-double PUB_NOISE_DEV = 0.005;
+double PUB_NOISE_DEV = 0*0.005;
 //standard deviation of the gaussian for random noise when performing 
 //task with a part
 double WALK_DEV = 0.1;
@@ -72,7 +72,7 @@ double HAND_MAX_VEL = 1.0;// m/s
 //amount of time the hand waits at a bin (simulate picking from it)
 double TIME_TO_WAIT_AT_BIN = 0.3; //seconds
 //time waiting before starting the first task
-double WAIT_FIRST_ACTION = 3.0; //seconds
+double WAIT_FIRST_ACTION = 6.0; //seconds
 //probability of perceptual screw-up
 double PROB_PERCEPT_SCREW;
 //Duration of the screw-up, mean & standard-dev
@@ -532,7 +532,8 @@ handSim::handSim(string task_name, bool cheat)
     
   //hand-offset in bin frame
   hand_t_mean[0]=0.0091831;hand_t_mean[1]=-0.13022;hand_t_mean[2]=-0.022461;
-  hand_t_var[0]=0.0006461+ADD_HAND_OFF_STD;hand_t_var[1]=0.0005190+ADD_HAND_OFF_STD;hand_t_var[2]=0.0001483+ADD_HAND_OFF_STD;  
+  //TODO - add the variances back in
+  hand_t_var[0]=0*0.0006461+ADD_HAND_OFF_STD;hand_t_var[1]=0*0.0005190+ADD_HAND_OFF_STD;hand_t_var[2]=0*0.0001483+ADD_HAND_OFF_STD;  
   
   //percept screw-up
   cur_screw_l = false;
@@ -1656,9 +1657,9 @@ int main(int argc, char** argv)
 
   ros::init(argc, argv, "hand_simulator");
 
-  ros::param::param<double>("/prob_percept_screw", PROB_PERCEPT_SCREW, 0.001);
-  ros::param::param<double>("/add_hand_offset", ADD_HAND_OFF_STD, 2.0);
-  ros::param::param<double>("/add_duration", ADD_DUR_STD, 2.0);
+  ros::param::param<double>("/prob_percept_screw", PROB_PERCEPT_SCREW, 0*0.001);
+  ros::param::param<double>("/add_hand_offset", ADD_HAND_OFF_STD, 0*2.0);
+  ros::param::param<double>("/add_duration", ADD_DUR_STD, 0*2.0);
 
   bool noprompt;
   if(argc == 1) {

@@ -34,7 +34,7 @@ while 1
     load('loop_var.mat')
     loop_var = loop_var+1;
     save('loop_var.mat', 'loop_var');
-    save_batch;
+    %save_batch;
     
     disp 'Start again in 5 seconds...'
     pause(5);

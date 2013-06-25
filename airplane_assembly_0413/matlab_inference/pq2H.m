@@ -20,7 +20,7 @@ function H = pq2H( pq )
     
         H          = eye(4);
         H(1:3,4)   = pq(1:3)';
-        H(1:3,1:3) = quat2dcm(pq(4:7)')';
+        H(1:3,1:3) = quat2dcm(pq([7 4 5 6])')';
     end
 %     disp(pq');
 %     assert(norm(H - H2) < 10e-3);

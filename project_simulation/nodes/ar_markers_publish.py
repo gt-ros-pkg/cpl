@@ -28,8 +28,8 @@ PUB_RATE = 30
 workspace = ['L0', 'L1', 'L2']
 
 #noise
-location_noise = 0.006
-orientation_noise = 0.025
+location_noise = 0.006*0
+orientation_noise = 0.025*0
 
 #possible locations
 slocations = [ 

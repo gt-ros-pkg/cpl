@@ -200,7 +200,7 @@ def send_data_to_matlab():
                 p = webcam_to_w.dot([p.x, p.y, p.z, 1])
                 o = bin.pose.pose.orientation
                 o = tf.transformations.quaternion_multiply(tf.transformations.quaternion_from_matrix(webcam_to_w), [o.x, o.y, o.z, o.w])
-                send_matlab_floats([float(p[0]), float(p[1]), float(p[2]), o[0], o[1], o[2], o[3]])              
+                send_matlab_floats([float(p[0]), float(p[1]), float(p[2]), -o[0], -o[1], -o[2], -o[3]])              
 
         if bin_exist == False:
             send_matlab_floats([0, 0, 0, 0, 0, 0, 0])
