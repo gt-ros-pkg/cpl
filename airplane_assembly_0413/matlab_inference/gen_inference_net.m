@@ -128,7 +128,6 @@ while 1
     
 
 end
-pause
 
 %% set up inference struct
 for i=1:length(m.g)
