@@ -40,19 +40,19 @@ else
 
     if KPH_NOISY == 1
         % High noise
-        m.detection.params.detector_var_prior           = 0.02 * eye(3);
-        m.detection.params.latent_noise                 = 3;
-        m.detection.params.future_weight                = 3;
+        m.detection.params.detector_std_prior  = 0.02;
+        m.detection.params.latent_noise        = 3;
+        m.detection.params.future_weight       = 3;
     elseif KPH_NOISY == 0
-        % Low noise
-        m.detection.params.detector_var_prior           = 0.005 * eye(3);
-        m.detection.params.latent_noise                 = 0.1;
-        m.detection.params.future_weight                = 0.1;
+        % Medium noise
+        m.detection.params.detector_std_prior  = 0.1;
+        m.detection.params.latent_noise        = 0.5;
+        m.detection.params.future_weight       = 0.1;
     else
-        % Really low noise
-        m.detection.params.detector_var_prior           = 0.005 * eye(3);
-        m.detection.params.latent_noise                 = 0.01;
-        m.detection.params.future_weight                = 0.01;
+        % Low noise
+        m.detection.params.detector_std_prior  = 0.1;
+        m.detection.params.latent_noise        = 0.0;
+        m.detection.params.future_weight       = 1.0;
     end
 end
 

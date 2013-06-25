@@ -72,6 +72,8 @@ nt              = 0;
 inference_num   = 0;
 
 detection_raw_result  = ones(length(m.detection.result), m.params.T);
+dists_raw_result  = ones(length(m.detection.result), m.params.T);
+min_hand_pos = ones(1,4);
 m.start_conditions(:) = 1;
 
 action_names_gt   = struct([]);
@@ -132,9 +134,17 @@ while t < m.params.T * m.params.downsample_ratio
         
         % run detection on new frame
         m.detection.params.nam_noise_model = NAM_NOISE_MODEL;
-        d = run_action_detections(frame_info, m.detection);
-        d(find(isnan(d))) = 1;
+        [d,dists,min_hand_pos] = run_action_detections(frame_info, m.detection, min_hand_pos);
+        d(find(isnan(d))) = 0;
         detection_raw_result(:,nt) = d;
+        dists_raw_result(:,nt) = dists;
+        if 1
+            figure(22)
+            subplot(2,1,1)
+            plot(detection_raw_result')
+            subplot(2,1,2)
+            plot(dists_raw_result')
+        end
         
         % update start condition
         for b=1:length(m.detection.detectors)
