@@ -14,7 +14,7 @@ m.detection.onedetector.mean_detection_score
 %% value
 
 m.detection.params.detector_var_scale           = 4;
-m.detection.onedetector.mean_detection_score    = 10;
+m.detection.onedetector.mean_detection_score    = 4;
 
 %m.detection.params.detector_var_prior           = 5;
 %m.detection.onedetector.mean_detection_score    = 0.001;
