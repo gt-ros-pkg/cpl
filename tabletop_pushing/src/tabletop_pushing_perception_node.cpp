@@ -170,7 +170,7 @@ class ScoredIdxComparison
   {
     if (descend_)
     {
-      return (lhs.score > rhs.score);
+      return (lhs.score < rhs.score);
     }
     else
     {
@@ -1212,15 +1212,15 @@ class TabletopPushingPerceptionNode
     if (rotate_push)
     {
       gamma_local = 0.05;
-      gamma_global = 0.25;
-      mixture_weight = 0.6;
+      gamma_global = 2.5;
+      mixture_weight = 0.7;
     }
     cv::Mat K = tabletop_pushing::computeChi2Kernel(sds, train_feat_path.str(), local_length, global_length,
                                                     gamma_local, gamma_global, mixture_weight);
 
     std::vector<double> pred_push_scores;
     std::priority_queue<ScoredIdx, std::vector<ScoredIdx>, ScoredIdxComparison> pq(
-        (ScoredIdxComparison()) );
+        (ScoredIdxComparison(rotate_push)) );
     XYZPointCloud hull_cloud_obj;
     hull_cloud_obj.width = hull_cloud.size();
     hull_cloud_obj.height = 1;
@@ -1243,7 +1243,7 @@ class TabletopPushingPerceptionNode
       double pred_score;
       if (rotate_push)
       {
-        pred_score = raw_pred_score;
+        pred_score = exp(raw_pred_score);
       }
       else
       {
@@ -1449,7 +1449,7 @@ class TabletopPushingPerceptionNode
       cv::line(display_frame, a_img, b_img, cv::Scalar(0,0,0),3);
       if (i == chosen_idx)
       {
-        ROS_INFO_STREAM("chosen_idx is: " << chosen_idx);
+        // ROS_INFO_STREAM("chosen_idx is: " << chosen_idx);
         cv::line(display_frame, a_img, b_img, cv::Scalar(0,255,255),1);
       }
       else
@@ -2040,7 +2040,7 @@ class TabletopPushingPerceptionNode
       double score;
       if(rotate_push)
       {
-        score = score/M_PI;
+        score = 2.0*push_scores[i]/M_PI;
       }
       else
       {
