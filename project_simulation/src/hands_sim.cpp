@@ -957,7 +957,7 @@ void handSim::end_the_task()
   double longest_wait_time = double(longest_wait)/double(PUB_RATE);
 
   stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','
-            <<handSim::bin_rmv_mistakes<<1<<endl;
+            <<handSim::bin_rmv_mistakes<<','<<1<<endl;
   stats_file.close();
   
   exit(0);
@@ -990,9 +990,11 @@ void handSim::end_the_task()
 	++temp_wait;
 	//debug
 	//cout<<"Need Bin: "<<bin_to_chk<<endl;
-	if (temp_wait/PUB_RATE > TIMER_LIMIT)
+	if (temp_wait/PUB_RATE > TIMER_LIMIT) {
 	  exit_task = true;
-    }while(ros::ok() && !bin_in_position(bin_to_chk) || exit_task);
+      break;
+    }
+    }while(ros::ok() && !bin_in_position(bin_to_chk));
     
     if(temp_wait>handSim::longest_wait){handSim::longest_wait=temp_wait;}
     
@@ -1040,8 +1042,14 @@ void handSim::end_the_task()
 //return only positive samples
 double handSim::samp_gauss_pos_rep(double mean, double std_dev)
 {
-  double sample = mean + std_dev*NORM_GEN_REP();
-  while(sample<=0){sample = mean + std_dev* NORM_GEN_REP();}
+  double sample = 0;
+  for(int i=0;i<50;i++) {
+      if(sample <= 0)
+          sample = mean + std_dev* NORM_GEN_REP();
+      else
+          NORM_GEN_REP();
+  }
+  if(sample == 0) sample = 1e-10;
   return sample;
 }
 
@@ -1303,7 +1311,7 @@ void handSim::delete_wait_marker()
     stats_file.open("stats_big.txt", ios_base::app);  
     if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
     stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','
-              <<handSim::bin_rmv_mistakes<<0<<endl;
+              <<handSim::bin_rmv_mistakes<<','<<0<<endl;
     stats_file.close();
   
 
