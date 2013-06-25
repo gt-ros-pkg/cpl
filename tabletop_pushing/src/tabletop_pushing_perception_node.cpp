@@ -809,7 +809,7 @@ class TabletopPushingPerceptionNode
         // HACK: We set the name to "rand" if we are testing with rand
         if (req.start_loc_param_path.compare("rand") == 0)
         {
-          chosen_loc = chooseRandomPushStartLoc(cur_obj, cur_state);
+          chosen_loc = chooseRandomPushStartLoc(cur_obj, cur_state, rotate_push);
         }
         else
         {
@@ -1320,7 +1320,7 @@ class TabletopPushingPerceptionNode
     return best_loc;
   }
 
-  ShapeLocation chooseRandomPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state)
+  ShapeLocation chooseRandomPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool rotate_push)
   {
     // Get features for all of the boundary locations
     // TODO: Set these values somewhere else
@@ -1346,8 +1346,8 @@ class TabletopPushingPerceptionNode
       loc.boundary_loc_ = hull_cloud[chosen_idx];
       loc.descriptor_ = sds[chosen_idx];
       float new_push_angle;
-      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, cur_obj, loc, new_push_angle, false);
-      if (goalPoseValid(goal_pose))
+      Pose2D goal_pose =  generateStartLocLearningGoalPose(cur_state, cur_obj, loc, new_push_angle, rotate_push);
+      if (rotate_push || goalPoseValid(goal_pose))
       {
         // TODO: Display boundary with 0 scores
         ROS_INFO_STREAM("Choosing random idx: " << chosen_idx);
