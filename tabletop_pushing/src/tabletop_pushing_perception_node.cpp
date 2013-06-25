@@ -2040,7 +2040,7 @@ class TabletopPushingPerceptionNode
       double score;
       if(rotate_push)
       {
-        score = 2.0*push_scores[i]/M_PI;
+        score = push_scores[i]/M_PI;
       }
       else
       {
