@@ -25,7 +25,7 @@ m.params.downsample_ratio       = 7;
 m.params.duration_var_scale     = 3;
 m.params.use_start_conditions   = 1;
 m.params.min_duration           = 30;
-rate = 30/m.params.downsample_ratio;
+rate = 30;
 
 
 duration_mean = 50 / m.params.downsample_ratio;
