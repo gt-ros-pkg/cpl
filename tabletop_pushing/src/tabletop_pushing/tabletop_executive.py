@@ -1187,7 +1187,7 @@ if __name__ == '__main__':
     max_pushes = 500
     node = TabletopExecutive(use_singulation, use_learning)
     # Set the path to the learned parameter file here to use the learned SVM parameters
-    hold_out_objects = ['food_box', 'large_brush', 'small_brush', 'soap_box'] #, 'camcorder', 'toothpaste']
+    hold_out_objects = ['small_brush', 'soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush']
     for hold_out_object in hold_out_objects:
         if not running:
             break
@@ -1196,9 +1196,9 @@ if __name__ == '__main__':
         # rospy.loginfo('Collecting training data for object ' + hold_out_object)
         # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
         #     hold_out_object+'.model'
-        # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_rotate/push_svm_no_'+\
-        #     hold_out_object+'.model'
-        start_loc_param_path = 'rand'
+        start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_rotate/push_svm_no_'+\
+            hold_out_object+'.model'
+        # start_loc_param_path = 'rand'
         # start_loc_param_path = ''
         if use_singulation:
             node.run_singulation(max_pushes, use_guided)
