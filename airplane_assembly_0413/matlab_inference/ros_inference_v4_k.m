@@ -4,9 +4,9 @@ addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 %clc; clear; % close all;
 
-init_for_s3 % linear chain
+%init_for_s3 % linear chain
 % init_for_s % 3 tasks
-
+init_for_linear_chain_robot
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
