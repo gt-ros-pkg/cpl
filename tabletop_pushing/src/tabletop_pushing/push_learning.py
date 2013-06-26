@@ -449,7 +449,7 @@ class StartLocPerformanceAnalysis:
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
         self.analyze_spin_push = self.analyze_spin_push_net_spin
 
-    def compare_predicted_and_observed_push_scores(self, in_file_name, out_file_name=None):
+    def compare_predicted_and_observed_push_scores(self, in_file_name, out_file_name=None, use_spin=False):
         # Read in data
         plio = CombinedPushLearnControlIO()
         plio.read_in_data_file(in_file_name)
@@ -459,7 +459,10 @@ class StartLocPerformanceAnalysis:
         for i, p in enumerate(plio.push_trials):
             pred_score = p.trial_start.score
             # Compute observed push score
-            observed_score = self.analyze_straight_line_push(p)
+            if use_spin:
+                observed_score = self.analyze_spin_push(p)
+            else:
+                observed_score = self.analyze_straight_line_push(p)
             print 'Trial [',i,'] : Pred: ', pred_score, '\tObserved: ', observed_score
             if file_out is not None:
                 trial_line = str(pred_score) + ' ' + str(observed_score) + '\n'
@@ -467,7 +470,7 @@ class StartLocPerformanceAnalysis:
         if file_out is not None:
             file_out.close()
 
-    def compute_observed_push_scores_final_errors(self, in_file_name, out_file_name=None):
+    def compute_observed_push_scores_final_errors(self, in_file_name, out_file_name=None, use_spin=False):
         # Read in data
         plio = CombinedPushLearnControlIO()
         plio.read_in_data_file(in_file_name)
@@ -476,11 +479,15 @@ class StartLocPerformanceAnalysis:
             file_out = file(out_file_name, 'w')
         for i, p in enumerate(plio.push_trials):
             final_pose = p.trial_end.final_centroid
+            final_orientation = p.trial_end.final_orientation
             goal_pose = p.trial_start.goal_pose
-            # Compute observed push score
-            err_x = goal_pose.x - final_pose.x
-            err_y = goal_pose.y - final_pose.y
-            final_error = hypot(err_x, err_y)
+            if use_spin:
+                final_error = abs(subPIAngle(goal_pose.theta - final_orientation))
+            else:
+                # Compute observed push score
+                err_x = goal_pose.x - final_pose.x
+                err_y = goal_pose.y - final_pose.y
+                final_error = hypot(err_x, err_y)
             if file_out is not None:
                 trial_line = str(final_error)+'\n'
                 file_out.write(trial_line)
@@ -1690,22 +1697,24 @@ def read_and_score_raw_files():
       slp = StartLocPerformanceAnalysis()
       slp.generate_example_file(file_in, file_out, use_spin=use_spin)
 
-def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
+def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None, use_spin=False):
     slp = StartLocPerformanceAnalysis()
-    slp.compare_predicted_and_observed_push_scores(in_file_name, out_file_name)
+    slp.compare_predicted_and_observed_push_scores(in_file_name, out_file_name, use_spin)
 
-def compute_predicted_and_observed_push_scores(in_file_name, out_file_name=None):
+def compute_predicted_and_observed_push_scores(in_file_name, out_file_name=None, use_spin=False):
     slp = StartLocPerformanceAnalysis()
-    slp.compute_observed_push_scores_final_errors(in_file_name, out_file_name)
+    slp.compute_observed_push_scores_final_errors(in_file_name, out_file_name, use_spin)
 
 def analyze_predicted_and_observed_batch():
   # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
   # class_dirs = ['camcorder1', 'food_box1', 'large_brush1', 'small_brush1','soap_box1', 'toothpaste1']
-  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
   base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_rand_results/'
   # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_test_results/'
   class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
   out_dir = base_dir+'analysis/'
+  use_spin = True
+
   for c in class_dirs:
       in_dir = base_dir+c+'/'
       files = os.listdir(in_dir)
@@ -1718,8 +1727,8 @@ def analyze_predicted_and_observed_batch():
       file_in = in_dir+file_name
       file_out = out_dir+c+'.txt'
       file_out_final_error = out_dir+c+'-final-error.txt'
-      # compare_predicted_and_observed_push_scores(file_in, file_out)
-      compute_predicted_and_observed_push_scores(file_in, file_out_final_error)
+      compare_predicted_and_observed_push_scores(file_in, file_out, use_spin)
+      compute_predicted_and_observed_push_scores(file_in, file_out_final_error, use_spin)
 
 def rank_straw_scores(file_path):
     straw_file = file(file_path, 'r')
