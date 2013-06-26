@@ -138,7 +138,7 @@ while t < m.params.T * m.params.downsample_ratio
         d(find(isnan(d))) = 0;
         detection_raw_result(:,nt) = d;
         dists_raw_result(:,nt) = dists;
-        if 1
+        if 0
             figure(22)
             subplot(2,1,1)
             plot(detection_raw_result')
@@ -157,7 +157,6 @@ while t < m.params.T * m.params.downsample_ratio
             %     condition_no = 1;
             % end
             condition_no = ~any(b == ws_bins); % true if bin not in ws
-            
             bins_availability(b,nt) = ~condition_no;
             
             if condition_no
@@ -247,7 +246,8 @@ while t < m.params.T * m.params.downsample_ratio
     if nt > 1 & exist('frame_info')
         if kelsey_planning
             k.action_names_gt = action_names_gt;
-            k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz);
+            k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz...
+                                    , detection_raw_result);
         else
             k = n_planning2_process(k, m, nt, frame_info);
         end

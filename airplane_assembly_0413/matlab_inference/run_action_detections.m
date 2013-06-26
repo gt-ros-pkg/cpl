@@ -30,6 +30,7 @@ function [detections, dists, min_hand_pos] = run_action_detections( frame_info, 
             else
                 cur_mean = data.onedetector.learnt.mean;
                 cur_std = data.params.detector_std_prior;
+                pure_detect_weight = data.params.pure_detect_weight;
                 latent_noise = data.params.latent_noise;
                 future_weight = data.params.future_weight;
                 max_norm_pdf = normpdf(0,0,cur_std);
@@ -42,8 +43,8 @@ function [detections, dists, min_hand_pos] = run_action_detections( frame_info, 
                     min_hand_pos = [dists(d), closest_hand'];
                 end
                 hand_dist = norm(closest_hand - new_mean);
-                detected_lik = normpdf(hand_dist, 0, cur_std) / max_norm_pdf;
-                detections(d) = (detected_lik + latent_noise) / future_weight;
+                detected_lik = normpdf(hand_dist, 0, cur_std)/ max_norm_pdf;
+                detections(d) = (detected_lik*pure_detect_weight + latent_noise) / future_weight;
                 % detections(d) = (mvnpdf(closest_hand, 0*cur_mean, cur_var) + ...
                 %                  latent_noise) / future_weight;
                 

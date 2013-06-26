@@ -603,6 +603,7 @@ handSim::handSim(string task_name, bool cheat)
     cout<< "Can't get transformation"<<endl;
     exit(-1);
   }
+  ros::Duration(5).sleep();
 }
   
 //set values of one array to another
@@ -1029,14 +1030,14 @@ void handSim::end_the_task()
   {
     double sample = mean + std_dev*NORM_GEN();
     while(sample<=0){sample = mean + std_dev*NORM_GEN();}
-    return sample;
+    return sample*0+mean;
   }
 
   //return sample
   double handSim::samp_gauss(double mean, double std_dev)
   {
     double sample = mean + std_dev*NORM_GEN();
-    return sample;
+    return sample*0+mean;
   }
 
 // REPLICATEABLE GAUSSIAN SAMPLING

@@ -1,4 +1,4 @@
-function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail, debug)
+function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail, debug, detection_raw_result)
 %K_PLANNING_PROCESS Summary of this function goes here
 %   Detailed explanation goes here
 %   k
@@ -155,7 +155,7 @@ end
 
 [i, best_plan, n.multistep_history] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
                                                 event_hist, waiting_times, ...
-                                                n.multistep_history, debug);
+                                                n.multistep_history, debug, detection_raw_result);
 
 
 if i == 0 || robot_moving

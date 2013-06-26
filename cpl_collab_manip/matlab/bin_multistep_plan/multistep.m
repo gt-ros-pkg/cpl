@@ -1,6 +1,6 @@
 function [action, best_plan, history] = multistep(probs, slot_states, bin_names, ...
                                                   nowtimesec, rate, ...
-                                                  event_hist, waiting_times, history, debug)
+                                                  event_hist, waiting_times, history, debug, detection_raw_result)
 
 planning_params
 
@@ -118,13 +118,24 @@ if exit_early
         subplot(3,1,1)
         visualize_bin_activity([], [], bin_names, ...
                                history, slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, event_hist, waiting_times);
+                               nowtimesec, t, max_time, event_hist, waiting_times, false);
         subplot(3,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time);
+                            nowtimesec, nowtimeind, max_time, false);
         subplot(3,1,3)
         visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
         pause(0.05)
+        
+    elseif debug
+        figure(101)
+        clf
+        subplot(2,1,1)
+        visualize_bin_activity([], [], bin_names, ...
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, t, max_time, event_hist, waiting_times, true);
+        subplot(2,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time, true);
     end
     return
 end
@@ -228,15 +239,21 @@ for i = 1:size(deliv_seqs,1)
     if debug && i == 1
         figure(100+i)
         clf
-        subplot(3,1,1)
+        subplot(4,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
                                history, slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, event_hist, waiting_times);
-        subplot(3,1,2)
+                               nowtimesec, t, max_time, event_hist, waiting_times,false);
+        subplot(4,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time);
-        subplot(3,1,3)
+                            nowtimesec, nowtimeind, max_time, false);
+        subplot(4,1,3)
         visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
+        
+        subplot(4,1,4)
+        max_time_ind = find(t>=max_time,1);
+        plot(t(1:max_time_ind), detection_raw_result(:,1:max_time_ind)')
+        xlim([0 max_time])
+        
         if actions(i) == 0
             action_name = 'WAIT';
         elseif actions(i) > 0
@@ -246,6 +263,17 @@ for i = 1:size(deliv_seqs,1)
         end
         title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
         pause(0.05)
+        
+    elseif debug && i==1
+        figure(100+i)
+        clf
+        subplot(2,1,1)
+        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, t, max_time, event_hist, waiting_times, true);
+        subplot(2,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time, true);
     end
 end
 

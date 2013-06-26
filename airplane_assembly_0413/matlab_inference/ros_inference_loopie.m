@@ -6,15 +6,15 @@ while 1
     clc; clear; % close all;
     try
     kelsey_planning = 1;
-    kelsey_viz      = 1;
+    kelsey_viz      = 0;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
-    num_trials = 1;
+    num_trials = 6;
     
     load('loop_var.mat')
-    if loop_var<=num_trials*4
+    if loop_var<=num_trials*3
         KPH_NOISY=-1;
-    elseif loop_var<=num_trials*4*2
+    elseif loop_var<=num_trials*3*2
         KPH_NOISY=0;
     else
         exit
