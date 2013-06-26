@@ -12,10 +12,10 @@ m.bin_req = bin_req;
 
 if 0
     kelsey_planning = 1;
-    kelsey_viz      = 1;
+    kelsey_viz      = 0;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
-    KPH_NOISY=-1;
+    KPH_NOISY=0;
 end
 
 adjust_detection_var; % for adjust detection variance, see that file

@@ -33,7 +33,7 @@ do
 	rosrun airplane_assembly_inference_0313 planning_from_matlab.py &
 	PID5=$!
 
-    sleep 1
+    #sleep 5
     if [ $j -eq 1 ]; then
         echo "No perceptual, no durational"
         rosrun project_simulation hands_sim linear_chain_robot n $k
@@ -43,9 +43,7 @@ do
     elif [ $j -eq 3 ]; then
         echo "High perceptual, no durational"
         rosrun project_simulation hands_sim linear_chain_robot_miss n $k
-    else
-        echo "High perceptual, high durational"
-        rosrun project_simulation hands_sim linear_chain_10 n $k
+ 
     fi
     sleep 5
 
