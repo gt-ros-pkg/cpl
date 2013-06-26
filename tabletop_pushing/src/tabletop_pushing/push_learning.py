@@ -1702,6 +1702,8 @@ def analyze_predicted_and_observed_batch():
   # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
   # class_dirs = ['camcorder1', 'food_box1', 'large_brush1', 'small_brush1','soap_box1', 'toothpaste1']
   base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_rand_results/'
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_test_results/'
   class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
   out_dir = base_dir+'analysis/'
   for c in class_dirs:
@@ -1773,7 +1775,7 @@ def convert_robot_attempts_file_batch():
     pass
 
 if __name__ == '__main__':
-    # analyze_predicted_and_observed_batch()
+    analyze_predicted_and_observed_batch()
     # read_and_score_raw_files()
-    extract_shape_features_batch()
+    # extract_shape_features_batch()
     # rank_straw_scores_batch()
