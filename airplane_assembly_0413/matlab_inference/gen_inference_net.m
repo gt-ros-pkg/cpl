@@ -37,31 +37,31 @@ m.params.trick.fakedummystep    = nxmakegaussian(m.params.T, duration_mean, dura
 % m.params.trick.fakedummystep  = NaN;
 
 
-%%read from shray's task descriptions and make changes to Nam's model
-task_var = read_task_description('linear_chain_1');
-no_bins_task = numel(task_var);
-%go through various symbols
-for i=1:numel(model.grammar.symbols)
-    %check if terminal
-    if model.grammar.symbols(i).is_terminal == 1
-       temp_bin = model.grammar.symbols(i).detector_id;
-       temp_action_name = strcat('lc1_',model.grammar.symbols(i).name);
-       
-       for j=1:no_bins_task
-          if temp_bin == task_var{j}.bin_id
-             for draw_no = 1:numel(task_var{j}.draw_ids)
-                if task_var{j}.draw_ids{draw_no} == temp_action_name
-                    %temp_action_name
-                    model.grammar.symbols(i).manual_params.duration_mean = task_var{j}.draw_means(draw_no)*rate;
-                    model.grammar.symbols(i).manual_params.duration_var = (task_var{j}.draw_stds(draw_no)*rate)^2;
-                end
-                
-             end
-          end
-       end
-    end
-    
-end
+% %%read from shray's task descriptions and make changes to Nam's model
+% task_var = read_task_description('linear_chain_1');
+% no_bins_task = numel(task_var);
+% %go through various symbols
+% for i=1:numel(model.grammar.symbols)
+%     %check if terminal
+%     if model.grammar.symbols(i).is_terminal == 1
+%        temp_bin = model.grammar.symbols(i).detector_id;
+%        temp_action_name = strcat('lc1_',model.grammar.symbols(i).name);
+%        
+%        for j=1:no_bins_task
+%           if temp_bin == task_var{j}.bin_id
+%              for draw_no = 1:numel(task_var{j}.draw_ids)
+%                 if task_var{j}.draw_ids{draw_no} == temp_action_name
+%                     %temp_action_name
+%                     model.grammar.symbols(i).manual_params.duration_mean = task_var{j}.draw_means(draw_no)*rate;
+%                     model.grammar.symbols(i).manual_params.duration_var = (task_var{j}.draw_stds(draw_no)*rate)^2;
+%                 end
+%                 
+%              end
+%           end
+%        end
+%     end
+%     
+% end
 %%done
 
 
