@@ -1,5 +1,5 @@
 #!/bin/bash
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -35,7 +35,7 @@ do
 
 done
 
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -72,7 +72,7 @@ do
 done
 
 
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -110,7 +110,7 @@ done
 
 
 ################################################
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -146,7 +146,7 @@ do
 
 done
 
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -183,7 +183,7 @@ do
 done
 
 
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -220,7 +220,7 @@ do
 done
 
 #######################################################
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -256,7 +256,7 @@ do
 
 done
 
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
@@ -293,7 +293,7 @@ do
 done
 
 
-for i in {1..3}
+for i in {4..6}
 do
    echo "(((((((((((((((((((Welcome $i times))))))))))))))))"
 
