@@ -9,12 +9,12 @@ while 1
     kelsey_viz      = 0;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
-    num_trials = 3;
+    num_trials = 6;
     
     load('loop_var.mat')
-    if loop_var<=num_trials*3
+    if loop_var<=num_trials*1
         KPH_NOISY=-1;
-    elseif loop_var<=num_trials*3*2
+    elseif loop_var<=num_trials*1*2
         KPH_NOISY=0;
     else
         exit

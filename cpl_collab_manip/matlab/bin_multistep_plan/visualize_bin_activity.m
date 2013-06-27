@@ -29,7 +29,7 @@ for i = 1:size(event_hist,1)
     plot([start_time, end_time], [yval, yval], color,'LineWidth',bar_width*0.8);
 
     if for_humanoids
-        text(max(start_time-1,1), yval+0.3, show_text);
+        text(max(start_time-1,1), yval+0.8, show_text);
     end
 end
 
@@ -39,7 +39,7 @@ for i = 1:size(times,1)
     bin_ind = bin;
     yval = numbins-(bin_ind-1);
     if isrm
-        color = 'y';        
+        color = 'r';        
         %if latest_rmv_bins(bin_ind)<0 || ...
          %   abs(latest_rmv_bins(bin_ind)-times(i,1))>20 
         if times(i,1) >tnow+0.3   
@@ -48,7 +48,7 @@ for i = 1:size(times,1)
             show_text = '';%num2str(abs(latest_rmv_bins(bin_ind)-times(i,1)));%'taken care of';
         end
     else
-        color = 'g';
+        color = 'b';
         %if latest_add_bins(bin_ind)<0 && ...
          %   abs(latest_add_bins(bin_ind)-times(i,1))>20 
         if times(i,1) > tnow+0.3
@@ -61,7 +61,7 @@ for i = 1:size(times,1)
     plot([times(i,1), times(i,2)], [yval, yval],color,'LineWidth',bar_width*0.8);
     % plot([times(i,1), times(i,2)], [yval, yval],color,'LineWidth',bar_width*0.8);
     if for_humanoids
-        text(max(times(i,1)-1,1), max(yval+0.3,1), show_text);
+        text(max(times(i,1)-1,1), max(yval+0.8,1), show_text);
     end
 end
 plot([tnow, tnow], [0, numbins+1], 'g');
