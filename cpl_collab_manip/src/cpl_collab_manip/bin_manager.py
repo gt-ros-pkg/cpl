@@ -53,12 +53,12 @@ class ARTagManager(object):
 
         self.ar_poses = {}
         self.ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, 
-                                       self.ar_cb)
+                                       self.ar_cb, queue_size=1)
         self.clean_mkrs_pub = rospy.Publisher("/ar_pose_marker_clean", AlvarMarkers)
         self.lock = RLock()
 
     def ar_cb(self, msg):
-        with self.lock:
+        if self.lock.acquire(blocking=0):
             cur_time = rospy.get_time()
             for marker in msg.markers:
                 marker.pose.header = marker.header
@@ -67,6 +67,7 @@ class ARTagManager(object):
                 if len(self.ar_poses[marker.id]) == self.filter_size:
                     self.ar_poses[marker.id].popleft()
                 self.ar_poses[marker.id].append([cur_time, marker.pose])
+            self.lock.release()
         if True:
             bin_data = self.get_all_bin_poses()
             new_msg = AlvarMarkers()
@@ -588,7 +589,7 @@ class BinManager(object):
                 reset = True
                 print 'Failed moving bin from %d to %d' % (grasp_tag_num, place_tag_num)
 
-    def do_move_demo(self, ar_bin):
+    def do_move_demo(self):
         reset = True
         while not rospy.is_shutdown():
             if reset:
@@ -617,6 +618,20 @@ class BinManager(object):
                 reset = True
                 print "Failed", bin_id
 
+    def do_plan_demo(self, plan):
+        print plan
+        raw_input("Reset system needed")
+        self.system_reset()
+        raw_input("Ready?")
+
+        for grasp_tag_num, place_tag_num in plan:
+            if rospy.is_shutdown():
+                break
+
+            if not self.move_bin(grasp_tag_num, place_tag_num):
+                print 'Failed moving bin from %d to %d' % (grasp_tag_num, place_tag_num)
+                return
+
 
 def main():
     np.set_printoptions(precision=4)
@@ -637,6 +652,9 @@ def main():
                  action="store_true", default=False,
                  help="Test robot in reality moving a bin around.")
     p.add_option('-a', '--ademo', dest="is_ademo",
+                 action="store_true", default=False,
+                 help="Move above bins.")
+    p.add_option('-p', '--plan', dest="is_plan",
                  action="store_true", default=False,
                  help="Move above bins.")
     p.add_option('-v', '--visualize', dest="is_viz",
@@ -677,7 +695,7 @@ def main():
         f.close()
         arm_prefix = ""
         bm = BinManager(arm_prefix, bin_slots)
-        bm.do_move_demo(5)
+        bm.do_move_demo()
     elif opts.is_ademo:
         f = file(resolve_args(opts.filename), 'r')
         bin_slots = yaml.load(f)['data']
@@ -685,6 +703,14 @@ def main():
         arm_prefix = ""
         bm = BinManager(arm_prefix, bin_slots)
         bm.do_above_demo()
+    elif opts.is_plan:
+        f = file(resolve_args(opts.filename), 'r')
+        bin_slots = yaml.load(f)['data']
+        f.close()
+        arm_prefix = ""
+        bm = BinManager(arm_prefix, bin_slots)
+        plan = [(3,2), (11,1), (2,0), (3,5), (15,2)]
+        bm.do_plan_demo(plan)
     elif opts.is_viz:
         f = file(resolve_args(opts.filename), 'r')
         bin_data = yaml.load(f)['data']

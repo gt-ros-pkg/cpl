@@ -6,6 +6,7 @@ import yaml
 from roslaunch.substitution_args import resolve_args
 from std_msgs.msg import UInt8MultiArray
 from project_simulation.msg import move_bin as move_bin_msg
+from project_simulation.msg import endf_bin
 from cpl_collab_manip.bin_manager import BinManager 
 
 PUB_RATE = 30
@@ -82,6 +83,10 @@ def do_task(task_msg):
                 print 'No empty slot outside workspace. Skipping task.'
                 task_failure()
                 return
+        print '*'*30, 'MOVE OCCURING'
+        print 'bins in workspace-', bm.ar_man.get_filled_slots(True)
+        print 'bins in slots- ', bins_in_slots
+        print 'slot to move to-', slot_to_occupy
         if bm.move_bin(to_move_bin, slot_to_occupy):
             print 'Task Completed'
             task_completion()
@@ -131,10 +136,12 @@ def main():
     task_listen_sub = rospy.Subscriber('move_bin', move_bin_msg, listen_task, queue_size=1)
     #publish work-bins
     pub_work_bins = rospy.Publisher('workspace_bins', UInt8MultiArray)
-    
+    #publish endfactor
+    pub_endf = rospy.Publisher('endfactor_bin', endf_bin)
 
     bins_wrk_msg = UInt8MultiArray()
     no_of_work_bins = len(bm.ar_man.human_slots)
+    endf_msg = endf_bin()
 
     #rospy.spin()
     loop_rate = rospy.Rate(PUB_RATE)
@@ -146,7 +153,15 @@ def main():
         for i in range(no_of_work_bins-len(bins_near_human)):
             bins_near_human.append(0)
         bins_wrk_msg.data = bins_near_human
+
         pub_work_bins.publish(bins_wrk_msg)
+        
+        #debug
+        #print bins_wrk_msg
+        
+        endf_msg.performing_task.data = DOING_TASK
+        pub_endf.publish(endf_msg)
+
         loop_rate.sleep()
 
 if __name__=='__main__':
