@@ -69,6 +69,7 @@ while 1
             
         duration      = nxmakegaussian(m.params.T, duration_mean, duration_var);
         duration(1:round(m.params.min_duration/m.params.downsample_ratio)) = 0;
+        duration      = duration / sum(duration);
         durationmat   = zeros(m.params.T,m.params.T);
         
         for j=1:m.params.T

@@ -11,17 +11,10 @@ m.detection.onedetector.learnt.var
 m.detection.params.detector_var_scale
 m.detection.onedetector.mean_detection_score
 
-%% default value
-% m.detection.params.detector_var_scale = 16;
-% m.detection.params.mean_detection_score_factor = 0.02;
+%% value
 
-% new value
-m.detection.params.detector_var_scale           = 21;
-m.detection.onedetector.mean_detection_score    = 0.2;
-m.detection.params.detector_var_scale           = 12;
-m.detection.onedetector.mean_detection_score    = 0.001;
-m.detection.params.detector_var_scale           = 25;
-m.detection.onedetector.mean_detection_score    = 1;
+m.detection.params.detector_var_scale           = 4;
+m.detection.onedetector.mean_detection_score    = 4;
 
 %m.detection.params.detector_var_prior           = 5;
 %m.detection.onedetector.mean_detection_score    = 0.001;
