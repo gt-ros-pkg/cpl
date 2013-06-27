@@ -112,7 +112,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if exit_early
-    if debug
+    if 0%debug
         figure(101)
         clf
         subplot(3,1,1)
@@ -236,7 +236,7 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug && i == 1
+    if 0%debug && i == 1
         figure(100+i)
         clf
         subplot(4,1,1)
