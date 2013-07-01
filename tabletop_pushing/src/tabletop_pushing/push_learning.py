@@ -47,8 +47,8 @@ import random
 import os
 import subprocess
 
-_VERSION_LINE = '# v0.5'
-_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method [shape_descriptors]'
+_VERSION_LINE = '# v0.6'
+_LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method score [shape_descriptors]'
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
@@ -91,6 +91,7 @@ class PushTrial:
         self.push_angle = 0.0
         self.push_dist = 0.0
         self.continuation = False
+        self.score = -1.0
         self.shape_descriptor = []
 
     def __str__(self):
@@ -130,7 +131,7 @@ class PushLearningIO:
     def write_line(self, init_centroid, init_orientation, final_centroid,
                    final_orientation, goal_pose, push_start_point, behavior_primitive,
                    controller, proxy, which_arm, push_time, object_id,
-                   push_point, precondition_method='centroid_push'):
+                   push_point, precondition_method='centroid_push', push_score=-1):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -140,7 +141,8 @@ class PushLearningIO:
             str(final_centroid.z)+' '+str(final_orientation)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
-            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+'\n'
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(push_time)+' '+precondition_method+' '+\
+            str(push_score)+'\n'
         self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
         self.data_out.write(data_line)
         self.data_out.flush()
@@ -176,6 +178,10 @@ class PushLearningIO:
             push.precondition_method = l.pop()
         else:
             push.precondition_method = 'push_centroid'
+        if len(l) > 0:
+            push.score = float(l.pop())
+        else:
+            push.score = -1.0
         push.shape_descriptor = []
         while len(l) > 0:
             push.shape_descriptor.append(float(l.pop()))
@@ -190,7 +196,7 @@ class PushLearningIO:
 
     def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, push_start_point, behavior_primitive,
                             controller, proxy, which_arm, object_id, precondition_method,
-                            shape_descriptor=None):
+                            predicted_score, shape_descriptor=None):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -200,7 +206,9 @@ class PushLearningIO:
             str(0.0)+' '+str(0.0)+' '+\
             str(goal_pose.x)+' '+str(goal_pose.y)+' '+str(goal_pose.theta)+' '+\
             str(push_start_point.x)+' '+str(push_start_point.y)+' '+str(push_start_point.z)+' '+\
-            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method
+            behavior_primitive+' '+controller+' '+proxy+' '+which_arm+' '+str(0.0)+' '+precondition_method+ ' ' +\
+            str(predicted_score)
+
         if shape_descriptor is not None:
             for s in shape_descriptor:
                 data_line += ' '+str(s)
@@ -374,10 +382,12 @@ class CombinedPushLearnControlIO:
                 if _DEBUG_IO:
                     print 'None of these?'
         data_in.close()
-        print 'object_comments',object_comments
+        # print 'object_comments',object_comments
+        print 'Read in', file_name
         print 'trial_starts',trial_starts
         print 'bad_stops',bad_stops
-        print 'control_headers',control_headers
+        # print 'control_headers',control_headers
+        print 'num trials', len(self.push_trials), '\n'
 
     def write_example_file(self, file_name, X, Y, normalize=False, debug=False):
         data_out = file(file_name, 'w')
@@ -437,14 +447,63 @@ class StartLocPerformanceAnalysis:
 
     def __init__(self):
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
+        self.analyze_spin_push = self.analyze_spin_push_net_spin
 
-    def get_trial_features(self, file_name):
+    def compare_predicted_and_observed_push_scores(self, in_file_name, out_file_name=None, use_spin=False):
+        # Read in data
+        plio = CombinedPushLearnControlIO()
+        plio.read_in_data_file(in_file_name)
+        file_out = None
+        if out_file_name is not None:
+            file_out = file(out_file_name, 'w')
+        for i, p in enumerate(plio.push_trials):
+            pred_score = p.trial_start.score
+            # Compute observed push score
+            if use_spin:
+                observed_score = self.analyze_spin_push(p)
+            else:
+                observed_score = self.analyze_straight_line_push(p)
+            print 'Trial [',i,'] : Pred: ', pred_score, '\tObserved: ', observed_score
+            if file_out is not None:
+                trial_line = str(pred_score) + ' ' + str(observed_score) + '\n'
+                file_out.write(trial_line)
+        if file_out is not None:
+            file_out.close()
+
+    def compute_observed_push_scores_final_errors(self, in_file_name, out_file_name=None, use_spin=False):
+        # Read in data
+        plio = CombinedPushLearnControlIO()
+        plio.read_in_data_file(in_file_name)
+        file_out = None
+        if out_file_name is not None:
+            file_out = file(out_file_name, 'w')
+        for i, p in enumerate(plio.push_trials):
+            final_pose = p.trial_end.final_centroid
+            final_orientation = p.trial_end.final_orientation
+            goal_pose = p.trial_start.goal_pose
+            if use_spin:
+                final_error = abs(subPIAngle(goal_pose.theta - final_orientation))
+            else:
+                # Compute observed push score
+                err_x = goal_pose.x - final_pose.x
+                err_y = goal_pose.y - final_pose.y
+                final_error = hypot(err_x, err_y)
+            if file_out is not None:
+                trial_line = str(final_error)+'\n'
+                file_out.write(trial_line)
+        if file_out is not None:
+            file_out.close()
+
+    def get_trial_features(self, file_name, use_spin=False):
         self.plio = CombinedPushLearnControlIO()
         self.plio.read_in_data_file(file_name)
         Y = []
         X = []
         for i, p in enumerate(self.plio.push_trials):
-            y = self.analyze_straight_line_push(p)
+            if use_spin:
+                y = self.analyze_spin_push(p)
+            else:
+                y = self.analyze_straight_line_push(p)
             if y < 0:
                 continue
             x = p.trial_start.shape_descriptor
@@ -452,8 +511,9 @@ class StartLocPerformanceAnalysis:
             X.append(x)
         return (X,Y)
 
-    def generate_example_file(self, file_in_name, file_out_name, normalize=False, set_train=False, set_test=False):
-        (X, Y) = self.get_trial_features(file_in_name)
+    def generate_example_file(self, file_in_name, file_out_name, normalize=False, set_train=False,
+                              set_test=False, use_spin=False):
+        (X, Y) = self.get_trial_features(file_in_name, use_spin)
         print 'Read in', len(X), 'sample locations'
         self.plio.write_example_file(file_out_name, X, Y, normalize)
         if set_train:
@@ -639,6 +699,30 @@ class StartLocPerformanceAnalysis:
             score = mean_angle_errs
 
         return (score, final_error, total_change, final_angle_diff, final_angle_area)
+
+    def analyze_spin_push_total_spin(self, push_trial):
+        '''
+        Get the average change in heading aggregated over the entire trial
+        '''
+        init_theta = push_trial.trial_start.init_orientation
+        goal_theta = push_trial.trial_start.goal_pose.theta
+
+        delta_thetas = []
+        prev_theta = init_theta
+        for i, pt in enumerate(push_trial.trial_trajectory):
+            cur_theta = pt.x.theta
+            delta_thetas.append(abs(cur_theta-prev_theta))
+            prev_theta = cur_theta
+
+        if len(delta_thetas) < 1:
+            return -1
+        mean_delta_theta = sum(delta_thetas)/len(line_dists)
+        return mean_delta_theta
+
+    def analyze_spin_push_net_spin(self, push_trial):
+        init_theta = push_trial.trial_start.init_orientation
+        final_theta = push_trial.trial_end.final_orientation
+        return abs(subPIAngle(final_theta - init_theta))
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
@@ -1551,6 +1635,7 @@ def write_example_file(file_name, X, Y, normalize=False, debug=False):
         data_line +='\n'
         data_out.write(data_line)
     data_out.close()
+    return (X,Y)
 
 def rewrite_example_file_features(original_file_name, feat_file_name, out_file_name, normalize=False, debug=False):
     old_X, Y = read_example_file(original_file_name)
@@ -1558,12 +1643,15 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     write_example_file(out_file_name, X, Y, normalize, debug)
 
 def extract_shape_features_batch():
-  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
   class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
   # class_dirs = ['toothpaste3']
+  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+
   out_dir = base_dir+'examples_line_dist/'
   feat_dir = base_dir+'examples_line_dist/'
-  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
 
   for c in class_dirs:
       print 'Class:', c
@@ -1577,8 +1665,9 @@ def extract_shape_features_batch():
           print 'ERROR: No data file in directory:', c
           continue
       aff_file = class_dir+data_file
-      score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
-      file_out = out_dir+c[:-1]+'_gt_scores.png'
+      score_file = base_dir+'example_files/'+c+'.txt'
+      # file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
+      file_out = base_dir+'analysis/'+c+'_gt_scores.png'
       print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
           class_dir, file_out, score_file
       p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',
@@ -1586,9 +1675,46 @@ def extract_shape_features_batch():
       p.wait()
 
 def read_and_score_raw_files():
-  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/'
-  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
-  out_dir = base_dir+'examples_line_dist/'
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/point_push/'
+  # class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  # out_dir = base_dir+'examples_line_dist/'
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+  out_dir = base_dir+'example_files/'
+  use_spin = True
+  for i, c in enumerate(class_dirs):
+      in_dir = base_dir+c+'/'
+      files = os.listdir(in_dir)
+      file_name = None
+      for f in files:
+          if f.startswith('aff_learn_out'):
+              file_name = f
+      if file_name is None:
+          continue
+      file_in = in_dir+file_name
+      file_out = out_dir+c+'.txt'
+      print 'Out file:', file_out
+      slp = StartLocPerformanceAnalysis()
+      slp.generate_example_file(file_in, file_out, use_spin=use_spin)
+
+def compare_predicted_and_observed_push_scores(in_file_name, out_file_name=None, use_spin=False):
+    slp = StartLocPerformanceAnalysis()
+    slp.compare_predicted_and_observed_push_scores(in_file_name, out_file_name, use_spin)
+
+def compute_predicted_and_observed_push_scores(in_file_name, out_file_name=None, use_spin=False):
+    slp = StartLocPerformanceAnalysis()
+    slp.compute_observed_push_scores_final_errors(in_file_name, out_file_name, use_spin)
+
+def analyze_predicted_and_observed_batch():
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/hold_out_straight_line_results/'
+  # class_dirs = ['camcorder1', 'food_box1', 'large_brush1', 'small_brush1','soap_box1', 'toothpaste1']
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rand_straight_line_results/'
+  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_rand_results/'
+  # base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_test_results/'
+  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+  out_dir = base_dir+'analysis/'
+  use_spin = True
+
   for c in class_dirs:
       in_dir = base_dir+c+'/'
       files = os.listdir(in_dir)
@@ -1599,11 +1725,66 @@ def read_and_score_raw_files():
       if file_name is None:
           continue
       file_in = in_dir+file_name
-      file_out = out_dir+c[:-1]+'.txt'
-      print file_out
-      slp = StartLocPerformanceAnalysis()
-      slp.generate_example_file(file_in, file_out)
+      file_out = out_dir+c+'.txt'
+      file_out_final_error = out_dir+c+'-final-error.txt'
+      compare_predicted_and_observed_push_scores(file_in, file_out, use_spin)
+      compute_predicted_and_observed_push_scores(file_in, file_out_final_error, use_spin)
+
+def rank_straw_scores(file_path):
+    straw_file = file(file_path, 'r')
+    lines = [l.split() for l in straw_file.readlines()]
+    scores = [float(l[0])*100 for l in lines]
+    major_dists = [float(l[1]) for l in lines]
+    minor_dists = [float(l[2]) for l in lines]
+    min_major_dist = 10000
+    major_dist_idx = 0
+    min_minor_dist = 10000
+    minor_dist_idx = 0
+    for i in xrange(len(major_dists)):
+        if major_dists[i] < min_major_dist:
+            min_major_dist = major_dists[i]
+            major_dist_idx = i
+        if minor_dists[i] < min_minor_dist:
+            min_minor_dist = minor_dists[i]
+            minor_dist_idx = i
+    major_score = scores[major_dist_idx]
+    minor_score = scores[minor_dist_idx]
+    scores.sort()
+    print 'Major idx score: ' + str(major_score) + ' is ranked ' + str(scores.index(major_score)+1)
+    print 'Minor idx score: ' + str(minor_score) + ' is ranked ' + str(scores.index(minor_score)+1)
+    print 'Scores are: ' + str(scores)
+
+def rank_straw_scores_batch():
+  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/major_minor_axis_point_data/'
+  classes = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  for c in classes:
+      file_path = base_dir + 'straw_scores_' + c + '.txt'
+      print 'Ranks for: ', c
+      rank_straw_scores(file_path)
+      print '\n'
+
+def convert_robot_attempts_to_example_file(in_file_name, out_file_name):
+    scores = []
+    feats = []
+    loc = []
+    in_file = file(in_file_name,'r')
+    raw_lines = in_file.readlines()
+    in_file.close()
+    for i, l in enumerate(raw_lines):
+        line = l.split()
+        loc.append((float(line[0]), float(line[1])))
+        scores.append(float(line[2]))
+        feats.append([float(f) for f in line[3:]])
+        print i, len(feats[i])
+    normalize = False
+    debug = False
+    return write_example_file(out_file_name, feats, scores, normalize, debug)
+
+def convert_robot_attempts_file_batch():
+    pass
 
 if __name__ == '__main__':
+    analyze_predicted_and_observed_batch()
     # read_and_score_raw_files()
-    extract_shape_features_batch()
+    # extract_shape_features_batch()
+    # rank_straw_scores_batch()

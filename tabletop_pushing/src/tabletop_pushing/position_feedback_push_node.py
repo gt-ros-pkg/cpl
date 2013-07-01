@@ -193,7 +193,7 @@ def trigAugState(X, ndx, remove_old=False):
 class PositionFeedbackPushNode:
 
     def __init__(self):
-        rospy.init_node('position_feedback_push_node', log_level=rospy.DEBUG)
+        rospy.init_node('position_feedback_push_node', log_level=rospy.INFO)
         self.controller_io = ControlAnalysisIO()
         self.use_learn_io = False
         self.use_gripper_place_joint_posture = False
@@ -253,7 +253,7 @@ class PositionFeedbackPushNode:
         self.k_tool_contact_d = rospy.get_param('~tool_control_contact_gain', 0.05)
 
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
-        self.k_h_in = rospy.get_param('~push_control_in_heading_gain', 0.03)
+        self.k_rotate_spin_x = rospy.get_param('~rotate_to_heading_hand_spin_gain', 0.0)
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
         self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.015)
@@ -555,11 +555,11 @@ class PositionFeedbackPushNode:
 
         # TODO: Create options for non-velocity control updates, separate things more
         # NOTE: Add new pushing visual feedback controllers here
-        if feedback.controller_name == SPIN_TO_HEADING:
-            update_twist = self.spinHeadingController(feedback, self.desired_pose, which_arm)
+        if feedback.controller_name == ROTATE_TO_HEADING:
+            update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_pose)
         elif feedback.controller_name == CENTROID_CONTROLLER:
-            update_twist = self.contactCompensationController(feedback, self.desired_pose,
-                                                              cur_pose)
+            update_twist = self.centroidAlignmentController(feedback, self.desired_pose,
+                                                            cur_pose)
         elif feedback.controller_name == TOOL_CENTROID_CONTROLLER:
             tool_pose = feedback.tool_x
             update_twist = self.toolCentroidCompensationController(feedback, self.desired_pose,
@@ -580,7 +580,10 @@ class PositionFeedbackPushNode:
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
                           str(update_twist.twist.linear.y) + ', ' +
-                          str(update_twist.twist.linear.z) + ')\n')
+                          str(update_twist.twist.linear.z) + ')')
+            rospy.loginfo('omega: (' + str(update_twist.twist.angular.x) + ', ' +
+                          str(update_twist.twist.angular.y) + ', ' +
+                          str(update_twist.twist.angular.z) + ')\n')
 
         if _USE_CONTROLLER_IO:
             self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
@@ -638,28 +641,86 @@ class PositionFeedbackPushNode:
                           str(spin_y_dot) + ')')
         return u
 
-    def spinHeadingController(self, cur_state, desired_state, which_arm):
+    def rotateHeadingController(self, cur_state, desired_state, which_arm, ee_pose):
+        '''
+        TODO: Change to align to a given point in object frame while pushing in direction perpendicular
+        to the original orientation...?
+        '''
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+
+        # TODO: Add term to perpendicular to current orientation given current pushing location
+        # TODO: Pass in offset x and y in object frame
+        centroid = cur_state.x
+        ee = ee_pose.pose.position
+        rotate_x_dot = 0.0
+        rotate_y_dot = 0.0
+        # Push centroid towards the desired goal
+        x_error = desired_state.x - cur_state.x.x
+        y_error = desired_state.y - cur_state.x.y
+        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
+        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
+        goal_x_dot = self.k_g*x_error
+        goal_y_dot = self.k_g*y_error
+
+        # Add in direction to corect for not pushing through the centroid
+        goal_angle = atan2(goal_y_dot, goal_x_dot)
+        transform_angle = goal_angle
+        m = (((ee.x - centroid.x)*x_error + (ee.y - centroid.y)*y_error) /
+             sqrt(x_error*x_error + y_error*y_error))
+        tan_pt_x = centroid.x + m*x_error
+        tan_pt_y = centroid.y + m*y_error
+        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
+        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
+        # TODO: Clip values that get too big
+        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
+        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        if self.feedback_count % 5 == 0:
+            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
+            rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
+            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
+                          str(goal_y_dot) + ')')
+            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
+                          str(contact_pt_y_dot) + ')')
+        return u
+
+    def rotateHeadingControllerPalm(self, cur_state, desired_state, which_arm, ee_pose):
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
         u.header.stamp = rospy.Time.now()
         u.twist.linear.x = 0.0
+        u.twist.linear.y = 0.0
         # TODO: Track object rotation with gripper angle
-        u.twist.angular.x = 0.0
+        u.twist.angular.x = -self.k_rotate_spin_x*cur_state.x_dot.theta
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
         t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
         s_theta = sign(t_error)
         t_dist = fabs(t_error)
         heading_x_dot = self.k_h_f*t_dist
-        heading_y_dot = s_theta*self.k_h_in#*t_dist
         u.twist.linear.z = min(heading_x_dot, self.max_heading_u_x)
-        u.twist.linear.y = heading_y_dot
         if self.feedback_count % 5 == 0:
             rospy.loginfo('heading_x_dot: (' + str(heading_x_dot) + ')')
-            rospy.loginfo('heading_y_dot: (' + str(heading_y_dot) + ')')
+            rospy.loginfo('heading_rotate: (' + str(u.twist.angular.x) + ')')
         return u
 
-    def contactCompensationController(self, cur_state, desired_state, ee_pose):
+    def spinCircleStuff(self, cur_state, desired_state, which_arm):
+        r = 1.0 # Spin radius
+        T = 32
+        t = 0 # TODO: Increment / send in
+        theta_dot = 2*pi/T # Constant rotational speed
+        theta = theta_dot*t # Angle around spin circle
+        x_circle = r*sin(theta)
+        y_circle = r*cos(theta)
+        x_dot_circle = r*cos(theta)*theta_dot
+        y_dot_circle = -r*sin(theta)*theta_dot
+
+    def centroidAlignmentController(self, cur_state, desired_state, ee_pose):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
@@ -1096,7 +1157,12 @@ class PositionFeedbackPushNode:
 
         # Move to start pose
         if not self.move_to_cart_pose_ik(start_pose, which_arm):
-            self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+            rospy.logwarn('IK Failed, not at desired initial pose')
+            response.failed_pre_position = True
+            # self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+            return response
+        else:
+            response.failed_pre_position = False
 
         rospy.loginfo('Done moving to start point')
         self.use_gripper_place_joint_posture = False
@@ -1234,9 +1300,14 @@ class PositionFeedbackPushNode:
             start_pose.pose.position.z = start_point.z
             # self.move_down_until_contact(which_arm)
 
-        # Move to offset pose
-        self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
-        rospy.loginfo('Done moving to start point')
+        # Move to start pose
+        if not self.move_to_cart_pose_ik(start_pose, which_arm):
+            rospy.logwarn('IK Failed, not at desired initial pose')
+            response.failed_pre_position = True
+            # self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
+        else:
+            response.failed_pre_position = False
+            rospy.loginfo('Done moving to start point')
 
         return response
 

@@ -22,7 +22,8 @@ find_package(OpenCV REQUIRED)
 rosbuild_add_library(cpl_visual_features_base
   src/features/gabor_filter_bank.cpp
   src/features/shape_context.cpp
-  src/features/lm_filter_bank.cpp)
+  src/features/lm_filter_bank.cpp
+  src/features/kernels.cpp)
 rosbuild_add_library(cpl_visual_features_saliency src/saliency/center_surround.cpp)
 
 rosbuild_add_library(cpl_visual_features_motion src/motion/dense_lk.cpp src/motion/feature_tracker.cpp)
