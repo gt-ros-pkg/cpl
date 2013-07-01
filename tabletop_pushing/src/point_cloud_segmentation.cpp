@@ -255,7 +255,7 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
 
   pcl16::OrganizedMultiPlaneSegmentation<PointXYZ, pcl16::Normal, pcl16::Label> mps;
   mps.setMinInliers(mps_min_inliers_);
-  mps.setAngularThreshold(0.017453 *mps_min_angle_thresh_);
+  mps.setAngularThreshold(mps_min_angle_thresh_*M_PI/180.);
   mps.setDistanceThreshold(mps_min_dist_thresh_);
   mps.setInputNormals(normal_cloud);
   mps.setInputCloud(input_cloud.makeShared());
@@ -271,9 +271,13 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   label_indices.clear();
   boundary_indices.clear();
   mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
-  // TODO: Get table plane
-  // TODO: Create objects and their clouds
+
+  // TODO: Figure out which of the regions count as planes
+  // TODO: Figure out which ones are part of the table
+
+  // TODO: Remove table points from the cloud
   // TODO: Filter out arm
+
   ProtoObjects objs;
   for (size_t i = 0; i < regions.size (); i++)
   {
@@ -299,6 +303,18 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
     //                 "\n Frame_id: " << po.cloud.header.frame_id << "\n");
   }
   return objs;
+
+  // TODO: Find remaining objects using the standard clustering on the remaining points
+  // XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
+  // // Find independent regions
+  // if (objects_cloud_down.size() < 1)
+  // {
+  //   ProtoObjects objs;
+  //   return objs;
+  // }
+  // ProtoObjects objs = clusterProtoObjects(objects_cloud_down);
+  // return objs;
+
 }
 
 /**
