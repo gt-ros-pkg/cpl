@@ -8,6 +8,7 @@
 #include <pcl16/io/pcd_io.h>
 #include <pcl16_ros/transforms.h>
 #include <pcl16/ros/conversions.h>
+#include <pcl16/common/pca.h>
 #include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
 #include <tabletop_pushing/point_cloud_segmentation.h>
 #include <cpl_visual_features/helpers.h>
@@ -33,6 +34,13 @@ double point_cloud_hist_res_ = 0.01;
 inline int objLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
+}
+
+inline double sqrDistXY(pcl16::PointXYZ a, pcl16::PointXYZ b)
+{
+  const double dx = a.x-b.x;
+  const double dy = a.y-b.y;
+  return dx*dx+dy*dy;
 }
 
 pcl16::PointXYZ worldPointInObjectFrame(pcl16::PointXYZ world_pt, PushTrackerState& cur_state)
@@ -589,12 +597,78 @@ void drawScores(std::vector<double>& push_scores, std::string out_file_path)
   cv::waitKey();
 }
 
+pcl16::PointXYZ pointClosestToAngle(double major_angle, XYZPointCloud& hull_cloud, Eigen::Vector4f centroid)
+{
+  pcl16::PointXYZ closest;
+  double min_angle_dist = FLT_MAX;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    double angle_dist = fabs(major_angle - atan2(hull_cloud[i].y - centroid[1], hull_cloud[i].x - centroid[0]));
+    if (angle_dist < min_angle_dist)
+    {
+      closest = hull_cloud[i];
+      min_angle_dist = angle_dist;
+    }
+  }
+  ROS_INFO_STREAM("Closest point " << closest << " at angle dist " << min_angle_dist);
+  return closest;
+}
+
+void getMajorMinorBoundaryDists(std::string cloud_path, pcl16::PointXYZ init_loc, pcl16::PointXYZ start_pt,
+                                double& major_dist, double& minor_dist)
+{
+  ProtoObject cur_obj;
+  cur_obj.centroid[0] = init_loc.x;
+  cur_obj.centroid[1] = init_loc.y;
+  cur_obj.centroid[2] = init_loc.z;
+  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
+  if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
+  {
+    ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
+  }
+  ROS_INFO_STREAM("Got cloud: " << cloud_path);
+
+  float hull_alpha = 0.01;
+  XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+  hull_cloud_ = hull_cloud;
+  double min_dist = FLT_MAX;
+  int min_dist_idx = 0;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    double pt_dist = dist(hull_cloud[i], start_pt);
+    if (pt_dist < min_dist)
+    {
+      min_dist = pt_dist;
+      min_dist_idx = i;
+    }
+  }
+  float gripper_spread = 0.05;
+  pcl16::PointXYZ boundary_loc = hull_cloud[min_dist_idx];
+
+  // TODO: Get major/minor axis of hull_cloud
+  pcl16::PCA<pcl16::PointXYZ> pca;
+  pca.setInputCloud(hull_cloud.makeShared());
+  Eigen::Vector3f eigen_values = pca.getEigenValues();
+  Eigen::Matrix3f eigen_vectors = pca.getEigenVectors();
+  Eigen::Vector4f centroid = pca.getMean();
+  double minor_angle = atan2(eigen_vectors(1,0), eigen_vectors(0,0));
+  double major_angle = minor_angle-0.5*M_PI;
+
+  // TODO: Figure out points a and b of major axis intersection
+  pcl16::PointXYZ a = pointClosestToAngle(major_angle, hull_cloud, centroid);
+  pcl16::PointXYZ b = pointClosestToAngle(subPIAngle(major_angle+M_PI), hull_cloud, centroid);
+  major_dist = std::min(sqrDistXY(boundary_loc, a), sqrDistXY(boundary_loc, b));
+  // TODO: Figure out points c and d of minor axis intersection
+  pcl16::PointXYZ c  = pointClosestToAngle(minor_angle, hull_cloud, centroid);
+  pcl16::PointXYZ d = pointClosestToAngle(subPIAngle(minor_angle+M_PI), hull_cloud, centroid);
+  minor_dist = std::min(sqrDistXY(boundary_loc, c), sqrDistXY(boundary_loc, d));
+}
+
 int main(int argc, char** argv)
 {
   int seed = time(NULL);
   srand(seed);
 
-  // TODO: Get the aff_file and the directory as input
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
   std::string out_file_path(argv[3]);
@@ -610,6 +684,8 @@ int main(int argc, char** argv)
     ROS_INFO_STREAM("scores.size(): " << push_scores.size());
   }
 
+  bool test_straw_man = false;
+  std::ofstream straw_scores_stream("/home/thermans/Desktop/straw_scores.txt");
   double max_score = -100.0;
   ShapeDescriptors descriptors;
   for (unsigned int i = 0; i < trials.size(); ++i)
@@ -733,6 +809,14 @@ int main(int argc, char** argv)
   //   }
   // }
   // ROS_INFO_STREAM("feat: " << line_out.str());
+
+    // if (test_straw_man)
+    // {
+    //   double major_dist_i = 0.0;
+    //   double minor_dist_i = 0.0;
+    //   getMajorMinorBoundaryDists(cloud_path.str(), init_loc, trials[i].start_pt, major_dist_i, minor_dist_i);
+    //   straw_scores_stream << push_scores[i] << " " << major_dist_i << " " << minor_dist_i << "\n";
+    // }
 
   // std::stringstream out_file;
   // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);

@@ -1783,6 +1783,39 @@ def convert_robot_attempts_to_example_file(in_file_name, out_file_name):
 def convert_robot_attempts_file_batch():
     pass
 
+def rank_straw_scores(file_path):
+    straw_file = file(file_path, 'r')
+    lines = [l.split() for l in straw_file.readlines()]
+    scores = [float(l[0])*100 for l in lines]
+    major_dists = [float(l[1]) for l in lines]
+    minor_dists = [float(l[2]) for l in lines]
+    min_major_dist = 10000
+    major_dist_idx = 0
+    min_minor_dist = 10000
+    minor_dist_idx = 0
+    for i in xrange(len(major_dists)):
+        if major_dists[i] < min_major_dist:
+            min_major_dist = major_dists[i]
+            major_dist_idx = i
+        if minor_dists[i] < min_minor_dist:
+            min_minor_dist = minor_dists[i]
+            minor_dist_idx = i
+    major_score = scores[major_dist_idx]
+    minor_score = scores[minor_dist_idx]
+    scores.sort()
+    print 'Major idx score: ' + str(major_score) + ' is ranked ' + str(scores.index(major_score)+1)
+    print 'Minor idx score: ' + str(minor_score) + ' is ranked ' + str(scores.index(minor_score)+1)
+    print 'Scores are: ' + str(scores)
+
+def rank_straw_scores_batch():
+  base_dir = '/home/thermans/Dropbox/Data/start_loc_learning/point_push/major_minor_axis_point_data/'
+  classes = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
+  for c in classes:
+      file_path = base_dir + 'straw_scores_' + c + '.txt'
+      print 'Ranks for: ', c
+      rank_straw_scores(file_path)
+      print '\n'
+
 if __name__ == '__main__':
     analyze_predicted_and_observed_batch()
     # read_and_score_raw_files()
