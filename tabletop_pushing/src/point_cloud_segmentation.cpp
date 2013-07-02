@@ -96,9 +96,8 @@ PointCloudSegmentation::PointCloudSegmentation(
  *
  * @return The centroid of the points belonging to the table plane.
  */
-Eigen::Vector4f PointCloudSegmentation::getTablePlane(
-    XYZPointCloud& cloud, XYZPointCloud& objs_cloud, XYZPointCloud& plane_cloud,
-    bool find_concave_hull)
+Eigen::Vector4f PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
+                                                      XYZPointCloud& plane_cloud, bool find_hull)
 {
   XYZPointCloud cloud_downsampled;
   if (use_voxel_down_)
@@ -151,14 +150,13 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
 
   // Extract the outliers from the point clouds
   pcl16::ExtractIndices<PointXYZ> extract;
-  pcl16::PointIndices plane_outliers;
   extract.setInputCloud(cloud_filtered.makeShared());
   extract.setIndices(boost::make_shared<pcl16::PointIndices>(plane_inliers));
   extract.setNegative(true);
   extract.filter(objs_cloud);
 
   // Estimate hull from the inlier points
-  if (find_concave_hull)
+  if (find_hull)
   {
     ROS_INFO_STREAM("finding concave hull. Plane size: " <<
                     plane_cloud.size());
@@ -182,55 +180,8 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(
   return table_centroid;
 }
 
-
-/**
- * Function to segment independent spatial regions from a supporting plane
- *
- * @param input_cloud The point cloud to operate on.
- * @param extract_table True if the table plane should be extracted
- *
- * @return The object clusters.
- */
-ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, bool use_mps)
-{
-  XYZPointCloud objs_cloud;
-  return findTabletopObjects(input_cloud, objs_cloud, use_mps);
-}
-
-/**
- * Function to segment independent spatial regions from a supporting plane
- *
- * @param input_cloud The point cloud to operate on.
- * @param objs_cloud  The point cloud containing the object points.
- * @param extract_table True if the table plane should be extracted
- *
- * @return The object clusters.
- */
-ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud,
-                                                         XYZPointCloud& objs_cloud, bool use_mps)
-{
-  XYZPointCloud table_cloud;
-  return findTabletopObjects(input_cloud, objs_cloud, table_cloud, use_mps);
-}
-
-ProtoObjects PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud,
-                                                         XYZPointCloud& objs_cloud,
-                                                         XYZPointCloud& plane_cloud, bool use_mps)
-{
-  if (use_mps)
-  {
-    return findTabletopObjectsMPS(input_cloud, objs_cloud, plane_cloud);
-  }
-  else
-  {
-    return findTabletopObjectsCluster(input_cloud, objs_cloud, plane_cloud);
-  }
-
-}
-
-ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input_cloud,
-                                                            XYZPointCloud& objs_cloud,
-                                                            XYZPointCloud& plane_cloud)
+Eigen::Vector4f PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
+                                                         XYZPointCloud& plane_cloud, bool find_hull)
 {
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
@@ -275,46 +226,67 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
   // TODO: Figure out which of the regions count as planes
   // TODO: Figure out which ones are part of the table
 
-  // TODO: Remove table points from the cloud
-  // TODO: Filter out arm
-
-  ProtoObjects objs;
-  for (size_t i = 0; i < regions.size (); i++)
+  Eigen::Vector4f center;
+  // for (size_t i = 0; i < regions.size (); i++)
+  if (regions.size() > 0)
   {
-    ProtoObject po;
-    po.push_history.clear();
-    po.boundary_angle_dist.clear();
-    po.id = i;
-    pcl16::copyPointCloud(input_cloud, point_indices[i], po.cloud);
-    po.centroid[0] = regions[i].getCentroid()[0];
-    po.centroid[1] = regions[i].getCentroid()[1];
-    po.centroid[2] = regions[i].getCentroid()[2];
-    po.centroid[3] = 1.0;
-    po.moved = false;
-    po.transform = Eigen::Matrix4f::Identity();
-    po.singulated = false;
-    objs.push_back(po);
-    Eigen::Vector4f model = regions[i].getCoefficients();
-    // TODO: Save object counter
-    // ROS_INFO_STREAM("Centroid: (" << po.centroid[0] << ", " << po.centroid[1] <<
-    //                 ", " << po.centroid[2] << ")\n Coefficients: (" <<
-    //                 model[0] << ", " << model[1] << ", " <<  model[2] << ", " <<
-    //                 model[3]  << ")\n Inliers: " << po.cloud.points.size() <<
-    //                 "\n Frame_id: " << po.cloud.header.frame_id << "\n");
+    pcl16::copyPointCloud(input_cloud, point_indices[0], plane_cloud);
+    center[0] = regions[0].getCentroid()[0];
+    center[1] = regions[0].getCentroid()[1];
+    center[2] = regions[0].getCentroid()[2];
+    center[3] = 1.0;
+
+    // Extract the outliers from the point clouds
+    pcl16::ExtractIndices<PointXYZ> extract;
+    extract.setInputCloud(input_cloud.makeShared());
+    extract.setIndices(boost::make_shared<pcl16::PointIndices>(point_indices[0]));
+    extract.setNegative(true);
+    extract.filter(objs_cloud);
   }
-  return objs;
+  cv::Size img_size(320, 240);
+  cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
+  for (int i = 0; i < regions.size(); i++)
+  {
+    XYZPointCloud cloud_i;
+    pcl16::copyPointCloud(input_cloud, point_indices[i], cloud_i);
+    projectPointCloudIntoImage(cloud_i, plane_img, cur_camera_header_.frame_id, i+1);
+  }
+  displayObjectImage(plane_img, "MPS regions", true);
+  ROS_INFO_STREAM("Num regions: " << regions.size());
+  ROS_INFO_STREAM("Table center: " << center);
 
-  // TODO: Find remaining objects using the standard clustering on the remaining points
-  // XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
-  // // Find independent regions
-  // if (objects_cloud_down.size() < 1)
-  // {
-  //   ProtoObjects objs;
-  //   return objs;
-  // }
-  // ProtoObjects objs = clusterProtoObjects(objects_cloud_down);
-  // return objs;
+  return center;
+}
 
+
+/**
+ * Function to segment independent spatial regions from a supporting plane
+ *
+ * @param input_cloud The point cloud to operate on.
+ * @param extract_table True if the table plane should be extracted
+ *
+ * @return The object clusters.
+ */
+void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs, bool use_mps)
+{
+  XYZPointCloud objs_cloud;
+  findTabletopObjects(input_cloud, objs, objs_cloud, use_mps);
+}
+
+/**
+ * Function to segment independent spatial regions from a supporting plane
+ *
+ * @param input_cloud The point cloud to operate on.
+ * @param objs_cloud  The point cloud containing the object points.
+ * @param extract_table True if the table plane should be extracted
+ *
+ * @return The object clusters.
+ */
+void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
+                                                 XYZPointCloud& objs_cloud, bool use_mps)
+{
+  XYZPointCloud table_cloud;
+  findTabletopObjects(input_cloud, objs, objs_cloud, table_cloud, use_mps);
 }
 
 /**
@@ -327,13 +299,19 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsMPS(XYZPointCloud& input
  *
  * @return The object clusters.
  */
-ProtoObjects PointCloudSegmentation::findTabletopObjectsCluster(XYZPointCloud& input_cloud,
-                                                                XYZPointCloud& objs_cloud,
-                                                                XYZPointCloud& plane_cloud)
+void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
+                                                 XYZPointCloud& objs_cloud,
+                                                 XYZPointCloud& plane_cloud, bool use_mps)
 {
   // Get table plane
-  table_centroid_ = getTablePlane(input_cloud, objs_cloud, plane_cloud,
-                                  false);
+  if (use_mps)
+  {
+    table_centroid_ = getTablePlaneMPS(input_cloud, objs_cloud, plane_cloud, false);
+  }
+  else
+  {
+    table_centroid_ = getTablePlane(input_cloud, objs_cloud, plane_cloud, false);
+  }
   min_workspace_z_ = table_centroid_[2];
 
   // ROS_INFO_STREAM("Estimating normals!");
@@ -345,25 +323,23 @@ ProtoObjects PointCloudSegmentation::findTabletopObjectsCluster(XYZPointCloud& i
   // ne.setInputCloud(input_cloud.makeShared());
   // ne.compute(*normal_cloud);
 
+  // TODO: Filter out arm explicitly?
+
   XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
   // Find independent regions
-  if (objects_cloud_down.size() < 1)
+  if (objects_cloud_down.size() > 0)
   {
-    ProtoObjects objs;
-    return objs;
+    clusterProtoObjects(objects_cloud_down, objs);
   }
-  ProtoObjects objs = clusterProtoObjects(objects_cloud_down);
-  return objs;
 }
 
 /**
  * Function to segment point cloud regions using euclidean clustering
  *
  * @param objects_cloud The cloud of objects to cluster
- *
- * @return The independent clusters
+ * @param objs          [Returned] The independent clusters
  */
-ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud)
+void PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud, ProtoObjects& objs)
 {
   std::vector<pcl16::PointIndices> clusters;
   pcl16::EuclideanClusterExtraction<PointXYZ> pcl_cluster;
@@ -379,7 +355,6 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
   ROS_DEBUG_STREAM("Number of clusters found matching the given constraints: "
                    << clusters.size());
 
-  ProtoObjects objs;
   for (unsigned int i = 0; i < clusters.size(); ++i)
   {
     // Create proto objects from the point cloud
@@ -394,7 +369,6 @@ ProtoObjects PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_
     po.singulated = false;
     objs.push_back(po);
   }
-  return objs;
 }
 
 /**
@@ -450,7 +424,8 @@ ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
     return moved;
   }
 
-  ProtoObjects moved = clusterProtoObjects(cloud_out);
+  ProtoObjects moved;
+  clusterProtoObjects(cloud_out, moved);
 
 #ifdef DISPLAY_CLOUD_DIFF
   cv::Size img_size(320, 240);

@@ -215,7 +215,7 @@ class DataCollectNode
       // Compute tabletop object segmentation
       cur_camera_header_ = img_msg->header;
       pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
-      objs = pcl_segmenter_->findTabletopObjects(cloud, object_cloud, false);
+      pcl_segmenter_->findTabletopObjects(cloud, objs, object_cloud, false);
       object_img = pcl_segmenter_->projectProtoObjectsIntoImage(
           objs, color_frame.size(), cur_camera_header_.frame_id);
       pcl_segmenter_->displayObjectImage(object_img, "Objects", true);

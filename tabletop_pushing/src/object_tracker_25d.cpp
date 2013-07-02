@@ -40,7 +40,8 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
                                                bool& no_objects, bool init, bool find_tool)
 {
   // TODO: Pass in arm mask
-  ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud, use_mps_segmentation_);
+  ProtoObjects objs;
+  pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
   if (objs.size() == 0)
   {
     ROS_WARN_STREAM("No objects found");

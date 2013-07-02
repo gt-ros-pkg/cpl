@@ -413,7 +413,8 @@ class ObjectSingulation
    */
   PushVector findRandomPushPose(XYZPointCloud& input_cloud)
   {
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(input_cloud);
+    ProtoObjects objs;
+    pcl_segmenter_->findTabletopObjects(input_cloud, objs);
     prev_proto_objs_ = cur_proto_objs_;
     cur_proto_objs_ = objs;
 
@@ -477,8 +478,8 @@ class ObjectSingulation
   {
     XYZPointCloud objs_cloud;
     XYZPointCloud table_cloud;
-    ProtoObjects objs = pcl_segmenter_->findTabletopObjects(cloud, objs_cloud,
-                                                            table_cloud);
+    ProtoObjects objs;
+    pcl_segmenter_->findTabletopObjects(cloud, objs, objs_cloud, table_cloud);
     cur_table_cloud_ = table_cloud;
     ROS_INFO_STREAM("Found " << objs.size() << " objects!");
     for (unsigned int i = 0; i < objs.size(); ++i)

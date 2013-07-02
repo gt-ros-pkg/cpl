@@ -96,7 +96,18 @@ class PointCloudSegmentation
    */
   Eigen::Vector4f getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
                                 XYZPointCloud& plane_cloud,
-                                bool find_concave_hull=false);
+                                bool find_hull=false);
+
+  /**
+   * Function to determine the table plane in a point cloud
+   *
+   * @param cloud The cloud with the table as dominant plane.
+   *
+   * @return The centroid of the points belonging to the table plane.
+   */
+  Eigen::Vector4f getTablePlaneMPS(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
+                                   XYZPointCloud& plane_cloud,
+                                   bool find_hull=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -106,7 +117,7 @@ class PointCloudSegmentation
    *
    * @return The object clusters.
    */
-  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud, bool use_mps=false);
+  void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -117,8 +128,8 @@ class PointCloudSegmentation
    *
    * @return The object clusters.
    */
-  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud,
-                                   XYZPointCloud& objs_cloud, bool use_mps=false);
+  void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
+                           XYZPointCloud& objs_cloud, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
@@ -130,24 +141,17 @@ class PointCloudSegmentation
    *
    * @return The object clusters.
    */
-  ProtoObjects findTabletopObjects(XYZPointCloud& input_cloud,
+  void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
                                    XYZPointCloud& objs_cloud,
                                    XYZPointCloud& plane_cloud, bool use_mps=false);
-
-  ProtoObjects findTabletopObjectsMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
-                                      XYZPointCloud& plane_cloud);
-
-  ProtoObjects findTabletopObjectsCluster(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
-                                          XYZPointCloud& plane_cloud);
 
   /**
    * Function to segment point cloud regions using euclidean clustering
    *
    * @param objects_cloud The cloud of objects to cluster
-   *
-   * @return The independent clusters
+   * @param objs          [Returned] The independent clusters
    */
-  ProtoObjects clusterProtoObjects(XYZPointCloud& objects_cloud);
+  void clusterProtoObjects(XYZPointCloud& objects_cloud, ProtoObjects& objs);
 
   /**
    * Perform Iterated Closest Point between two proto objects.

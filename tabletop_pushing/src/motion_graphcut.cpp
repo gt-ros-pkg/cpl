@@ -974,7 +974,8 @@ class MGCNode
     if (tracker_count_ == 1)
     {
       ROS_INFO_STREAM("Finding tabletop objects. tracker_count_ == 1");
-      ProtoObjects objs = pcl_segmenter_.findTabletopObjects(cur_point_cloud_);
+      ProtoObjects objs;
+      pcl_segmenter_.findTabletopObjects(objs, cur_point_cloud_);
     }
     else if (tracker_count_ > 1)
     {
@@ -1713,7 +1714,8 @@ class MGCNode
 
   PoseStamped findRandomPushPose(XYZPointCloud& input_cloud)
   {
-    ProtoObjects objs = pcl_segmenter_.findTabletopObjects(input_cloud);
+    ProtoObjects objs;
+    pcl_segmenter_.findTabletopObjects(input_cloud, objs);
     prev_proto_objs_ = cur_proto_objs_;
     cur_proto_objs_ = objs;
 
