@@ -96,8 +96,8 @@ PointCloudSegmentation::PointCloudSegmentation(
  *
  * @return The centroid of the points belonging to the table plane.
  */
-Eigen::Vector4f PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
-                                                      XYZPointCloud& plane_cloud, bool find_hull)
+void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud, XYZPointCloud& plane_cloud,
+                                           Eigen::Vector4f& table_centroid, bool find_hull)
 {
   XYZPointCloud cloud_downsampled;
   if (use_voxel_down_)
@@ -171,17 +171,16 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZP
   }
 
   // Extract the plane members into their own point cloud
-  Eigen::Vector4f table_centroid;
   pcl16::compute3DCentroid(plane_cloud, table_centroid);
   // cv::Size img_size(320, 240);
   // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
   // projectPointCloudIntoImage(plane_cloud, plane_img, cur_camera_header_.frame_id, 255);
   // cv::imshow("table plane", plane_img);
-  return table_centroid;
 }
 
-Eigen::Vector4f PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
-                                                         XYZPointCloud& plane_cloud, bool find_hull)
+void PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
+                                              XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
+                                              bool find_hull)
 {
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
@@ -223,10 +222,8 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cl
   boundary_indices.clear();
   mps.segmentAndRefine(regions, coefficients, point_indices, labels, label_indices, boundary_indices);
 
-  // TODO: Figure out which of the regions count as planes
   // TODO: Figure out which ones are part of the table
 
-  Eigen::Vector4f center;
   // for (size_t i = 0; i < regions.size (); i++)
   if (regions.size() > 0)
   {
@@ -243,19 +240,17 @@ Eigen::Vector4f PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cl
     extract.setNegative(true);
     extract.filter(objs_cloud);
   }
-  cv::Size img_size(320, 240);
-  cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
-  for (int i = 0; i < regions.size(); i++)
-  {
-    XYZPointCloud cloud_i;
-    pcl16::copyPointCloud(input_cloud, point_indices[i], cloud_i);
-    projectPointCloudIntoImage(cloud_i, plane_img, cur_camera_header_.frame_id, i+1);
-  }
-  displayObjectImage(plane_img, "MPS regions", true);
-  ROS_INFO_STREAM("Num regions: " << regions.size());
-  ROS_INFO_STREAM("Table center: " << center);
-
-  return center;
+  // cv::Size img_size(320, 240);
+  // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
+  // for (int i = 0; i < regions.size(); i++)
+  // {
+  //   XYZPointCloud cloud_i;
+  //   pcl16::copyPointCloud(input_cloud, point_indices[i], cloud_i);
+  //   projectPointCloudIntoImage(cloud_i, plane_img, cur_camera_header_.frame_id, i+1);
+  // }
+  // displayObjectImage(plane_img, "MPS regions", true);
+  // ROS_INFO_STREAM("Num regions: " << regions.size());
+  // ROS_INFO_STREAM("Table center: " << center);
 }
 
 
@@ -306,11 +301,11 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   // Get table plane
   if (use_mps)
   {
-    table_centroid_ = getTablePlaneMPS(input_cloud, objs_cloud, plane_cloud, false);
+    getTablePlaneMPS(input_cloud, objs_cloud, plane_cloud, table_centroid_, false);
   }
   else
   {
-    table_centroid_ = getTablePlane(input_cloud, objs_cloud, plane_cloud, false);
+    getTablePlane(input_cloud, objs_cloud, plane_cloud, table_centroid_, false);
   }
   min_workspace_z_ = table_centroid_[2];
 
@@ -401,14 +396,13 @@ double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
 /**
  * Find the regions that have moved between two point clouds
  *
- * @param prev_cloud The first cloud to use in differencing
- * @param cur_cloud The second cloud to use
- *
- * @return The new set of objects that have moved in the second cloud
+ * @param prev_cloud    The first cloud to use in differencing
+ * @param cur_cloud     The second cloud to use
+ * @param moved_regions [Returned] The new set of objects that have moved in the second cloud
+ * @param suf           [Optional]
  */
-ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
-                                                     XYZPointCloud& cur_cloud,
-                                                     std::string suf)
+void PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud, XYZPointCloud& cur_cloud,
+                                             ProtoObjects& moved, std::string suf)
 {
   // cloud_out = prev_cloud - cur_cloud
   pcl16::SegmentDifferences<PointXYZ> pcl_diff;
@@ -420,11 +414,9 @@ ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
   if (cloud_out.size() < 1)
   {
     ROS_INFO_STREAM("Returning nothing moved as there are no points.");
-    ProtoObjects moved;
-    return moved;
+    return;
   }
 
-  ProtoObjects moved;
   clusterProtoObjects(cloud_out, moved);
 
 #ifdef DISPLAY_CLOUD_DIFF
@@ -435,7 +427,6 @@ ProtoObjects PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud,
   cluster_title << "moved clusters" << suf;
   displayObjectImage(moved_img, cluster_title.str());
 #endif // DISPLAY_CLOUD_DIFF
-  return moved;
 }
 
 /**

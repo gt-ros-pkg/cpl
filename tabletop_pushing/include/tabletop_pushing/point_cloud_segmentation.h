@@ -88,45 +88,47 @@ class PointCloudSegmentation
   PointCloudSegmentation(boost::shared_ptr<tf::TransformListener> tf);
 
   /**
-   * Function to determine the table plane in a point cloud
+   * Function to find the table plane in the image by plane RANSAC
    *
-   * @param cloud The cloud with the table as dominant plane.
-   *
-   * @return The centroid of the points belonging to the table plane.
+   * @param cloud       The input cloud
+   * @param objs_cloud  [Returned] the cloud not containing the table plane
+   * @param plane_cloud [Returned the cloud containing the plane
+   * @param center      [Returned] the center of the table plane
+   * @param find_hull   set true to estimate the extent of the plane
    */
-  Eigen::Vector4f getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
-                                XYZPointCloud& plane_cloud,
-                                bool find_hull=false);
+  void getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
+                     XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
+                     bool find_hull=false);
 
   /**
-   * Function to determine the table plane in a point cloud
+   * Function to find the table plane in the image by using multi-plane segmentation (requires structured input cloud)
    *
-   * @param cloud The cloud with the table as dominant plane.
-   *
-   * @return The centroid of the points belonging to the table plane.
+   * @param cloud       The input cloud
+   * @param objs_cloud  [Returned] the cloud not containing the table plane
+   * @param plane_cloud [Returned the cloud containing the plane
+   * @param center      [Returned] the center of the table plane
+   * @param find_hull   set true to estimate the extent of the plane
    */
-  Eigen::Vector4f getTablePlaneMPS(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
-                                   XYZPointCloud& plane_cloud,
-                                   bool find_hull=false);
+  void getTablePlaneMPS(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
+                        XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
+                        bool find_hull=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
    *
-   * @param input_cloud The point cloud to operate on.
+   * @param input_cloud   The point cloud to operate on.
+   * @param objs          [Returned] The object clusters.
    * @param extract_table True if the table plane should be extracted
-   *
-   * @return The object clusters.
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs, bool use_mps=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
    *
-   * @param input_cloud The point cloud to operate on.
-   * @param objs_cloud  The point cloud containing the object points.
+   * @param input_cloud   The point cloud to operate on.
+   * @param objs          [Returned] The object clusters.
+   * @param objs_cloud    The point cloud containing the object points.
    * @param extract_table True if the table plane should be extracted
-   *
-   * @return The object clusters.
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
                            XYZPointCloud& objs_cloud, bool use_mps=false);
@@ -134,12 +136,11 @@ class PointCloudSegmentation
   /**
    * Function to segment independent spatial regions from a supporting plane
    *
-   * @param input_cloud The point cloud to operate on.
-   * @param objs_cloud  The point cloud containing the object points.
-   * @param plane_cloud  The point cloud containing the table plane points.
+   * @param input_cloud   The point cloud to operate on.
+   * @param objs          [Returned] The object clusters.
+   * @param objs_cloud    The point cloud containing the object points.
+   * @param plane_cloud   The point cloud containing the table plane points.
    * @param extract_table True if the table plane should be extracted
-   *
-   * @return The object clusters.
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
                                    XYZPointCloud& objs_cloud,
@@ -161,19 +162,18 @@ class PointCloudSegmentation
    *
    * @return The ICP fitness score of the match
    */
-  double ICPProtoObjects(ProtoObject& a, ProtoObject& b,
-                         Eigen::Matrix4f& transform);
+  double ICPProtoObjects(ProtoObject& a, ProtoObject& b, Eigen::Matrix4f& transform);
 
   /**
    * Find the regions that have moved between two point clouds
    *
-   * @param prev_cloud The first cloud to use in differencing
-   * @param cur_cloud The second cloud to use
-   *
-   * @return The new set of objects that have moved in the second cloud
+   * @param prev_cloud    The first cloud to use in differencing
+   * @param cur_cloud     The second cloud to use
+   * @param moved_regions [Returned] The new set of objects that have moved in the second cloud
+   * @param suf           [Optional]
    */
-  ProtoObjects getMovedRegions(XYZPointCloud& prev_cloud,
-                               XYZPointCloud& cur_cloud, std::string suf="");
+  void getMovedRegions(XYZPointCloud& prev_cloud, XYZPointCloud& cur_cloud, ProtoObjects& moved_regions,
+                       std::string suf="");
 
   /**
    * Match moved regions to previously extracted protoobjects

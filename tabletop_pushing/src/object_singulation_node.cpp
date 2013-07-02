@@ -498,8 +498,8 @@ class ObjectSingulation
     if (callback_count_ > 0)
     {
       // Determine where stuff has moved
-      ProtoObjects moved_regions = pcl_segmenter_->getMovedRegions(
-          prev_objs_down_, cur_objs_down);
+      ProtoObjects moved_regions;
+      pcl_segmenter_->getMovedRegions(prev_objs_down_, cur_objs_down, moved_regions);
       // Match these moved regions to the previous objects
       pcl_segmenter_->matchMovedRegions(prev_proto_objs_, moved_regions);
       // Match the moved objects to their new locations
@@ -2981,10 +2981,8 @@ class ObjectSingulationNode
   {
     XYZPointCloud obj_cloud, table_cloud;
     // TODO: Comptue the hull on the first call
-    Eigen::Vector4f table_centroid = pcl_segmenter_->getTablePlane(cloud,
-                                                                   obj_cloud,
-                                                                   table_cloud/*,
-                                                                                true*/);
+    Eigen::Vector4f table_centroid;
+    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid/*, true*/);
     PoseStamped p;
     p.pose.position.x = table_centroid[0];
     p.pose.position.y = table_centroid[1];
