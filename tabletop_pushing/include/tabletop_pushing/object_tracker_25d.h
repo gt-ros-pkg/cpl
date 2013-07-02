@@ -69,26 +69,28 @@ class ObjectTracker25D
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false, bool find_tool=false);
 
-  tabletop_pushing::VisFeedbackPushTrackingFeedback computeState(ProtoObject& cur_obj, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                                std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
-                                geometry_msgs::PoseStamped& arm_pose, bool init_state=false);
+  void computeState(ProtoObject& cur_obj, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                    std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
+                    geometry_msgs::PoseStamped& arm_pose, tabletop_pushing::VisFeedbackPushTrackingFeedback& state,
+                    bool init_state=false);
 
-  cv::RotatedRect fitObjectEllipse(ProtoObject& obj);
+  void fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  cv::RotatedRect findFootprintEllipse(ProtoObject& obj);
+  void findFootprintEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  cv::RotatedRect findFootprintBox(ProtoObject& obj);
+  void findFootprintBox(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  cv::RotatedRect fit2DMassEllipse(ProtoObject& obj);
+  void fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  tabletop_pushing::VisFeedbackPushTrackingFeedback initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                              std::string proxy_name, geometry_msgs::PoseStamped& arm_pose, std::string tool_proxy_name,
-                              bool start_swap=false);
+  void initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                  std::string proxy_name, geometry_msgs::PoseStamped& arm_pose, std::string tool_proxy_name,
+                  tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap=false);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
 
-  tabletop_pushing::VisFeedbackPushTrackingFeedback updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                                std::string proxy_name, geometry_msgs::PoseStamped& arm_pose, std::string tool_proxy_name);
+  void updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                    std::string proxy_name, geometry_msgs::PoseStamped& arm_pose, std::string tool_proxy_name,
+                    tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
 
   void pausedUpdate(cv::Mat in_frame);
 

@@ -103,18 +103,18 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   return objs[chosen_idx];
 }
 
-PushTrackerState ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
-                                                std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
-                                                PoseStamped& arm_pose, bool init_state)
+void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
+                                    std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
+                                    PoseStamped& arm_pose, PushTrackerState& state, bool init_state)
 {
-  PushTrackerState state;
   // TODO: Have each proxy create an image, and send that image to the trackerDisplay
   // function to deal with saving and display.
   cv::RotatedRect obj_ellipse;
   if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY || proxy_name == SPHERE_PROXY ||
       proxy_name == CYLINDER_PROXY)
   {
-    obj_ellipse = fitObjectEllipse(cur_obj);
+    obj_ellipse;
+    fitObjectEllipse(cur_obj, obj_ellipse);
     previous_obj_ellipse_ = obj_ellipse;
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
@@ -146,7 +146,7 @@ PushTrackerState ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCl
   }
   else if (proxy_name == BOUNDING_BOX_XY_PROXY)
   {
-    obj_ellipse = findFootprintBox(cur_obj);
+    findFootprintBox(cur_obj, obj_ellipse);
     double min_z = 10000;
     double max_z = -10000;
     for (int i = 0; i < cur_obj.cloud.size(); ++i)
@@ -298,23 +298,21 @@ PushTrackerState ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCl
       trackerDisplay(in_frame, state, cur_obj);
     }
   }
-
-  return state;
 }
 
-cv::RotatedRect ObjectTracker25D::fitObjectEllipse(ProtoObject& obj)
+void ObjectTracker25D::fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse)
 {
   if (use_cv_ellipse_fit_)
   {
-    return findFootprintEllipse(obj);
+    findFootprintEllipse(obj, ellipse);
   }
   else
   {
-    return fit2DMassEllipse(obj);
+    fit2DMassEllipse(obj, ellipse);
   }
 }
 
-cv::RotatedRect ObjectTracker25D::findFootprintEllipse(ProtoObject& obj)
+void ObjectTracker25D::findFootprintEllipse(ProtoObject& obj, cv::RotatedRect& obj_ellipse)
 {
   // Get 2D footprint of object and fit an ellipse to it
   std::vector<cv::Point2f> obj_pts;
@@ -323,12 +321,11 @@ cv::RotatedRect ObjectTracker25D::findFootprintEllipse(ProtoObject& obj)
     obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
   }
   ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
-  cv::RotatedRect obj_ellipse = cv::fitEllipse(obj_pts);
-  return obj_ellipse;
+  obj_ellipse = cv::fitEllipse(obj_pts);
 }
 
 
-cv::RotatedRect ObjectTracker25D::findFootprintBox(ProtoObject& obj)
+void ObjectTracker25D::findFootprintBox(ProtoObject& obj, cv::RotatedRect& box)
 {
   // Get 2D footprint of object and fit an ellipse to it
   std::vector<cv::Point2f> obj_pts;
@@ -337,11 +334,10 @@ cv::RotatedRect ObjectTracker25D::findFootprintBox(ProtoObject& obj)
     obj_pts.push_back(cv::Point2f(obj.cloud[i].x, obj.cloud[i].y));
   }
   ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
-  cv::RotatedRect box = cv::minAreaRect(obj_pts);
-  return box;
+  box = cv::minAreaRect(obj_pts);
 }
 
-cv::RotatedRect ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj)
+void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_ellipse)
 {
   // pcl16::PCA<pcl16::PointXYZ> pca(true);
   XYZPointCloud cloud_no_z;
@@ -353,13 +349,11 @@ cv::RotatedRect ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj)
   if (obj.cloud.size() < 3)
   {
     ROS_WARN_STREAM("Too few points to find ellipse");
-    cv::RotatedRect obj_ellipse;
     obj_ellipse.center.x = 0.0;
     obj_ellipse.center.y = 0.0;
     obj_ellipse.angle = 0;
     obj_ellipse.size.width = 0;
     obj_ellipse.size.height = 0;
-    return obj_ellipse;
   }
   for (unsigned int i = 0; i < obj.cloud.size(); ++i)
   {
@@ -408,19 +402,17 @@ cv::RotatedRect ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj)
   //   ROS_WARN_STREAM("ife: " << ife.what());
   // }
 
-  cv::RotatedRect obj_ellipse;
   obj_ellipse.center.x = centroid[0];
   obj_ellipse.center.y = centroid[1];
   obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
   // NOTE: major axis is defined by height
   obj_ellipse.size.height = std::max(eigen_values(0)*0.1, 0.07);
   obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
-  return obj_ellipse;
 }
 
-PushTrackerState ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                                              std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
-                                              bool start_swap)
+void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
+                                  std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
+                                  tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
 {
   paused_ = false;
   initialized_ = false;
@@ -432,18 +424,17 @@ PushTrackerState ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_m
   frame_set_count_++;
   ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects, true);
   initialized_ = true;
-  PushTrackerState state;
   if (no_objects)
   {
     state.header.seq = 0;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
     state.no_detection = true;
-    return state;
+    return;
   }
   else
   {
-    state = computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose, true);
+    computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose, state, true);
     state.header.seq = 0;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -466,7 +457,6 @@ PushTrackerState ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_m
   init_state_ = state;
   previous_obj_ = cur_obj;
   obj_saved_ = true;
-  return state;
 }
 
 double ObjectTracker25D::getThetaFromEllipse(cv::RotatedRect& obj_ellipse)
@@ -474,18 +464,19 @@ double ObjectTracker25D::getThetaFromEllipse(cv::RotatedRect& obj_ellipse)
   return subPIAngle(DEG2RAD(obj_ellipse.angle)+0.5*M_PI);
 }
 
-PushTrackerState ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                              std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name)
+void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
+                                    std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
+                                    PushTrackerState& state)
 {
   if (!initialized_)
   {
-    return initTracks(in_frame, self_mask, cloud, proxy_name, arm_pose, tool_proxy_name);
+    initTracks(in_frame, self_mask, cloud, proxy_name, arm_pose, tool_proxy_name, state);
+    return;
   }
   bool no_objects = false;
   ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
 
   // Update model
-  PushTrackerState state;
   if (no_objects)
   {
     state.header.seq = frame_count_;
@@ -507,7 +498,7 @@ PushTrackerState ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self
   else
   {
     obj_saved_ = true;
-    state = computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose);
+    computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose, state);
     state.header.seq = frame_count_;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -535,7 +526,6 @@ PushTrackerState ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self
   previous_state_ = state;
   frame_count_++;
   record_count_++;
-  return state;
 }
 
 void ObjectTracker25D::pausedUpdate(cv::Mat in_frame)

@@ -429,8 +429,9 @@ class TabletopPushingPerceptionNode
       {
         arm_pose = r_arm_pose_;
       }
-      PushTrackerState tracker_state = obj_tracker_->updateTracks(
-          cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_, arm_pose, tool_proxy_name_);
+      PushTrackerState tracker_state;
+      obj_tracker_->updateTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_,
+                                 arm_pose, tool_proxy_name_, tracker_state);
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
@@ -698,7 +699,7 @@ class TabletopPushingPerceptionNode
           {
             // TODO: Is this correct?
             force_swap_ = !obj_tracker_->getSwapState();
-            cur_state = startTracking(force_swap_);
+            startTracking(cur_state, force_swap_);
             ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
             res.theta = cur_state.x.theta;
             obj_tracker_->stopTracking();
@@ -746,8 +747,7 @@ class TabletopPushingPerceptionNode
   {
     LearnPush::Response res;
     PushTrackerState cur_state;
-    cur_state = startTracking(force_swap_);
-
+    startTracking(cur_state, force_swap_);
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
     if (req.learn_start_loc)
     {
@@ -759,7 +759,7 @@ class TabletopPushingPerceptionNode
       {
         force_swap_ = !force_swap_;
         obj_tracker_->toggleSwap();
-        cur_state = startTracking(force_swap_);
+        startTracking(cur_state, force_swap_);
         obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
         // NOTE: Try and force redraw
         cv::waitKey(3);
@@ -1578,7 +1578,8 @@ class TabletopPushingPerceptionNode
       res.no_objects = true;
       return res;
     }
-    cv::RotatedRect obj_ellipse = obj_tracker_->fitObjectEllipse(cur_obj);
+    cv::RotatedRect obj_ellipse;
+    obj_tracker_->fitObjectEllipse(cur_obj, obj_ellipse);
     res.no_objects = false;
     res.centroid.x = cur_obj.centroid[0];
     res.centroid.y = cur_obj.centroid[1];
@@ -1595,7 +1596,7 @@ class TabletopPushingPerceptionNode
     return res;
   }
 
-  PushTrackerState startTracking(bool start_swap=false)
+  void startTracking(PushTrackerState& state, bool start_swap=false)
   {
     ROS_INFO_STREAM("Starting tracker");
     frame_set_count_++;
@@ -1611,8 +1612,8 @@ class TabletopPushingPerceptionNode
     {
       arm_pose = r_arm_pose_;
     }
-    return obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                                    proxy_name_, arm_pose, tool_proxy_name_, start_swap);
+    obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_,
+                             proxy_name_, arm_pose, tool_proxy_name_, state, start_swap);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -1660,7 +1661,8 @@ class TabletopPushingPerceptionNode
     }
     else
     {
-      startTracking();
+      PushTrackerState state;
+      startTracking(state);
     }
   }
 
