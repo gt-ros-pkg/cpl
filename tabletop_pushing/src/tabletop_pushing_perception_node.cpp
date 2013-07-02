@@ -674,7 +674,7 @@ class TabletopPushingPerceptionNode
       else if (req.analyze_previous || req.get_pose_only)
       {
         ROS_INFO_STREAM("Getting current object pose");
-        res = getObjectPose();
+        getObjectPose(res);
         res.no_push = true;
         recording_input_ = false;
         ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
@@ -1561,13 +1561,12 @@ class TabletopPushingPerceptionNode
     return world_pt;
   }
 
-  LearnPush::Response getObjectPose()
+  void getObjectPose(LearnPush::Response& res)
   {
     bool no_objects = false;
     ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_,
                                                          cur_self_filtered_cloud_,
                                                          no_objects);
-    LearnPush::Response res;
     if (no_objects)
     {
       ROS_WARN_STREAM("No objects found on analysis");
@@ -1576,7 +1575,7 @@ class TabletopPushingPerceptionNode
       res.centroid.z = 0.0;
       res.theta = 0.0;
       res.no_objects = true;
-      return res;
+      return;
     }
     cv::RotatedRect obj_ellipse;
     obj_tracker_->fitObjectEllipse(cur_obj, obj_ellipse);
@@ -1592,8 +1591,6 @@ class TabletopPushingPerceptionNode
       else
         res.theta += M_PI;
     }
-
-    return res;
   }
 
   void startTracking(PushTrackerState& state, bool start_swap=false)
@@ -1850,7 +1847,7 @@ class TabletopPushingPerceptionNode
   {
     if ( have_depth_data_ )
     {
-      res.table_centroid = getTablePlane(cur_point_cloud_);
+      getTablePlane(cur_point_cloud_, res.table_centroid);
       if ((res.table_centroid.pose.position.x == 0.0 &&
            res.table_centroid.pose.position.y == 0.0 &&
            res.table_centroid.pose.position.z == 0.0) ||
@@ -1879,13 +1876,12 @@ class TabletopPushingPerceptionNode
    *
    * @return The estimated 3D centroid of the table
    */
-  PoseStamped getTablePlane(XYZPointCloud& cloud)
+  void getTablePlane(XYZPointCloud& cloud, PoseStamped& p)
   {
     XYZPointCloud obj_cloud, table_cloud;
     // TODO: Comptue the hull on the first call
     Eigen::Vector4f table_centroid;
     pcl_segmenter_->getTablePlaneMPS(cloud, obj_cloud, table_cloud, table_centroid);
-    PoseStamped p;
     p.pose.position.x = table_centroid[0];
     p.pose.position.y = table_centroid[1];
     p.pose.position.z = table_centroid[2];
@@ -1895,7 +1891,6 @@ class TabletopPushingPerceptionNode
                     << p.pose.position.y << ", "
                     << p.pose.position.z << ")");
     table_centroid_ = p;
-    return p;
   }
 
   void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
