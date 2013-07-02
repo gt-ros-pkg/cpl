@@ -201,7 +201,8 @@ PushTrackerState ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCl
   if (proxy_name == SPHERE_PROXY)
   {
     XYZPointCloud sphere_cloud;
-    pcl16::ModelCoefficients sphere = pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud);
+    pcl16::ModelCoefficients sphere;
+    pcl_segmenter_->fitSphereRANSAC(cur_obj,sphere_cloud, sphere);
     cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
     cv::Mat disp_img(in_frame.size(), CV_8UC3, cv::Scalar(0,0,0));
     if (sphere_cloud.size() < 1)
@@ -223,7 +224,7 @@ PushTrackerState ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCl
     state.x.y = sphere.values[1];
     state.z = sphere.values[2];
     // state.x.theta = 0.0;
-    // TODO: Draw ellipse of the projected circle parallel to the table 
+    // TODO: Draw ellipse of the projected circle parallel to the table
     // std::stringstream out_name;
     // out_name << base_output_path_ << "sphere_" << frame_set_count_ << "_"
     //          << record_count_ << ".png";
@@ -237,7 +238,8 @@ PushTrackerState ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCl
   if (proxy_name == CYLINDER_PROXY)
   {
     XYZPointCloud cylinder_cloud;
-    pcl16::ModelCoefficients cylinder = pcl_segmenter_->fitCylinderRANSAC(cur_obj,cylinder_cloud);
+    pcl16::ModelCoefficients cylinder;
+    pcl_segmenter_->fitCylinderRANSAC(cur_obj, cylinder_cloud, cylinder);
     cv::Mat lbl_img(in_frame.size(), CV_8UC1, cv::Scalar(0));
     pcl_segmenter_->projectPointCloudIntoImage(cylinder_cloud, lbl_img);
     lbl_img*=255;

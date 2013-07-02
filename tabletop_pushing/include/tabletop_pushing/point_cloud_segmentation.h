@@ -184,8 +184,8 @@ class PointCloudSegmentation
    */
   void matchMovedRegions(ProtoObjects& objs, ProtoObjects& moved_regions);
 
-  pcl16::ModelCoefficients fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud);
-  pcl16::ModelCoefficients fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud);
+  void fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud, pcl16::ModelCoefficients& cylinder);
+  void fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud, pcl16::ModelCoefficients& sphere);
 
   static inline double dist(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
@@ -215,7 +215,6 @@ class PointCloudSegmentation
     const double dz = a[2]-b.z;
     return dx*dx+dy*dy+dz*dz;
   }
-
 
   static inline double sqrDist(Eigen::Vector4f& a, Eigen::Vector4f& b)
   {
@@ -260,10 +259,10 @@ class PointCloudSegmentation
 
   float pointLineXYDist(pcl16::PointXYZ p,Eigen::Vector3f vec,Eigen::Vector4f base);
 
-  XYZPointCloud lineCloudIntersection(XYZPointCloud& cloud, Eigen::Vector3f vec,
-                                      Eigen::Vector4f base);
-  std::vector<pcl16::PointXYZ> lineCloudIntersectionEndPoints(
-      XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base);
+  void lineCloudIntersection(XYZPointCloud& cloud, Eigen::Vector3f vec,
+                             Eigen::Vector4f base, XYZPointCloud& line_cloud);
+  void lineCloudIntersectionEndPoints(XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base,
+                                      std::vector<pcl16::PointXYZ>& end_points);
 
   /**
    * Filter a point cloud to only be above the estimated table and within the
@@ -273,7 +272,7 @@ class PointCloudSegmentation
    *
    * @return The downsampled cloud
    */
-  XYZPointCloud downsampleCloud(XYZPointCloud& cloud_in);
+  void downsampleCloud(XYZPointCloud& cloud_in, XYZPointCloud& cloud_down);
 
   /**
    * Method to project the current proto objects into an image
@@ -284,8 +283,7 @@ class PointCloudSegmentation
    *
    * @return Image containing the projected objects
    */
-  cv::Mat projectProtoObjectsIntoImage(ProtoObjects& objs, cv::Size img_size,
-                                       std::string target_frame);
+  cv::Mat projectProtoObjectsIntoImage(ProtoObjects& objs, cv::Size img_size, std::string target_frame);
 
   /**
    * Method to project the current proto object into an image
@@ -324,7 +322,7 @@ class PointCloudSegmentation
   cv::Point projectPointIntoImage(Eigen::Vector3f cur_point_eig,
                                   std::string point_frame, std::string target_frame);
 
-  Eigen::Vector4f getTableCentroid()
+  Eigen::Vector4f getTableCentroid() const
   {
     return table_centroid_;
   }
@@ -368,7 +366,7 @@ class PointCloudSegmentation
   bool optimize_cylinder_coefficients_;
 };
 
-XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
+void getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask, XYZPointCloud& masked_cloud)
 {
   // Select points from point cloud that are in the mask:
   pcl16::PointIndices mask_indices;
@@ -385,9 +383,7 @@ XYZPointCloud getMaskedPointCloud(XYZPointCloud& input_cloud, cv::Mat& mask)
     }
   }
 
-  XYZPointCloud masked_cloud;
   pcl16::copyPointCloud(input_cloud, mask_indices, masked_cloud);
-  return masked_cloud;
 }
 };
 #endif // point_cloud_segmentation_h_DEFINED

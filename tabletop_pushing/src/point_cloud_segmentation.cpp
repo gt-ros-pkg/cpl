@@ -75,9 +75,7 @@ using pcl16::PointXYZ;
 namespace tabletop_pushing
 {
 
-PointCloudSegmentation::PointCloudSegmentation(
-    boost::shared_ptr<tf::TransformListener> tf) :
-    tf_(tf)
+PointCloudSegmentation::PointCloudSegmentation(boost::shared_ptr<tf::TransformListener> tf) : tf_(tf)
 {
   for (int i = 0; i < 200; ++i)
   {
@@ -89,13 +87,6 @@ PointCloudSegmentation::PointCloudSegmentation(
   }
 }
 
-/**
- * Function to determine the table plane in a point cloud
- *
- * @param cloud The cloud with the table as dominant plane.
- *
- * @return The centroid of the points belonging to the table plane.
- */
 void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud, XYZPointCloud& plane_cloud,
                                            Eigen::Vector4f& table_centroid, bool find_hull)
 {
@@ -320,7 +311,8 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
 
   // TODO: Filter out arm explicitly?
 
-  XYZPointCloud objects_cloud_down = downsampleCloud(objs_cloud);
+  XYZPointCloud objects_cloud_down;
+  downsampleCloud(objs_cloud, objects_cloud_down);
   // Find independent regions
   if (objects_cloud_down.size() > 0)
   {
@@ -421,8 +413,7 @@ void PointCloudSegmentation::getMovedRegions(XYZPointCloud& prev_cloud, XYZPoint
 
 #ifdef DISPLAY_CLOUD_DIFF
   cv::Size img_size(320, 240);
-  cv::Mat moved_img = projectProtoObjectsIntoImage(moved, img_size,
-                                                   prev_cloud.header.frame_id);
+  cv::Mat moved_img = projectProtoObjectsIntoImage(moved, img_size, prev_cloud.header.frame_id);
   std::stringstream cluster_title;
   cluster_title << "moved clusters" << suf;
   displayObjectImage(moved_img, cluster_title.str());
@@ -455,7 +446,15 @@ void PointCloudSegmentation::matchMovedRegions(ProtoObjects& objs,
   }
 }
 
-pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud)
+/**
+ * Method to fit a cylinder to a segmented object
+ *
+ * @param obj            The segmented object we are modelling as a cylinder
+ * @param cylinder_cloud The cloud resulting from the cylinder fit
+ * @param coefficients   [Returned] The model of the cylinder
+ */
+void PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& obj, XYZPointCloud& cylinder_cloud,
+                                               pcl16::ModelCoefficients& coefficients)
 {
   pcl16::NormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setInputCloud(obj.cloud.makeShared());
@@ -465,7 +464,6 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& 
   ne.compute(obj.normals);
 
   // Create the segmentation object
-  pcl16::ModelCoefficients coefficients;
   Eigen::Vector3f z_axis(0.0,0.0,1.0);
   pcl16::PointIndices cylinder_inliers;
   pcl16::SACSegmentationFromNormals<PointXYZ,pcl16::Normal> cylinder_seg;
@@ -480,21 +478,19 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitCylinderRANSAC(ProtoObject& 
   cylinder_seg.segment(cylinder_inliers, coefficients);
 
   pcl16::copyPointCloud(obj.cloud, cylinder_inliers, cylinder_cloud);
-  return coefficients;
 }
 
 /**
  * Method to fit a sphere to a segmented object
  *
- * @param obj The segmented object we are modelling as a sphere
+ * @param obj          The segmented object we are modelling as a sphere
  * @param sphere_cloud The cloud resulting from the sphere fit
- *
- * @return The model of the sphere
+ * @param coefficients [Returned] The model of the sphere
  */
-pcl16::ModelCoefficients PointCloudSegmentation::fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud)
+void PointCloudSegmentation::fitSphereRANSAC(ProtoObject& obj, XYZPointCloud& sphere_cloud,
+                                             pcl16::ModelCoefficients& coefficients)
 {
   // Create the segmentation object
-  pcl16::ModelCoefficients coefficients;
   pcl16::PointIndices sphere_inliers;
   pcl16::SACSegmentation<PointXYZ> sphere_seg;
   sphere_seg.setOptimizeCoefficients(true);
@@ -505,7 +501,6 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitSphereRANSAC(ProtoObject& ob
   sphere_seg.segment(sphere_inliers, coefficients);
 
   pcl16::copyPointCloud(obj.cloud, sphere_inliers, sphere_cloud);
-  return coefficients;
 }
 
 /**
@@ -518,8 +513,7 @@ pcl16::ModelCoefficients PointCloudSegmentation::fitSphereRANSAC(ProtoObject& ob
  * @return true if any points from cloud0 and cloud1 have distance less than
  * voxel_down_res_
  */
-bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0,
-                                             XYZPointCloud cloud1)
+bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0, XYZPointCloud cloud1)
 {
   int moved_count = 0;
   for (unsigned int i = 0; i < cloud0.size(); ++i)
@@ -541,9 +535,7 @@ bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0,
   return false;
 }
 
-bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0,
-                                             XYZPointCloud cloud1,
-                                             double thresh)
+bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0, XYZPointCloud cloud1, double thresh)
 {
   for (unsigned int i = 0; i < cloud0.size(); ++i)
   {
@@ -557,9 +549,7 @@ bool PointCloudSegmentation::cloudsIntersect(XYZPointCloud cloud0,
   return false;
 }
 
-bool PointCloudSegmentation::pointIntersectsCloud(XYZPointCloud cloud,
-                                                  geometry_msgs::Point pt,
-                                                  double thresh)
+bool PointCloudSegmentation::pointIntersectsCloud(XYZPointCloud cloud, geometry_msgs::Point pt, double thresh)
 {
   for (unsigned int i = 0; i < cloud.size(); ++i)
   {
@@ -569,9 +559,7 @@ bool PointCloudSegmentation::pointIntersectsCloud(XYZPointCloud cloud,
   return false;
 }
 
-float PointCloudSegmentation::pointLineXYDist(PointXYZ p,
-                                              Eigen::Vector3f vec,
-                                              Eigen::Vector4f base)
+float PointCloudSegmentation::pointLineXYDist(PointXYZ p, Eigen::Vector3f vec, Eigen::Vector4f base)
 {
   Eigen::Vector3f x0(p.x,p.y,0.0);
   Eigen::Vector3f x1(base[0],base[1],0.0);
@@ -583,8 +571,8 @@ float PointCloudSegmentation::pointLineXYDist(PointXYZ p,
   return d;
 }
 
-XYZPointCloud PointCloudSegmentation::lineCloudIntersection(
-    XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base)
+void PointCloudSegmentation::lineCloudIntersection(XYZPointCloud& cloud, Eigen::Vector3f vec,
+                                                   Eigen::Vector4f base, XYZPointCloud& line_cloud)
 {
   // Define parametric model of the line defined by base and vec and
   // test cloud memebers for distance from the line, if the distance is less
@@ -600,18 +588,17 @@ XYZPointCloud PointCloudSegmentation::lineCloudIntersection(
   }
 
   // Extract the interesecting points of the line.
-  XYZPointCloud line_cloud;
   pcl16::ExtractIndices<PointXYZ> extract;
   extract.setInputCloud(cloud.makeShared());
   extract.setIndices(boost::make_shared<pcl16::PointIndices>(line_inliers));
   extract.filter(line_cloud);
-  return line_cloud;
 }
 
-std::vector<PointXYZ> PointCloudSegmentation::lineCloudIntersectionEndPoints(
-    XYZPointCloud& cloud, Eigen::Vector3f vec, Eigen::Vector4f base)
+void PointCloudSegmentation::lineCloudIntersectionEndPoints(XYZPointCloud& cloud, Eigen::Vector3f vec,
+                                                            Eigen::Vector4f base, std::vector<PointXYZ>& points)
 {
-  XYZPointCloud intersection = lineCloudIntersection(cloud, vec, base);
+  XYZPointCloud intersection;
+  lineCloudIntersection(cloud, vec, base, intersection);
   unsigned int min_y_idx = intersection.size();
   unsigned int max_y_idx = intersection.size();
   unsigned int min_x_idx = intersection.size();
@@ -680,7 +667,6 @@ std::vector<PointXYZ> PointCloudSegmentation::lineCloudIntersectionEndPoints(
       end_idx = min_y_idx;
     }
   }
-  std::vector<PointXYZ> points;
   PointXYZ start_point, end_point;
   start_point.x = intersection.at(start_idx).x;
   start_point.y = intersection.at(start_idx).y;
@@ -690,7 +676,6 @@ std::vector<PointXYZ> PointCloudSegmentation::lineCloudIntersectionEndPoints(
   end_point.z = intersection.at(end_idx).z;
   points.push_back(start_point);
   points.push_back(end_point);
-  return points;
 }
 
 /**
@@ -701,9 +686,9 @@ std::vector<PointXYZ> PointCloudSegmentation::lineCloudIntersectionEndPoints(
  *
  * @return The downsampled cloud
  */
-XYZPointCloud PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in)
+void PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in, XYZPointCloud& cloud_down)
 {
-  XYZPointCloud cloud_z_filtered, cloud_x_filtered, cloud_down;
+  XYZPointCloud cloud_z_filtered, cloud_x_filtered;
   pcl16::PassThrough<PointXYZ> z_pass;
   z_pass.setFilterFieldName("z");
   ROS_DEBUG_STREAM("Number of points in cloud_in is: " <<
@@ -727,7 +712,6 @@ XYZPointCloud PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in)
   downsample_outliers.filter(cloud_down);
   ROS_DEBUG_STREAM("Number of points in objs_downsampled: " <<
                    cloud_down.size());
-  return cloud_down;
 }
 
 /**
@@ -739,8 +723,7 @@ XYZPointCloud PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in)
  *
  * @return Image containing the projected objects
  */
-cv::Mat PointCloudSegmentation::projectProtoObjectsIntoImage(ProtoObjects& objs,
-                                                             cv::Size img_size,
+cv::Mat PointCloudSegmentation::projectProtoObjectsIntoImage(ProtoObjects& objs, cv::Size img_size,
                                                              std::string target_frame)
 {
   cv::Mat obj_img(img_size, CV_8UC1, cv::Scalar(0));

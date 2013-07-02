@@ -894,8 +894,8 @@ class TabletopPushingPerceptionNode
       }
       // Get vector through centroid and determine start point and distance
       Eigen::Vector3f push_unit_vec(std::cos(p.push_angle), std::sin(p.push_angle), 0.0f);
-      std::vector<pcl16::PointXYZ> end_points = pcl_segmenter_->lineCloudIntersectionEndPoints(
-          cur_obj.cloud, push_unit_vec, cur_obj.centroid);
+      std::vector<pcl16::PointXYZ> end_points;
+      pcl_segmenter_->lineCloudIntersectionEndPoints(cur_obj.cloud, push_unit_vec, cur_obj.centroid, end_points);
       p.start_point.x = end_points[0].x;
       p.start_point.y = end_points[0].y;
       p.start_point.z = end_points[0].z;

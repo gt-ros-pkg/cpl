@@ -493,7 +493,8 @@ class ObjectSingulation
         objs[i].push_history.resize(1, 0);
       }
     }
-    XYZPointCloud cur_objs_down = pcl_segmenter_->downsampleCloud(objs_cloud);
+    XYZPointCloud cur_objs_down;
+    pcl_segmenter_->downsampleCloud(objs_cloud, cur_objs_down);
     ProtoObjects cur_objs;
     if (callback_count_ > 0)
     {
@@ -1469,12 +1470,14 @@ class ObjectSingulation
   void evaluatePushOpts(PushOpts& split_opts, Boundary& boundary,
                         ProtoObjects& objs)
   {
-    XYZPointCloud s0_int = pcl_segmenter_->lineCloudIntersection(
+    XYZPointCloud s0_int;
+    pcl_segmenter_->lineCloudIntersection(
         boundary.splits[0].cloud, split_opts[0].push_unit_vec,
-        boundary.splits[0].centroid);
-    XYZPointCloud s1_int = pcl_segmenter_->lineCloudIntersection(
+        boundary.splits[0].centroid, s0_int);
+    XYZPointCloud s1_int;
+    pcl_segmenter_->lineCloudIntersection(
         boundary.splits[1].cloud, split_opts[1].push_unit_vec,
-        boundary.splits[1].centroid);
+        boundary.splits[1].centroid, s1_int);
     for (unsigned int i = 0; i < split_opts.size(); ++i)
     {
       if (split_opts[i].split_id == 0 && s0_int.size() > 0)
@@ -1751,8 +1754,8 @@ class ObjectSingulation
                                            double& push_angle,
                                            double& push_dist)
   {
-    XYZPointCloud pts = pcl_segmenter_->lineCloudIntersection(
-        obj_cloud, push_unit_vec, centroid);
+    XYZPointCloud pts;
+    pcl_segmenter_->lineCloudIntersection(obj_cloud, push_unit_vec, centroid, pts);
     unsigned int min_idx = pts.size();
     unsigned int max_idx = pts.size();
     float min_y = FLT_MAX;
