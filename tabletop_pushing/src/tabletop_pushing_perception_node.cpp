@@ -1882,7 +1882,7 @@ class TabletopPushingPerceptionNode
     XYZPointCloud obj_cloud, table_cloud;
     // TODO: Comptue the hull on the first call
     Eigen::Vector4f table_centroid;
-    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid);
+    pcl_segmenter_->getTablePlaneMPS(cloud, obj_cloud, table_cloud, table_centroid);
     PoseStamped p;
     p.pose.position.x = table_centroid[0];
     p.pose.position.y = table_centroid[1];
