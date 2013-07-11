@@ -1290,10 +1290,10 @@ class PositionFeedbackPushNode:
         if request.high_arm_init:
             # Move to offset pose above the table
             start_pose.pose.position.z = self.high_arm_init_z
-            self.move_to_cart_pose(start_pose, which_arm)
+            self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
             rospy.logdebug('Done moving to overhead start point')
             start_pose.pose.position.z = self.lower_arm_init_z
-            self.move_to_cart_pose(start_pose, which_arm)
+            self.move_to_cart_pose(start_pose, which_arm, self.pre_push_count_thresh)
             rospy.loginfo('Done moving to lower start point')
 
             # Lower arm to table

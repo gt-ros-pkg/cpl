@@ -52,7 +52,7 @@ from push_primitives import *
 _OFFLINE = False
 _USE_LEARN_IO = True
 _TEST_START_POSE = False
-_USE_FIXED_GOAL = False
+_USE_FIXED_GOAL = True
 
 class TabletopExecutive:
 
@@ -89,7 +89,7 @@ class TabletopExecutive:
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
         self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.425)
         self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.8)
-        self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.3)
+        self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.5)
         self.min_workspace_y = -self.max_workspace_y
 
         self.goal_y_base_delta = 0.01
@@ -336,8 +336,12 @@ class TabletopExecutive:
                                               push_vec_res, goal_pose,
                                               controller_name, proxy_name, tool_proxy_name)
             push_time = time.time() - start_time
-            self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
-                              push_vec_res, goal_pose, object_id, precondition_method)
+            if push_res.failed_pre_position:
+                if _USE_LEARN_IO:
+                    self.learn_io.write_bad_trial_line()
+            else:
+                self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
+                                  push_vec_res, goal_pose, object_id, precondition_method)
 
             if res == 'quit':
                 return res
@@ -1135,7 +1139,7 @@ class TabletopExecutive:
         if _USE_FIXED_GOAL or self.start_loc_use_fixed_goal:
             goal_pose = Pose2D()
             goal_pose.x = 0.65
-            goal_pose.y = -0.3
+            goal_pose.y = 0.3
             goal_pose.theta = 0
             if self.start_loc_use_fixed_goal:
                 goal_pose.y += self.start_loc_goal_y_delta
@@ -1174,7 +1178,7 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    learn_start_loc = True
+    learn_start_loc = False
     # Used for training data collection:
     # num_start_loc_sample_locs = 32
     # Used for testing data collection:
@@ -1220,7 +1224,10 @@ if __name__ == '__main__':
                                                                 num_start_loc_sample_locs, start_loc_param_path)
                 node.finish_learning()
             else:
+                node.start_loc_use_fixed_goal = False
+                node.init_loc_learning()
                 clean_exploration = node.run_push_exploration(object_id=code_in)
+                node.finish_learning()
             if not clean_exploration:
                 rospy.loginfo('Not clean end to pushing stuff')
                 running = False

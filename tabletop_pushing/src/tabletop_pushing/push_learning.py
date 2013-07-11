@@ -196,7 +196,7 @@ class PushLearningIO:
 
     def write_pre_push_line(self, init_centroid, init_orientation, goal_pose, push_start_point, behavior_primitive,
                             controller, proxy, which_arm, object_id, precondition_method,
-                            predicted_score, shape_descriptor=None):
+                            predicted_score=-1.0, shape_descriptor=None):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return

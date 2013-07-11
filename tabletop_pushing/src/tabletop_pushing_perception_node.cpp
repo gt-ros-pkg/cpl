@@ -668,6 +668,7 @@ class TabletopPushingPerceptionNode
         record_count_ = 0;
         learn_callback_count_ = 0;
         res.no_push = true;
+        ROS_INFO_STREAM("Stopping input recording");
         recording_input_ = false;
         obj_tracker_->stopTracking();
       }
@@ -676,6 +677,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Getting current object pose");
         getObjectPose(res);
         res.no_push = true;
+        ROS_INFO_STREAM("Stopping input recording");
         recording_input_ = false;
         ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
         if (cur_obj.cloud.header.frame_id.size() == 0)
@@ -922,7 +924,10 @@ class TabletopPushingPerceptionNode
       end_point.point.y = res.goal_pose.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
-      displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
+      if (use_displays_)
+      {
+        displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
+      }
     }
 
     // Cleanup and return
