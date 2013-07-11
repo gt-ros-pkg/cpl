@@ -112,9 +112,9 @@
 #include <cstdlib> // for MAX_RAND
 
 // Debugging IFDEFS
-#define DISPLAY_INPUT_COLOR 1
-#define DISPLAY_INPUT_DEPTH 1
-#define DISPLAY_WAIT 1
+// #define DISPLAY_INPUT_COLOR 1
+// #define DISPLAY_INPUT_DEPTH 1
+// #define DISPLAY_WAIT 1
 
 using boost::shared_ptr;
 
@@ -695,19 +695,22 @@ class TabletopPushingPerceptionNode
           // Display different color to signal swap available
           obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
           ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
-          ROS_INFO_STREAM("Presss 's' to swap orientation: ");
-          char key_press = cv::waitKey(2000);
-          if (key_press == 's')
+          if (use_displays_)
           {
-            // TODO: Is this correct?
-            force_swap_ = !obj_tracker_->getSwapState();
-            startTracking(cur_state, force_swap_);
-            ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
-            res.theta = cur_state.x.theta;
-            obj_tracker_->stopTracking();
-            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
-            // NOTE: Try and force redraw
-            cv::waitKey(3);
+            ROS_INFO_STREAM("Presss 's' to swap orientation: ");
+            char key_press = cv::waitKey(2000);
+            if (key_press == 's')
+            {
+              // TODO: Is this correct?
+              force_swap_ = !obj_tracker_->getSwapState();
+              startTracking(cur_state, force_swap_);
+              ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+              res.theta = cur_state.x.theta;
+              obj_tracker_->stopTracking();
+              obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+              // NOTE: Try and force redraw
+              cv::waitKey(3);
+            }
           }
         }
         else
@@ -754,18 +757,21 @@ class TabletopPushingPerceptionNode
     if (req.learn_start_loc)
     {
       obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
-      ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
-      ROS_INFO_STREAM("Presss 's' to swap orientation: ");
-      char key_press = cv::waitKey(2000);
-      if (key_press == 's')
+      if (use_displays_)
       {
-        force_swap_ = !force_swap_;
-        obj_tracker_->toggleSwap();
-        startTracking(cur_state, force_swap_);
-        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
-        // NOTE: Try and force redraw
-        cv::waitKey(3);
-        ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+        ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
+        ROS_INFO_STREAM("Presss 's' to swap orientation: ");
+        char key_press = cv::waitKey(2000);
+        if (key_press == 's')
+        {
+          force_swap_ = !force_swap_;
+          obj_tracker_->toggleSwap();
+          startTracking(cur_state, force_swap_);
+          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+          // NOTE: Try and force redraw
+          cv::waitKey(3);
+          ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+        }
       }
     }
 
