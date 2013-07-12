@@ -552,7 +552,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
   double updateModelElapsedTime = (((double)(Timer::nanoTime() - updateModelStartTime)) /
                                    Timer::NANOSECONDS_PER_SECOND);
   double updateElapsedTime = (((double)(Timer::nanoTime() - updateStartTime)) / Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("\t updateElapsedTime " << updateElapsedTime);
+  ROS_INFO_STREAM("updateElapsedTime " << updateElapsedTime);
   ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
   ROS_INFO_STREAM("\t updateModelElapsedTime " << updateModelElapsedTime);
 #endif
