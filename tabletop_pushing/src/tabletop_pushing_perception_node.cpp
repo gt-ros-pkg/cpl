@@ -608,7 +608,6 @@ class TabletopPushingPerceptionNode
 #ifdef PROFILE_CB_TIME
     double cbElapsedTime = (((double)(Timer::nanoTime() - trackerStartTime)) /
                             Timer::NANOSECONDS_PER_SECOND);
-#endif
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
       ROS_INFO_STREAM("cbElapsedTime " << cbElapsedTime);
@@ -624,6 +623,7 @@ class TabletopPushingPerceptionNode
       ROS_INFO_STREAM("\t\t publishFeedbackElapsedTime " << publishFeedbackElapsedTime);
       ROS_INFO_STREAM("\t\t evaluateGoalElapsedTime " << evaluateGoalElapsedTime);
     }
+#endif
   }
 
   void evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)

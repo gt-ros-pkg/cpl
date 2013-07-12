@@ -1,6 +1,7 @@
 // TabletopPushing
 #include <tabletop_pushing/object_tracker_25d.h>
 #include <tabletop_pushing/push_primitives.h>
+#include <tabletop_pushing/extern/Timer.hpp>
 
 // OpenCV
 #include <opencv2/imgproc/imgproc.hpp>
@@ -11,6 +12,10 @@
 
 // cpl_visual_features
 #include <cpl_visual_features/helpers.h>
+
+// Debugging IFDEFS
+// #define PROFILE_TRACKING_TIME 1
+// #define PROFILE_FIND_TARGET_TIME 1 // TODO: Setup these timers
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
@@ -468,13 +473,30 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
                                     std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
                                     PushTrackerState& state)
 {
+#ifdef PROFILE_TRACKING_TIME
+  long long updateStartTime = Timer::nanoTime();
+#endif
   if (!initialized_)
   {
+#ifdef PROFILE_TRACKING_TIME
+    long long initStartTime = Timer::nanoTime();
+#endif
     initTracks(in_frame, self_mask, cloud, proxy_name, arm_pose, tool_proxy_name, state);
+#ifdef PROFILE_TRACKING_TIME
+    double initElapsedTime = (((double)(Timer::nanoTime() - initStartTime)) / Timer::NANOSECONDS_PER_SECOND);
+    ROS_INFO_STREAM("initElapsedTime " << initElapsedTime);
+#endif
     return;
   }
   bool no_objects = false;
+#ifdef PROFILE_TRACKING_TIME
+  long long findTargetStartTime = Timer::nanoTime();
+#endif
   ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
+#ifdef PROFILE_TRACKING_TIME
+  double findTargetElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) / Timer::NANOSECONDS_PER_SECOND);
+  long long updateModelStartTime = Timer::nanoTime();
+#endif
 
   // Update model
   if (no_objects)
@@ -526,6 +548,15 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
   previous_state_ = state;
   frame_count_++;
   record_count_++;
+#ifdef PROFILE_TRACKING_TIME
+  double updateModelElapsedTime = (((double)(Timer::nanoTime() - updateModelStartTime)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+  double updateElapsedTime = (((double)(Timer::nanoTime() - updateStartTime)) / Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("\t updateElapsedTime " << updateElapsedTime);
+  ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
+  ROS_INFO_STREAM("\t updateModelElapsedTime " << updateModelElapsedTime);
+#endif
+
 }
 
 void ObjectTracker25D::pausedUpdate(cv::Mat in_frame)
