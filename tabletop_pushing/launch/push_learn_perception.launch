@@ -22,13 +22,14 @@
     <remap from="point_cloud_topic" to="$(arg point_cloud_topic_name)"/>
     <param name="camera_frame" value="$(arg camera_frame_name)" type="string"/>
 
+    <param name="start_tracking_on_push_call" value="false" type="bool"/>
+
     <param name="start_loc_push_time_limit" value="6.0" type="double"/>
     <param name="start_loc_push_dist" value="0.30" type="double"/>
     <param name="use_center_pointing_shape_context" value="true" type="bool"/>
-    <param name="use_displays" value="true" type="bool"/>
+    <param name="use_displays" value="false" type="bool"/>
     <param name="display_wait_ms" value="3" type="int"/>
-    <param name="start_tracking_on_push_call" value="false" type="bool"/>
-    <param name="write_to_disk" value="true" type="bool"/>
+    <param name="write_to_disk" value="false" type="bool"/>
     <param name="write_input_to_disk" value="false" type="bool"/>
     <param name="icp_max_iters" value="1000" type="int" />
     <param name="icp_transform_eps" value="0.001" type="double"/>

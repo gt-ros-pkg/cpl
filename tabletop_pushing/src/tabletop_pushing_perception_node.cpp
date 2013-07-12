@@ -94,6 +94,8 @@
 #include <tabletop_pushing/object_tracker_25d.h>
 #include <tabletop_pushing/push_primitives.h>
 
+#include <tabletop_pushing/extern/Timer.hpp>
+
 // libSVM
 #include <libsvm/svm.h>
 
@@ -115,6 +117,7 @@
 // #define DISPLAY_INPUT_COLOR 1
 // #define DISPLAY_INPUT_DEPTH 1
 // #define DISPLAY_WAIT 1
+// #define PROFILE_CB_TIME 1
 
 using boost::shared_ptr;
 
@@ -333,6 +336,10 @@ class TabletopPushingPerceptionNode
                       const sensor_msgs::ImageConstPtr& mask_msg,
                       const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
+#ifdef PROFILE_CB_TIME
+    long long cbStartTime = Timer::nanoTime();
+#endif
+
     if (!camera_initialized_)
     {
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(
@@ -352,18 +359,30 @@ class TabletopPushingPerceptionNode
     depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
 
+#ifdef PROFILE_CB_TIME
+    long long growMaskStartTime = Timer::nanoTime();
+#endif
     // Grow arm mask if requested
     if (mask_dilate_size_ > 0)
     {
       cv::Mat morph_element(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
       cv::erode(self_mask, self_mask, morph_element);
     }
-
+#ifdef PROFILE_CB_TIME
+    double growMaskElapsedTime = (((double)(Timer::nanoTime() - growMaskStartTime)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+    long long transformStartTime = Timer::nanoTime();
+#endif
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
     pcl16::fromROSMsg(*cloud_msg, cloud);
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id, cloud.header.stamp, ros::Duration(0.5));
     pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+#ifdef PROFILE_CB_TIME
+    double transformElapsedTime = (((double)(Timer::nanoTime() - transformStartTime)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+    long long filterStartTime = Timer::nanoTime();
+#endif
 
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
@@ -394,6 +413,11 @@ class TabletopPushingPerceptionNode
         }
       }
     }
+#ifdef PROFILE_CB_TIME
+    double filterElapsedTime = (((double)(Timer::nanoTime() - filterStartTime)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+    long long downSampleStartTime = Timer::nanoTime();
+#endif
 
     // Downsample everything first
     cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
@@ -401,6 +425,11 @@ class TabletopPushingPerceptionNode
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
     cv::Mat arm_mask_crop;
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
+#ifdef PROFILE_CB_TIME
+    double downSampleElapsedTime = (((double)(Timer::nanoTime() - downSampleStartTime)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+    long long copyStartTime = Timer::nanoTime();
+#endif
 
     // Save internally for use in the service callback
     prev_color_frame_ = cur_color_frame_.clone();
@@ -418,6 +447,17 @@ class TabletopPushingPerceptionNode
     cur_camera_header_ = img_msg->header;
     pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
 
+#ifdef PROFILE_CB_TIME
+    double copyElapsedTime = (((double)(Timer::nanoTime() - copyStartTime)) /
+                              Timer::NANOSECONDS_PER_SECOND);
+    double updateTracksElapsedTime = 0.0;
+    double copyTracksElapsedTime = 0.0;
+    double displayTracksElapsedTime = 0.0;
+    double publishFeedbackElapsedTime = 0.0;
+    double evaluateGoalElapsedTime = 0.0;
+    long long trackerStartTime = Timer::nanoTime();
+#endif
+
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
       PoseStamped arm_pose;
@@ -429,9 +469,19 @@ class TabletopPushingPerceptionNode
       {
         arm_pose = r_arm_pose_;
       }
+#ifdef PROFILE_CB_TIME
+      long long updateTracksStartTime = Timer::nanoTime();
+#endif
+
       PushTrackerState tracker_state;
       obj_tracker_->updateTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_,
                                  arm_pose, tool_proxy_name_, tracker_state);
+#ifdef PROFILE_CB_TIME
+      updateTracksElapsedTime = (((double)(Timer::nanoTime() - updateTracksStartTime)) /
+                                        Timer::NANOSECONDS_PER_SECOND);
+      long long copyTracksStartTime = Timer::nanoTime();
+#endif
+
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
@@ -447,17 +497,39 @@ class TabletopPushingPerceptionNode
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
+#ifdef PROFILE_CB_TIME
+      copyTracksElapsedTime = (((double)(Timer::nanoTime() - copyTracksStartTime)) /
+                                        Timer::NANOSECONDS_PER_SECOND);
+      long long displayTracksStartTime = Timer::nanoTime();
+#endif
 
       displayPushVector(cur_color_frame_, start_point, end_point);
       // displayRobotGripperPoses(cur_color_frame_);
       displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
                          tracker_goal_pose_.theta);
+#ifdef PROFILE_CB_TIME
+      displayTracksElapsedTime = (((double)(Timer::nanoTime() - displayTracksStartTime)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+      long long evaluateGoalsStartTime = Timer::nanoTime();
+#endif
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
+#ifdef PROFILE_CB_TIME
+        long long publishFeedbackStartTime = Timer::nanoTime();
+#endif
         as_.publishFeedback(tracker_state);
+#ifdef PROFILE_CB_TIME
+        publishFeedbackElapsedTime = (((double)(Timer::nanoTime() - publishFeedbackStartTime)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+        long long evaluateGoalStartTime = Timer::nanoTime();
+#endif
         evaluateGoalAndAbortConditions(tracker_state);
+#ifdef PROFILE_CB_TIME
+        evaluateGoalElapsedTime = (((double)(Timer::nanoTime() - evaluateGoalStartTime)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+#endif
       }
     }
     else if (obj_tracker_->isInitialized() && obj_tracker_->isPaused())
@@ -479,6 +551,11 @@ class TabletopPushingPerceptionNode
       displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
                          tracker_goal_pose_.theta, true);
     }
+#ifdef PROFILE_CB_TIME
+    double trackerElapsedTime = (((double)(Timer::nanoTime() - trackerStartTime)) /
+                                 Timer::NANOSECONDS_PER_SECOND);
+#endif
+
 
     // Display junk
 #ifdef DISPLAY_INPUT_COLOR
@@ -528,6 +605,25 @@ class TabletopPushingPerceptionNode
     }
 #endif // DISPLAY_WAIT
     ++frame_callback_count_;
+#ifdef PROFILE_CB_TIME
+    double cbElapsedTime = (((double)(Timer::nanoTime() - trackerStartTime)) /
+                            Timer::NANOSECONDS_PER_SECOND);
+#endif
+    if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
+    {
+      ROS_INFO_STREAM("cbElapsedTime " << cbElapsedTime);
+      ROS_INFO_STREAM("\t growMaskElapsedTime " << growMaskElapsedTime);
+      ROS_INFO_STREAM("\t transformElapsedTime " << transformElapsedTime);
+      ROS_INFO_STREAM("\t filterElapsedTime " << filterElapsedTime);
+      ROS_INFO_STREAM("\t downSampleElapsedTime " << downSampleElapsedTime);
+      ROS_INFO_STREAM("\t copyElapsedTime " << copyElapsedTime);
+      ROS_INFO_STREAM("\t trackerElapsedTime " << trackerElapsedTime);
+      ROS_INFO_STREAM("\t\t updateTracksElapsedTime " << updateTracksElapsedTime);
+      ROS_INFO_STREAM("\t\t copyTracksElapsedTime " << copyTracksElapsedTime);
+      ROS_INFO_STREAM("\t\t displayTracksElapsedTime " << displayTracksElapsedTime);
+      ROS_INFO_STREAM("\t\t publishFeedbackElapsedTime " << publishFeedbackElapsedTime);
+      ROS_INFO_STREAM("\t\t evaluateGoalElapsedTime " << evaluateGoalElapsedTime);
+    }
   }
 
   void evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)
