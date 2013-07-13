@@ -337,7 +337,7 @@ class TabletopPushingPerceptionNode
                       const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
 #ifdef PROFILE_CB_TIME
-    long long cbStartTime = Timer::nanoTime();
+    long long cb_start_time = Timer::nanoTime();
 #endif
 
     if (!camera_initialized_)
@@ -360,7 +360,7 @@ class TabletopPushingPerceptionNode
     self_mask = mask_cv_ptr->image;
 
 #ifdef PROFILE_CB_TIME
-    long long growMaskStartTime = Timer::nanoTime();
+    long long grow_mask_start_time = Timer::nanoTime();
 #endif
     // Grow arm mask if requested
     if (mask_dilate_size_ > 0)
@@ -369,9 +369,9 @@ class TabletopPushingPerceptionNode
       cv::erode(self_mask, self_mask, morph_element);
     }
 #ifdef PROFILE_CB_TIME
-    double growMaskElapsedTime = (((double)(Timer::nanoTime() - growMaskStartTime)) /
-                                  Timer::NANOSECONDS_PER_SECOND);
-    long long transformStartTime = Timer::nanoTime();
+    double grow_mask_elapsed_time = (((double)(Timer::nanoTime() - grow_mask_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+    long long transform_start_time = Timer::nanoTime();
 #endif
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
@@ -379,9 +379,9 @@ class TabletopPushingPerceptionNode
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id, cloud.header.stamp, ros::Duration(0.5));
     pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
 #ifdef PROFILE_CB_TIME
-    double transformElapsedTime = (((double)(Timer::nanoTime() - transformStartTime)) /
+    double transform_elapsed_time = (((double)(Timer::nanoTime() - transform_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
-    long long filterStartTime = Timer::nanoTime();
+    long long filter_start_time = Timer::nanoTime();
 #endif
 
     // Convert nans to zeros
@@ -414,9 +414,9 @@ class TabletopPushingPerceptionNode
       }
     }
 #ifdef PROFILE_CB_TIME
-    double filterElapsedTime = (((double)(Timer::nanoTime() - filterStartTime)) /
+    double filter_elapsed_time = (((double)(Timer::nanoTime() - filter_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
-    long long downSampleStartTime = Timer::nanoTime();
+    long long downsample_start_time = Timer::nanoTime();
 #endif
 
     // Downsample everything first
@@ -426,9 +426,9 @@ class TabletopPushingPerceptionNode
     cv::Mat arm_mask_crop;
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
 #ifdef PROFILE_CB_TIME
-    double downSampleElapsedTime = (((double)(Timer::nanoTime() - downSampleStartTime)) /
+    double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
-    long long copyStartTime = Timer::nanoTime();
+    long long copy_start_time = Timer::nanoTime();
 #endif
 
     // Save internally for use in the service callback
@@ -448,14 +448,14 @@ class TabletopPushingPerceptionNode
     pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
 
 #ifdef PROFILE_CB_TIME
-    double copyElapsedTime = (((double)(Timer::nanoTime() - copyStartTime)) /
+    double copy_elapsed_time = (((double)(Timer::nanoTime() - copy_start_time)) /
                               Timer::NANOSECONDS_PER_SECOND);
-    double updateTracksElapsedTime = 0.0;
-    double copyTracksElapsedTime = 0.0;
-    double displayTracksElapsedTime = 0.0;
-    double publishFeedbackElapsedTime = 0.0;
-    double evaluateGoalElapsedTime = 0.0;
-    long long trackerStartTime = Timer::nanoTime();
+    double update_tracks_elapsed_time = 0.0;
+    double copy_tracks_elapsed_time = 0.0;
+    double display_tracks_elapsed_time = 0.0;
+    double publish_feedback_elapsed_time = 0.0;
+    double evaluate_goal_elapsed_time = 0.0;
+    long long tracker_start_time = Timer::nanoTime();
 #endif
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
@@ -470,16 +470,16 @@ class TabletopPushingPerceptionNode
         arm_pose = r_arm_pose_;
       }
 #ifdef PROFILE_CB_TIME
-      long long updateTracksStartTime = Timer::nanoTime();
+      long long update_tracks_start_time = Timer::nanoTime();
 #endif
 
       PushTrackerState tracker_state;
       obj_tracker_->updateTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_,
                                  arm_pose, tool_proxy_name_, tracker_state);
 #ifdef PROFILE_CB_TIME
-      updateTracksElapsedTime = (((double)(Timer::nanoTime() - updateTracksStartTime)) /
-                                        Timer::NANOSECONDS_PER_SECOND);
-      long long copyTracksStartTime = Timer::nanoTime();
+      update_tracks_elapsed_time = (((double)(Timer::nanoTime() - update_tracks_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+      long long copy_tracks_start_time = Timer::nanoTime();
 #endif
 
       tracker_state.proxy_name = proxy_name_;
@@ -498,9 +498,9 @@ class TabletopPushingPerceptionNode
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
 #ifdef PROFILE_CB_TIME
-      copyTracksElapsedTime = (((double)(Timer::nanoTime() - copyTracksStartTime)) /
+      copy_tracks_elapsed_time = (((double)(Timer::nanoTime() - copy_tracks_start_time)) /
                                         Timer::NANOSECONDS_PER_SECOND);
-      long long displayTracksStartTime = Timer::nanoTime();
+      long long display_tracks_start_time = Timer::nanoTime();
 #endif
 
       displayPushVector(cur_color_frame_, start_point, end_point);
@@ -508,27 +508,27 @@ class TabletopPushingPerceptionNode
       displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
                          tracker_goal_pose_.theta);
 #ifdef PROFILE_CB_TIME
-      displayTracksElapsedTime = (((double)(Timer::nanoTime() - displayTracksStartTime)) /
+      display_tracks_elapsed_time = (((double)(Timer::nanoTime() - display_tracks_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
-      long long evaluateGoalsStartTime = Timer::nanoTime();
+      long long evaluate_goals_start_time = Timer::nanoTime();
 #endif
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
 #ifdef PROFILE_CB_TIME
-        long long publishFeedbackStartTime = Timer::nanoTime();
+        long long publish_feedback_start_time = Timer::nanoTime();
 #endif
         as_.publishFeedback(tracker_state);
 #ifdef PROFILE_CB_TIME
-        publishFeedbackElapsedTime = (((double)(Timer::nanoTime() - publishFeedbackStartTime)) /
+        publish_feedback_elapsed_time = (((double)(Timer::nanoTime() - publish_feedback_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
-        long long evaluateGoalStartTime = Timer::nanoTime();
+        long long evaluate_goal_start_time = Timer::nanoTime();
 #endif
         evaluateGoalAndAbortConditions(tracker_state);
 #ifdef PROFILE_CB_TIME
-        evaluateGoalElapsedTime = (((double)(Timer::nanoTime() - evaluateGoalStartTime)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
+        evaluate_goal_elapsed_time = (((double)(Timer::nanoTime() - evaluate_goal_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
 #endif
       }
     }
@@ -552,7 +552,7 @@ class TabletopPushingPerceptionNode
                          tracker_goal_pose_.theta, true);
     }
 #ifdef PROFILE_CB_TIME
-    double trackerElapsedTime = (((double)(Timer::nanoTime() - trackerStartTime)) /
+    double tracker_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
                                  Timer::NANOSECONDS_PER_SECOND);
 #endif
 
@@ -606,22 +606,22 @@ class TabletopPushingPerceptionNode
 #endif // DISPLAY_WAIT
     ++frame_callback_count_;
 #ifdef PROFILE_CB_TIME
-    double cbElapsedTime = (((double)(Timer::nanoTime() - trackerStartTime)) /
+    double cb_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
                             Timer::NANOSECONDS_PER_SECOND);
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
-      ROS_INFO_STREAM("cbElapsedTime " << cbElapsedTime);
-      ROS_INFO_STREAM("\t growMaskElapsedTime " << growMaskElapsedTime);
-      ROS_INFO_STREAM("\t transformElapsedTime " << transformElapsedTime);
-      ROS_INFO_STREAM("\t filterElapsedTime " << filterElapsedTime);
-      ROS_INFO_STREAM("\t downSampleElapsedTime " << downSampleElapsedTime);
-      ROS_INFO_STREAM("\t copyElapsedTime " << copyElapsedTime);
-      ROS_INFO_STREAM("\t trackerElapsedTime " << trackerElapsedTime);
-      ROS_INFO_STREAM("\t\t updateTracksElapsedTime " << updateTracksElapsedTime);
-      ROS_INFO_STREAM("\t\t copyTracksElapsedTime " << copyTracksElapsedTime);
-      ROS_INFO_STREAM("\t\t displayTracksElapsedTime " << displayTracksElapsedTime);
-      ROS_INFO_STREAM("\t\t publishFeedbackElapsedTime " << publishFeedbackElapsedTime);
-      ROS_INFO_STREAM("\t\t evaluateGoalElapsedTime " << evaluateGoalElapsedTime);
+      ROS_INFO_STREAM("cb_elapsed_time " << cb_elapsed_time);
+      ROS_INFO_STREAM("\t grow_mask_elapsed_time " << grow_mask_elapsed_time);
+      ROS_INFO_STREAM("\t transform_elapsed_time " << transform_elapsed_time);
+      ROS_INFO_STREAM("\t filter_elapsed_time " << filter_elapsed_time);
+      ROS_INFO_STREAM("\t downsample_elapsed_time " << downsample_elapsed_time);
+      ROS_INFO_STREAM("\t copy_elapsed_time " << copy_elapsed_time);
+      ROS_INFO_STREAM("\t tracker_elapsed_time " << tracker_elapsed_time);
+      ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time);
+      ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time);
+      ROS_INFO_STREAM("\t\t display_tracks_elapsed_time " << display_tracks_elapsed_time);
+      ROS_INFO_STREAM("\t\t publish_feedback_elapsed_time " << publish_feedback_elapsed_time);
+      ROS_INFO_STREAM("\t\t evaluate_goal_elapsed_time " << evaluate_goal_elapsed_time);
     }
 #endif
   }

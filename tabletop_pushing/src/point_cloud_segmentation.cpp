@@ -69,7 +69,7 @@
 // Debugging IFDEFS
 // #define DISPLAY_CLOUD_DIFF 1
 // #define PROFILE_OBJECT_SEGMENTATION_TIME 1
-
+// #define PROFILE_TABLE_SEGMENTATION_TIME 1
 #define randf() static_cast<float>(rand())/RAND_MAX
 
 typedef pcl16::search::KdTree<pcl16::PointXYZ>::Ptr KdTreePtr;
@@ -94,6 +94,10 @@ PointCloudSegmentation::PointCloudSegmentation(boost::shared_ptr<tf::TransformLi
 void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud, XYZPointCloud& plane_cloud,
                                            Eigen::Vector4f& table_centroid, bool find_hull)
 {
+#ifdef PROFILE_TABLE_SEGMENTATION_TIME
+  long long get_table_plane_start_time = Timer::nanoTime();
+#endif
+
   XYZPointCloud cloud_downsampled;
   if (use_voxel_down_)
   {
@@ -102,7 +106,11 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
     downsample.setLeafSize(voxel_down_res_, voxel_down_res_, voxel_down_res_);
     downsample.filter(cloud_downsampled);
   }
-
+#ifdef PROFILE_TABLE_SEGMENTATION_TIME
+  double downsample_elapsed_time = (((double)(Timer::nanoTime() - get_table_plane_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+  long long filter_cloud_z_start_time = Timer::nanoTime();
+#endif
   // Filter Cloud to not look for table planes on the ground
   XYZPointCloud cloud_z_filtered, cloud_filtered;
   pcl16::PassThrough<PointXYZ> z_pass;
@@ -117,14 +125,22 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   z_pass.setFilterFieldName("z");
   z_pass.setFilterLimits(min_table_z_, max_table_z_);
   z_pass.filter(cloud_z_filtered);
-
+#ifdef PROFILE_TABLE_SEGMENTATION_TIME
+  double filter_cloud_z_elapsed_time = (((double)(Timer::nanoTime() - filter_cloud_z_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+  long long filter_cloud_x_start_time = Timer::nanoTime();
+#endif
   // Filter to be just in the range in front of the robot
   pcl16::PassThrough<PointXYZ> x_pass;
   x_pass.setInputCloud(cloud_z_filtered.makeShared());
   x_pass.setFilterFieldName("x");
   x_pass.setFilterLimits(min_workspace_x_, max_workspace_x_);
   x_pass.filter(cloud_filtered);
-
+#ifdef PROFILE_TABLE_SEGMENTATION_TIME
+  double filter_cloud_x_elapsed_time = (((double)(Timer::nanoTime() - filter_cloud_x_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+  long long RANSAC_start_time = Timer::nanoTime();
+#endif
   // Segment the tabletop from the points using RANSAC plane fitting
   pcl16::ModelCoefficients coefficients;
   pcl16::PointIndices plane_inliers;
@@ -149,7 +165,10 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   extract.setIndices(boost::make_shared<pcl16::PointIndices>(plane_inliers));
   extract.setNegative(true);
   extract.filter(objs_cloud);
-
+#ifdef PROFILE_TABLE_SEGMENTATION_TIME
+  double RANSAC_elapsed_time = (((double)(Timer::nanoTime() - RANSAC_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+  long long find_centroid_start_time = Timer::nanoTime();
+#endif
   // Estimate hull from the inlier points
   if (find_hull)
   {
@@ -171,6 +190,20 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
   // projectPointCloudIntoImage(plane_cloud, plane_img, cur_camera_header_.frame_id, 255);
   // cv::imshow("table plane", plane_img);
+
+#ifdef PROFILE_TABLE_SEGMENTATION_TIME
+  double get_table_plane_elapsed_time = (((double)(Timer::nanoTime() - get_table_plane_start_time)) /
+                                        Timer::NANOSECONDS_PER_SECOND);
+  double find_centroid_elapsed_time = (((double)(Timer::nanoTime() - find_centroid_start_time)) /
+                                       Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("\t get Table Plane Elapsed Time " << get_table_plane_elapsed_time);
+  ROS_INFO_STREAM("\t\t downsample Elapsed Time " << downsample_elapsed_time);
+  ROS_INFO_STREAM("\t\t filter Z Elapsed Time " << filter_cloud_z_elapsed_time);
+  ROS_INFO_STREAM("\t\t filter X Elapsed Time " << filter_cloud_x_elapsed_time);
+  ROS_INFO_STREAM("\t\t RANSAC Elapsed Time " << RANSAC_elapsed_time);
+  ROS_INFO_STREAM("\t\t find Centroid Elapsed Time " << find_centroid_elapsed_time);
+#endif
+
 }
 
 void PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
@@ -294,7 +327,7 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
                                                  XYZPointCloud& plane_cloud, bool use_mps)
 {
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
-  long long findTabletopObjectsStartTime = Timer::nanoTime();
+  long long find_tabletop_objects_start_time = Timer::nanoTime();
 #endif
 
   // Get table plane
@@ -308,9 +341,9 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   }
   min_workspace_z_ = table_centroid_[2];
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
-  double segmentTableElapsedTime = (((double)(Timer::nanoTime() - findTabletopObjectsStartTime)) /
+  double segment_table_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
-  long long clusterObjectsStartTime = Timer::nanoTime();
+  long long cluster_objects_start_time = Timer::nanoTime();
 #endif
 
   // ROS_INFO_STREAM("Estimating normals!");
@@ -333,20 +366,20 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   }
 
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
-  double findTabletopObjectsElapsedTime = (((double)(Timer::nanoTime() - findTabletopObjectsStartTime)) /
+  double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);
-  double clusterObjectsElapsedTime = (((double)(Timer::nanoTime() - clusterObjectsStartTime)) /
+  double cluster_objects_elapsed_time = (((double)(Timer::nanoTime() - cluster_objects_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("findTabletopObjectsElapsedTime " << findTabletopObjectsElapsedTime);
+  ROS_INFO_STREAM("find_tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
   if (use_mps)
   {
-    ROS_INFO_STREAM("\t segment Table MPS Time " << segmentTableElapsedTime);
+    ROS_INFO_STREAM("\t segment Table MPS Time " << segment_table_elapsed_time);
   }
   else
   {
-    ROS_INFO_STREAM("\t segment Table RANSAC Time " << segmentTableElapsedTime);
+    ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time);
   }
-  ROS_INFO_STREAM("\t clusterObjectsElapsedTime " << clusterObjectsElapsedTime);
+  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time);
 #endif
 
 }

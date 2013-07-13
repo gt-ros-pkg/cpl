@@ -45,15 +45,15 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
                                                bool& no_objects, bool init, bool find_tool)
 {
 #ifdef PROFILE_FIND_TARGET_TIME
-  long long findTargetStartTime = Timer::nanoTime();
+  long long find_target_start_time = Timer::nanoTime();
 #endif
   // TODO: Pass in arm mask
   ProtoObjects objs;
   pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
 #ifdef PROFILE_FIND_TARGET_TIME
-  double findTabletopObjectsElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) /
+  double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);
-  long long chooseObjectStartTime = Timer::nanoTime();
+  long long choose_object_start_time = Timer::nanoTime();
 #endif
   if (objs.size() == 0)
   {
@@ -61,10 +61,10 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
     ProtoObject empty;
     no_objects = true;
 #ifdef PROFILE_FIND_TARGET_TIME
-    double findTargetElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) /
+    double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
-    ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
-    ROS_INFO_STREAM("\t\t findTabletopObjectsElapsedTime " << findTabletopObjectsElapsedTime);
+    ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
+    ROS_INFO_STREAM("\t\t find_tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
 #endif
     return empty;
   }
@@ -112,9 +112,9 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
     }
   }
 #ifdef PROFILE_FIND_TARGET_TIME
-  double chooseObjectElapsedTime = (((double)(Timer::nanoTime() - chooseObjectStartTime)) /
-                                    Timer::NANOSECONDS_PER_SECOND);
-  long long displayObjectStartTime = Timer::nanoTime();
+  double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
+                                       Timer::NANOSECONDS_PER_SECOND);
+  long long display_object_start_time = Timer::nanoTime();
 #endif
 
   if (use_displays_)
@@ -125,14 +125,14 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   }
   no_objects = false;
 #ifdef PROFILE_FIND_TARGET_TIME
-  double findTargetElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) /
+  double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
-  double displayObjectElapsedTime = (((double)(Timer::nanoTime() - displayObjectStartTime)) /
-                                     Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
-  ROS_INFO_STREAM("\t\t findTabletopObjectsElapsedTime " << findTabletopObjectsElapsedTime);
-  ROS_INFO_STREAM("\t\t chooseObjectElapsedTime " << chooseObjectElapsedTime);
-  ROS_INFO_STREAM("\t\t displayObjectsElapsedTime " << displayObjectElapsedTime);
+  double display_object_elapsed_time = (((double)(Timer::nanoTime() - display_object_start_time)) /
+                                        Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
+  ROS_INFO_STREAM("\t\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
+  ROS_INFO_STREAM("\t\t choose_object_elapsed_time " << choose_object_elapsed_time);
+  ROS_INFO_STREAM("\t\t display_objects_elapsed_time " << display_object_elapsed_time);
 #endif
 
   return objs[chosen_idx];
@@ -504,28 +504,28 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
                                     PushTrackerState& state)
 {
 #ifdef PROFILE_TRACKING_TIME
-  long long updateStartTime = Timer::nanoTime();
+  long long update_start_time = Timer::nanoTime();
 #endif
   if (!initialized_)
   {
 #ifdef PROFILE_TRACKING_TIME
-    long long initStartTime = Timer::nanoTime();
+    long long init_start_time = Timer::nanoTime();
 #endif
     initTracks(in_frame, self_mask, cloud, proxy_name, arm_pose, tool_proxy_name, state);
 #ifdef PROFILE_TRACKING_TIME
-    double initElapsedTime = (((double)(Timer::nanoTime() - initStartTime)) / Timer::NANOSECONDS_PER_SECOND);
-    ROS_INFO_STREAM("initElapsedTime " << initElapsedTime);
+    double init_elapsed_time = (((double)(Timer::nanoTime() - init_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+    ROS_INFO_STREAM("init_elapsed_time " << init_elapsed_time);
 #endif
     return;
   }
   bool no_objects = false;
 #ifdef PROFILE_TRACKING_TIME
-  long long findTargetStartTime = Timer::nanoTime();
+  long long find_target_start_time = Timer::nanoTime();
 #endif
   ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
 #ifdef PROFILE_TRACKING_TIME
-  double findTargetElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) / Timer::NANOSECONDS_PER_SECOND);
-  long long updateModelStartTime = Timer::nanoTime();
+  double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+  long long update_model_start_time = Timer::nanoTime();
 #endif
 
   // Update model
@@ -579,12 +579,12 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
   frame_count_++;
   record_count_++;
 #ifdef PROFILE_TRACKING_TIME
-  double updateModelElapsedTime = (((double)(Timer::nanoTime() - updateModelStartTime)) /
+  double update_model_elapsed_time = (((double)(Timer::nanoTime() - update_model_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
-  double updateElapsedTime = (((double)(Timer::nanoTime() - updateStartTime)) / Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("updateElapsedTime " << updateElapsedTime);
-  ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
-  ROS_INFO_STREAM("\t updateModelElapsedTime " << updateModelElapsedTime);
+  double update_elapsed_time = (((double)(Timer::nanoTime() - update_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("update_elapsed_time " << update_elapsed_time);
+  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
+  ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time);
 #endif
 
 }
