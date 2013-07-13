@@ -64,8 +64,12 @@
 #include <sstream>
 // Local
 #include <tabletop_pushing/point_cloud_segmentation.h>
+#include <tabletop_pushing/extern/Timer.hpp>
 
+// Debugging IFDEFS
 // #define DISPLAY_CLOUD_DIFF 1
+// #define PROFILE_OBJECT_SEGMENTATION_TIME 1
+
 #define randf() static_cast<float>(rand())/RAND_MAX
 
 typedef pcl16::search::KdTree<pcl16::PointXYZ>::Ptr KdTreePtr;
@@ -289,6 +293,10 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
                                                  XYZPointCloud& objs_cloud,
                                                  XYZPointCloud& plane_cloud, bool use_mps)
 {
+#ifdef PROFILE_OBJECT_SEGMENTATION_TIME
+  long long findTabletopObjectsStartTime = Timer::nanoTime();
+#endif
+
   // Get table plane
   if (use_mps)
   {
@@ -299,6 +307,11 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
     getTablePlane(input_cloud, objs_cloud, plane_cloud, table_centroid_, false);
   }
   min_workspace_z_ = table_centroid_[2];
+#ifdef PROFILE_OBJECT_SEGMENTATION_TIME
+  double segmentTableElapsedTime = (((double)(Timer::nanoTime() - findTabletopObjectsStartTime)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+  long long clusterObjectsStartTime = Timer::nanoTime();
+#endif
 
   // ROS_INFO_STREAM("Estimating normals!");
   // NormalCloud::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
@@ -318,6 +331,24 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   {
     clusterProtoObjects(objects_cloud_down, objs);
   }
+
+#ifdef PROFILE_OBJECT_SEGMENTATION_TIME
+  double findTabletopObjectsElapsedTime = (((double)(Timer::nanoTime() - findTabletopObjectsStartTime)) /
+                                           Timer::NANOSECONDS_PER_SECOND);
+  double clusterObjectsElapsedTime = (((double)(Timer::nanoTime() - clusterObjectsStartTime)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("findTabletopObjectsElapsedTime " << findTabletopObjectsElapsedTime);
+  if (use_mps)
+  {
+    ROS_INFO_STREAM("\t segment Table MPS Time " << segmentTableElapsedTime);
+  }
+  else
+  {
+    ROS_INFO_STREAM("\t segment Table RANSAC Time " << segmentTableElapsedTime);
+  }
+  ROS_INFO_STREAM("\t clusterObjectsElapsedTime " << clusterObjectsElapsedTime);
+#endif
+
 }
 
 /**

@@ -44,14 +44,28 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
 ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
                                                bool& no_objects, bool init, bool find_tool)
 {
+#ifdef PROFILE_FIND_TARGET_TIME
+  long long findTargetStartTime = Timer::nanoTime();
+#endif
   // TODO: Pass in arm mask
   ProtoObjects objs;
   pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
+#ifdef PROFILE_FIND_TARGET_TIME
+  double findTabletopObjectsElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) /
+                                           Timer::NANOSECONDS_PER_SECOND);
+  long long chooseObjectStartTime = Timer::nanoTime();
+#endif
   if (objs.size() == 0)
   {
     ROS_WARN_STREAM("No objects found");
     ProtoObject empty;
     no_objects = true;
+#ifdef PROFILE_FIND_TARGET_TIME
+    double findTargetElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+    ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
+    ROS_INFO_STREAM("\t\t findTabletopObjectsElapsedTime " << findTabletopObjectsElapsedTime);
+#endif
     return empty;
   }
 
@@ -59,7 +73,7 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   if (objs.size() == 1)
   {
   }
-  else if (true || init || frame_count_ == 0)
+  else if (init || frame_count_ == 0)   // TODO: Change this to nearest neighbor
   {
     // NOTE: Assume we care about the biggest currently
     unsigned int max_size = 0;
@@ -97,6 +111,11 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
       // TODO: Match color histogram
     }
   }
+#ifdef PROFILE_FIND_TARGET_TIME
+  double chooseObjectElapsedTime = (((double)(Timer::nanoTime() - chooseObjectStartTime)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+  long long displayObjectStartTime = Timer::nanoTime();
+#endif
 
   if (use_displays_)
   {
@@ -105,6 +124,17 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
   }
   no_objects = false;
+#ifdef PROFILE_FIND_TARGET_TIME
+  double findTargetElapsedTime = (((double)(Timer::nanoTime() - findTargetStartTime)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+  double displayObjectElapsedTime = (((double)(Timer::nanoTime() - displayObjectStartTime)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("\t findTargetElapsedTime " << findTargetElapsedTime);
+  ROS_INFO_STREAM("\t\t findTabletopObjectsElapsedTime " << findTabletopObjectsElapsedTime);
+  ROS_INFO_STREAM("\t\t chooseObjectElapsedTime " << chooseObjectElapsedTime);
+  ROS_INFO_STREAM("\t\t displayObjectsElapsedTime " << displayObjectElapsedTime);
+#endif
+
   return objs[chosen_idx];
 }
 
