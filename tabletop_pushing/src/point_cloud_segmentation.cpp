@@ -70,6 +70,8 @@
 // #define DISPLAY_CLOUD_DIFF 1
 // #define PROFILE_OBJECT_SEGMENTATION_TIME 1
 // #define PROFILE_TABLE_SEGMENTATION_TIME 1
+// #define PROFILE_OBJECT_CLUSTER_TIME 1
+
 #define randf() static_cast<float>(rand())/RAND_MAX
 
 typedef pcl16::search::KdTree<pcl16::PointXYZ>::Ptr KdTreePtr;
@@ -92,7 +94,7 @@ PointCloudSegmentation::PointCloudSegmentation(boost::shared_ptr<tf::TransformLi
 }
 
 void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud, XYZPointCloud& plane_cloud,
-                                           Eigen::Vector4f& table_centroid, bool find_hull)
+                                           Eigen::Vector4f& table_centroid, bool find_hull, bool find_centroid)
 {
 #ifdef PROFILE_TABLE_SEGMENTATION_TIME
   long long get_table_plane_start_time = Timer::nanoTime();
@@ -185,7 +187,11 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   }
 
   // Extract the plane members into their own point cloud
-  pcl16::compute3DCentroid(plane_cloud, table_centroid);
+  if (find_centroid)
+  {
+    pcl16::compute3DCentroid(plane_cloud, table_centroid);
+    min_workspace_z_ = table_centroid[2];
+  }
   // cv::Size img_size(320, 240);
   // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
   // projectPointCloudIntoImage(plane_cloud, plane_img, cur_camera_header_.frame_id, 255);
@@ -208,7 +214,7 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
 
 void PointCloudSegmentation::getTablePlaneMPS(XYZPointCloud& input_cloud, XYZPointCloud& objs_cloud,
                                               XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
-                                              bool find_hull)
+                                              bool find_hull, bool find_centroid)
 {
   pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
   ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
@@ -339,24 +345,16 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   {
     getTablePlane(input_cloud, objs_cloud, plane_cloud, table_centroid_, false);
   }
-  min_workspace_z_ = table_centroid_[2];
+
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
   double segment_table_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
   long long cluster_objects_start_time = Timer::nanoTime();
 #endif
 
-  // ROS_INFO_STREAM("Estimating normals!");
-  // NormalCloud::Ptr normal_cloud (new pcl16::PointCloud<pcl16::Normal>);
-  // pcl16::IntegralImageNormalEstimation<PointXYZ, pcl16::Normal> ne;
-  // ne.setNormalEstimationMethod (ne.COVARIANCE_MATRIX);
-  // ne.setMaxDepthChangeFactor(0.03f);
-  // ne.setNormalSmoothingSize(20.0f);
-  // ne.setInputCloud(input_cloud.makeShared());
-  // ne.compute(*normal_cloud);
-
-  // TODO: Filter out arm explicitly?
-
+  // TODO: Check the downsample rate vs not downsampling
+  // TODO: Check the tracking quality
+  // TODO: Make a switch to easily choose between these two methods
   XYZPointCloud objects_cloud_down;
   downsampleCloud(objs_cloud, objects_cloud_down);
   // Find independent regions
@@ -364,7 +362,7 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   {
     clusterProtoObjects(objects_cloud_down, objs);
   }
-
+  // clusterProtoObjects(objs_cloud, objs);
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
   double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);
@@ -379,7 +377,7 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   {
     ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time);
   }
-  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time);
+  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time << "\n");
 #endif
 
 }
@@ -392,6 +390,9 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
  */
 void PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud, ProtoObjects& objs)
 {
+#ifdef PROFILE_OBJECT_CLUSTER_TIME
+  long long cluster_objects_start_time = Timer::nanoTime();
+#endif
   std::vector<pcl16::PointIndices> clusters;
   pcl16::EuclideanClusterExtraction<PointXYZ> pcl_cluster;
   const KdTreePtr clusters_tree(new pcl16::search::KdTree<PointXYZ>);
@@ -405,6 +406,11 @@ void PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud, P
   pcl_cluster.extract(clusters);
   ROS_DEBUG_STREAM("Number of clusters found matching the given constraints: "
                    << clusters.size());
+#ifdef PROFILE_OBJECT_CLUSTER_TIME
+  double pcl_cluster_elapsed_time = (((double)(Timer::nanoTime() - cluster_objects_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+  long long proto_object_start_time = Timer::nanoTime();
+#endif
 
   for (unsigned int i = 0; i < clusters.size(); ++i)
   {
@@ -420,6 +426,16 @@ void PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud, P
     po.singulated = false;
     objs.push_back(po);
   }
+#ifdef PROFILE_OBJECT_CLUSTER_TIME
+  double cluster_objects_elapsed_time = (((double)(Timer::nanoTime() - cluster_objects_start_time)) /
+                                         Timer::NANOSECONDS_PER_SECOND);
+  double proto_object_elapsed_time = (((double)(Timer::nanoTime() - proto_object_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time);
+  ROS_INFO_STREAM("\t\t pcl_cluster_elapsed_time " << pcl_cluster_elapsed_time);
+  ROS_INFO_STREAM("\t\t proto_object_elapsed_time " << proto_object_elapsed_time);
+#endif
+
 }
 
 /**

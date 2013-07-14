@@ -52,7 +52,7 @@
     <param name="pcl_voxel_downsample_res" value="0.005" type="double"/>
     <param name="pcl_cloud_intersect_thresh" value="0.0025" type="double"/>
     <param name="pcl_concave_hull_alpha" value="0.1" type="double"/>
-    <param name="use_pcl_voxel_downsample" value="false" type="bool"/>
+    <param name="use_pcl_voxel_downsample" value="true" type="bool"/>
     <param name="table_ransac_thresh" value="0.015" type="double"/>
     <param name="table_ransac_angle_thresh" value="5.0" type="double"/>
 

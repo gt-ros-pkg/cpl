@@ -98,7 +98,7 @@ class PointCloudSegmentation
    */
   void getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
                      XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
-                     bool find_hull=false);
+                     bool find_hull=false, bool find_centroid=false);
 
   /**
    * Function to find the table plane in the image by using multi-plane segmentation (requires structured input cloud)
@@ -111,7 +111,7 @@ class PointCloudSegmentation
    */
   void getTablePlaneMPS(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
                         XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
-                        bool find_hull=false);
+                        bool find_hull=false, bool find_centroid=false);
 
   /**
    * Function to segment independent spatial regions from a supporting plane
