@@ -6,6 +6,7 @@ class RBFController:
     '''
     Class to implement an RBF network controller based on PILCO learning for use in control of the robot.
     '''
+
     def feedbackControl(self, X):
         inp = np.zeros((self.N,self.D))
         for r in xrange(self.N):
@@ -22,6 +23,14 @@ class RBFController:
             l = np.exp(-np.sum(np.multiply(t,t),1)/2)
             lb = np.reshape(np.multiply(l.squeeze(),self.beta[:,i]),(self.N,1))
             U[i] = sf2*np.sum(lb)
+        if self.max_U is not None:
+            F = self.D+self.E
+            j = range(D,F)
+            i = range(0,D)
+            M = np.vstack([X, U])
+            # TODO: get variance
+            v = np.zeros((F,F))
+            return self.saturate(M, v, i, self.max_U)
         return U
 
     def loadRBFController(self, controller_path):
@@ -34,8 +43,8 @@ class RBFController:
         controller_file.close()
         M = int(data_in[0].split()[1])
         N = int(data_in[1].split()[1])
-        E = int(data_in[2].split()[1])
-        D = int(data_in[3].split()[1])
+        E = int(data_in[2].split()[1]) # Length of policy output
+        D = int(data_in[3].split()[1]) # Length of policy input
         Hyp = np.asarray([float(h) for h in data_in[4].split()])
         self.Hyp = np.reshape(Hyp, (E, D+2))
         data_in = data_in[5:]
@@ -95,3 +104,23 @@ class RBFController:
         xx = np.multiply(xx,xx)
         xx = np.sum(xx)
         return xx
+
+    def saturate(self, m, v, i, e):
+        m = np.asmatrix(m)
+        d = len(m)
+        I = len(i)
+        i = np.hstack([i, np.asarray(i)+d])
+        P = np.asmatrix(np.vstack([np.eye(d), 3.*np.eye(d)]))
+        m = P*m
+        e = np.asmatrix(np.hstack([9.*e, e])/8).T
+        va = P*v*P.T
+        va = (va+va.T)/2.
+        vi = va[i][:,i]
+        vii = np.asmatrix(np.diag(vi)).T
+        mi = m[i,:]
+
+        # Get mean
+        M2 = np.multiply(np.multiply(e, np.exp(-vii/2)), np.sin(mi));
+        # Combine back to correct dimensions
+        P = np.asmatrix(np.hstack([np.eye(I), np.eye(I)]))
+        return P*M2

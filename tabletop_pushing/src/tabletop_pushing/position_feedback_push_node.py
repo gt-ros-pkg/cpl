@@ -265,7 +265,6 @@ class PositionFeedbackPushNode:
 
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.RBF = None
-        self.u_max = np.asarray([0.5, 0.5])
 
         # Setup cartesian controller parameters
         if self.use_jinv:
@@ -897,7 +896,7 @@ class PositionFeedbackPushNode:
         ndx = [4]
         X = trigAugState(np.asarray(cur_state.x), ndx, True)
         D = np.zeros((P.shape[1], 1))
-        u_t = self.u_max*np.sin(self.RBF.feedbackControl(X))
+        u_t = self.RBF.feedbackControl(X)
         # TODO: Make this dependent on the specified control state, read from file
         u.twist.linear.x = u_t[0]
         u.twist.linear.y = u_t[1]
@@ -2166,9 +2165,10 @@ class PositionFeedbackPushNode:
     def setupRBFController(self, controller_name):
         controller_file_path = self.learned_controller_base_path+controller_name+'.txt'
         self.RBF = rbf_control.RBFController()
+        # TODO: Read max_U from file
+        self.RBF.max_U = np.asarray([1.0, 1.0])
         self.RBF.loadRBFController(controller_file_path)
         self.RBF.computeBetaPi()
-        # TODO: Read u_max from file
 
     def loadAffineController(self, controller_name):
         controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')

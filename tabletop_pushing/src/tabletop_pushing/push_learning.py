@@ -295,6 +295,9 @@ class ControlAnalysisIO:
         u.angular.y = data[14]
         u.angular.z = data[15]
         t = data[16]
+        ee_x = data[17]
+        ee_y = data[18]
+        ee_z = data[19]
         cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t)
         return cts
 
