@@ -893,6 +893,7 @@ class PositionFeedbackPushNode:
         u.twist.angular.z = 0.0
 
         # Replace angles with sin(theta), cos(theta)
+        # TODO: Double check this after pilco change
         ndx = [4]
         X = trigAugState(np.asarray(cur_state.x), ndx, True)
         D = np.zeros((P.shape[1], 1))

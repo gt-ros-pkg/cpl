@@ -11,6 +11,8 @@ class RBFController:
         inp = np.zeros((self.N,self.D))
         for r in xrange(self.N):
             inp[r,:] = self.X_pi.T[r,:]-X.T
+
+        # Compute distribution mean
         U = np.zeros((self.E,1))
         for i in xrange(self.E):
             Lambda = self.lambdas[i]
@@ -23,14 +25,22 @@ class RBFController:
             l = np.exp(-np.sum(np.multiply(t,t),1)/2)
             lb = np.reshape(np.multiply(l.squeeze(),self.beta[:,i]),(self.N,1))
             U[i] = sf2*np.sum(lb)
+
+        print 'U = ', U
+
+        
+
+
         if self.max_U is not None:
             F = self.D+self.E
-            j = range(D,F)
-            i = range(0,D)
+            j = range(self.D, F)
+            i = range(0, self.D)
             M = np.vstack([X, U])
             # TODO: get variance
             v = np.zeros((F,F))
-            return self.gaussian_saturate(M, v, i, self.max_U)
+            print 'M = ', M
+            print 'v = ', v
+            return self.gaussian_saturate(M, v, j, self.max_U)
         return U
 
     def loadRBFController(self, controller_path):
@@ -55,12 +65,11 @@ class RBFController:
         D = int(data_in[D_LINE].split()[1]) # Length of policy input
         self.max_U = np.asarray([float(u) for u in data_in[MAX_U_LINE].split()[1:]])
         Hyp = np.asarray([float(h) for h in data_in[HYP_LINE].split()])
-        # TODO: Read in max_U here
-        self.Hyp = np.reshape(Hyp, (E, D+2)).T
+        self.Hyp = np.reshape(Hyp, (E, D+2))
         data_in = data_in[TARGET_LINE:]
         Y_pi = np.asmatrix([d.split() for d in data_in[:N]],'float')
         X_pi = np.asmatrix([d.split() for d in data_in[N:]],'float').T
-        self.X_pi = X_pi#.T
+        self.X_pi = X_pi
         self.Y_pi = Y_pi
         self.N = N
         self.D = D
@@ -115,7 +124,7 @@ class RBFController:
         xx = np.sum(xx)
         return xx
 
-    def guassian_saturate(self, m, v, i, e):
+    def gaussian_saturate(self, m, v, i, e):
         m = np.asmatrix(m)
         d = len(m)
         I = len(i)
@@ -133,4 +142,6 @@ class RBFController:
         M2 = np.multiply(np.multiply(e, np.exp(-vii/2)), np.sin(mi));
         # Combine back to correct dimensions
         P = np.asmatrix(np.hstack([np.eye(I), np.eye(I)]))
+        print 'M2 = ', M2
+        print 'P = ', P
         return P*M2
