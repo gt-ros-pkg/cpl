@@ -10,7 +10,7 @@ class RBFController:
     def feedbackControl(self, X):
         inp = np.zeros((self.N,self.D))
         for r in xrange(self.N):
-            inp[r,:] = self.Xpi.T[r,:]-X.T
+            inp[r,:] = self.X_pi.T[r,:]-X.T
         U = np.zeros((self.E,1))
         for i in xrange(self.E):
             Lambda = self.lambdas[i]
@@ -30,28 +30,38 @@ class RBFController:
             M = np.vstack([X, U])
             # TODO: get variance
             v = np.zeros((F,F))
-            return self.saturate(M, v, i, self.max_U)
+            return self.gaussian_saturate(M, v, i, self.max_U)
         return U
 
     def loadRBFController(self, controller_path):
         '''
         Read controller data from disk that was learned by PILCO
         '''
+        M_LINE = 0
+        N_LINE = 1
+        E_LINE = 2
+        D_LINE = 3
+        MAX_U_LINE = 4
+        HYP_LINE = 5
+        TARGET_LINE = 6
+
         rospy.logwarn('controller_path:'+controller_path)
         controller_file = file(controller_path,'r')
         data_in = controller_file.readlines()
         controller_file.close()
-        M = int(data_in[0].split()[1])
-        N = int(data_in[1].split()[1])
-        E = int(data_in[2].split()[1]) # Length of policy output
-        D = int(data_in[3].split()[1]) # Length of policy input
-        Hyp = np.asarray([float(h) for h in data_in[4].split()])
-        self.Hyp = np.reshape(Hyp, (E, D+2))
-        data_in = data_in[5:]
-        Ypi = np.asmatrix([d.split() for d in data_in[:N]],'float')
-        Xpi = np.asmatrix([d.split() for d in data_in[N:]],'float')
-        self.Xpi = Xpi.T
-        self.Ypi = Ypi
+        M = int(data_in[M_LINE].split()[1])
+        N = int(data_in[N_LINE].split()[1])
+        E = int(data_in[E_LINE].split()[1]) # Length of policy output
+        D = int(data_in[D_LINE].split()[1]) # Length of policy input
+        self.max_U = np.asarray([float(u) for u in data_in[MAX_U_LINE].split()[1:]])
+        Hyp = np.asarray([float(h) for h in data_in[HYP_LINE].split()])
+        # TODO: Read in max_U here
+        self.Hyp = np.reshape(Hyp, (E, D+2)).T
+        data_in = data_in[TARGET_LINE:]
+        Y_pi = np.asmatrix([d.split() for d in data_in[:N]],'float')
+        X_pi = np.asmatrix([d.split() for d in data_in[N:]],'float').T
+        self.X_pi = X_pi#.T
+        self.Y_pi = Y_pi
         self.N = N
         self.D = D
         self.E = E
@@ -72,11 +82,11 @@ class RBFController:
             # TODO: Make this batch
             for r in xrange(self.N):
                 for c in range(i, self.N):
-                    krc = self.squaredExponentialKernelARD(self.Xpi[:,r], self.Xpi[:,c], Lambda, sf2)
+                    krc = self.squaredExponentialKernelARD(self.X_pi[:,r], self.X_pi[:,c], Lambda, sf2)
                     KX[r,c] = krc
                     KX[c,r] = krc
             A = KX+sigmaBeta2*np.eye(self.N)
-            B = self.Ypi[:,i]
+            B = self.Y_pi[:,i]
             betai = np.linalg.solve(A, B)
             self.lambdas.append(Lambda)
             self.sf2s.append(sf2)
@@ -105,7 +115,7 @@ class RBFController:
         xx = np.sum(xx)
         return xx
 
-    def saturate(self, m, v, i, e):
+    def guassian_saturate(self, m, v, i, e):
         m = np.asmatrix(m)
         d = len(m)
         I = len(i)

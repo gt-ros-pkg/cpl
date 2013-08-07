@@ -897,7 +897,7 @@ class PositionFeedbackPushNode:
         X = trigAugState(np.asarray(cur_state.x), ndx, True)
         D = np.zeros((P.shape[1], 1))
         u_t = self.RBF.feedbackControl(X)
-        # TODO: Make this dependent on the specified control state, read from file
+        # TODO: Make this mapping dependent on the specified control state, read from file
         u.twist.linear.x = u_t[0]
         u.twist.linear.y = u_t[1]
         return u
@@ -2165,8 +2165,6 @@ class PositionFeedbackPushNode:
     def setupRBFController(self, controller_name):
         controller_file_path = self.learned_controller_base_path+controller_name+'.txt'
         self.RBF = rbf_control.RBFController()
-        # TODO: Read max_U from file
-        self.RBF.max_U = np.asarray([1.0, 1.0])
         self.RBF.loadRBFController(controller_file_path)
         self.RBF.computeBetaPi()
 
