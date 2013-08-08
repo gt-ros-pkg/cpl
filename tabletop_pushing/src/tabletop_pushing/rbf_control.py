@@ -18,7 +18,6 @@ class RBFController:
         for i in xrange(self.E):
             Lambda = self.lambdas[i] # NOTE: iL
             sf2 = self.sf2s[i] # NOTE: c
-            sigmaBeta2 = self.sigmaBeta2s[i]
             t = np.matrix(inp)*Lambda # NOTE: in & t
             tb = np.sum(np.multiply(t,t),1)/2
             l = np.exp(-tb)
@@ -30,7 +29,6 @@ class RBFController:
             else:
                 k = np.hstack([k, k_i])
 
-        print 'U = ', U
         # Compute predicted covariance
         S = np.zeros((self.E, self.E))
         for i in xrange(self.E):
@@ -39,16 +37,11 @@ class RBFController:
                 R = np.eye(self.D)
                 ij = inp/np.exp(2.*self.Hyp[j,:self.D])
                 L = np.asmatrix(np.exp(k[:,i]+k[:,j].T))
-                A0 = np.asmatrix(self.beta[:,i])
-                A1 = np.asmatrix(self.beta[:,j]).T
-                print 'A0 = ', A0
-                print 'A1 = ', A1
                 S[i,j] = np.asmatrix(self.beta[:,i])*L*np.asmatrix(self.beta[:,j]).T
                 S[j,i] = S[i,j]
             S[i,i] += 1e-6
-        print 'U*U.T = ', U*U.T
         S = S - U*U.T
-        print 'S = ', S
+
         # Keep values in range [-max_U, max_U]
         if self.max_U is not None:
             F = self.D+self.E
@@ -56,8 +49,6 @@ class RBFController:
             M = np.vstack([X, U])
             V = np.zeros((F,F))
             V[np.ix_(j,j)] = S
-            print 'M = ', M
-            print 'V = ', V
             return self.gaussian_saturate(M, V, j, self.max_U)
         return U
 
@@ -68,24 +59,19 @@ class RBFController:
         self.beta = np.zeros((self.N, self.E))
         self.lambdas = []
         self.sf2s = []
-        self.sigmaBeta2s = []
         for i in xrange(self.E):
             Lambda = np.diag(np.exp(-1*self.Hyp[i,:self.D])) # Length scale
             sf2 = np.exp(2*self.Hyp[i,self.D]) # signal variance
             sigmaBeta2 = np.exp(2*self.Hyp[i,self.D+1]) # kernel noise
-            KX = np.zeros((self.N, self.N))
-            # TODO: Make this batch
-            for r in xrange(self.N):
-                for c in range(i, self.N):
-                    krc = self.squaredExponentialKernelARD(self.X_pi[:,r], self.X_pi[:,c], Lambda, sf2)
-                    KX[r,c] = krc
-                    KX[c,r] = krc
-            A = KX+sigmaBeta2*np.eye(self.N)
-            B = self.Y_pi[:,i]
-            betai = np.linalg.solve(A, B)
+
+
+            inp = self.X_pi.T / np.exp(self.Hyp[i,:self.D]).T
+            KX = np.exp(2*self.Hyp[i,self.D]-self.maha(inp, inp)/2.)
+
+            L = np.linalg.cholesky(KX+sigmaBeta2*np.eye(self.N))
+            betai = np.linalg.solve(L.T, np.linalg.solve(L, self.Y_pi[:,i]))
             self.lambdas.append(Lambda)
             self.sf2s.append(sf2)
-            self.sigmaBeta2s.append(sigmaBeta2)
             self.beta[:,i] = betai.squeeze()
 
     def squaredExponentialKernelARD(self, x, c, ell, sf2):
@@ -110,6 +96,12 @@ class RBFController:
         xx = np.sum(xx)
         return xx
 
+    def maha(self, a, b):
+        A = np.sum(np.multiply(a,a),1)
+        B = np.sum(np.multiply(b,b),1)
+        C = -2*a*b.T
+        return A + B.T + C
+
     def gaussian_saturate(self, m, v, i, e):
         m = np.asmatrix(m)
         d = len(m)
@@ -128,8 +120,6 @@ class RBFController:
         M2 = np.multiply(np.multiply(e, np.exp(-vii/2)), np.sin(mi));
         # Combine back to correct dimensions
         P = np.asmatrix(np.hstack([np.eye(I), np.eye(I)]))
-        print 'M2 = ', M2
-        print 'P = ', P
         return P*M2
 
 #

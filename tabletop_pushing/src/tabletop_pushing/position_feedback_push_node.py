@@ -2167,7 +2167,6 @@ class PositionFeedbackPushNode:
         controller_file_path = self.learned_controller_base_path+controller_name+'.txt'
         self.RBF = rbf_control.RBFController()
         self.RBF.loadRBFController(controller_file_path)
-        # self.RBF.computeBetaPi()
 
     def loadAffineController(self, controller_name):
         controller_file = file(self.learned_controller_base_path+controller_name+'.txt','r')
