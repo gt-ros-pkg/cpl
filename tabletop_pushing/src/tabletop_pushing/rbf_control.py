@@ -12,68 +12,54 @@ class RBFController:
         for r in xrange(self.N):
             inp[r,:] = self.X_pi.T[r,:]-X.T
 
-        # Compute distribution mean
+        k = None
+        # Compute predicted mean
         U = np.zeros((self.E,1))
         for i in xrange(self.E):
-            Lambda = self.lambdas[i]
-            sf2 = self.sf2s[i]
+            Lambda = self.lambdas[i] # NOTE: iL
+            sf2 = self.sf2s[i] # NOTE: c
             sigmaBeta2 = self.sigmaBeta2s[i]
-            t = np.matrix(inp)*Lambda
-            # Note not diving since we aren't using variance here
-            # B = Lambda*V*Lambda+np.eye(self.D)
-            # t = np.linalg.solve(B.T,t.T)
-            l = np.exp(-np.sum(np.multiply(t,t),1)/2)
+            t = np.matrix(inp)*Lambda # NOTE: in & t
+            tb = np.sum(np.multiply(t,t),1)/2
+            l = np.exp(-tb)
             lb = np.reshape(np.multiply(l.squeeze(),self.beta[:,i]),(self.N,1))
             U[i] = sf2*np.sum(lb)
+            k_i = 2*self.Hyp[i,self.D]-tb;
+            if k is None:
+                k = k_i
+            else:
+                k = np.hstack([k, k_i])
 
         print 'U = ', U
-
-        
-
-
+        # Compute predicted covariance
+        S = np.zeros((self.E, self.E))
+        for i in xrange(self.E):
+            ii = inp/np.exp(2.*self.Hyp[i,:self.D])
+            for j in xrange(i+1):
+                R = np.eye(self.D)
+                ij = inp/np.exp(2.*self.Hyp[j,:self.D])
+                L = np.asmatrix(np.exp(k[:,i]+k[:,j].T))
+                A0 = np.asmatrix(self.beta[:,i])
+                A1 = np.asmatrix(self.beta[:,j]).T
+                print 'A0 = ', A0
+                print 'A1 = ', A1
+                S[i,j] = np.asmatrix(self.beta[:,i])*L*np.asmatrix(self.beta[:,j]).T
+                S[j,i] = S[i,j]
+            S[i,i] += 1e-6
+        print 'U*U.T = ', U*U.T
+        S = S - U*U.T
+        print 'S = ', S
+        # Keep values in range [-max_U, max_U]
         if self.max_U is not None:
             F = self.D+self.E
             j = range(self.D, F)
-            i = range(0, self.D)
             M = np.vstack([X, U])
-            # TODO: get variance
-            v = np.zeros((F,F))
+            V = np.zeros((F,F))
+            V[np.ix_(j,j)] = S
             print 'M = ', M
-            print 'v = ', v
-            return self.gaussian_saturate(M, v, j, self.max_U)
+            print 'V = ', V
+            return self.gaussian_saturate(M, V, j, self.max_U)
         return U
-
-    def loadRBFController(self, controller_path):
-        '''
-        Read controller data from disk that was learned by PILCO
-        '''
-        M_LINE = 0
-        N_LINE = 1
-        E_LINE = 2
-        D_LINE = 3
-        MAX_U_LINE = 4
-        HYP_LINE = 5
-        TARGET_LINE = 6
-
-        rospy.logwarn('controller_path:'+controller_path)
-        controller_file = file(controller_path,'r')
-        data_in = controller_file.readlines()
-        controller_file.close()
-        M = int(data_in[M_LINE].split()[1])
-        N = int(data_in[N_LINE].split()[1])
-        E = int(data_in[E_LINE].split()[1]) # Length of policy output
-        D = int(data_in[D_LINE].split()[1]) # Length of policy input
-        self.max_U = np.asarray([float(u) for u in data_in[MAX_U_LINE].split()[1:]])
-        Hyp = np.asarray([float(h) for h in data_in[HYP_LINE].split()])
-        self.Hyp = np.reshape(Hyp, (E, D+2))
-        data_in = data_in[TARGET_LINE:]
-        Y_pi = np.asmatrix([d.split() for d in data_in[:N]],'float')
-        X_pi = np.asmatrix([d.split() for d in data_in[N:]],'float').T
-        self.X_pi = X_pi
-        self.Y_pi = Y_pi
-        self.N = N
-        self.D = D
-        self.E = E
 
     def computeBetaPi(self):
         '''
@@ -145,3 +131,40 @@ class RBFController:
         print 'M2 = ', M2
         print 'P = ', P
         return P*M2
+
+#
+# I/O Functions
+#
+    def loadRBFController(self, controller_path):
+        '''
+        Read controller data from disk that was learned by PILCO
+        '''
+        M_LINE = 0
+        N_LINE = 1
+        E_LINE = 2
+        D_LINE = 3
+        MAX_U_LINE = 4
+        HYP_LINE = 5
+        TARGET_LINE = 6
+
+        rospy.logwarn('controller_path:'+controller_path)
+        controller_file = file(controller_path,'r')
+        data_in = controller_file.readlines()
+        controller_file.close()
+        M = int(data_in[M_LINE].split()[1])
+        N = int(data_in[N_LINE].split()[1])
+        E = int(data_in[E_LINE].split()[1]) # Length of policy output
+        D = int(data_in[D_LINE].split()[1]) # Length of policy input
+        self.max_U = np.asarray([float(u) for u in data_in[MAX_U_LINE].split()[1:]])
+        Hyp = np.asarray([float(h) for h in data_in[HYP_LINE].split()])
+        self.Hyp = np.reshape(Hyp, (E, D+2))
+        data_in = data_in[TARGET_LINE:]
+        Y_pi = np.asmatrix([d.split() for d in data_in[:N]],'float')
+        X_pi = np.asmatrix([d.split() for d in data_in[N:]],'float').T
+        self.X_pi = X_pi
+        self.Y_pi = Y_pi
+        self.N = N
+        self.D = D
+        self.E = E
+        # Precompute stuff
+        self.computeBetaPi()
