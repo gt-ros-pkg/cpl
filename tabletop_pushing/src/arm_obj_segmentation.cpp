@@ -71,15 +71,21 @@ void ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat
 #endif // VISUALIZE_GRAPH_WEIGHTS
 
   // TODO: Clean this up once we have stuff working well
-  cv::Mat larger_mask, smaller_mask;
-  cv::Mat arm_band = getArmBand(self_mask, 15, 15, true, larger_mask, smaller_mask);
+  cv::Mat inv_self_mask;
+  cv::bitwise_not(self_mask, inv_self_mask);
+  cv::Mat much_larger_mask;
+  cv::Mat enlarge_element(30, 30, CV_8UC1, cv::Scalar(255));
+  cv::dilate(inv_self_mask, much_larger_mask, enlarge_element);
+  cv::Mat larger_mask, known_arm_mask;
+  cv::Mat arm_band = getArmBand(inv_self_mask, 15, 15, false, larger_mask, known_arm_mask);
   // Get known arm pixels
   cv::Mat known_arm_pixels;
-  color_frame_f.copyTo(known_arm_pixels, smaller_mask);
+  color_frame_f.copyTo(known_arm_pixels, known_arm_mask);
+  cv::Mat known_bg_mask = much_larger_mask - larger_mask;
 
   // Get known object pixels
   // cv::Mat known_bg_pixels;
-  // color_frame_f.copyTo(known_bg_pixels, arm_band);
+  // color_frame_f.copyTo(known_bg_pixels, known_bg_mask);
 
   // Get stats for building graph
   int num_nodes = 0;
@@ -121,7 +127,7 @@ void ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat
   // Build color models
   cv::Vec3f fg_mean;
   cv::Vec3f fg_var;
-  getColorModel(known_arm_pixels, fg_mean, fg_var, smaller_mask);
+  getColorModel(known_arm_pixels, fg_mean, fg_var, known_arm_mask);
 
   tabletop_pushing::GraphType *g;
   g = new GraphType(num_nodes, num_edges);
@@ -134,8 +140,23 @@ void ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat
       if (larger_mask.at<uchar>(r,c) > 0)
       {
         int cur_idx = nt.getIdx(r,c);
-        float fg_weight = getUnaryWeight(color_frame_f.at<cv::Vec3f>(r,c), fg_mean, fg_var);
-        float bg_weight = 1.0 - fg_weight;
+        float fg_weight = 0.5;
+        float bg_weight = 0.5;
+        if (known_arm_mask.at<uchar>(r,c) > 0)
+        {
+          fg_weight = 2.0;
+          bg_weight = 0.0;
+        }
+        else if (known_bg_mask.at<uchar>(r,c) > 0)
+        {
+          fg_weight = 0.0;
+          bg_weight = 2.0;
+        }
+        else
+        {
+          fg_weight = getUnaryWeight(color_frame_f.at<cv::Vec3f>(r,c), fg_mean, fg_var);
+          bg_weight = 1.0 - fg_weight;
+        }
         g->add_node();
         g->add_tweights(cur_idx, fg_weight, bg_weight);
 
@@ -207,6 +228,7 @@ void ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat
   cv::Mat segment_arm;
   color_img.copyTo(segment_arm, segs);
   cv::imshow("Segment arm", segment_arm);
+  cv::imshow("Known bg", known_bg_mask);
   // return segs;
 }
 
@@ -234,13 +256,13 @@ cv::Mat ArmObjSegmentation::convertFlowToMat(GraphType *g, NodeTable& nt, int R,
 float ArmObjSegmentation::getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1)
 {
   float w_c_alpha_ = 0.3;
-  float w_c_beta_ = 0.3;
-  float w_c_gamma_ = 0.3;
-  float w_c_eta_;
+  float w_c_beta_ = 0.123;
+  float w_c_gamma_ = 0.123;
+  float w_c_eta_ = 0.0;
   cv::Vec3f c_d = c0-c1;
   float w_d = d0-d1;
-  return (w_c_alpha_*std::abs(c_d[0]) + w_c_beta_*std::abs(c_d[1]) +
-          w_c_beta_*std::abs(c_d[2]) /*+ w_c_eta_*exp(-std::abs(w_d))*/);
+  return (w_c_alpha_*(exp(std::abs(c_d[0]))-1.0) + w_c_beta_*(exp(std::abs(c_d[1]))-1.0) +
+           w_c_beta_*(exp(std::abs(c_d[2]))-1.0) +  w_c_eta_*(exp(std::abs(w_d))-1.0));
 }
 
 void ArmObjSegmentation::getArmEdges(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask)
@@ -390,6 +412,7 @@ void ArmObjSegmentation::getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Ve
 
 
   cv::Mat mean_img(samples.size(), CV_32FC3, cv::Scalar(mean[0], mean[1], mean[2]));
+  ROS_INFO_STREAM("Mean color: [" << mean[0] << ", " << mean[1] << ", " << mean[2] << "]");
   cv::cvtColor(mean_img, mean_img, CV_HSV2BGR);
   cv::imshow("mean_color", mean_img);
 }
