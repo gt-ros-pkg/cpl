@@ -93,7 +93,7 @@
 #include <tabletop_pushing/shape_features.h>
 #include <tabletop_pushing/object_tracker_25d.h>
 #include <tabletop_pushing/push_primitives.h>
-
+#include <tabletop_pushing/arm_obj_segmentation.h>
 #include <tabletop_pushing/extern/Timer.hpp>
 
 // libSVM
@@ -116,7 +116,7 @@
 // Debugging IFDEFS
 // #define DISPLAY_INPUT_COLOR 1
 // #define DISPLAY_INPUT_DEPTH 1
-// #define DISPLAY_WAIT 1
+#define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 
 using boost::shared_ptr;
@@ -130,6 +130,7 @@ using tabletop_pushing::ProtoObjects;
 using tabletop_pushing::ShapeLocation;
 using tabletop_pushing::ShapeLocations;
 using tabletop_pushing::ObjectTracker25D;
+using tabletop_pushing::ArmObjSegmentation;
 
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
@@ -384,6 +385,8 @@ class TabletopPushingPerceptionNode
     long long filter_start_time = Timer::nanoTime();
 #endif
 
+    // TODO: Add a switch
+    // TODO: Smooth / fill in depth map instead of zeroing (mode filter)
     // Convert nans to zeros
     for (int r = 0; r < depth_frame.rows; ++r)
     {
@@ -425,6 +428,10 @@ class TabletopPushingPerceptionNode
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
     cv::Mat arm_mask_crop;
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
+    // NOTE: Just testing the new code
+    // ArmObjSegmentation::getArmEdges(color_frame_down, depth_frame_down, self_mask_down);
+    ArmObjSegmentation::segment(color_frame_down, depth_frame_down, self_mask_down);
+
 #ifdef PROFILE_CB_TIME
     double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
@@ -432,10 +439,10 @@ class TabletopPushingPerceptionNode
 #endif
 
     // Save internally for use in the service callback
-    prev_color_frame_ = cur_color_frame_.clone();
-    prev_depth_frame_ = cur_depth_frame_.clone();
-    prev_self_mask_ = cur_self_mask_.clone();
-    prev_camera_header_ = cur_camera_header_;
+    // prev_color_frame_ = cur_color_frame_.clone();
+    // prev_depth_frame_ = cur_depth_frame_.clone();
+    // prev_self_mask_ = cur_self_mask_.clone();
+    // prev_camera_header_ = cur_camera_header_;
 
     // Update the current versions
     cur_color_frame_ = color_frame_down.clone();
@@ -2223,11 +2230,11 @@ class TabletopPushingPerceptionNode
   cv::Mat cur_color_frame_;
   cv::Mat cur_depth_frame_;
   cv::Mat cur_self_mask_;
-  cv::Mat prev_color_frame_;
-  cv::Mat prev_depth_frame_;
-  cv::Mat prev_self_mask_;
+  // cv::Mat prev_color_frame_;
+  // cv::Mat prev_depth_frame_;
+  // cv::Mat prev_self_mask_;
   std_msgs::Header cur_camera_header_;
-  std_msgs::Header prev_camera_header_;
+  // std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;

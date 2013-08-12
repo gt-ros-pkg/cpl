@@ -1,6 +1,10 @@
 // TODO: Figure out includes necessary
-// TODO: Make importable
+#include <tabletop_pushing/extern/graphcut/graph.h>
+#include <tabletop_pushing/extern/graphcut/energy.h>
+#include <tabletop_pushing/extern/graphcut/GCoptimization.h>
 
+// TODO: Make importable
+typedef Graph<float, float, float> GraphType;
 
 inline float max(const float a, const double b)
 {

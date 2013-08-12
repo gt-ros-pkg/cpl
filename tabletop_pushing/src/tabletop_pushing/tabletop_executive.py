@@ -49,8 +49,8 @@ import time
 import random
 from push_primitives import *
 
-_OFFLINE = False
-_USE_LEARN_IO = True
+_OFFLINE = True
+_USE_LEARN_IO = False
 _TEST_START_POSE = False
 _USE_FIXED_GOAL = True
 
