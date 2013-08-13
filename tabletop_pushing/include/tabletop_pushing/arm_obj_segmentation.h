@@ -19,7 +19,6 @@ class ArmObjSegmentation
   static cv::Mat getArmBand(cv::Mat& input_mask, int enlarge_width, int shrink_width, bool input_inverted,
                             cv::Mat& larger_mask,  cv::Mat& smaller_mask);
   // TODO: Make non-static using parameters;
-  static float getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1);
   static cv::Mat getEdgeImage(cv::Mat& color_img);
  protected:
   static cv::Mat getXImageDeriv(cv::Mat& color_img);
@@ -31,6 +30,8 @@ class ArmObjSegmentation
                               cv::Vec3f bg_mean, cv::Vec3f bg_var);
 
   static void getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Vec3f& var, cv::Mat& mask);
+  static float getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1);
+  static float getEdgeWeightBoundary(float c0, float d0, float c1, float d1);
 
   float w_c_alpha_;
   float w_c_beta_;

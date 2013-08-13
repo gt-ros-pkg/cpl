@@ -141,9 +141,9 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   cv::Vec3f fg_var;
   getColorModel(known_arm_pixels, fg_mean, fg_var, known_arm_mask);
 
-  cv::Vec3f bg_mean;
-  cv::Vec3f bg_var;
-  getColorModel(known_bg_pixels, bg_mean, bg_var, known_bg_mask);
+  // cv::Vec3f bg_mean;
+  // cv::Vec3f bg_var;
+  // getColorModel(known_bg_pixels, bg_mean, bg_var, known_bg_mask);
 
   cv::Mat Ix = getXImageDeriv(bw_img);
   cv::Mat Iy = getYImageDeriv(bw_img);
@@ -171,11 +171,11 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         else if (known_bg_mask.at<uchar>(r,c) > 0)
         {
           fg_weight = 0.0;
-          bg_weight = 2.0;
+          bg_weight = 5.0;
         }
         else
         {
-          fg_weight = getUnaryWeight(color_frame_f.at<cv::Vec3f>(r,c), fg_mean, fg_var, bg_mean, bg_var);
+          fg_weight = getUnaryWeight(color_frame_f.at<cv::Vec3f>(r,c), fg_mean, fg_var);//, bg_mean, bg_var);
           bg_weight = 1.0 - fg_weight;
         }
         g->add_node();
@@ -192,7 +192,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
           int other_idx = nt.getIdx(r, c-1);
           // float w_l = getEdgeWeight(color_frame_f.at<cv::Vec3f>(r, c),   depth_img.at<float>(r, c),
           //                           color_frame_f.at<cv::Vec3f>(r, c-1), depth_img.at<float>(r, c-1));
-          float w_l = fabs(Ix.at<float>(r,c)) + fabs(Dx.at<float>(r,c));
+          float w_l = getEdgeWeightBoundary(Ix.at<float>(r,c), Dx.at<float>(r,c),
+                                            Ix.at<float>(r, c-1), Dx.at<float>(r, c-1));
           g->add_edge(cur_idx, other_idx, /*capacities*/ w_l, w_l);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -207,7 +208,9 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
             int other_idx = nt.getIdx(r-1, c);
             // float w_u = getEdgeWeight(color_frame_f.at<cv::Vec3f>(r, c),   depth_img.at<float>(r, c),
             //                           color_frame_f.at<cv::Vec3f>(r-1, c), depth_img.at<float>(r-1, c));
-            float w_u = fabs(Iy.at<float>(r,c)) + fabs(Dy.at<float>(r,c));
+            // float w_u = fabs(Iy.at<float>(r,c)) + fabs(Dy.at<float>(r,c));
+            float w_u = getEdgeWeightBoundary(Iy.at<float>(r, c),   Dy.at<float>(r, c),
+                                              Iy.at<float>(r-1, c), Dy.at<float>(r-1, c));
             g->add_edge(cur_idx, other_idx, /*capacities*/ w_u, w_u);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -250,7 +253,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   // TODO: Make method for generating a morph cross of different sizes (if abs(r-(width/2)) < cross_width or c...
   cv::Mat segs_cleaned;
-  cv::Mat open_element(3, 3, CV_8UC1, cv::Scalar(255));
+  cv::Mat open_element(5, 5, CV_8UC1, cv::Scalar(255));
   cv::erode(segs, segs_cleaned, open_element);
   cv::dilate(segs_cleaned, segs_cleaned, open_element);
 
@@ -304,6 +307,12 @@ cv::Mat ArmObjSegmentation::convertFlowToMat(GraphType *g, NodeTable& nt, int R,
     }
   }
   return segs;
+}
+
+float ArmObjSegmentation::getEdgeWeightBoundary(float c0, float d0, float c1, float d1)
+{
+  float sigma_d = 0.5;
+  return exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
 }
 
 float ArmObjSegmentation::getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1)
@@ -551,6 +560,10 @@ float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, cv::Vec3f mean, cv::V
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, cv::Vec3f fg_mean, cv::Vec3f fg_var,
                                          cv::Vec3f bg_mean, cv::Vec3f bg_var)
 {
+  // TODO: Explicit table color model
+  // TODO: Explicit arm color model
+  // TODO: Explicit hand color model
+  // TODO: Explicit object color model
   cv::Vec3f fg_diff = sample - fg_mean;
   cv::Vec3f bg_diff = sample - bg_mean;
   const float h_score = (exp(-fabs(fg_diff[0]*fg_diff[0])/(2.0*fg_var[0])) /
