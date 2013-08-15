@@ -78,4 +78,7 @@ rosbuild_add_executable(extract_shape_features src/extract_shape_features.cpp)
 target_link_libraries(extract_shape_features shape_features)
 target_link_libraries(extract_shape_features ${LIBSVM_LIBRARIES})
 
+rosbuild_add_executable(draw_log_polar_hist src/draw_log_polar_hist.cpp)
+target_link_libraries(draw_log_polar_hist shape_features)
+
 # rosbuild_add_executable(pca_test src/pca_test.cpp)
