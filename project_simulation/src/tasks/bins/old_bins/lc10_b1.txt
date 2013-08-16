@@ -1,0 +1,5 @@
+#bin_id
+3
+#parts sequence: <part name> <mean> <std-dev>
+lc1_b1_1 3.0 0.4
+lc1_b1_2 16.0 0.7
