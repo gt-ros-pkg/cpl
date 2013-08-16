@@ -56,6 +56,8 @@ boost::variate_generator<boost::mt19937&,
 
 
 //-------------PARAMETERS
+//standard deviation of destination in all 3 dimensions (m)
+double DEST_NOISE_DEV = 0.0;
 //standard deviation of the gaussian for simulated sensor noise
 double PUB_NOISE_DEV = 0.005;
 //standard deviation of the gaussian for random noise when performing 
@@ -825,7 +827,13 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 	    time_task_do = 0;
 	  }else{time_task_do -= (wait_at_bin+to_next_motion+time_back_rest);}
 
-    
+    //TODO: make destination noise replicatable
+    //add destination noise
+    cur_bin_loc[0]+=samp_gauss_rep(0,DEST_NOISE_DEV);
+    cur_bin_loc[1]+=samp_gauss_rep(0,DEST_NOISE_DEV);
+    cur_bin_loc[2]+=samp_gauss_rep(0,DEST_NOISE_DEV);
+
+    //move close to bin
     move_to_loc(pick_lefty, !pick_lefty, cur_bin_loc, cur_bin_loc, time_reach);
     is_lh_rest = !pick_lefty;
     is_rh_rest = pick_lefty;
@@ -837,7 +845,7 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
 
     //wait at the bin
     wait_at_location(wait_at_bin);
-    
+
     //move back to rest position
     move_to_loc(!is_lh_rest, !is_rh_rest, lh_rest, rh_rest, time_back_rest);
 
@@ -1482,8 +1490,14 @@ int main(int argc, char** argv)
   } else if(argc == 4) {
     noprompt = true;
     rng_rep.seed(atoi(argv[3]));
-  } else {
-    printf("Usage: hands_sim <task> <cheat at waiting (y/n)> <duration seed>\n");
+  }
+  else if(argc == 5){
+    noprompt = true;
+    rng_rep.seed(atoi(argv[3]));
+    DEST_NOISE_DEV = atof(argv[4]);
+  }
+  else {
+    printf("Usage: hands_sim <task> <cheat at waiting (y/n)> <RNG seed> <Destination noise standard-dev>\n");
     return -1;
   }
 
