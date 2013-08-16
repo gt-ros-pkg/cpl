@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import roslib
 roslib.load_manifest("cpl_collab_manip")
 roslib.load_manifest("project_simulation")
@@ -43,6 +44,7 @@ def do_task(task_msg):
     #locate the bin
     bin_found = False
     avail_bin_list = bm.ar_man.get_available_bins()
+    print avail_bin_list
     for bin_id in avail_bin_list:
         if bin_id == to_move_bin:
             bin_found = True
@@ -144,7 +146,7 @@ def main():
     endf_msg = endf_bin()
 
     #rospy.spin()
-    loop_rate = rospy.Rate(PUB_RATE)
+    loop_rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         bins_near_human = bm.ar_man.get_filled_slots(True)
         for i in range(len(bins_near_human)):

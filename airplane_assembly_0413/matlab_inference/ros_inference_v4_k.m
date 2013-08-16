@@ -7,8 +7,8 @@ clc; clear; % close all;
 % init_for_s3 % linear chain
 %init_for_s % 3 tasks
 % init_for_linear_chain_7;
-init_for_linear_chain_robot;
-
+% init_for_linear_chain_robot;
+init_for_iros_workshop_2chains_task
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
@@ -36,7 +36,7 @@ DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-kelsey_planning = 0;
+kelsey_planning = 1;
 kelsey_viz      = 1;
 
 %% open connection

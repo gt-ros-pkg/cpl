@@ -56,6 +56,7 @@ class ARTagManager(object):
                                        self.ar_cb, queue_size=1)
         self.clean_mkrs_pub = rospy.Publisher("/ar_pose_marker_clean", AlvarMarkers)
         self.lock = RLock()
+        self.ar_count = 0
 
     def ar_cb(self, msg):
         if self.lock.acquire(blocking=0):
@@ -67,18 +68,20 @@ class ARTagManager(object):
                 if len(self.ar_poses[marker.id]) == self.filter_size:
                     self.ar_poses[marker.id].popleft()
                 self.ar_poses[marker.id].append([cur_time, marker.pose])
+            if self.ar_count == 10:
+                bin_data = self.get_all_bin_poses()
+                new_msg = AlvarMarkers()
+                for bid in self.ar_poses:
+                    mkr = AlvarMarker()
+                    mkr.id = bid
+                    ar_pose = PoseConv.to_homo_mat(bin_data[bid][:2])
+                    mkr.pose = PoseConv.to_pose_stamped_msg("/lifecam1_rgb_optical_frame", 
+                                                            self.camera_pose**-1 * ar_pose)
+                    new_msg.markers.append(mkr)
+                self.clean_mkrs_pub.publish(new_msg)
+                self.ar_count = 0
+            self.ar_count += 1
             self.lock.release()
-        if True:
-            bin_data = self.get_all_bin_poses()
-            new_msg = AlvarMarkers()
-            for bid in self.ar_poses:
-                mkr = AlvarMarker()
-                mkr.id = bid
-                ar_pose = PoseConv.to_homo_mat(bin_data[bid][:2])
-                mkr.pose = PoseConv.to_pose_stamped_msg("/lifecam1_rgb_optical_frame", 
-                                                        self.camera_pose**-1 * ar_pose)
-                new_msg.markers.append(mkr)
-            self.clean_mkrs_pub.publish(new_msg)
 
 
 
@@ -138,8 +141,11 @@ class ARTagManager(object):
         bin_poses = self.get_all_bin_poses()
         bin_ids = sorted(bin_poses.keys())
         bin_pos_data = np.array([bin_poses[bin_id][0] for bin_id in bin_ids])
-        dists, inds = self.slot_tree.query(bin_pos_data, k=1, 
-                                           distance_upper_bound=self.ar_unification_thresh)
+        if len(bin_pos_data) != 0:
+            dists, inds = self.slot_tree.query(bin_pos_data, k=1, 
+                                               distance_upper_bound=self.ar_unification_thresh)
+        else:
+            dists, inds = [], []
 
         slot_states = [-1] * len(self.slot_tree.data)
         missing_bins = []

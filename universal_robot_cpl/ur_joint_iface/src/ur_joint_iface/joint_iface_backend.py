@@ -37,6 +37,7 @@ class JointIFaceGUIFrame(QtGui.QFrame):
         super(JointIFaceGUIFrame, self).__init__()
         self.button_down = None
         self.joint_ctrl = SingleJointController()
+        rospy.spin()
         self.clipboard = clipboard
         self.init_ui()
 
@@ -139,4 +140,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if False:
+        import cProfile
+        import pstats
+        cProfile.run("main()", 'robo_stats')
+        p = pstats.Stats('robo_stats')
+        p.strip_dirs().sort_stats(-1).print_stats()
+    else:
+        main()
