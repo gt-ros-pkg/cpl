@@ -1,4 +1,4 @@
-function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail, debug)
+function n = k_planning_process( n, m, nt, frame_info , bins_availability, bins_cur_avail, debug, detection_raw_result)
 %K_PLANNING_PROCESS Summary of this function goes here
 %   Detailed explanation goes here
 %   k
@@ -34,11 +34,15 @@ n.executedplan  = executedplan;
 nt = ceil(nt);
 
 % check robot moving
+robot_moving = 0;
 if 1
     if isfield(n, 'executedplan') & isfield(n.executedplan, 'events') & length(n.executedplan.events) > 0
         if n.executedplan.events(end).matlab_finish_time < 0
-            disp 'Robot moving, skip planning';
-            return;
+            % disp 'Robot moving, skip planning';
+            % return;
+            robot_moving = 1;
+        else
+            robot_moving = 0;
         end
     end
 end
@@ -109,14 +113,57 @@ for i=length(slot_states)+1:3
 end;
 
 
+ws_bins_inds = sort(slot_states);
+n.multistep_history.ws_bins(end+1,:) = ws_bins_inds;
+n.multistep_history.nowtimesec_inf(end+1) = nt * m.params.downsample_ratio / 30;
+
+event_hist = [];
+for event = n.executedplan.events
+    start_time = event.matlab_execute_time;
+    if event.matlab_finish_time == -1
+        end_time = nt;
+    else
+        end_time = event.matlab_finish_time;
+    end
+    bin_ind = event.bin_ind;
+    if event.sname(1) == 'A'
+        remove_mult = 1;
+    else
+        remove_mult = -1;
+    end
+    event_hist(end+1,:) = [remove_mult*bin_ind, start_time, end_time];
+end
+
+waiting_times = [];
+for act_names_ind = 1:numel(n.action_names_gt)
+    cur_act = n.action_names_gt(act_names_ind);
+    if numel(cur_act.name) >= 7 && strcmp(cur_act.name(1:7),'Waiting')
+        start_time = cur_act.start;
+        if act_names_ind >= numel(n.action_names_gt)
+            end_time = nt;
+        else
+            next_act = n.action_names_gt(act_names_ind+1);
+            end_time = next_act.start;
+        end
+        act_strs = strsplit(cur_act.name, '_')
+        % bin_id = str2num(act_strs{2}(2:end))
+        bin_id = str2num(act_strs{2})
+        bin_ind = find(bin_id == [n.bin_distributions.bin_id], 1)
+        waiting_times(end+1,:) = [bin_ind, start_time, end_time]
+    end
+end
 
 [i, best_plan, n.multistep_history] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
-                                                n.executedplan, n.action_names_gt, ...
-                                                n.multistep_history, debug);
+                                                event_hist, waiting_times, ...
+                                                n.multistep_history, debug, detection_raw_result);
 
 
-if i == 0,
-    disp nothing_To_do
+if i == 0 || robot_moving
+    if robot_moving
+        disp('Robot moving, do nothing')
+    else
+        disp nothing_To_do
+    end
     return;
 end
 

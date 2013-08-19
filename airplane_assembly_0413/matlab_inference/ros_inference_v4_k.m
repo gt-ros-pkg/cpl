@@ -2,7 +2,7 @@
 %% load data
 addpath(genpath('.'));
 addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
-clc; clear; % close all;
+%clc; clear; % close all;
 
 % init_for_s3 % linear chain
 %init_for_s % 3 tasks
@@ -12,6 +12,14 @@ init_for_iros_workshop_2chains_task
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
+
+if 1
+    kelsey_planning = 1;
+    kelsey_viz      = 1;
+    NAM_NOISE_MODEL = 0;
+    NAM_NOISY = 0;
+    KPH_NOISY=-1;
+end
 
 adjust_detection_var; % for adjust detection variance, see that file
 
@@ -37,9 +45,6 @@ DRAW_DETECTIONS_FIGURE   = 0;
 DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
-
-kelsey_planning = 1;
-kelsey_viz      = 1;
 
 %% open connection
 
@@ -73,6 +78,8 @@ nt              = 0;
 inference_num   = 0;
 
 detection_raw_result  = ones(length(m.detection.result), m.params.T);
+dists_raw_result  = ones(length(m.detection.result), m.params.T);
+min_hand_pos = ones(1,4);
 m.start_conditions(:) = 1;
 
 action_names_gt   = struct([]);
@@ -132,9 +139,18 @@ while t < m.params.T * m.params.downsample_ratio
         ws_bins = ws_bins_data(2:ws_bins_len+1);
         
         % run detection on new frame
-        d = run_action_detections(frame_info, m.detection);
-        d(find(isnan(d))) = 1;
+        m.detection.params.nam_noise_model = NAM_NOISE_MODEL;
+        [d,dists,min_hand_pos] = run_action_detections(frame_info, m.detection, min_hand_pos);
+        d(find(isnan(d))) = 0;
         detection_raw_result(:,nt) = d;
+        dists_raw_result(:,nt) = dists;
+        if 0
+            figure(22)
+            subplot(2,1,1)
+            plot(detection_raw_result')
+            subplot(2,1,2)
+            plot(dists_raw_result')
+        end
         
         % update start condition
         for b=1:length(m.detection.detectors)
@@ -147,7 +163,6 @@ while t < m.params.T * m.params.downsample_ratio
             %     condition_no = 1;
             % end
             condition_no = ~any(b == ws_bins); % true if bin not in ws
-            
             bins_availability(b,nt) = ~condition_no;
             
             if condition_no
@@ -237,7 +252,8 @@ while t < m.params.T * m.params.downsample_ratio
     if nt > 1 & exist('frame_info')
         if kelsey_planning
             k.action_names_gt = action_names_gt;
-            k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz);
+            k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz...
+                                    , detection_raw_result);
         else
             k = n_planning2_process(k, m, nt, frame_info);
         end

@@ -15,4 +15,3 @@ bin_req.symbol_names2 = {'body6', 'nose12', 'nose21', 'tail_ad4'};
 bin_req.symbol_types2 = {'start', 'start', 'start', 'start'};
 
 
-

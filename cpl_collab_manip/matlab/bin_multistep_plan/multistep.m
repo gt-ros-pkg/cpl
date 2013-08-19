@@ -1,6 +1,6 @@
 function [action, best_plan, history] = multistep(probs, slot_states, bin_names, ...
                                                   nowtimesec, rate, ...
-                                                  executedplan, action_names_gt, history, debug)
+                                                  event_hist, waiting_times, history, debug, detection_raw_result)
 
 planning_params
 
@@ -10,12 +10,12 @@ if ~isfield(history, 'slots')
     history.bin_names = bin_names;
     history.nowtimes = [];
     history.rate = rate;
-    history.executedplan = {};
-    history.action_names_gt = {};
+    history.event_hist = {};
+    history.waiting_times = {};
     history.debug = debug;
     history.numbins = numbins;
-    history.nowtimesec = nowtimesec;
-    history.nowtimeind = nowtimeind;
+    history.nowtimesec = [];
+    history.nowtimeind = [];
     history.max_time = max_time;
     history.t = t;
     history.undo_dur = undo_dur;
@@ -33,8 +33,10 @@ end
 history.probs{end+1} = probs;
 history.slots(end+1,:) = slot_states;
 history.nowtimes(end+1) = nowtimesec;
-history.executedplan{end+1} = executedplan;
-history.action_names_gt{end+1} = action_names_gt;
+history.nowtimesec(end+1) = nowtimesec;
+history.nowtimeind(end+1) = nowtimeind;
+history.event_hist{end+1} = event_hist;
+history.waiting_times{end+1} = waiting_times;
 
 if debug
     display_arg = 'off';
@@ -50,29 +52,6 @@ opt_options = optimset('Algorithm', 'interior-point', 'FinDiffRelStep', 1, 'Diff
 %opt_options = optimset('Algorithm', 'active-set', 'MaxFunEvals', opt_fun_evals);
 
 % Generate potential sequences of bin deliveries.
-bin_relevances = get_bin_relevances(t, probs, slot_states, nowtimeind, endedweight, notbranchweight);
-bin_relevances(bin_relevances < min_bin_relev) = -inf;
-if all(bin_relevances == -inf)
-    % no bins are relevant, robot should just wait
-    action = 0;
-    best_plan = [];
-    if debug
-        figure(101)
-        clf
-        subplot(3,1,1)
-        visualize_bin_activity([], [], bin_names, ...
-                               history, slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, executedplan, action_names_gt);
-        subplot(3,1,2)
-        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time);
-        subplot(3,1,3)
-        visualize_cost_funs(t, probs, zeros(1,numbins), undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
-        pause(0.05)
-    end
-    return
-end
-deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
 % These sequences are based on a beam search through
 % bins not in the workspace currently and weighted using a heuristic which prefers bins
 % whose expected start time is closer in the future, has not yet ended, and whose
@@ -90,26 +69,75 @@ deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
 %                  the bin if the probability the bin has ended is 0.5
 % notbranchweight: The penalty weight representing the number of seconds to penalize 
 %                  the bin if the probability the bin is on this branch is 0.5
+bin_relevances = get_bin_relevances(t, probs, slot_states, nowtimeind, endedweight, notbranchweight);
+bin_relevances(bin_relevances < min_bin_relev) = -inf;
+exit_early = 0;
+if all(bin_relevances == -inf)
+    % no bins are relevant, robot should just wait
+    action = 0;
+    best_plan = [];
+    exit_early = 1;
+else
+    deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
+end
 
+for bin_ind = 1:numbins
+    if size(event_hist,1) == 0
+        lastrminds(bin_ind) = 1;
+    else
+        bin_removes = find(event_hist(:,1)==-bin_ind);
+        if numel(bin_removes) == 0
+            lastrminds(bin_ind) = 1;
+        else
+            lastrminds(bin_ind) = max(event_hist(bin_removes,3)');
+        end
+    end
+end
+
+% Precompute cost functions for deliver/removal of every bin
 for bin_ind = 1:numbins
     binprob = sum(probs{bin_ind,1});
     startprobs = probs{bin_ind,1} / binprob;
     endprobs = probs{bin_ind,2} / binprob;
-    lastrmind = nowtimeind; % TODO FIX THIS
-    is_delivered(bin_ind) = any(bin_ind == deliv_seqs(1,:));
-    will_remove(bin_ind) = any(bin_ind == slot_states);
-    bin_names{bin_ind}
-    bin_ind
-    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, startprobs, endprobs, binprob, ...
+    if exit_early
+        is_delivered(bin_ind) = 0;
+    else
+        is_delivered(bin_ind) = any(bin_ind == deliv_seqs(1,:));
+    end
+    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, endprobs, binprob, ...
                                                  undo_dur, is_delivered(bin_ind));
     lt_cost_fns(bin_ind,:) = late_cost_precomp(t, startprobs, endprobs, binprob, ...
-                                               nowtimeind, lastrmind, undo_dur_ind);
-    redeliv_cost_fns(bin_ind,:) = redeliv_cost_precomp(t, startprobs, endprobs, binprob, ...
-                                                 undo_dur, is_delivered(bin_ind), undo_dur_ind);
-    before_prob_fns(bin_ind,:) = cumsum(startprobs(end:-1:1));
-    before_prob_fns(bin_ind,:) = before_prob_fns(bin_ind,end:-1:1);
-    tmp = cumsum(endprobs(end:-1:1));
-    during_prob_fns(bin_ind,:) = cumsum(startprobs).*tmp(end:-1:1);
+                                               nowtimeind, lastrminds(bin_ind), undo_dur_ind);
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+if exit_early
+    if 0%debug
+        figure(101)
+        clf
+        subplot(3,1,1)
+        visualize_bin_activity([], [], bin_names, ...
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, t, max_time, event_hist, waiting_times, false);
+        subplot(3,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time, false);
+        subplot(3,1,3)
+        visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
+        pause(0.05)
+        
+    elseif debug
+        figure(101)
+        clf
+        subplot(2,1,1)
+        visualize_bin_activity([], [], bin_names, ...
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, t, max_time, event_hist, waiting_times, true);
+        subplot(2,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time, true);
+    end
+    return
 end
 is_delivered
 will_remove
@@ -212,18 +240,24 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug && i == 1
+    if 0%debug && i == 1
         figure(100+i)
         clf
-        subplot(3,1,1)
+        subplot(4,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
                                history, slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, executedplan, action_names_gt);
-        subplot(3,1,2)
+                               nowtimesec, t, max_time, event_hist, waiting_times,false);
+        subplot(4,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time);
-        subplot(3,1,3)
-        visualize_cost_funs(t, probs, is_delivered, undo_dur, undo_dur_ind, nowtimesec, nowtimeind, max_time);
+                            nowtimesec, nowtimeind, max_time, false);
+        subplot(4,1,3)
+        visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
+        
+        subplot(4,1,4)
+        max_time_ind = find(t>=max_time,1);
+        plot(t(1:max_time_ind), detection_raw_result(:,1:max_time_ind)')
+        xlim([0 max_time])
+        
         if actions(i) == 0
             action_name = 'WAIT';
         elseif actions(i) > 0
@@ -233,6 +267,17 @@ for i = 1:size(deliv_seqs,1)
         end
         title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
         pause(0.05)
+        
+    elseif debug && i==1
+        figure(100+i)
+        clf
+        subplot(2,1,1)
+        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
+                               history, slot_states, numbins, rate, ...
+                               nowtimesec, t, max_time, event_hist, waiting_times, true);
+        subplot(2,1,2)
+        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
+                            nowtimesec, nowtimeind, max_time, true);
     end
 end
 

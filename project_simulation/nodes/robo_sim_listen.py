@@ -24,8 +24,8 @@ AVG_TIME_BIN_MOVE = 7;
 PUB_RATE = 60
 
 #time taken to pick-up put down bin (s)
-ROBO_PICK = 1.0
-ROBO_PUT = 1.0
+ROBO_PICK = 1.5
+ROBO_PUT = 1.5
 
 #the distance above the bin where the endfactor hovers, in meters
 rest_above_by = 0.2

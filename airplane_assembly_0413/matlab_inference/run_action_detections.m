@@ -1,8 +1,9 @@
-function detections = run_action_detections( frame_info, data )
+function [detections, dists, min_hand_pos] = run_action_detections( frame_info, data, min_hand_pos )
 %RUN_ACTION_DETECTIONS Summary of this function goes here
 %   Detailed explanation goes here
 
     detections = nan(1, length(data.detectors));
+    dists = nan(1, length(data.detectors));
     
     for d=1:length(data.detectors)
     if data.detectors(d).exist & ~isempty(frame_info.bins(d).H)
@@ -21,15 +22,39 @@ function detections = run_action_detections( frame_info, data )
         
         % run detector
         if data.params.use_onedetector
-            detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_scale * data.onedetector.learnt.var) / data.onedetector.mean_detection_score;
-            % detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_prior + data.onedetector.learnt.var) / data.onedetector.mean_detection_score;
-            % detections(d) = mvnpdf(closest_hand, data.onedetector.learnt.mean, data.params.detector_var_prior + data.onedetector.learnt.var) + data.params.latent_noise;
-        
+            if data.params.nam_noise_model
+                cur_mean = data.onedetector.learnt.mean;
+                cur_var = data.params.detector_var_scale * data.onedetector.learnt.var;
+                detect_score = data.onedetector.mean_detection_score;
+                detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / detect_score;
+            else
+                cur_mean = data.onedetector.learnt.mean;
+                cur_std = data.params.detector_std_prior;
+                pure_detect_weight = data.params.pure_detect_weight;
+                latent_noise = data.params.latent_noise;
+                future_weight = data.params.future_weight;
+                max_norm_pdf = normpdf(0,0,cur_std);
+                
+                %new_mean = [0.0837,-0.0772,-0.0935]';
+                new_mean = cur_mean;
+                closest_hand = closest_hand;%-[0.0837,-0.0772,-0.0935]';
+                dists(d) = norm(closest_hand-new_mean);
+                if dists(d) < min_hand_pos(1)
+                    min_hand_pos = [dists(d), closest_hand'];
+                end
+                hand_dist = norm(closest_hand - new_mean);
+                detected_lik = normpdf(hand_dist, 0, cur_std)/ max_norm_pdf;
+                detections(d) = (detected_lik*pure_detect_weight + latent_noise) / future_weight;
+                % detections(d) = (mvnpdf(closest_hand, 0*cur_mean, cur_var) + ...
+                %                  latent_noise) / future_weight;
+                
+            end
         else
-            % detections(d) = mvnpdf(closest_hand, data.detectors(d).learnt.mean, data.params.detector_var_scale * data.detectors(d).learnt.var) / data.detectors(d).mean_detection_score;
-            disp('THIS SHOULD NOT RUN')
-            detections(d) = mvnpdf(closest_hand, data.detectors(d).learnt.mean, data.params.detector_var_prior + data.detectors(d).learnt.var) / data.detectors(d).mean_detection_score;
-            disp('THIS SHOULD NOT RUN')
+            cur_mean = data.onedetector.learnt.mean;
+            cur_var = data.params.detector_var_scale * data.detectors(d).learnt.var;
+            detect_score = data.detectors(d).mean_detection_score;
+            detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / detect_score;
+            % disp('THIS SHOULD NOT RUN')
         end
     end
     end
