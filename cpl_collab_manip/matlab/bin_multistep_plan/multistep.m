@@ -97,11 +97,22 @@ for bin_ind = 1:numbins
     endprobs = probs{bin_ind,2} / binprob;
     lastrmind = nowtimeind; % TODO FIX THIS
     is_delivered(bin_ind) = any(bin_ind == deliv_seqs(1,:));
-    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, endprobs, binprob, ...
+    will_remove(bin_ind) = any(bin_ind == slot_states);
+    bin_names{bin_ind}
+    bin_ind
+    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, startprobs, endprobs, binprob, ...
                                                  undo_dur, is_delivered(bin_ind));
     lt_cost_fns(bin_ind,:) = late_cost_precomp(t, startprobs, endprobs, binprob, ...
                                                nowtimeind, lastrmind, undo_dur_ind);
+    redeliv_cost_fns(bin_ind,:) = redeliv_cost_precomp(t, startprobs, endprobs, binprob, ...
+                                                 undo_dur, is_delivered(bin_ind), undo_dur_ind);
+    before_prob_fns(bin_ind,:) = cumsum(startprobs(end:-1:1));
+    before_prob_fns(bin_ind,:) = before_prob_fns(bin_ind,end:-1:1);
+    tmp = cumsum(endprobs(end:-1:1));
+    during_prob_fns(bin_ind,:) = cumsum(startprobs).*tmp(end:-1:1);
 end
+is_delivered
+will_remove
 
 all_best_times = [];
 all_costs = [];
@@ -138,7 +149,9 @@ for i = 1:size(deliv_seqs,1)
         lower_bounds;
         x_start = x_start + start_off*rate;
         x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, ...
-                                          rm_cost_fns, lt_cost_fns, traj_dur_ind, 0), ...
+                                          rm_cost_fns, lt_cost_fns, ...
+                                          redeliv_cost_fns, before_prob_fns, during_prob_fns, ...
+                                          traj_dur_ind, nowtimeind, 0), ...
                         x_start, ...
                         A, b, ...
                         [], [], ...
@@ -158,7 +171,7 @@ for i = 1:size(deliv_seqs,1)
 
         % given the optimal timings, find the actual plan and its cost from the optimization function
         % this will fill in the bin removals from the original plan
-        [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, traj_dur_ind, 1);
+        [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, redeliv_cost_fns, before_prob_fns, during_prob_fns, traj_dur_ind, nowtimeind, 1);
 
         if cost < best_cost
             best_cost = cost;
