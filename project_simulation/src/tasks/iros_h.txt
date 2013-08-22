@@ -1,5 +1,5 @@
 #the sequece of bins to pick from for helicopter
-Body
-Nose_H
-Wing_H
-Tail_H
+Body_IROS
+Nose_H_IROS
+Wing_H_IROS
+Tail_H_IROS

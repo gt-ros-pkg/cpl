@@ -41,8 +41,14 @@ else
         m.detection.params.future_weight       = 1.0;
         m.detection.params.pure_detect_weight = 1.0;
     elseif KPH_NOISY == 2
-        % 
-        m.detection.params.detector_std_prior  = 0.24;
+        % IROS high confidence:
+        m.detection.params.detector_std_prior  = 0.05;
+        m.detection.params.latent_noise        = 0.0;
+        m.detection.params.future_weight       = 0.1;
+        m.detection.params.pure_detect_weight = 1.0;
+    elseif KPH_NOISY == 3
+        % IROS low confidence
+        m.detection.params.detector_std_prior  = 0.10;
         m.detection.params.latent_noise        = 0.0;
         m.detection.params.future_weight       = 0.5;
         m.detection.params.pure_detect_weight = 1.0;

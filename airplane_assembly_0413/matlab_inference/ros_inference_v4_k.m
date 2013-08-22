@@ -20,7 +20,11 @@ if 1
     NAM_NOISY = 0;
     %KPH_NOISY=-1;
     %KPH_NOISY=0;
-    KPH_NOISY=2;
+
+    % IROS high confidence:
+    % KPH_NOISY=2;
+    % IROS low confidence
+    KPH_NOISY=3;
 
     fig_planning = figure(101);
     winsize = get(fig_planning, 'Position');
