@@ -4,7 +4,7 @@ before_probs = cumsum(startprobs(end:-1:1));
 before_probs = before_probs(end:-1:1);
 during_probs = cumsum(endprobs(end:-1:1));
 during_probs = cumsum(startprobs).*during_probs(end:-1:1);
-costs = binprob*(200*before_probs + 100*during_probs);
+costs = binprob*((3*undo_dur)^2*before_probs + undo_dur^2*during_probs);
 
 % m = -0.01;
 % u = (m*(t-t(end))+2*undo_dur).^2;

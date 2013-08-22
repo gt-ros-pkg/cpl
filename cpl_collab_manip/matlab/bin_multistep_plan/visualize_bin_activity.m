@@ -89,7 +89,8 @@ if ~for_humanoids
 else    
     text(tnow+0.5, numbins+0.8, sprintf('Now'));
     for i = 1:numbins
-       ylabels{i} = sprintf('Bin %d', numbins-i+1);
+       ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
+       % ylabels{i} = sprintf('Bin %d', numbins-i+1);
     end
 end
 

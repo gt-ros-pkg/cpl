@@ -36,13 +36,13 @@ function [detections, dists, min_hand_pos] = run_action_detections( frame_info, 
                 max_norm_pdf = normpdf(0,0,cur_std);
                 
                 %new_mean = [0.0837,-0.0772,-0.0935]';
-                new_mean = cur_mean;
-                closest_hand = closest_hand;%-[0.0837,-0.0772,-0.0935]';
-                dists(d) = norm(closest_hand-new_mean);
+                % new_mean = cur_mean;
+                % closest_hand = closest_hand;%-[0.0837,-0.0772,-0.0935]';
+                dists(d) = norm(closest_hand-cur_mean);
                 if dists(d) < min_hand_pos(1)
                     min_hand_pos = [dists(d), closest_hand'];
                 end
-                hand_dist = norm(closest_hand - new_mean);
+                hand_dist = norm(closest_hand - cur_mean);
                 detected_lik = normpdf(hand_dist, 0, cur_std)/ max_norm_pdf;
                 detections(d) = (detected_lik*pure_detect_weight + latent_noise) / future_weight;
                 % detections(d) = (mvnpdf(closest_hand, 0*cur_mean, cur_var) + ...
@@ -54,7 +54,7 @@ function [detections, dists, min_hand_pos] = run_action_detections( frame_info, 
             cur_var = data.params.detector_var_scale * data.detectors(d).learnt.var;
             detect_score = data.detectors(d).mean_detection_score;
             detections(d) = mvnpdf(closest_hand, cur_mean, cur_var) / detect_score;
-            % disp('THIS SHOULD NOT RUN')
+            disp('THIS SHOULD NOT RUN')
         end
     end
     end
