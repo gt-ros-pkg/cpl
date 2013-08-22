@@ -1,0 +1,5 @@
+#the sequece of bins to pick from for helicopter
+Body_miss
+Nose_1
+Nose_2
+WingTail

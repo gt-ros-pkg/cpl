@@ -1,9 +1,7 @@
 #bin_id
 3
 #parts sequence: <part name> <mean> <std-dev>
-lc1_b1_1 3.0 0.4
-lc1_b1_2 8.0 0.7
-lc1_b1_3 5.0 0.7
+lc1_b1_3 16.0 0.7
 lc1_b1_4 5.0 0.5
 lc1_b1_5 10.0 0.4
 lc1_b1_6 10.0 0.7

@@ -8,6 +8,8 @@ PORT_NUMBER = 54321;
 
 n = struct;
 n.multistep_history = struct;
+n.multistep_history.ws_bins = [];
+n.multistep_history.nowtimesec_inf = [];
 
 %% connect to ROS node
 n.ros_tcp_connection                  = tcpip('localhost', PORT_NUMBER);

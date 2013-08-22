@@ -1,5 +1,5 @@
 
-SAVE_BATH_FILE_NAME = 'save_batch_and_calculate_stats/rename_after_done.mat';
+SAVE_BATH_FILE_NAME = 'save_batch_and_calculate_stats/save_big_stats.mat';
 
 % load old data
 try
@@ -17,6 +17,7 @@ end
 % add
 batch_data(end).action_name_gt = action_names_gt;
 batch_data(end).executedplan   = k.executedplan;
+%batch_data(end).multistep_history = k.multistep_history;
 
 if isfield(k, 'multistep_history')
     batch_data(end).multistep_history = k.multistep_history;

@@ -2,7 +2,7 @@
     <arg name="task" default="airplane1" />
     <arg name="cheat" default="n" />
     <arg name="rng_seed" default="5"/>
-    <arg name="destination_noise" default="0.0"/>
+    <arg name="dest_noise" default="0.0"/>
    <node name="fix_tf" pkg="project_simulation" type="fix_tf.py" 
           output="screen" ></node>
    <node name="ar_markers_publish" pkg="project_simulation" type="ar_markers_publish.py" 
@@ -11,12 +11,12 @@
           output="screen" ></node>
 	  
    <node name="hands_sim" pkg="project_simulation" type="hands_sim" cwd="node" 
-          args="$(arg task) $(arg cheat) $(arg rng_seed) $(arg destination_noise)"
+          args="$(arg task) $(arg cheat) $(arg rng_seed) $(arg dest_noise)"
           output="screen" ></node>
 
   <node name="inference_from_matlab" pkg="airplane_assembly_inference_0313" 
         type="inference_from_matlab.py" />
   <node name="planning_from_matlab" pkg="airplane_assembly_inference_0313" 
-        type="planning_from_matlab.py" />
+        type="planning_from_matlab.py" output="screen" />
 
 </launch>

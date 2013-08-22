@@ -13,20 +13,19 @@ init_for_iros_workshop_2chains_task
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-if 1
+if 0
     kelsey_planning = 1;
     kelsey_viz      = 1;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
-    %KPH_NOISY=-1;
-    %KPH_NOISY=0;
-    KPH_NOISY=2;
-
-    fig_planning = figure(101);
-    winsize = get(fig_planning, 'Position');
-    movie_frames = 60;
-    planning_movie = moviein(movie_frames, fig_planning, winsize);
-    planning_ind = 1;
+    KPH_NOISY=-1;
+else
+    kelsey_planning = 0;
+    kelsey_viz      = 0;
+    NAM_NOISE_MODEL = 1;
+    NAM_NOISY = 0;
+    KPH_NOISY = 0;
+    
 end
 
 adjust_detection_var; % for adjust detection variance, see that file
@@ -42,13 +41,11 @@ MAX_WS_BINS         = 20;     % must match ROS node param
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
 
-DRAW_DISTRIBUTION_FIGURE = 000;
-% DRAW_DISTRIBUTION_FIGURE = 399;
+DRAW_DISTRIBUTION_FIGURE = 399;
 
 % DRAW_POSITIONS_FIGURE    = 33;
 DRAW_POSITIONS_FIGURE    = 0;
-% DRAW_DETECTIONS_FIGURE   = 3310;
-DRAW_DETECTIONS_FIGURE   = 0;
+DRAW_DETECTIONS_FIGURE   = 3310;
 
 DRAW_GT_ACTIONS          = 1;
 
@@ -262,10 +259,6 @@ while t < m.params.T * m.params.downsample_ratio
             k.action_names_gt = action_names_gt;
             k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz...
                                     , detection_raw_result);
-            if planning_ind <= movie_frames
-                planning_movie(:,planning_ind) = getframe(fig_planning, winsize);
-                planning_ind = planning_ind + 1;
-            end
         else
             k = n_planning2_process(k, m, nt, frame_info);
         end
@@ -318,7 +311,12 @@ while t < m.params.T * m.params.downsample_ratio
                             [-i -i], nxifelse( a.sname(1) == 'A' , 'b', 'r'), 'LineWidth', 20);
                         plot([a.optimal_t-1 a.optimal_t+1], ...
                             [-i -i], 'w', 'LineWidth', 20);
-                        text(a.optimal_t+a.post_duration, -i, a.sname);
+                        
+                        text(a.optimal_t+a.post_duration, -i, [a.sname]);
+                        
+                        
+                        not_finished_percent = sum(k.bin_distributions(find([k.bin_distributions.bin_id] == a.bin_id)).bin_nolonger_needed(nt+1:end));
+                        text(nt+5, -i, [num2str(not_finished_percent * 100) '% not finished']);
                     end
                 end
                 end
@@ -374,6 +372,18 @@ while t < m.params.T * m.params.downsample_ratio
                 text(nt, 0, action_names_gt(end).name);
             end
             hold off;
+        end
+        
+        % write video
+        try
+            nx_figure(DRAW_DISTRIBUTION_FIGURE);
+            
+            currFrame = getframe(gcf);
+            writeVideo(vidObj,currFrame);
+        catch
+            vidObj = VideoWriter('peaks.avi');
+            vidObj.FrameRate = 1;
+            open(vidObj);
         end
     end
     
