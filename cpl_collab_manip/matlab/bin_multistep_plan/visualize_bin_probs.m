@@ -31,7 +31,8 @@ for i = 1:numbins
     if ~for_humanoids
         ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
     else
-        ylabels{i} = sprintf('Bin %d', numbins-i+1);
+        ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
+        % ylabels{i} = sprintf('Bin %d', numbins-i+1);
     end
 end
 

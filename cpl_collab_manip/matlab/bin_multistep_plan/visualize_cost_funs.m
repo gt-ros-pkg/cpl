@@ -20,13 +20,13 @@ for i = 1:numbins
     % rm_costs(rm_costs > max_costs) = nan;
     % lt_costs(lt_costs > max_costs) = nan;
     rm_costs_new(rm_costs_new > max_costs) = nan;
-    redeliv_costs_new(rm_costs_new > max_costs) = nan;
+    % redeliv_costs_new(rm_costs_new > max_costs) = nan;
     lt_costs_new(lt_costs_new > max_costs) = nan;
     %yval = numbins-(i-1);
     % plot(t, rm_costs/max_costs/1.1-i+numbins, 'r')
     % plot(t, lt_costs/max_costs/1.1-i+numbins, 'b')
     plot(t, rm_costs_new/max_costs/1.1-i+numbins, 'r')
-    plot(t, redeliv_costs_new/max_costs/1.1-i+numbins, 'g')
+    % plot(t, redeliv_costs_new/max_costs/1.1-i+numbins, 'g')
     plot(t, lt_costs_new/max_costs/1.1-i+numbins, 'b')
     plot(t,zeros(1,numel(t))-i+numbins,'k')
 end

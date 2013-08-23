@@ -83,11 +83,11 @@ end
 
 for bin_ind = 1:numbins
     if size(event_hist,1) == 0
-        lastrminds(bin_ind) = 1;
+        lastrminds(bin_ind) = -1;
     else
         bin_removes = find(event_hist(:,1)==-bin_ind);
         if numel(bin_removes) == 0
-            lastrminds(bin_ind) = 1;
+            lastrminds(bin_ind) = -1;
         else
             lastrminds(bin_ind) = max(event_hist(bin_removes,3)');
         end
@@ -104,7 +104,7 @@ for bin_ind = 1:numbins
     else
         is_delivered(bin_ind) = any(bin_ind == deliv_seqs(1,:));
     end
-    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, endprobs, binprob, ...
+    rm_cost_fns(bin_ind,:) = remove_cost_precomp(t, startprobs, endprobs, binprob, ...
                                                  undo_dur, is_delivered(bin_ind));
     lt_cost_fns(bin_ind,:) = late_cost_precomp(t, startprobs, endprobs, binprob, ...
                                                nowtimeind, lastrminds(bin_ind), undo_dur_ind);
@@ -112,7 +112,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if exit_early
-    if 0%debug
+    if 1%debug
         figure(101)
         clf
         subplot(3,1,1)
@@ -124,6 +124,12 @@ if exit_early
                             nowtimesec, nowtimeind, max_time, false);
         subplot(3,1,3)
         visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
+        
+        subplot(4,1,4)
+        max_time_ind = find(t>=max_time,1);
+        plot(t(1:max_time_ind), detection_raw_result(:,1:max_time_ind)')
+        xlim([0 max_time])
+        
         pause(0.05)
         
     elseif debug
@@ -139,8 +145,6 @@ if exit_early
     end
     return
 end
-is_delivered
-will_remove
 
 all_best_times = [];
 all_costs = [];
@@ -178,13 +182,13 @@ for i = 1:size(deliv_seqs,1)
         x_start = x_start + start_off*rate;
         x_sol = fmincon(@(x) opt_cost_fun(x, slot_states, plan, ...
                                           rm_cost_fns, lt_cost_fns, ...
-                                          redeliv_cost_fns, before_prob_fns, during_prob_fns, ...
                                           traj_dur_ind, nowtimeind, 0), ...
                         x_start, ...
                         A, b, ...
                         [], [], ...
                         [], (numel(t)-10-2*traj_dur_ind)*ones(1,numel(x_start)), ...
                         [], opt_options);
+                                          % redeliv_cost_fns, before_prob_fns, during_prob_fns, ...
 
         % move early delivers to the beginning of the line
         for plan_ind = 1:numel(plan)
@@ -199,7 +203,8 @@ for i = 1:size(deliv_seqs,1)
 
         % given the optimal timings, find the actual plan and its cost from the optimization function
         % this will fill in the bin removals from the original plan
-        [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, redeliv_cost_fns, before_prob_fns, during_prob_fns, traj_dur_ind, nowtimeind, 1);
+        [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, traj_dur_ind, nowtimeind, 1);
+        % [cost, cur_plan, cur_costs] = opt_cost_fun(x_sol, slot_states, plan, rm_cost_fns, lt_cost_fns, redeliv_cost_fns, before_prob_fns, during_prob_fns, traj_dur_ind, nowtimeind, 1);
 
         if cost < best_cost
             best_cost = cost;
@@ -240,7 +245,7 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if 0%debug && i == 1
+    if 1 && i == 1% debug && i == 1
         figure(100+i)
         clf
         subplot(4,1,1)
