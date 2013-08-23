@@ -11,8 +11,13 @@ learnt_var = m.detection.onedetector.learnt.var
 
 if NAM_NOISE_MODEL
     
-    if NAM_NOISY
+    if NAM_NOISY == 1
         m.detection.params.detector_var_scale           = 16; % raw peak is about 120
+        m.detection.onedetector.mean_detection_score    = 20;  
+        m.detection.onedetector.nam_uniform_component   = 5;
+        
+    elseif NAM_NOISY == 2
+        m.detection.params.detector_var_scale           = 25; % raw peak is about 60
         m.detection.onedetector.mean_detection_score    = 20;  
         m.detection.onedetector.nam_uniform_component   = 5;
         

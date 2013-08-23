@@ -91,6 +91,8 @@ action_names_gt   = struct([]);
 frames_info       = struct([]);
 bins_availability = nan(BIN_NUM, m.params.T);
 
+record_figures_data = record_figures_init();
+
 %% LOOP
 
 while t < m.params.T * m.params.downsample_ratio
@@ -374,17 +376,6 @@ while t < m.params.T * m.params.downsample_ratio
             hold off;
         end
         
-        % write video
-        try
-            nx_figure(DRAW_DISTRIBUTION_FIGURE);
-            
-            currFrame = getframe(gcf);
-            writeVideo(vidObj,currFrame);
-        catch
-            vidObj = VideoWriter('peaks.avi');
-            vidObj.FrameRate = 1;
-            open(vidObj);
-        end
     end
     
     
@@ -443,13 +434,14 @@ while t < m.params.T * m.params.downsample_ratio
         end
     end
     
+    record_figures_data = record_figures_process(record_figures_data);
 end
 
 
 %% close
 
 k = k_planning_terminate(k);
-
+record_figures_data = record_figures_terminate(record_figures_data);
 fclose(ros_tcp_connection);
 
 disp 'The End'
