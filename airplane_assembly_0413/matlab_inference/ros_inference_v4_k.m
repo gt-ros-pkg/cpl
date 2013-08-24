@@ -13,7 +13,8 @@ init_for_iros_workshop_2chains_task
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
-if 1
+making_movie = 0;
+if 0
     kelsey_planning = 1;
     kelsey_viz      = 1;
     NAM_NOISE_MODEL = 0;
@@ -28,9 +29,10 @@ if 1
 
     fig_planning = figure(101);
     winsize = get(fig_planning, 'Position');
-    movie_frames = 60;
+    movie_frames = 120;
     planning_movie = moviein(movie_frames, fig_planning, winsize);
     planning_ind = 1;
+    making_movie = 1;
 end
 
 adjust_detection_var; % for adjust detection variance, see that file
@@ -266,8 +268,8 @@ while t < m.params.T * m.params.downsample_ratio
             k.action_names_gt = action_names_gt;
             k = k_planning_process(k, m, nt, frame_info, bins_availability, ws_bins, kelsey_viz...
                                     , detection_raw_result);
-            if planning_ind <= movie_frames
-                planning_movie(:,planning_ind) = getframe(fig_planning, winsize);
+            if making_movie && planning_ind <= movie_frames
+                planning_movie(:,planning_ind) = getframe(fig_planning);
                 planning_ind = planning_ind + 1;
             end
         else

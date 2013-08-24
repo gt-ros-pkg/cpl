@@ -62,7 +62,7 @@ double DEST_NOISE_DEV = 0.0;
 double PUB_NOISE_DEV = 0*0.005;
 //standard deviation of the gaussian for random noise when performing 
 //task with a part
-double WALK_DEV = 0.1;
+double WALK_DEV = 0*0.1;
 //parameters for gaussian representing time it takes
 //for moving hand to a location or back
 double MOTION_MEAN = 1.0;
@@ -884,8 +884,8 @@ double handSim::perform_task(size_t cur_bin, double dur_m, double dur_s, double 
     //TODO: make destination noise replicatable
     //add destination noise
     cur_bin_loc[0]+=samp_gauss_rep(0,DEST_NOISE_DEV);
-    cur_bin_loc[1]+=samp_gauss_rep(0,DEST_NOISE_DEV);
-    cur_bin_loc[2]+=samp_gauss_rep(0,DEST_NOISE_DEV);
+    //cur_bin_loc[1]+=samp_gauss_rep(0,DEST_NOISE_DEV);
+    //cur_bin_loc[2]+=samp_gauss_rep(0,DEST_NOISE_DEV);
 
     //move close to bin
     move_to_loc(pick_lefty, !pick_lefty, cur_bin_loc, cur_bin_loc, time_reach);
@@ -958,7 +958,7 @@ void handSim::end_the_task()
   handSim::task_pub.publish(end_task_msg);
   
   ofstream stats_file;
-  stats_file.open("stats_big.txt", ios_base::app);  
+  stats_file.open("stats_iros.txt", ios_base::app);  
   if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
   //stats_file<<"aborted"<<','<<handSim::bin_rmv_mistakes<<endl;
     
@@ -1318,7 +1318,7 @@ void handSim::delete_wait_marker()
     cout<<"Total, wait  "<<total_time<<", "<<wait_time_total<<endl;
 
     ofstream stats_file;
-    stats_file.open("stats_big.txt", ios_base::app);  
+    stats_file.open("stats_iros.txt", ios_base::app);  
     if (!stats_file.is_open()){cout<<"\nCOUDNOT WRITE STATISTICS. ABORT.\n"; exit(-1);}
     stats_file<<total_time<<','<<wait_time_total<<','<<longest_wait_time<<','
               <<handSim::bin_rmv_mistakes<<','<<0<<endl;

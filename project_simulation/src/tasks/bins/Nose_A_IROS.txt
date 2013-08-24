@@ -1,6 +1,4 @@
 #bin_id
 11
 #parts sequence: <part name> <mean> <std-dev>
-nose_h1 4.17777666667 0.559099772452
-nose_h2 7.33333333333 1.07289846263
-nose_h3 6.63333333333 1.12150692275
+nose_a1 20 4
