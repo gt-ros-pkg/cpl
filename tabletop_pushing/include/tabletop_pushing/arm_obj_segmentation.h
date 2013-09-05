@@ -27,20 +27,15 @@ class ArmObjSegmentation
   static cv::Mat getMorphCross(int img_size, int cross_width);
   static cv::Mat convertFlowToMat(tabletop_pushing::GraphType *g, tabletop_pushing::NodeTable& nt, int R, int C);
 
-  static float getUnaryWeight(cv::Vec3b sample, GMM& fg_color_model);
+  static float getUnaryWeight(cv::Vec3f sample, GMM& fg_color_model);
   static float getUnaryWeight(cv::Vec3f sample, cv::Vec3f mean, cv::Vec3f var);
   static float getUnaryWeight(cv::Vec3f sample, cv::Vec3f fg_mean, cv::Vec3f fg_var,
                               cv::Vec3f bg_mean, cv::Vec3f bg_var);
 
-  static GMM getGMMColorModel(cv::Mat& samples, cv::Mat& mask);
+  static GMM getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc=10);
   static void getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Vec3f& var, cv::Mat& mask);
   static float getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1);
   static float getEdgeWeightBoundary(float c0, float d0, float c1, float d1);
-
-  float w_c_alpha_;
-  float w_c_beta_;
-  float w_c_gamma_;
-  float w_c_eta_;
 };
 };
 #endif // arm_obj_segmentation_h_DEFINED

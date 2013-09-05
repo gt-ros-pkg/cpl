@@ -25,18 +25,8 @@ namespace fs = boost::filesystem;
 #define HALF_NUM_GMM_DIMS (float)NUM_GMM_DIMS/2
 #define NUM_SIGMA_VALS (NUM_GMM_DIMS*(NUM_GMM_DIMS+1))/2
 
-typedef cv::Vec<uchar, NUM_GMM_DIMS> GMMPnt;
 typedef cv::Vec<float, NUM_GMM_DIMS> GMMFloatPnt;
 typedef cv::Vec<float, NUM_SIGMA_VALS> GMMSigmaVal;
-
-inline GMMPnt pxlToPnt(const cv::Vec3b& pxl) {
-  GMMPnt pnt;
-  pnt[0] = pxl[2];
-  pnt[1] = pxl[1];
-  pnt[2] = pxl[0];
-  return pnt;
-}
-
 
 class Gaussian {
  private:
@@ -100,7 +90,7 @@ class Gaussian {
   // is the minimum non-zero value (we can even go further) a machine can
   // compute, then a sample point will only have non-zero probability if its
   // l_2 square distance is less than 0.5*500*t.
-  static const float MIN_GMM_VARIANCE = 1e1;
+  static const float MIN_GMM_VARIANCE = 0.0;
 
   GMMFloatPnt mv;
   cv::Mat mat;
@@ -189,7 +179,7 @@ class Gaussian {
   }
 
 
-  float density(const GMMPnt& x) const;
+  float density(const GMMFloatPnt& x) const;
   void serialize(std::ofstream& fd) const;
   void deserialize(std::ifstream& fd);
 };
@@ -247,7 +237,7 @@ class GMM {
   }
 
 
-  float probability(const GMMPnt& x) const {
+  float probability(const GMMFloatPnt& x) const {
     float val = 0.0;
 
     for (int i = 0; i < nk; i++) {
@@ -257,7 +247,7 @@ class GMM {
   }
 
 
-  float minl2clustercenterdist(const GMMPnt& x) const {
+  float minl2clustercenterdist(const GMMFloatPnt& x) const {
     float min_dist = std::numeric_limits<float>::max();
     float dist;
 
@@ -279,7 +269,7 @@ class GMM {
     std::cout << "kernel parameters\n";
     std::cout << "No.:   weight : ";
     for (int d = 0; d < NUM_GMM_DIMS; d++) {
-      std::cout << boost::format("|   m%c   ") % (d + 'a');
+      std::cout << boost::format("|   m%c   ") % static_cast<char>('a'+d);
     }
     std::cout << " ||                 gaussian parameters..\n";
     std::cout << "                ";
@@ -306,11 +296,11 @@ class GMM {
   }
 
 
-  int which_kernel(const GMMPnt& x) const;
-  double learn(const std::vector<GMMPnt>& pts);
-  double GmmEm(const std::vector<GMMPnt>& pts);
-  void kmeansInit(const std::vector<GMMPnt>& pts, const float sigma);
-  void initkernels(const std::vector<GMMPnt>& pts, const float sigma);
+  int which_kernel(const GMMFloatPnt& x) const;
+  double learn(const std::vector<GMMFloatPnt>& pts);
+  double GmmEm(const std::vector<GMMFloatPnt>& pts);
+  void kmeansInit(const std::vector<GMMFloatPnt>& pts, const float sigma);
+  void initkernels(const std::vector<GMMFloatPnt>& pts, const float sigma);
   void savegmm(const fs::path& savefilepath) const;
   void loadgmm(const fs::path& loadfilepath);
 };

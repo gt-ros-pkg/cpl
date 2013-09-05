@@ -6,6 +6,7 @@
 
 #include <map>
 #include <algorithm>
+#include <iostream>
 
 #define VISUALIZE_GRAPH_WEIGHTS 1
 namespace tabletop_pushing
@@ -57,16 +58,26 @@ class NodeTable
 
 cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask)
 {
-  cv::Mat color_frame_hsv(color_img.size(), color_img.type());
-  cv::cvtColor(color_img, color_frame_hsv, CV_BGR2HSV);
+
+  // TODO: Move to constructor
+  float fg_tied_weight_ = 2.0;
+  float bg_tied_weight_ = 5.0;
+  
+  cv::Mat color_img_hsv_uchar(color_img.size(), color_img.type());
+  cv::Mat color_img_hsv(color_img.size(), CV_32FC3);
+  cv::cvtColor(color_img, color_img_hsv_uchar, CV_BGR2HSV);
+  color_img_hsv_uchar.convertTo(color_img_hsv, CV_32FC3, 1.0/255);
   cv::Mat tmp_bw(color_img.size(), CV_8UC1);
   cv::Mat bw_img(color_img.size(), CV_32FC1);
   // Convert to grayscale
   cv::cvtColor(color_img, tmp_bw, CV_BGR2GRAY);
   tmp_bw.convertTo(bw_img, CV_32FC1, 1.0/255);
 
+
 #ifdef VISUALIZE_GRAPH_WEIGHTS
   cv::Mat fg_weights(color_img.size(), CV_32FC1, cv::Scalar(0.0));
+  cv::Mat fg_tied_weights(color_img.size(), CV_32FC1, cv::Scalar(0.0));
+  cv::Mat bg_tied_weights(color_img.size(), CV_32FC1, cv::Scalar(0.0));
   cv::Mat bg_weights(color_img.size(), CV_32FC1, cv::Scalar(0.0));
   cv::Mat wu_weights(color_img.size(), CV_32FC1, cv::Scalar(0.0));
   cv::Mat wl_weights(color_img.size(), CV_32FC1, cv::Scalar(0.0));
@@ -86,12 +97,12 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   // Get known arm pixels
   cv::Mat known_arm_pixels;
-  color_frame_hsv.copyTo(known_arm_pixels, known_arm_mask);
+  color_img_hsv.copyTo(known_arm_pixels, known_arm_mask);
   cv::Mat known_bg_mask = much_larger_mask - larger_mask;
 
   // Get known object pixels
   cv::Mat known_bg_pixels;
-  color_frame_hsv.copyTo(known_bg_pixels, known_bg_mask);
+  color_img_hsv.copyTo(known_bg_pixels, known_bg_mask);
 
   // Get stats for building graph
   int num_nodes = 0;
@@ -138,8 +149,10 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     return empty;
   }
 
-  GMM arm_color_model = getGMMColorModel(known_arm_pixels, known_arm_mask);
-  GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask);
+  std::cout << "\nBuilding arm color model\n";
+  GMM arm_color_model = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
+  std::cout << "\nBuilding bg color model\n";
+  GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
 
   cv::Mat Ix = getXImageDeriv(bw_img);
   cv::Mat Iy = getYImageDeriv(bw_img);
@@ -161,18 +174,23 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         float bg_weight = 0.0;
         if (known_arm_mask.at<uchar>(r,c) > 0)
         {
-          fg_weight = 1.0;
+          fg_weight = fg_tied_weight_;
           bg_weight = 0.0;
+          fg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), arm_color_model);
+          bg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), bg_color_model);
+
         }
         else if (known_bg_mask.at<uchar>(r,c) > 0)
         {
           fg_weight = 0.0;
-          bg_weight = 1.0;
+          bg_weight = bg_tied_weight_;
+          fg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), arm_color_model);
+          bg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), bg_color_model);
         }
         else
         {
-          fg_weight = getUnaryWeight(color_frame_hsv.at<cv::Vec3b>(r,c), arm_color_model);
-          bg_weight = getUnaryWeight(color_frame_hsv.at<cv::Vec3b>(r,c), bg_color_model);
+          fg_weight = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), arm_color_model);
+          bg_weight = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), bg_color_model);
           // fg_weight = 0.0;
           // bg_weight = 0.0;
         }
@@ -237,6 +255,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 #endif // USE_UL
   cv::imshow("fg weights", fg_weights);
   cv::imshow("bg weights", bg_weights);
+  cv::imshow("fg tied weights", fg_tied_weights);
+  cv::imshow("bg tied weights", bg_tied_weights);
 #endif // VISUALIZE_GRAPH_WEIGHTS
 
   // Perform cut
@@ -305,119 +325,6 @@ float ArmObjSegmentation::getEdgeWeightBoundary(float c0, float d0, float c1, fl
   float w = exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
   // std::cout << "w: " << w << std::endl;
   return w;
-}
-
-float ArmObjSegmentation::getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1)
-{
-  float w_c_alpha_ = 0.5;
-  float w_c_beta_ = 0.5;
-  float w_c_gamma_ = 0.0;
-  float w_c_eta_ = 0.0;
-  cv::Vec3f c_d = c0-c1;
-  float w_d = d0-d1;
-  return (w_c_alpha_*(exp(std::abs(c_d[0]))-1.0) + w_c_beta_*(exp(std::abs(c_d[1]))-1.0) +
-           w_c_beta_*(exp(std::abs(c_d[2]))-1.0) +  w_c_eta_*(exp(std::abs(w_d))-1.0));
-}
-
-void ArmObjSegmentation::getArmEdges(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask)
-{
-  // Speed up later
-  cv::Mat dy_kernel;
-  cv::Mat dx_kernel;
-  // Create derivative kernels for edge calculation
-  cv::getDerivKernels(dy_kernel, dx_kernel, 1, 0, CV_SCHARR, true, CV_32F);
-  // cv::flip(dy_kernel, dy_kernel, -1);
-  cv::transpose(dy_kernel, dx_kernel);
-  cv::Mat tmp_bw(color_img.size(), CV_8UC1);
-  cv::Mat bw_img(color_img.size(), CV_32FC1);
-  cv::Mat Ix(bw_img.size(), CV_32FC1);
-  cv::Mat Iy(bw_img.size(), CV_32FC1);
-  cv::Mat Ix_d(bw_img.size(), CV_32FC1);
-  cv::Mat Iy_d(bw_img.size(), CV_32FC1);
-  cv::Mat edge_img(color_img.size(), CV_32FC1);
-  cv::Mat depth_edge_img(color_img.size(), CV_32FC1);
-  cv::Mat edge_img_masked(edge_img.size(), CV_32FC1, cv::Scalar(0.0));
-  cv::Mat depth_edge_img_masked(edge_img.size(), CV_32FC1, cv::Scalar(0.0));
-
-  // Convert to grayscale
-  cv::cvtColor(color_img, tmp_bw, CV_BGR2GRAY);
-  tmp_bw.convertTo(bw_img, CV_32FC1, 1.0/255);
-
-  // Get image derivatives
-  cv::filter2D(bw_img, Ix, CV_32F, dx_kernel);
-  cv::filter2D(bw_img, Iy, CV_32F, dy_kernel);
-  cv::filter2D(depth_img, Ix_d, CV_32F, dx_kernel);
-  cv::filter2D(depth_img, Iy_d, CV_32F, dy_kernel);
-
-  // Create magintude image
-  for (int r = 0; r < edge_img.rows; ++r)
-  {
-    float* mag_row = edge_img.ptr<float>(r);
-    float* Ix_row = Ix.ptr<float>(r);
-    float* Iy_row = Iy.ptr<float>(r);
-    for (int c = 0; c < edge_img.cols; ++c)
-    {
-      mag_row[c] = sqrt(Ix_row[c]*Ix_row[c] + Iy_row[c]*Iy_row[c]);
-    }
-  }
-  for (int r = 0; r < depth_edge_img.rows; ++r)
-  {
-    float* mag_row = depth_edge_img.ptr<float>(r);
-    float* Ix_row = Ix_d.ptr<float>(r);
-    float* Iy_row = Iy_d.ptr<float>(r);
-    for (int c = 0; c < depth_edge_img.cols; ++c)
-    {
-      mag_row[c] = sqrt(Ix_row[c]*Ix_row[c] + Iy_row[c]*Iy_row[c]);
-    }
-  }
-
-  cv::Mat arm_band = getArmBand(self_mask, 15, 15, true);
-  edge_img.copyTo(edge_img_masked, arm_band);
-  depth_edge_img.copyTo(depth_edge_img_masked, arm_band);
-
-  cv::imshow("Edge Image", edge_img);
-  cv::imshow("Arm edge Image", edge_img_masked);
-  cv::imshow("Depth Edge Image", depth_edge_img);
-  cv::imshow("Depth Arm edge Image", depth_edge_img_masked);
-  cv::imshow("Arm band", arm_band);
-}
-
-cv::Mat ArmObjSegmentation::getEdgeImage(cv::Mat& color_img)
-{
-  // TODO: Move filters into constructor
-  // Speed up later
-  cv::Mat dy_kernel;
-  cv::Mat dx_kernel;
-  // Create derivative kernels for edge calculation
-  cv::getDerivKernels(dy_kernel, dx_kernel, 1, 0, CV_SCHARR, true, CV_32F);
-  // cv::flip(dy_kernel, dy_kernel, -1);
-  cv::transpose(dy_kernel, dx_kernel);
-  cv::Mat tmp_bw(color_img.size(), CV_8UC1);
-  cv::Mat bw_img(color_img.size(), CV_32FC1);
-  cv::Mat Ix(bw_img.size(), CV_32FC1);
-  cv::Mat Iy(bw_img.size(), CV_32FC1);
-  cv::Mat edge_img(color_img.size(), CV_32FC1);
-
-  // Convert to grayscale
-  cv::cvtColor(color_img, tmp_bw, CV_BGR2GRAY);
-  tmp_bw.convertTo(bw_img, CV_32FC1, 1.0/255);
-
-  // Get image derivatives
-  cv::filter2D(bw_img, Ix, CV_32F, dx_kernel);
-  cv::filter2D(bw_img, Iy, CV_32F, dy_kernel);
-
-  // Create magintude image
-  for (int r = 0; r < edge_img.rows; ++r)
-  {
-    float* mag_row = edge_img.ptr<float>(r);
-    float* Ix_row = Ix.ptr<float>(r);
-    float* Iy_row = Iy.ptr<float>(r);
-    for (int c = 0; c < edge_img.cols; ++c)
-    {
-      mag_row[c] = sqrt(Ix_row[c]*Ix_row[c] + Iy_row[c]*Iy_row[c]);
-    }
-  }
-  return edge_img;
 }
 
 cv::Mat ArmObjSegmentation::getXImageDeriv(cv::Mat& input_img)
@@ -489,25 +396,27 @@ cv::Mat ArmObjSegmentation::getArmBand(cv::Mat& input_mask, int enlarge_width,
   return arm_band;
 }
 
-GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask)
+GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc)
 {
-  std::vector<GMMPnt> pnts;
+  std::vector<cv::Vec3f> pnts;
   for (int r = 0; r < samples.rows; ++r)
   {
     for (int c = 0; c < samples.cols; ++c)
     {
       if (mask.at<uchar>(r,c) > 0)
       {
-        pnts.push_back(pxlToPnt(samples.at<cv::Vec3b>(r,c)));
+        pnts.push_back(samples.at<cv::Vec3f>(r,c));
       }
     }
   }
-  GMM color_model;
-  color_model.alloc(10);
+  GMM color_model(0.0001);
+  color_model.alloc(nc);
   if (pnts.size() > 1)
   {
-    color_model.kmeansInit(pnts, 1000.0);
+    color_model.kmeansInit(pnts, 0.05);
+    color_model.dispparams();
     color_model.GmmEm(pnts);
+    color_model.dispparams();
   }
   return color_model;
 }
@@ -561,39 +470,11 @@ void ArmObjSegmentation::getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Ve
   // cv::imshow("mean_color", mean_img);
 }
 
-float ArmObjSegmentation::getUnaryWeight(cv::Vec3b sample, GMM& fg_color_model)
+float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
-  GMMPnt pnt = pxlToPnt(sample);
-  float prb = fg_color_model.probability(pnt);
+  float prb = color_model.probability(sample);
+  // std::cout << "p(" << sample[0] << ", " << sample[1] << ", " << sample[2] << ") = " << prb << std::endl;
   return prb;
-  // return 0.0;
 }
 
-float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, cv::Vec3f mean, cv::Vec3f var)
-{
-  cv::Vec3f diff = sample - mean;
-  // const float h_score = 1/sqrt(2.0*M_PI*var[0])*exp(-fabs(diff[0]*diff[0])/(2.0*var[0]));
-  // const float s_score = 1/sqrt(2.0*M_PI*var[1])*exp(-fabs(diff[1]*diff[1])/(2.0*var[1]));
-  const float h_score = exp(-fabs(diff[0]*diff[0])/(2.0*var[0]));
-  const float s_score = exp(-fabs(diff[1]*diff[1])/(2.0*var[1]));
-  // const float v_score = exp(-fabs(diff[2]*diff[2])/(2.0*var[2]));
-  return (h_score+s_score)/2.0;
-}
-
-float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, cv::Vec3f fg_mean, cv::Vec3f fg_var,
-                                         cv::Vec3f bg_mean, cv::Vec3f bg_var)
-{
-  // TODO: Explicit table color model
-  // TODO: Explicit arm color model
-  // TODO: Explicit hand color model
-  // TODO: Explicit object color model
-  cv::Vec3f fg_diff = sample - fg_mean;
-  cv::Vec3f bg_diff = sample - bg_mean;
-  const float h_score = (exp(-fabs(fg_diff[0]*fg_diff[0])/(2.0*fg_var[0])) /
-                         exp(-fabs(bg_diff[0]*bg_diff[0])/(2.0*bg_var[0])));
-  const float s_score = (exp(-fabs(fg_diff[1]*fg_diff[1])/(2.0*fg_var[1])) /
-                         exp(-fabs(bg_diff[1]*bg_diff[1])/(2.0*bg_var[1])));
-  // const float v_score = exp(-fabs(diff[2]*diff[2])/(2.0*var[2]));
-  return (h_score+s_score)/2.0;
-}
 }; // namespace tabletop_pushing

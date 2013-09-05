@@ -1,7 +1,7 @@
 #include "gmm.h"
 
 
-float Gaussian::density(const GMMPnt& x) const {
+float Gaussian::density(const GMMFloatPnt& x) const {
   // Compute the probability of the point (x,y,z), given the mean and
   // covariance of the kernel - PRML eq (2.43)
 
@@ -63,7 +63,7 @@ void Gaussian::deserialize(std::ifstream& fd) {
 }
 
 
-int GMM::which_kernel(const GMMPnt& x) const {
+int GMM::which_kernel(const GMMFloatPnt& x) const {
   // find the kernel in the GMM where the point has the maximum posterior
   // probability
 
@@ -83,7 +83,7 @@ int GMM::which_kernel(const GMMPnt& x) const {
 }
 
 
-double GMM::learn(const std::vector<GMMPnt>& pts) {
+double GMM::learn(const std::vector<GMMFloatPnt>& pts) {
   // Run Expectation Maximization to learn the GMM
   // also returns the log likelihood normalized by the number of pts
   // The comments refer to PRML Chapt 9
@@ -211,7 +211,7 @@ double GMM::learn(const std::vector<GMMPnt>& pts) {
 }
 
 
-double GMM::GmmEm(const std::vector<GMMPnt>& pts) {
+double GMM::GmmEm(const std::vector<GMMFloatPnt>& pts) {
   double normloglikelihood = 0.0;
   double new_normloglikelihood = -std::numeric_limits<double>::max();
   double diff;
@@ -251,14 +251,14 @@ double GMM::GmmEm(const std::vector<GMMPnt>& pts) {
 }
 
 
-void GMM::kmeansInit(const std::vector<GMMPnt>& pts, const float sigma) {
+void GMM::kmeansInit(const std::vector<GMMFloatPnt>& pts, const float sigma) {
   // initialize the kernels by running kmeans
 
   GMMFloatPnt temp_pnt;
 
   const int NUM_RETRIES = 3;
   const int MAX_ITERS = 100;
-  const float DIST_THRESH = 1.0;
+  const float DIST_THRESH = 0.001;
 
   cv::Mat bestlabels;
   cv::Mat clustercenters;
@@ -289,66 +289,65 @@ void GMM::kmeansInit(const std::vector<GMMPnt>& pts, const float sigma) {
     std::cout << "Reduced the number of kernels to " << nk << " because not enough data points available" << std::endl;
   }
 
-  cv::TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS,
-                            MAX_ITERS, 0.01);
+  // TODO: expose epsilon to user
+  cv::TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, MAX_ITERS, 0.0001);
 
   // run kmeans
-  kmeans(rgbmat, nk, bestlabels, termcrit, NUM_RETRIES,
-         cv::KMEANS_RANDOM_CENTERS, clustercenters);
+  kmeans(rgbmat, nk, bestlabels, termcrit, NUM_RETRIES, cv::KMEANS_RANDOM_CENTERS, clustercenters);
 
   // discard clusters whose centers are a repeat
   float dist;
 
-  // compare all cluster pairs to see if any two clusters are too close to each other
-  for (unsigned int i = 1; i < clustercenters.rows; i++) {
-    //std::cout << "Cluster centers: " << clustercenters.rows << std::endl;
+  // // compare all cluster pairs to see if any two clusters are too close to each other
+  // for (unsigned int i = 1; i < clustercenters.rows; i++) {
+  //   //std::cout << "Cluster centers: " << clustercenters.rows << std::endl;
 
-    for (unsigned int j = 0; j < i; j++) {
-      // check if cluster centers are the same
+  //   for (unsigned int j = 0; j < i; j++) {
+  //     // check if cluster centers are the same
 
-      // compute L2 distance
-      dist = 0.0;
-      for (int d = 0; d < NUM_GMM_DIMS; d++)
-        dist += pow(clustercenters.at<float>(i,d) - clustercenters.at<float>(j,d), 2);
-      dist = sqrt(dist);
-      //std::cout << i << "," << j << " dist: " << dist << std::endl;
+  //     // compute L2 distance
+  //     dist = 0.0;
+  //     for (int d = 0; d < NUM_GMM_DIMS; d++)
+  //       dist += pow(clustercenters.at<float>(i,d) - clustercenters.at<float>(j,d), 2);
+  //     dist = sqrt(dist);
+  //     //std::cout << i << "," << j << " dist: " << dist << std::endl;
 
-      // if the two cluster centers are too close to each other
-      if (dist <= DIST_THRESH) {
-        // discard cluster i
+  //     // if the two cluster centers are too close to each other
+  //     if (dist <= DIST_THRESH) {
+  //       // discard cluster i
 
-        // (1) replace all pixels labelled i with label j
-        for (unsigned int k=0; k < bestlabels.rows; k++) {
-          if (bestlabels.at<unsigned int>(k) == i)
-            bestlabels.at<unsigned int>(k) = j;
-        }
+  //       // (1) replace all pixels labelled i with label j
+  //       for (unsigned int k=0; k < bestlabels.rows; k++) {
+  //         if (bestlabels.at<unsigned int>(k) == i)
+  //           bestlabels.at<unsigned int>(k) = j;
+  //       }
 
-        // NOTE: Could also be adjusting the mean here of cluster j, but since
-        //  DIST_THRESH we would suppose it doesn't change by much
+  //       // NOTE: Could also be adjusting the mean here of cluster j, but since
+  //       //  DIST_THRESH we would suppose it doesn't change by much
 
-        // (2) shift cluster centers one down the array following i
-        for (unsigned int k=i; k < clustercenters.rows-1; k++) {
-          memcpy(clustercenters.data + clustercenters.step[0]*k,
-                 clustercenters.data + clustercenters.step[0]*(k+1),
-                 clustercenters.step[0]);
-        }
+  //       // (2) shift cluster centers one down the array following i
+  //       for (unsigned int k=i; k < clustercenters.rows-1; k++) {
+  //         memcpy(clustercenters.data + clustercenters.step[0]*k,
+  //                clustercenters.data + clustercenters.step[0]*(k+1),
+  //                clustercenters.step[0]);
+  //       }
 
-        // (3) shrink size of cluster center array by 1 row
-        clustercenters = clustercenters.rowRange(0, clustercenters.rows-1);
-        i--;
+  //       // (3) shrink size of cluster center array by 1 row
+  //       clustercenters = clustercenters.rowRange(0, clustercenters.rows-1);
+  //       i--;
 
-        break;
-      }
-    }
-  }
+  //       break;
+  //     }
+  //   }
+  // }
 
-  if (clustercenters.rows < nk) {
-    std::cout << "The number of clusters were reduced from " << nk << " to "
-              << clustercenters.rows << std::endl;
+  // if (clustercenters.rows < nk) {
+  //   std::cout << "The number of clusters were reduced from " << nk << " to "
+  //             << clustercenters.rows << std::endl;
 
-    // reduce the number of kernels (reallocate memory)
-    alloc(clustercenters.rows);
-  }
+  //   // reduce the number of kernels (reallocate memory)
+  //   alloc(clustercenters.rows);
+  // }
 
   // transfer the cluster means to the kernels. Plus the Gaussians have a fixed
   // variance in each direction and no covariance
@@ -363,7 +362,7 @@ void GMM::kmeansInit(const std::vector<GMMPnt>& pts, const float sigma) {
 }
 
 
-void GMM::initkernels(const std::vector<GMMPnt>& pts, const float sigma) {
+void GMM::initkernels(const std::vector<GMMFloatPnt>& pts, const float sigma) {
   // initilize kernels by using ramdom sampling within outer boundary
   GMMFloatPnt xmin, xmax, temp_mean;
 
