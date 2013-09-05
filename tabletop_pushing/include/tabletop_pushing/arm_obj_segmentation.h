@@ -1,6 +1,7 @@
 // OpenCV
 #include <opencv2/core/core.hpp>
 #include <tabletop_pushing/extern/graphcut/graph.h>
+#include <tabletop_pushing/extern/gmm/gmm.h>
 
 #ifndef arm_obj_segmentation_h_DEFINED
 #define arm_obj_segmentation_h_DEFINED 1
@@ -25,10 +26,13 @@ class ArmObjSegmentation
   static cv::Mat getYImageDeriv(cv::Mat& color_img);
   static cv::Mat getMorphCross(int img_size, int cross_width);
   static cv::Mat convertFlowToMat(tabletop_pushing::GraphType *g, tabletop_pushing::NodeTable& nt, int R, int C);
+
+  static float getUnaryWeight(cv::Vec3b sample, GMM& fg_color_model);
   static float getUnaryWeight(cv::Vec3f sample, cv::Vec3f mean, cv::Vec3f var);
   static float getUnaryWeight(cv::Vec3f sample, cv::Vec3f fg_mean, cv::Vec3f fg_var,
                               cv::Vec3f bg_mean, cv::Vec3f bg_var);
 
+  static GMM getGMMColorModel(cv::Mat& samples, cv::Mat& mask);
   static void getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Vec3f& var, cv::Mat& mask);
   static float getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1);
   static float getEdgeWeightBoundary(float c0, float d0, float c1, float d1);

@@ -34,8 +34,15 @@ rosbuild_gensrv()
 # Find external libraries
 find_package(OpenCV REQUIRED)
 find_package(LibSVM)
+rosbuild_add_boost_directories()
 
 rosbuild_add_library(graphcut include/tabletop_pushing/extern/graphcut/graph.cpp include/tabletop_pushing/extern/graphcut/maxflow.cpp include/tabletop_pushing/extern/graphcut/LinkedBlockList.cpp include/tabletop_pushing/extern/graphcut/GCoptimization.cpp)
+
+rosbuild_add_library(gmm include/tabletop_pushing/extern/gmm/gmm.h include/tabletop_pushing/extern/gmm/gmm.cpp)
+target_link_libraries(gmm ${OpenCV_LIBRARIES})
+target_link_libraries(gmm ${OpenCV_LIBRARIES})
+rosbuild_link_boost(gmm filesystem)
+# rosbuild_link_boost(gmm format)
 
 rosbuild_add_library(point_cloud_segmentation include/tabletop_pushing/point_cloud_segmentation.h src/point_cloud_segmentation.cpp)
 target_link_libraries(point_cloud_segmentation ${OpenCV_LIBRARIES})
@@ -48,6 +55,7 @@ target_link_libraries(shape_features ${OpenCV_LIBRARIES})
 
 rosbuild_add_library(arm_obj_segmentation include/tabletop_pushing/arm_obj_segmentation.h src/arm_obj_segmentation.cpp)
 target_link_libraries(arm_obj_segmentation graphcut)
+target_link_libraries(arm_obj_segmentation gmm)
 target_link_libraries(arm_obj_segmentation ${OpenCV_LIBRARIES})
 
 rosbuild_add_executable(tabletop_pushing_perception_node src/tabletop_pushing_perception_node.cpp)

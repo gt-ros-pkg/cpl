@@ -78,20 +78,20 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   // TODO: Clean this up once we have stuff working well
   cv::Mat inv_self_mask;
   cv::bitwise_not(self_mask, inv_self_mask);
-  cv::Mat much_larger_mask(self_mask.size(), CV_8UC1, 255);
-  // cv::Mat enlarge_element(50, 50, CV_8UC1, cv::Scalar(255));
-  // cv::dilate(inv_self_mask, much_larger_mask, enlarge_element);
+  cv::Mat much_larger_mask(self_mask.size(), CV_8UC1, cv::Scalar(255));
+  cv::Mat enlarge_element(50, 50, CV_8UC1, cv::Scalar(255));
+  cv::dilate(inv_self_mask, much_larger_mask, enlarge_element);
   cv::Mat larger_mask, known_arm_mask;
   cv::Mat arm_band = getArmBand(inv_self_mask, 15, 15, false, larger_mask, known_arm_mask);
 
   // Get known arm pixels
   cv::Mat known_arm_pixels;
-  color_frame_f.copyTo(known_arm_pixels, known_arm_mask);
+  color_frame_hsv.copyTo(known_arm_pixels, known_arm_mask);
   cv::Mat known_bg_mask = much_larger_mask - larger_mask;
 
   // Get known object pixels
   cv::Mat known_bg_pixels;
-  color_frame_f.copyTo(known_bg_pixels, known_bg_mask);
+  color_frame_hsv.copyTo(known_bg_pixels, known_bg_mask);
 
   // Get stats for building graph
   int num_nodes = 0;
@@ -136,14 +136,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     return empty;
   }
 
-  // Build color models
-  cv::Vec3f fg_mean;
-  cv::Vec3f fg_var;
-  getColorModel(known_arm_pixels, fg_mean, fg_var, known_arm_mask);
-
-  // cv::Vec3f bg_mean;
-  // cv::Vec3f bg_var;
-  // getColorModel(known_bg_pixels, bg_mean, bg_var, known_bg_mask);
+  GMM arm_color_model = getGMMColorModel(known_arm_pixels, known_arm_mask);
+  GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask);
 
   cv::Mat Ix = getXImageDeriv(bw_img);
   cv::Mat Iy = getYImageDeriv(bw_img);
@@ -165,18 +159,18 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         float bg_weight = 0.5;
         if (known_arm_mask.at<uchar>(r,c) > 0)
         {
-          fg_weight = 2.0;
+          fg_weight = 1.0;
           bg_weight = 0.0;
         }
         else if (known_bg_mask.at<uchar>(r,c) > 0)
         {
           fg_weight = 0.0;
-          bg_weight = 5.0;
+          bg_weight = 1.0;
         }
         else
         {
-          fg_weight = getUnaryWeight(color_frame_f.at<cv::Vec3f>(r,c), fg_mean, fg_var);//, bg_mean, bg_var);
-          bg_weight = 1.0 - fg_weight;
+          fg_weight = getUnaryWeight(color_frame_hsv.at<cv::Vec3b>(r,c), arm_color_model);
+          bg_weight = getUnaryWeight(color_frame_hsv.at<cv::Vec3b>(r,c), bg_color_model);
         }
         g->add_node();
         g->add_tweights(cur_idx, fg_weight, bg_weight);
@@ -312,7 +306,9 @@ cv::Mat ArmObjSegmentation::convertFlowToMat(GraphType *g, NodeTable& nt, int R,
 float ArmObjSegmentation::getEdgeWeightBoundary(float c0, float d0, float c1, float d1)
 {
   float sigma_d = 0.5;
-  return exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
+  float w = exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
+  // std::cout << "w: " << w << std::endl;
+  return w;
 }
 
 float ArmObjSegmentation::getEdgeWeight(cv::Vec3f c0, float d0, cv::Vec3f c1, float d1)
@@ -497,6 +493,29 @@ cv::Mat ArmObjSegmentation::getArmBand(cv::Mat& input_mask, int enlarge_width,
   return arm_band;
 }
 
+GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask)
+{
+  std::vector<GMMPnt> pnts;
+  for (int r = 0; r < samples.rows; ++r)
+  {
+    for (int c = 0; c < samples.cols; ++c)
+    {
+      if (mask.at<uchar>(r,c) > 0)
+      {
+        pnts.push_back(pxlToPnt(samples.at<cv::Vec3b>(r,c)));
+      }
+    }
+  }
+  GMM color_model;
+  color_model.alloc(10);
+  if (pnts.size() > 1)
+  {
+    color_model.kmeansInit(pnts, 1000.0);
+    color_model.GmmEm(pnts);
+  }
+  return color_model;
+}
+
 void ArmObjSegmentation::getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Vec3f& var, cv::Mat& mask)
 {
   mean[0] = 0.0;
@@ -544,6 +563,14 @@ void ArmObjSegmentation::getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Ve
   // cv::Mat mean_img(samples.size(), CV_32FC3, cv::Scalar(mean[0], mean[1], mean[2]));
   // cv::cvtColor(mean_img, mean_img, CV_HSV2BGR);
   // cv::imshow("mean_color", mean_img);
+}
+
+float ArmObjSegmentation::getUnaryWeight(cv::Vec3b sample, GMM& fg_color_model)
+{
+  GMMPnt pnt = pxlToPnt(sample);
+  float prb = fg_color_model.probability(pnt);
+  return prb;
+  // return 0.0;
 }
 
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, cv::Vec3f mean, cv::Vec3f var)
