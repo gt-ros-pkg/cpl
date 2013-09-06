@@ -62,12 +62,15 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   // TODO: Move to constructor
   float fg_tied_weight_ = 10.0;
-  float bg_tied_weight_ = 10.0;
+  float bg_tied_weight_ = 15.0;
   float bg_enlarge_size_ = 100;
+  float arm_enlarge_width_ = 15;
+  float arm_shrink_width_ = 15;
 
   cv::Mat color_img_lab_uchar(color_img.size(), color_img.type());
   cv::Mat color_img_lab(color_img.size(), CV_32FC3);
-  cv::cvtColor(color_img, color_img_lab_uchar, CV_BGR2Lab);
+  cv::cvtColor(color_img, color_img_lab_uchar, CV_BGR2HSV);
+  // cv::cvtColor(color_img, color_img_lab_uchar, CV_BGR2Lab);
   color_img_lab_uchar.convertTo(color_img_lab, CV_32FC3, 1.0/255);
   cv::Mat tmp_bw(color_img.size(), CV_8UC1);
   cv::Mat bw_img(color_img.size(), CV_32FC1);
@@ -92,7 +95,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   cv::Mat enlarge_element(bg_enlarge_size_, bg_enlarge_size_, CV_8UC1, cv::Scalar(255));
   cv::dilate(inv_self_mask, much_larger_mask, enlarge_element);
   cv::Mat larger_mask, known_arm_mask;
-  cv::Mat arm_band = getArmBand(inv_self_mask, 15, 15, false, larger_mask, known_arm_mask);
+  cv::Mat arm_band = getArmBand(inv_self_mask, arm_enlarge_width_, arm_shrink_width_, false, larger_mask, known_arm_mask);
 
   // Get known arm pixels
   cv::Mat known_arm_pixels;
@@ -237,6 +240,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   cv::imshow("Arm segment", segment_arm);
   cv::imshow("Background segment", segment_bg);
   cv::imshow("Table mask", table_mask);
+  cv::imshow("Known bg mask", known_bg_mask);
 
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -304,13 +308,13 @@ cv::Mat ArmObjSegmentation::convertFlowToMat(GraphType *g, NodeTable& nt, int R,
   return segs;
 }
 
-float ArmObjSegmentation::getEdgeWeightBoundary(float c0, float d0, float c1, float d1)
+float ArmObjSegmentation::getEdgeWeightBoundary(float I0, float d0, float I1, float d1)
 {
   // TODO: Move constants to constructor
   float sigma_d = 1.0; // 0.5;
   float pairwise_lambda_ = 5.0;
-  // float w = pairwise_lambda_*exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
-  float w = pairwise_lambda_*exp(-std::max(fabs(c0), fabs(c1)));
+  // float w = pairwise_lambda_*exp(-std::max(fabs(I0)+fabs(d0), fabs(I1)+fabs(d1))/sigma_d);
+  float w = pairwise_lambda_*exp(-std::max(fabs(I0), fabs(I1)));
   return w;
 }
 
