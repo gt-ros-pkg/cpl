@@ -154,6 +154,11 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   cv::Mat Dx = getXImageDeriv(depth_img);
   cv::Mat Dy = getYImageDeriv(depth_img);
 
+  cv::Mat canny_edges_8bit;
+  cv::Mat canny_edges;
+  cv::Canny(tmp_bw, canny_edges_8bit, 120, 250);
+  canny_edges_8bit.convertTo(canny_edges, CV_32FC1, 1.0/255);
+
   tabletop_pushing::GraphType *g;
   g = new GraphType(num_nodes, num_edges);
 
@@ -194,8 +199,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         if (c > 0 && much_larger_mask.at<uchar>(r, c-1) > 0)
         {
           int other_idx = nt.getIdx(r, c-1);
-          float w_l = getEdgeWeightBoundary(Ix.at<float>(r,c), Dx.at<float>(r,c),
-                                            Ix.at<float>(r, c-1), Dx.at<float>(r, c-1));
+          float w_l = getEdgeWeightBoundary(canny_edges.at<float>(r,c), Dx.at<float>(r,c),
+                                            canny_edges.at<float>(r, c-1), Dx.at<float>(r, c-1));
           g->add_edge(cur_idx, other_idx, /*capacities*/ w_l, w_l);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -208,8 +213,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
           if(much_larger_mask.at<uchar>(r-1,c) > 0)
           {
             int other_idx = nt.getIdx(r-1, c);
-            float w_u = getEdgeWeightBoundary(Iy.at<float>(r, c),   Dy.at<float>(r, c),
-                                              Iy.at<float>(r-1, c), Dy.at<float>(r-1, c));
+            float w_u = getEdgeWeightBoundary(canny_edges.at<float>(r, c),   Dy.at<float>(r, c),
+                                              canny_edges.at<float>(r-1, c), Dy.at<float>(r-1, c));
             g->add_edge(cur_idx, other_idx, /*capacities*/ w_u, w_u);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -242,7 +247,6 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   cv::imshow("Table mask", table_mask);
   cv::imshow("Known bg mask", known_bg_mask);
 
-
 #ifdef VISUALIZE_GRAPH_WEIGHTS
   double min_val, max_val;
   cv::minMaxLoc(fg_weights, &min_val, &max_val);
@@ -265,7 +269,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   std::cout << "Max left weight: " << max_val << std::endl;
   std::cout << "Min left weight: " << min_val << std::endl;
 #endif // VISUALIZE_GRAPH_WEIGHTS
-
+  cv::imshow("Canny", canny_edges);
   return segs;
 }
 
@@ -314,7 +318,8 @@ float ArmObjSegmentation::getEdgeWeightBoundary(float I0, float d0, float I1, fl
   float sigma_d = 1.0; // 0.5;
   float pairwise_lambda_ = 5.0;
   // float w = pairwise_lambda_*exp(-std::max(fabs(I0)+fabs(d0), fabs(I1)+fabs(d1))/sigma_d);
-  float w = pairwise_lambda_*exp(-std::max(fabs(I0), fabs(I1)));
+  // float w = pairwise_lambda_*exp(-std::max(fabs(I0), fabs(I1)));
+  float w = pairwise_lambda_*exp(-fabs(I0));
   return w;
 }
 
