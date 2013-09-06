@@ -2,8 +2,6 @@
 
 
 float Gaussian::density(const GMMFloatPnt& x) const {
-  // Compute the probability of the point (x,y,z), given the mean and
-  // covariance of the kernel - PRML eq (2.43)
 
   cv::Mat p(NUM_GMM_DIMS, 1, CV_32F);
   cv::Mat pt(1, NUM_GMM_DIMS, CV_32F);
@@ -19,6 +17,27 @@ float Gaussian::density(const GMMFloatPnt& x) const {
   return val;
 }
 
+/**
+ * Compute the mahalanobis distance between the given point x and the mean of the distribution
+ *
+ * @param x Sample point to evaluate
+ *
+ * @return Mahalanobis distance between x and mu, with Sigma
+ */
+float Gaussian::mahal(const GMMFloatPnt& x) const
+{
+  // Compute the probability of the point (x,y,z), given the mean and
+  // covariance of the kernel - PRML eq (2.43)
+
+  cv::Mat p(NUM_GMM_DIMS, 1, CV_32F);
+  cv::Mat pt(1, NUM_GMM_DIMS, CV_32F);
+
+  for (unsigned int d = 0; d < NUM_GMM_DIMS; d++)
+    p.at<float>(d, 0) = x[d] - mv[d];
+  memcpy(pt.data, p.data, NUM_GMM_DIMS*sizeof(float));
+  cv::Mat v(pt * imat * p);
+  return v.at<float>(0, 0);
+}
 
 void Gaussian::serialize(std::ofstream& fd) const {
   int num_dims = NUM_GMM_DIMS;

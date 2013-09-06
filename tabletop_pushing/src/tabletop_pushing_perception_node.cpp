@@ -429,7 +429,6 @@ class TabletopPushingPerceptionNode
     cv::Mat arm_mask_crop;
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
     // NOTE: Just testing the new code
-    // ArmObjSegmentation::getArmEdges(color_frame_down, depth_frame_down, self_mask_down);
     ArmObjSegmentation::segment(color_frame_down, depth_frame_down, self_mask_down);
 
 #ifdef PROFILE_CB_TIME

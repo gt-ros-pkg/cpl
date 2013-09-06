@@ -180,6 +180,7 @@ class Gaussian {
 
 
   float density(const GMMFloatPnt& x) const;
+  float mahal(const GMMFloatPnt& x) const;
   void serialize(std::ofstream& fd) const;
   void deserialize(std::ifstream& fd);
 };
@@ -244,6 +245,21 @@ class GMM {
       val += (w[i] * kernel[i].density(x));
     }
     return val;
+  }
+
+
+  float grabCutLikelihood(const GMMFloatPnt& x) const {
+
+    float min_dist = FLT_MAX;
+    for (int i = 0; i < nk; i++)
+    {
+      float d_i = kernel[i].mahal(x);
+      if (d_i < min_dist)
+      {
+        min_dist = d_i;
+      }
+    }
+    return min_dist;
   }
 
 
