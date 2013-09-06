@@ -62,11 +62,11 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   // TODO: Move to constructor
   float fg_tied_weight_ = 2.0;
   float bg_tied_weight_ = 5.0;
-  
-  cv::Mat color_img_hsv_uchar(color_img.size(), color_img.type());
-  cv::Mat color_img_hsv(color_img.size(), CV_32FC3);
-  cv::cvtColor(color_img, color_img_hsv_uchar, CV_BGR2HSV);
-  color_img_hsv_uchar.convertTo(color_img_hsv, CV_32FC3, 1.0/255);
+
+  cv::Mat color_img_lab_uchar(color_img.size(), color_img.type());
+  cv::Mat color_img_lab(color_img.size(), CV_32FC3);
+  cv::cvtColor(color_img, color_img_lab_uchar, CV_BGR2Lab);
+  color_img_lab_uchar.convertTo(color_img_lab, CV_32FC3, 1.0/255);
   cv::Mat tmp_bw(color_img.size(), CV_8UC1);
   cv::Mat bw_img(color_img.size(), CV_32FC1);
   // Convert to grayscale
@@ -97,12 +97,12 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   // Get known arm pixels
   cv::Mat known_arm_pixels;
-  color_img_hsv.copyTo(known_arm_pixels, known_arm_mask);
+  color_img_lab.copyTo(known_arm_pixels, known_arm_mask);
   cv::Mat known_bg_mask = much_larger_mask - larger_mask;
 
   // Get known object pixels
   cv::Mat known_bg_pixels;
-  color_img_hsv.copyTo(known_bg_pixels, known_bg_mask);
+  color_img_lab.copyTo(known_bg_pixels, known_bg_mask);
 
   // Get stats for building graph
   int num_nodes = 0;
@@ -149,10 +149,10 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     return empty;
   }
 
-  std::cout << "\nBuilding arm color model\n";
-  GMM arm_color_model = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
-  std::cout << "\nBuilding bg color model\n";
-  GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
+  //std::cout << "\nBuilding arm color model\n";
+  GMM arm_color_model = getGMMColorModel(known_arm_pixels, known_arm_mask, 5);
+  // std::cout << "\nBuilding bg color model\n";
+  GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask, 10);
 
   cv::Mat Ix = getXImageDeriv(bw_img);
   cv::Mat Iy = getYImageDeriv(bw_img);
@@ -176,21 +176,21 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         {
           fg_weight = fg_tied_weight_;
           bg_weight = 0.0;
-          fg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), arm_color_model);
-          bg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), bg_color_model);
+          fg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), arm_color_model);
+          bg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model);
 
         }
         else if (known_bg_mask.at<uchar>(r,c) > 0)
         {
           fg_weight = 0.0;
           bg_weight = bg_tied_weight_;
-          fg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), arm_color_model);
-          bg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), bg_color_model);
+          fg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), arm_color_model);
+          bg_tied_weights.at<float>(r,c) = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model);
         }
         else
         {
-          fg_weight = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), arm_color_model);
-          bg_weight = getUnaryWeight(color_img_hsv.at<cv::Vec3f>(r,c), bg_color_model);
+          fg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), arm_color_model);
+          bg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model);
           // fg_weight = 0.0;
           // bg_weight = 0.0;
         }
@@ -466,14 +466,17 @@ void ArmObjSegmentation::getColorModel(cv::Mat& samples, cv::Vec3f& mean, cv::Ve
 
 
   // cv::Mat mean_img(samples.size(), CV_32FC3, cv::Scalar(mean[0], mean[1], mean[2]));
-  // cv::cvtColor(mean_img, mean_img, CV_HSV2BGR);
+  // cv::cvtColor(mean_img, mean_img, CV_Lab2BGR);
   // cv::imshow("mean_color", mean_img);
 }
 
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
   float prb = color_model.probability(sample);
-  // std::cout << "p(" << sample[0] << ", " << sample[1] << ", " << sample[2] << ") = " << prb << std::endl;
+  // if (prb < 0.0001 || prb > 0.9999)
+  // {
+  //   std::cout << "p(" << sample[0] << ", " << sample[1] << ", " << sample[2] << ") = " << prb << std::endl;
+  // }
   return prb;
 }
 
