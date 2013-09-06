@@ -56,12 +56,13 @@ class NodeTable
   std::map<int, std::map<int, int> > table_;
 };
 
-cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask)
+cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask,
+                                    cv::Mat& table_mask)
 {
 
   // TODO: Move to constructor
-  float fg_tied_weight_ = 3.0;
-  float bg_tied_weight_ = 5.0;
+  float fg_tied_weight_ = 10.0;
+  float bg_tied_weight_ = 10.0;
   float bg_enlarge_size_ = 100;
 
   cv::Mat color_img_lab_uchar(color_img.size(), color_img.type());
@@ -168,7 +169,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
           fg_weight = fg_tied_weight_;
           bg_weight = 0.0;
         }
-        else if (known_bg_mask.at<uchar>(r,c) > 0)
+        else if (known_bg_mask.at<uchar>(r,c) > 0 || table_mask.at<uchar>(r,c) > 0)
         {
           fg_weight = 0.0;
           bg_weight = bg_tied_weight_;
@@ -217,30 +218,6 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     }
   }
 
-#ifdef VISUALIZE_GRAPH_WEIGHTS
-  double min_val, max_val;
-
-  cv::minMaxLoc(wu_weights, &min_val, &max_val);
-  cv::imshow("up weights", wu_weights/max_val);
-  std::cout << "\nMax up weight: " << max_val << std::endl;
-  std::cout << "Min up weight: " << min_val << std::endl;
-
-  cv::minMaxLoc(wl_weights, &min_val, &max_val);
-  cv::imshow("left weights", wl_weights/max_val);
-  std::cout << "Max left weight: " << max_val << std::endl;
-  std::cout << "Min left weight: " << min_val << std::endl;
-
-  cv::minMaxLoc(fg_weights, &min_val, &max_val);
-  cv::imshow("fg weights", fg_weights/max_val);
-  std::cout << "Max fg weight: " << max_val << std::endl;
-  std::cout << "Min fg weight: " << min_val << std::endl;
-
-  cv::minMaxLoc(bg_weights, &min_val, &max_val);
-  cv::imshow("bg weights", bg_weights/max_val);
-  std::cout << "Max bg weight: " << max_val << std::endl;
-  std::cout << "Min bg weight: " << min_val << std::endl;
-#endif // VISUALIZE_GRAPH_WEIGHTS
-
   // Perform cut
   g->maxflow(false);
 
@@ -255,10 +232,36 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   color_img.copyTo(graph_input, much_larger_mask);
   color_img.copyTo(segment_arm, segs);
   color_img.copyTo(segment_bg, (segs == 0));
-  cv::imshow("segments", segs);
+  //cv::imshow("segments", segs);
   cv::imshow("Graph input", graph_input);
-  cv::imshow("Background segment", segment_bg);
   cv::imshow("Arm segment", segment_arm);
+  cv::imshow("Background segment", segment_bg);
+  cv::imshow("Table mask", table_mask);
+
+
+#ifdef VISUALIZE_GRAPH_WEIGHTS
+  double min_val, max_val;
+  cv::minMaxLoc(fg_weights, &min_val, &max_val);
+  cv::imshow("fg weights", (fg_weights-min_val)/(max_val-min_val));
+  std::cout << "Max fg weight: " << max_val << std::endl;
+  std::cout << "Min fg weight: " << min_val << std::endl;
+
+  cv::minMaxLoc(bg_weights, &min_val, &max_val);
+  cv::imshow("bg weights", (bg_weights-min_val)/(max_val-min_val));
+  std::cout << "Max bg weight: " << max_val << std::endl;
+  std::cout << "Min bg weight: " << min_val << std::endl;
+
+  cv::minMaxLoc(wu_weights, &min_val, &max_val);
+  cv::imshow("up weights", wu_weights/max_val);
+  std::cout << "\nMax up weight: " << max_val << std::endl;
+  std::cout << "Min up weight: " << min_val << std::endl;
+
+  cv::minMaxLoc(wl_weights, &min_val, &max_val);
+  cv::imshow("left weights", wl_weights/max_val);
+  std::cout << "Max left weight: " << max_val << std::endl;
+  std::cout << "Min left weight: " << min_val << std::endl;
+#endif // VISUALIZE_GRAPH_WEIGHTS
+
   return segs;
 }
 
@@ -304,9 +307,10 @@ cv::Mat ArmObjSegmentation::convertFlowToMat(GraphType *g, NodeTable& nt, int R,
 float ArmObjSegmentation::getEdgeWeightBoundary(float c0, float d0, float c1, float d1)
 {
   // TODO: Move constants to constructor
-  float sigma_d = 0.5;
-  float pairwise_lambda_ = 2.5;
-  float w = pairwise_lambda_*exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
+  float sigma_d = 1.0; // 0.5;
+  float pairwise_lambda_ = 5.0;
+  // float w = pairwise_lambda_*exp(-std::max(fabs(c0)+fabs(d0), fabs(c1)+fabs(d1))/sigma_d);
+  float w = pairwise_lambda_*exp(-std::max(fabs(c0), fabs(c1)));
   return w;
 }
 
@@ -341,7 +345,7 @@ cv::Mat ArmObjSegmentation::getYImageDeriv(cv::Mat& input_img)
 }
 
 cv::Mat ArmObjSegmentation::getArmBand(cv::Mat& input_mask, int enlarge_width,
-                                                         int shrink_width, bool input_inverted)
+                                       int shrink_width, bool input_inverted)
 {
   cv::Mat larger_mask, smaller_mask;
   return getArmBand(input_mask, enlarge_width, shrink_width, input_inverted, larger_mask, smaller_mask);
@@ -358,8 +362,8 @@ cv::Mat ArmObjSegmentation::getArmBand(cv::Mat& input_mask, int enlarge_width,
  * @return A binary image of the band near the edges of the robot arm
  */
 cv::Mat ArmObjSegmentation::getArmBand(cv::Mat& input_mask, int enlarge_width,
-                                                         int shrink_width, bool input_inverted,
-                                                         cv::Mat& larger_mask,  cv::Mat& smaller_mask)
+                                       int shrink_width, bool input_inverted,
+                                       cv::Mat& larger_mask,  cv::Mat& smaller_mask)
 {
   cv::Mat mask;
   if (input_inverted) // Swap if the arm is negative and the background positive
@@ -406,7 +410,7 @@ GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
   // return std::log(color_model.probability(sample));
-  return std::log(color_model.grabCutLikelihood(sample));
+  return color_model.grabCutLikelihood(sample);
 }
 
 }; // namespace tabletop_pushing

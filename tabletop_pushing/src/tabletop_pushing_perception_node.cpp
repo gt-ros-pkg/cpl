@@ -429,7 +429,8 @@ class TabletopPushingPerceptionNode
     cv::Mat arm_mask_crop;
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
     // NOTE: Just testing the new code
-    ArmObjSegmentation::segment(color_frame_down, depth_frame_down, self_mask_down);
+    cv::Mat table_mask = getTableMask(cloud, self_mask_down.size());
+    ArmObjSegmentation::segment(color_frame_down, depth_frame_down, self_mask_down, table_mask);
 
 #ifdef PROFILE_CB_TIME
     double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
@@ -1980,6 +1981,17 @@ class TabletopPushingPerceptionNode
       return false;
     }
     return true;
+  }
+
+
+  cv::Mat getTableMask(XYZPointCloud& cloud, cv::Size mask_size)
+  {
+    XYZPointCloud obj_cloud, table_cloud;
+    cv::Mat table_mask(mask_size, CV_8UC1, cv::Scalar(0));
+    Eigen::Vector4f table_centroid;
+    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid);
+    pcl_segmenter_->projectPointCloudIntoImage(table_cloud, table_mask, camera_frame_, 255);
+    return table_mask;
   }
 
   /**
