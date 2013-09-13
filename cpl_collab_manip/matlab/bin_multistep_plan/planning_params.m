@@ -9,7 +9,7 @@ undo_dur_ind = undo_dur*rate; % time (s) it takes to remove a bin and deliver it
 endedweight = 10; % beam heuristic penalty for the step already ended
 notbranchweight = 10; % beam heuristic penalty for not being on the same branch
 planning_cycle = 1; % seconds expected till next replan
-opt_fun_evals = 1000; % max number of optimization function calls
+opt_fun_evals = 200; % max number of optimization function calls
 max_time = 200; % maximum time to display in simulation
 
 nowtimeind = round(nowtimesec*rate+1); % t-index of current time

@@ -66,21 +66,21 @@ for i = 1:size(times,1)
 end
 plot([tnow, tnow], [0, numbins+1], 'g');
     
-for hist_ind = 1:numel(history.nowtimesec_inf)
-    for bin_id = history.ws_bins(hist_ind,:)
-        if bin_id == 0
-            continue
-        end
-        if hist_ind == 1
-            start_time = 0;
-        else
-            start_time = history.nowtimesec_inf(hist_ind-1);
-        end
-        end_time = history.nowtimesec_inf(hist_ind);
-        yval = numbins-(bin_id-1);
-        plot([start_time, end_time], [yval, yval],'m','LineWidth',0.6*bar_width/2);
-    end
-end
+% for hist_ind = 1:numel(history.nowtimesec_inf)
+%     for bin_id = history.ws_bins(hist_ind,:)
+%         if bin_id == 0
+%             continue
+%         end
+%         if hist_ind == 1
+%             start_time = 0;
+%         else
+%             start_time = history.nowtimesec_inf(hist_ind-1);
+%         end
+%         end_time = history.nowtimesec_inf(hist_ind);
+%         yval = numbins-(bin_id-1);
+%         plot([start_time, end_time], [yval, yval],'m','LineWidth',0.6*bar_width/2);
+%     end
+% end
 
 if ~for_humanoids
     for i = 1:numbins

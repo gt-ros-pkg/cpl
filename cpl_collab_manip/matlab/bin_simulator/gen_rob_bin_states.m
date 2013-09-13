@@ -8,7 +8,6 @@ dur_grasp = 0.8;
 row1_slots = find([slots.row] == 1);
 row_rest_slots = find([slots.row] ~= 1);
 
-
 roboacts_template = struct('bin_ind', nan, 'target_slot', nan, ...
                            'source_slot', nan, 'prev_slot', nan, ...
                            'start_time', nan, 'rm_time', nan, ...
@@ -38,11 +37,11 @@ for i = 1:numel(robplan.act_types)
         has_wait = 1;
         continue
     elseif act_type == 1 % deliver
-        empty_row1_slots = row1_slots(find(ismember(row1_slots, bin_cur_slots) == 0))
-        target_slot = empty_row1_slots(1)
+        empty_row1_slots = row1_slots(find(ismember(row1_slots, bin_cur_slots) == 0));
+        target_slot = empty_row1_slots(1);
     else % remove
-        empty_row_rest_slots = row_rest_slots(find(ismember(row_rest_slots, bin_cur_slots) == 0))
-        target_slot = empty_row_rest_slots(1)
+        empty_row_rest_slots = row_rest_slots(find(ismember(row_rest_slots, bin_cur_slots) == 0));
+        target_slot = empty_row_rest_slots(1);
     end
     source_slot = bin_cur_slots(bin_ind);
 

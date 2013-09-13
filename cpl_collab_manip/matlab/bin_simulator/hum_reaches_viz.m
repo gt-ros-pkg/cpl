@@ -15,7 +15,7 @@ for i = 1:numel(binavail)
     for j = 2:2:numel(binavail{i})
         start_time = max(binavail{i}(j-1), mintime);
         end_time = min(binavail{i}(j), maxtime);
-        plot([start_time end_time], [1.1 1.1], 'c', 'LineWidth', 8)
+        plot([start_time end_time], [1.1 1.1], 'b', 'LineWidth', 8)
     end
 end
 
@@ -27,9 +27,9 @@ for i = 1:numel(humacts)
         elseif humacts(i).type == 3 && humacts(i).bin_ind == j  % wait
             start_time = max(mintime, humacts(i-1).time);
             end_time = min(maxtime, humacts(i).time);
-            plot(start_time*[1 1], [1.1 1.5], 'b')
-            plot([start_time end_time], [1.3 1.3], 'b', 'LineWidth', 8)
-            plot([start_time end_time], [0.05 0.05], 'b')
+            plot(start_time*[1 1], [1.1 1.5], 'c')
+            plot([start_time end_time], [1.3 1.3], 'c', 'LineWidth', 8)
+            plot([start_time end_time], [0.05 0.05], 'c')
         elseif humacts(i).type == 2 % assembly
             plot(humacts(i).time*[1 1], [1.1 1.5], 'k')
             plot([humacts(i-1).time humacts(i).time], [1.3 1.3], 'k', 'LineWidth', 8)

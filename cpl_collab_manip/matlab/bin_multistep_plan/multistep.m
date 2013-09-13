@@ -1,43 +1,45 @@
-function [action, best_plan, history] = multistep(probs, slot_states, bin_names, ...
-                                                  nowtimesec, rate, ...
-                                                  event_hist, waiting_times, history, debug, detection_raw_result)
+function [action, best_plan] = multistep(probs, slot_states, bin_names, ...
+                                         nowtimesec, rate, ...
+                                         event_hist, waiting_times, ...
+                                         debug, detection_raw_result)
 
 planning_params
 
-if ~isfield(history, 'slots')
-    history.probs = {};
-    history.slots = [];
-    history.bin_names = bin_names;
-    history.nowtimes = [];
-    history.rate = rate;
-    history.event_hist = {};
-    history.waiting_times = {};
-    history.debug = debug;
-    history.numbins = numbins;
-    history.nowtimesec = [];
-    history.nowtimeind = [];
-    history.max_time = max_time;
-    history.t = t;
-    history.undo_dur = undo_dur;
-    history.undo_dur_ind = undo_dur_ind;
+% if ~isfield(history, 'slots')
+%     history.probs = {};
+%     history.slots = [];
+%     history.bin_names = bin_names;
+%     history.nowtimes = [];
+%     history.rate = rate;
+%     history.event_hist = {};
+%     history.waiting_times = {};
+%     history.debug = debug;
+%     history.numbins = numbins;
+%     history.nowtimesec = [];
+%     history.nowtimeind = [];
+%     history.max_time = max_time;
+%     history.t = t;
+%     history.undo_dur = undo_dur;
+%     history.undo_dur_ind = undo_dur_ind;
+% 
+%     history.actions_sorted = {}
+%     history.all_plans_sorted = {};
+%     history.all_action_starts = {};
+%     history.all_action_ends = {};
+%     history.costs_sorted = {};
+%     history.all_costs_split = {};
+%     history.is_delivered = {};
+%     history.bin_relevances = {};
+% end
+% history.probs{end+1} = probs;
+% history.slots(end+1,:) = slot_states;
+% history.nowtimes(end+1) = nowtimesec;
+% history.nowtimesec(end+1) = nowtimesec;
+% history.nowtimeind(end+1) = nowtimeind;
+% history.event_hist{end+1} = event_hist;
+% history.waiting_times{end+1} = waiting_times;
 
-    history.actions_sorted = {}
-    history.all_plans_sorted = {};
-    history.all_action_starts = {};
-    history.all_action_ends = {};
-    history.costs_sorted = {};
-    history.all_costs_split = {};
-    history.is_delivered = {};
-    history.bin_relevances = {};
-end
-history.probs{end+1} = probs;
-history.slots(end+1,:) = slot_states;
-history.nowtimes(end+1) = nowtimesec;
-history.nowtimesec(end+1) = nowtimesec;
-history.nowtimeind(end+1) = nowtimeind;
-history.event_hist{end+1} = event_hist;
-history.waiting_times{end+1} = waiting_times;
-
+% optimizer printout verbosity
 if debug
     display_arg = 'off';
     %display_arg = 'final-detailed';
@@ -117,7 +119,7 @@ if exit_early
         clf
         subplot(3,1,1)
         visualize_bin_activity([], [], bin_names, ...
-                               history, slot_states, numbins, rate, ...
+                               [], slot_states, numbins, rate, ...
                                nowtimesec, t, max_time, event_hist, waiting_times, false);
         subplot(3,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
@@ -137,7 +139,7 @@ if exit_early
         clf
         subplot(2,1,1)
         visualize_bin_activity([], [], bin_names, ...
-                               history, slot_states, numbins, rate, ...
+                               [], slot_states, numbins, rate, ...
                                nowtimesec, t, max_time, event_hist, waiting_times, true);
         subplot(2,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
@@ -175,7 +177,8 @@ for i = 1:size(deliv_seqs,1)
     b = -lower_bounds;
 
     best_cost = inf;
-    for start_off = 0:10:40
+    for start_off = 0:20:40
+    % for start_off = 0:10:40
         x_start = cumsum(lower_bounds);
         % x_start(1) = x_start(1) + 40*rate;
         lower_bounds;
@@ -250,7 +253,7 @@ for i = 1:size(deliv_seqs,1)
         clf
         subplot(4,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
-                               history, slot_states, numbins, rate, ...
+                               [], slot_states, numbins, rate, ...
                                nowtimesec, t, max_time, event_hist, waiting_times,false);
         subplot(4,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
@@ -278,7 +281,7 @@ for i = 1:size(deliv_seqs,1)
         clf
         subplot(2,1,1)
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
-                               history, slot_states, numbins, rate, ...
+                               [], slot_states, numbins, rate, ...
                                nowtimesec, t, max_time, event_hist, waiting_times, true);
         subplot(2,1,2)
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
@@ -297,11 +300,11 @@ plan_costs
 action = actions(1);
 best_plan = [all_plans_sorted(1,:)', all_action_starts(1,:)', all_action_ends(1,:)'];
 
-history.actions_sorted{end+1} = actions;
-history.all_plans_sorted{end+1} = all_plans_sorted;
-history.all_action_starts{end+1} = all_action_starts;
-history.all_action_ends{end+1} = all_action_ends;
-history.costs_sorted{end+1} = costs_sorted;
-history.all_costs_split{end+1} = all_costs_split;
-history.is_delivered{end+1} = is_delivered;
-history.bin_relevances{end+1} = bin_relevances;
+% history.actions_sorted{end+1} = actions;
+% history.all_plans_sorted{end+1} = all_plans_sorted;
+% history.all_action_starts{end+1} = all_action_starts;
+% history.all_action_ends{end+1} = all_action_ends;
+% history.costs_sorted{end+1} = costs_sorted;
+% history.all_costs_split{end+1} = all_costs_split;
+% history.is_delivered{end+1} = is_delivered;
+% history.bin_relevances{end+1} = bin_relevances;

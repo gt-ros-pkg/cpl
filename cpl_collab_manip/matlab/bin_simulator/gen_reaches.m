@@ -14,9 +14,7 @@ end
 % check to see if we need to accelerate reaches close together
 % first find the length of the longest reach to find an upper bound for distances
 row1_slots = find([slots.row] == 1);
-row1_centers = [slots(row1_slots).center];
-row1_pos = row1_centers(1:2,3:3:end);
-max_row1_dist = max(sqrt(row1_pos(1,:).^2 + row1_pos(2,:).^2));
+max_row1_dist = max([slots(row1_slots).hand_dist]);
 
 no_time_between = zeros(size(humplan.durs_step));
 for i = 2:numel(humplan.durs_step)
@@ -71,7 +69,7 @@ while 1
     avail_start = binavail{bin_ind}(i_avail{bin_ind}-1);
     avail_end = binavail{bin_ind}(i_avail{bin_ind});
     avail_slot = availslot{bin_ind}(i_avail{bin_ind});
-    dist_reach = norm(slots(avail_slot).center(1:2,3));
+    dist_reach = slots(avail_slot).hand_dist;
     if i_rch == 1
         reach_mid = humplan.start_time;
     else

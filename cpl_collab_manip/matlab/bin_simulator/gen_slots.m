@@ -10,7 +10,8 @@ row3_offx = 0.9;
 row3_offy = 1.1;
 row3_offr = -pi/4.0;
 
-slot_template = struct('row', -1, 'center', df_reach_off, 'reach_loc', df_reach_off);
+slot_template = struct('row', -1, 'center', df_reach_off, 'reach_loc', df_reach_off, ...
+                       'task_frame', df_reach_off);
 
 slots(1:3+4*2) = slot_template;
 
