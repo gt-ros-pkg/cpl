@@ -1,9 +1,28 @@
 function [action, best_plan] = multistep(probs, slot_states, bin_names, ...
                                          nowtimesec, rate, ...
                                          event_hist, waiting_times, ...
+                                         lastrminds, ...
                                          debug, detection_raw_result)
 
 planning_params
+
+for i = 1:numbins
+    if lastrminds(i) > 0
+        % hacky multiplier which discounts the cost of delivery for a while until
+        % new information comes in
+        info_wait_center = t(lastrminds(i)) + 4.0*t(undo_dur_ind) % time at which function hits 50%
+        info_wait_scale = t(undo_dur_ind)/1.2 % seconds after the center until the function hits 90%
+        info_wait_mult = atan(3.0*(t-info_wait_center)/info_wait_scale)/pi + 0.5; % sigmoid function
+        info_wait_mult(nowtimeind+1:nowtimeind+100)
+        for j = 1:2
+            future_probs = info_wait_mult(nowtimeind:end).*probs{i,j}(nowtimeind:end);
+            lost_weight =  sum(probs{i,j}(nowtimeind:end)) - sum(future_probs);
+            probs{i,j}(1:nowtimeind-1) = probs{i,j}(1:nowtimeind-1)* ...
+                                         lost_weight/sum(probs{i,j}(1:nowtimeind-1));
+            probs{i,j}(nowtimeind:end) = future_probs;
+        end
+    end
+end
 
 % if ~isfield(history, 'slots')
 %     history.probs = {};
@@ -83,18 +102,18 @@ else
     deliv_seqs = gen_deliv_seqs(bin_relevances, max_beam_depth);
 end
 
-for bin_ind = 1:numbins
-    if size(event_hist,1) == 0
-        lastrminds(bin_ind) = -1;
-    else
-        bin_removes = find(event_hist(:,1)==-bin_ind);
-        if numel(bin_removes) == 0
-            lastrminds(bin_ind) = -1;
-        else
-            lastrminds(bin_ind) = max(event_hist(bin_removes,3)');
-        end
-    end
-end
+% for bin_ind = 1:numbins
+%     if size(event_hist,1) == 0
+%         lastrminds(bin_ind) = -1;
+%     else
+%         bin_removes = find(event_hist(:,1)==-bin_ind);
+%         if numel(bin_removes) == 0
+%             lastrminds(bin_ind) = -1;
+%         else
+%             lastrminds(bin_ind) = max(event_hist(bin_removes,3)');
+%         end
+%     end
+% end
 
 % Precompute cost functions for deliver/removal of every bin
 for bin_ind = 1:numbins

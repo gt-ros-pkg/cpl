@@ -5,7 +5,7 @@ traj_dur_ind = round(rate*traj_dur); % traj_dur in
 
 % undo_dur = 2*traj_dur; % time (s) it takes to remove a bin and deliver it back
 undo_dur = 2*traj_dur; % time (s) it takes to remove a bin and deliver it back
-undo_dur_ind = undo_dur*rate; % time (s) it takes to remove a bin and deliver it back
+undo_dur_ind = ceil(undo_dur*rate); % time (s) it takes to remove a bin and deliver it back
 endedweight = 10; % beam heuristic penalty for the step already ended
 notbranchweight = 10; % beam heuristic penalty for not being on the same branch
 planning_cycle = 1; % seconds expected till next replan

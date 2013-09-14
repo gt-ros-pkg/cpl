@@ -81,7 +81,7 @@ while nowtimeind < m.params.T
                                          samp_num, detector_offset);
     detections = likelihood_function(detect_dists, nowtimeind, likelihood_params);
     
-    for bin_ind = 1:all_bin_ids
+    for bin_ind = 1:numel(all_bin_ids)
         bin_id = all_bin_ids(bin_ind);
         detection_raw_result(bin_id,:) = detections(bin_ind,:);
     end
@@ -112,10 +112,17 @@ while nowtimeind < m.params.T
     % planning
     %------------------------------------------------
     start_plan = 1
+    lastrminds = -1*ones(1,max(all_bin_ids));
+    for bin_ind = 1:numel(binavail)
+        if numel(binavail{bin_ind}) > 0 && binavail{bin_ind}(end) < inf
+            bin_id = all_bin_ids(bin_ind);
+            lastrminds(bin_id) = ceil(rate*binavail{bin_ind}(end));
+        end
+    end
 
     bin_distributions = extract_bin_requirement_distributions(m);
     next_action = bin_simulator_planning(bin_distributions, nowtimeind, ws_bins, ...
-                                         detection_raw_result, rate, debug_planning);
+                                         lastrminds, detection_raw_result, rate, debug_planning);
     % update robplan sequence with new action
     robplan.times(end+1) = nowtimesec;
     if next_action ~= 0

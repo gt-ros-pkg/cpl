@@ -30,8 +30,13 @@ else
     % probability the bin was removed before the human started last time:
     prob_bin_not_started_yet = sum(startprobs(lastrmind:end));
 
-    costs = binprob * (costs_redeliv + prob_bin_not_started_yet * (costs_early + costs_late));
+    costs_redeliv(nowtimeind+1:nowtimeind+100);
+    costs_early(nowtimeind+1:nowtimeind+100);
+    costs_late(nowtimeind+1:nowtimeind+100);
+    costs = binprob *  ... % info_wait_mult .* ...
+            (costs_redeliv + prob_bin_not_started_yet * (costs_early + costs_late));
     costs(1:nowtimeind) = 0;
+    costs(nowtimeind+1:nowtimeind+100);
 end
 
 % recentdur = round(undo_dur_ind);

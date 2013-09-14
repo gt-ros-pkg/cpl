@@ -1,5 +1,6 @@
 function [next_action] = bin_simulator_planning(bin_distributions, nowtimeind, ...
-                                                bins_cur_avail, detection_raw_result, rate, debug)
+                                                bins_cur_avail, lastrminds, ...
+                                                detection_raw_result, rate, debug)
 
 probs       = {};
 slot_states = [];
@@ -81,7 +82,7 @@ event_hist = [];
 waiting_times = [];
 
 [next_action, best_plan] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
-                                     event_hist, waiting_times, debug, detection_raw_result);
+                                     event_hist, waiting_times, lastrminds, debug, detection_raw_result);
 if next_action ~= 0
     next_action = sign(next_action)*bin_id_map(abs(next_action));
 end
