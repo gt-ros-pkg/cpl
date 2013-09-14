@@ -32,7 +32,7 @@ if NAM_NOISE_MODEL
         m.detection.onedetector.mean_detection_score    = 70;
         m.detection.onedetector.nam_uniform_component   = 5;
         
-    elseif NAM_NOISY == 19 % real exp, new kinect setting
+    elseif NAM_NOISY == 143569 % real exp, new kinect setting
         m.detection.params.detector_var_scale           = 4; % raw peak is usually 100-400
         m.detection.onedetector.mean_detection_score    = 2;
         m.detection.onedetector.nam_uniform_component   = 0.01;
@@ -77,11 +77,11 @@ if NAM_NOISE_MODEL
             m.detection.detectors(11).x_setting.uni_component = 10;
             m.detection.detectors(11).x_setting.mean_score    = 80;
            
-    elseif NAM_NOISY == 186789 % low confidence for mis calibration
+    elseif NAM_NOISY == 19 % low confidence for mis calibration
         
-        m.detection.params.detector_var_scale           = 9; % raw peak is usually 150
-        m.detection.onedetector.mean_detection_score    = 3;
-        m.detection.onedetector.nam_uniform_component   = 0.1;
+        m.detection.params.detector_var_scale           = 9; % raw peak is usually ???
+        m.detection.onedetector.mean_detection_score    = 0.5;
+        m.detection.onedetector.nam_uniform_component   = 0.05;
            
         for i=1:length(m.detection.detectors)
            
