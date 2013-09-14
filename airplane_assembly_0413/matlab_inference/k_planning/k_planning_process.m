@@ -101,6 +101,7 @@ for i=1:length(n.bin_distributions)
     %     condition_no = 1;
     % end
     condition_no = ~any(b == bins_cur_avail); % true if bin not in ws
+    detections_sorted(i,:) = detection_raw_result(b,:);
 
     if ~condition_no
         slot_states(end+1) = i;
@@ -155,7 +156,7 @@ end
 
 [i, best_plan, n.multistep_history] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
                                                 event_hist, waiting_times, ...
-                                                n.multistep_history, debug, detection_raw_result);
+                                                n.multistep_history, debug, detections_sorted);
 
 
 if i == 0 || robot_moving

@@ -18,8 +18,8 @@ for i=1:N
     b = n.bin_distributions(i).bin_id;
     if ~isempty(frame_info.bins(b).H)
     	d = norm([-1, -1.3] - [frame_info.bins(b).pq(1), frame_info.bins(b).pq(2)]);
-    	condition_no = d > 1;
-        if d < 1,
+    	condition_no = d > 0.9;
+        if d < 0.9,
             n.bin_distributions(i).bin_available = 1;
         end
     end
@@ -126,26 +126,26 @@ end
 
 
 %% cost integration
-nx_figure(1312);
+% nx_figure(1312);
 for i=1:N
     n.bin_distributions(i).bin_needed_cost = ef2(n.bin_distributions(i).bin_needed, n.cache_cost.cost_lateexpensive);
     n.bin_distributions(i).bin_nolonger_needed_cost = ef2(n.bin_distributions(i).bin_nolonger_needed, n.cache_cost.cost_earlyexpensive);
     
-    subplot(N, 2, 2*i-1);
-    plot(n.bin_distributions(i).bin_needed);
-    hold on;
-    plot(n.bin_distributions(i).bin_nolonger_needed, 'r');
-    hold off;
-    subplot(N, 2, 2*i);
-    semilogy(n.bin_distributions(i).bin_needed_cost);
-    hold on;
-    semilogy(n.bin_distributions(i).bin_nolonger_needed_cost, 'r');
-    hold off;
+%     subplot(N, 2, 2*i-1);
+%     plot(n.bin_distributions(i).bin_needed);
+%     hold on;
+%     plot(n.bin_distributions(i).bin_nolonger_needed, 'r');
+%     hold off;
+%     subplot(N, 2, 2*i);
+%     semilogy(n.bin_distributions(i).bin_needed_cost);
+%     hold on;
+%     semilogy(n.bin_distributions(i).bin_nolonger_needed_cost, 'r');
+%     hold off;
 end
 
 %% gen plan
 plans = {};
-for i=1:10
+for i=1:100
     
     plan = gen_random_plan( n.bin_distributions );
     

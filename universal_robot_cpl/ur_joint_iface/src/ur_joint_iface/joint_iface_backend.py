@@ -37,7 +37,7 @@ class JointIFaceGUIFrame(QtGui.QFrame):
         super(JointIFaceGUIFrame, self).__init__()
         self.button_down = None
         self.joint_ctrl = SingleJointController()
-        rospy.spin()
+        #rospy.spin()
         self.clipboard = clipboard
         self.init_ui()
 

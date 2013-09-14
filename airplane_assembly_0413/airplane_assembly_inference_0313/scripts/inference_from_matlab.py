@@ -35,14 +35,14 @@ PUBLISH_INDIVIDUAL_DISTRIBUTION     = True
 
 ROS_TOPIC_LEFTHAND  = "left_hand"
 ROS_TOPIC_RIGHTHAND = "right_hand"
-ROS_TOPIC_BINMARKES = "ar_pose_marker"
+ROS_TOPIC_BINMARKES = "ar_pose_marker_clean"
 ROS_TOPIC_IMAGE     = "kinect/color_image"
 
 ROS_TOPIC_ACTION_NAME_GT = "action_name"
 ROS_TOPIC_WORKSPACE_BINS = "workspace_bins"
 
 TF_WORLD     = "base_link"
-TF_KINECT    = "kinect0_rgb_optical_frame"
+TF_KINECT    = "kinect1_rgb_optical_frame"
 TF_WEBCAM    = "lifecam1_optical_frame"
 
 BIN_NUM      = 20
@@ -428,6 +428,8 @@ def main():
     print 'wait to receive first hand & bin msg'
     while lefthand is None  or righthand is None or bins is None:
         rospy.sleep(0.1)
+        if rospy.is_shutdown() :
+            return;
     print 'ok start!'
 
     # begin_time

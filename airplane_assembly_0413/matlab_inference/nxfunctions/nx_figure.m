@@ -7,7 +7,7 @@ function h = nx_figure( i )
     try
         set(0,'CurrentFigure', i)
     catch
-        h = figure(i)
+        h = figure(i);
     end
 
 end

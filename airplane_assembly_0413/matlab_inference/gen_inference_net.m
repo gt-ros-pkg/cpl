@@ -143,7 +143,7 @@ m.g(m.s).start_distribution = 0 * ones(1, m.params.T) / m.params.T;
 if 0
     m.g(m.s).start_distribution(30) = 1;
 else
-    prior_len = 30;
+    prior_len = m.params.T;
     m.g(m.s).start_distribution(1:prior_len) = 1 / prior_len;
 end
 m.g(m.s).end_likelihood = ones(1, m.params.T) / m.params.T;

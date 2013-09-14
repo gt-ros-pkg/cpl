@@ -25,8 +25,8 @@ for i = 1:numbins
     prob_now_during_bin = (1-prob_now_before_bin) * (1-prob_now_after_bin);
     
     if ~for_humanoids
-        text(maxtime-10, 0.5-i+numbins, sprintf('B:%1.2f, D:%1.2f, A:%1.2f', ...
-                                prob_now_before_bin, prob_now_during_bin, prob_now_after_bin));
+        text(maxtime-60, 0.8-i+numbins, sprintf('P: %1.2f, B:%1.2f, D:%1.2f, A:%1.2f', ...
+                    binprob, prob_now_before_bin, prob_now_during_bin, prob_now_after_bin));
     end
     if ~for_humanoids
         ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
@@ -42,12 +42,15 @@ if for_humanoids
 end
 plot([nowtimesec, nowtimesec], [0, numbins], 'g');
 
-hleg = legend('Start','End');
-set(hleg, 'FontName', 'Times', 'FontSize', 14)
-set(hleg,'Location','NorthEast')
-set(hleg,'Interpreter','none')
+if 0
+    hleg = legend('Start','End');
+    set(hleg, 'FontName', 'Times', 'FontSize', 14)
+    set(hleg,'Location','NorthEast')
+    set(hleg,'Interpreter','none')
+end
 AX = gca;
 set(AX,'YTick',(1:numbins)-0.5);
 set(AX,'YTickLabel',ylabels);
+set(AX,'XTickLabel','');
 set(AX,'YGrid','off');
 set(AX,'XGrid','on');

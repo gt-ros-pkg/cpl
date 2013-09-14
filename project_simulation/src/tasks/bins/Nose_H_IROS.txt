@@ -1,0 +1,4 @@
+#bin_id
+10
+#parts sequence: <part name> <mean> <std-dev>
+nose_h1 35 4

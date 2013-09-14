@@ -29,7 +29,7 @@ for i = 1:size(event_hist,1)
     plot([start_time, end_time], [yval, yval], color,'LineWidth',bar_width*0.8);
 
     if for_humanoids
-        text(max(start_time-1,1), yval+0.8, show_text);
+        text(max(start_time-1,1), yval+0.6, show_text);
     end
 end
 
@@ -87,7 +87,7 @@ if ~for_humanoids
        ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
     end
 else    
-    text(tnow+0.5, numbins+0.8, sprintf('Now'));
+    text(tnow+0.5, numbins+0.6, sprintf('Now'));
     for i = 1:numbins
        ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
        % ylabels{i} = sprintf('Bin %d', numbins-i+1);
@@ -99,6 +99,7 @@ AX = gca;
 axis([0, maxtime, 0, numbins+1])
 set(AX,'YTick',(1:numbins));
 set(AX,'YTickLabel',ylabels);
+set(AX,'XTickLabel','');
 box on;
 grid on;
 hold off;
