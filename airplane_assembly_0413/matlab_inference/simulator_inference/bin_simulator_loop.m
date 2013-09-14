@@ -75,6 +75,12 @@ while nowtimeind < m.params.T
     start_sim = 1
 
     humacts = gen_reaches(humplan, binavail, availslot, slots);
+    if numel(humacts) > 1 && humacts(end).type == 0
+        if humacts(end-2).time < nowtimesec
+            'Human-robot system completed successfully'
+            break
+        end
+    end
     samp_interval = [0.0,nowtimesec,T/rate];
     samp_num = T;
     detect_dists = sample_detector_dists(humacts, slots, binavail, availslot, samp_interval, ...
@@ -152,3 +158,4 @@ while nowtimeind < m.params.T
     end
 end
 
+wait_stats = fluency_measures(humacts)

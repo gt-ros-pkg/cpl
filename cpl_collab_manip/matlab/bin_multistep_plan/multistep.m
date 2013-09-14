@@ -156,7 +156,7 @@ if exit_early
         
         % subplot(3,1,3)
         subplot_tight(3,1,3,[.05,0.1]);
-        % visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
         pause(0.05)
         
@@ -292,7 +292,7 @@ for i = 1:size(deliv_seqs,1)
         
         % subplot(3,1,3)
         subplot_tight(3,1,3,[.01,0.1]);
-        %visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+        isualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
         if actions(i) == 0
             action_name = 'WAIT';
@@ -317,7 +317,7 @@ for i = 1:size(deliv_seqs,1)
                             nowtimesec, nowtimeind, max_time, true);
         
         subplot_tight(3,1,3,[.05,0.1]);
-        %visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
     end
 end

@@ -4,12 +4,12 @@ clear
 bin_init_slots = [1, 4, 5];
 
 % robot current plan
-robplan = struct;
-robplan.bin_inds =  [   0,    2,    0];%,    1,   0,    2,    0 ];
 % act_type: 0 = wait, 1 = deliver, 2 = remove
-robplan.act_types = [   0,    1,    0];%,    2,   0,    2,    0 ];
 % the times are when the robot action starts
-robplan.times =     [ 0.0, 10.0,  0.0];%, 22.0, 0.0, 40.0,  0.0 ];
+robplan = struct;
+robplan.bin_inds =  [   0,    2,    0,    1,   0,    2,    0     1,    0     2,    0 ];
+robplan.act_types = [   0,    1,    0,    2,   0,    2,    0     1,    0     1,    0 ];
+robplan.times =     [ 0.0, 10.0,  0.0, 22.0, 0.0, 30.0,  0.0  45.0,  0.0  55.0,  0.0 ];
 
 % human's plan
 humplan = struct( ...
@@ -31,3 +31,4 @@ hum_reaches_viz(humacts, binavail, 1, [0, 70]);
 rob_bin_states_viz(binstates, binavail, robacts, slots, [0, 70]);
 detector_viz(humacts, slots, binavail, availslot, [0, 50, 70], 2000, ...
              likelihood_params, detector_offset);
+wait_stats = fluency_measures(humacts)
