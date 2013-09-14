@@ -1,0 +1,48 @@
+
+
+% grammar rule
+
+S		> Body and NWT
+NWT		> NWT_A or NWT_H
+NWT_A	> Nose_A  and  Wing_AT  and  Tail_AT
+NWT_H	> Nose_H and  Wing_H and Tail_H
+
+Body	> body1 and body2 and body3 and body4 and body5 and body6
+Nose_A	> nose_a1 
+Nose_H	> nose_h1
+Wing_AT	> wing_at1 
+Wing_H	> wing_h1 
+Tail_AT	> tail_at1 and tail_at2 and tail_at3 and tail_at4 and tail_at5 and tail_at6
+Tail_H	> tail_h1 and tail_h2 and tail_h3 and tail_h4 and tail_h5 and tail_h6
+
+
+% primitive action - detector id 
+
+body1	3    2.7    0.41   
+body2	3    3.8    0.74
+body3	3    4.2    0.53
+body4	3    9.0    2.0
+body5	3    6.1    0.95
+body6	3    8.9     1.3
+
+nose_a1 11   33.51  4
+
+nose_h1 10   33.51  4
+
+wing_at1 12    6.63 1
+
+wing_h1 7    6.63 1
+
+tail_at1 14    4.51    1.25
+tail_at2 14    3.98   0.7
+tail_at3 14     8.19  1.99
+tail_at4 14    2.31  0.22
+tail_at5 14    2.56  0.31
+tail_at6	14    6.1333 0.55
+
+tail_h1 13    4.51    1.25
+tail_h2 13    3.98   0.7
+tail_h3 13     8.19  1.99
+tail_h4 13    2.31  0.22
+tail_h5 13    2.56  0.31
+tail_h6	13    6.1333 0.55

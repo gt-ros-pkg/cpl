@@ -1,0 +1,4 @@
+#bin_id
+12
+#parts sequence: <part name> <mean> <std-dev>
+wing_at1 10 4
