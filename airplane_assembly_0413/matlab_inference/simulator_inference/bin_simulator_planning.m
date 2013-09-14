@@ -20,6 +20,7 @@ for i=1:length(bin_distributions)
     
     bin_id = bin_distributions(i).bin_id;
     bin_id_map(i) = bin_id;
+    detections_sorted(i,:) = detection_raw_result(bin_id,:);
 
     % TODO
     condition_no = ~any(bin_id == bins_cur_avail); % true if bin not in ws
@@ -82,7 +83,8 @@ event_hist = [];
 waiting_times = [];
 
 [next_action, best_plan] = multistep(probs, slot_states, bin_names, nowtimesec, rate, ...
-                                     event_hist, waiting_times, lastrminds, debug, detection_raw_result);
+                                     event_hist, waiting_times, lastrminds, ...
+                                     debug, detections_sorted);
 if next_action ~= 0
     next_action = sign(next_action)*bin_id_map(abs(next_action));
 end

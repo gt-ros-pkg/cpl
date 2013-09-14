@@ -2,9 +2,9 @@ function [action, best_plan] = multistep(probs, slot_states, bin_names, ...
                                          nowtimesec, rate, ...
                                          event_hist, waiting_times, ...
                                          lastrminds, ...
-                                         debug, detection_raw_result)
+                                         debug, detections_sorted)
 
-if 0
+if 1
     bin_names{1} = 'A';
     for i = 1:3
         bin_names{2*i} = sprintf('B%d',i+1);
@@ -14,23 +14,23 @@ end
 
 planning_params
 
-for i = 1:numbins
-    if lastrminds(i) > 0
-        % hacky multiplier which discounts the cost of delivery for a while until
-        % new information comes in
-        info_wait_center = t(lastrminds(i)) + 4.0*t(undo_dur_ind) % time at which function hits 50%
-        info_wait_scale = t(undo_dur_ind)/1.2 % seconds after the center until the function hits 90%
-        info_wait_mult = atan(3.0*(t-info_wait_center)/info_wait_scale)/pi + 0.5; % sigmoid function
-        info_wait_mult(nowtimeind+1:nowtimeind+100)
-        for j = 1:2
-            future_probs = info_wait_mult(nowtimeind:end).*probs{i,j}(nowtimeind:end);
-            lost_weight =  sum(probs{i,j}(nowtimeind:end)) - sum(future_probs);
-            probs{i,j}(1:nowtimeind-1) = probs{i,j}(1:nowtimeind-1)* ...
-                                         lost_weight/sum(probs{i,j}(1:nowtimeind-1));
-            probs{i,j}(nowtimeind:end) = future_probs;
-        end
-    end
-end
+% for i = 1:numbins
+%     if lastrminds(i) > 0
+%         % hacky multiplier which discounts the cost of delivery for a while until
+%         % new information comes in
+%         info_wait_center = t(lastrminds(i)) + 4.0*t(undo_dur_ind) % time at which function hits 50%
+%         info_wait_scale = t(undo_dur_ind)/1.2 % seconds after the center until the function hits 90%
+%         info_wait_mult = atan(3.0*(t-info_wait_center)/info_wait_scale)/pi + 0.5; % sigmoid function
+%         info_wait_mult(nowtimeind+1:nowtimeind+100)
+%         for j = 1:2
+%             future_probs = info_wait_mult(nowtimeind:end).*probs{i,j}(nowtimeind:end);
+%             lost_weight =  sum(probs{i,j}(nowtimeind:end)) - sum(future_probs);
+%             probs{i,j}(1:nowtimeind-1) = probs{i,j}(1:nowtimeind-1)* ...
+%                                          lost_weight/sum(probs{i,j}(1:nowtimeind-1));
+%             probs{i,j}(nowtimeind:end) = future_probs;
+%         end
+%     end
+% end
 
 % if ~isfield(history, 'slots')
 %     history.probs = {};
@@ -156,7 +156,7 @@ if exit_early
         
         % subplot(3,1,3)
         subplot_tight(3,1,3,[.05,0.1]);
-        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+        % visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
         pause(0.05)
         
@@ -292,7 +292,7 @@ for i = 1:size(deliv_seqs,1)
         
         % subplot(3,1,3)
         subplot_tight(3,1,3,[.01,0.1]);
-        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+        %visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
         if actions(i) == 0
             action_name = 'WAIT';
@@ -317,7 +317,7 @@ for i = 1:size(deliv_seqs,1)
                             nowtimesec, nowtimeind, max_time, true);
         
         subplot_tight(3,1,3,[.05,0.1]);
-        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+        %visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
     end
 end
