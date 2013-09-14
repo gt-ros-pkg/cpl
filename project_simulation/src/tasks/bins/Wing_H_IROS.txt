@@ -1,4 +1,4 @@
 #bin_id
 7
 #parts sequence: <part name> <mean> <std-dev>
-wing_h1 15 4
+wing_h1 10 4

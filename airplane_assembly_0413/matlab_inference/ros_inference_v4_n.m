@@ -8,7 +8,9 @@ addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 %init_for_s % 3 tasks
 % init_for_linear_chain_7;
 % init_for_linear_chain_robot;
-init_for_iros_workshop_2chains_task
+%init_for_iros_workshop_2chains_task
+init_for_iros_workshop_2chains_task_human
+
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
@@ -23,8 +25,8 @@ else
     kelsey_planning = 0;
     kelsey_viz      = 0;
     NAM_NOISE_MODEL = 1;
-    NAM_NOISY = 0;
-    KPH_NOISY = 0;
+    NAM_NOISY       = 19;
+    KPH_NOISY       = 0;
     
 end
 
@@ -41,15 +43,16 @@ MAX_WS_BINS         = 20;     % must match ROS node param
 DO_INFERENCE             = 1;
 SEND_INFERENCE_TO_ROS    = 0;
 
-DRAW_DISTRIBUTION_FIGURE = 399;
+DRAW_DISTRIBUTION_FIGURE = 565;
 
-% DRAW_POSITIONS_FIGURE    = 33;
-DRAW_POSITIONS_FIGURE    = 0;
-DRAW_DETECTIONS_FIGURE   = 3310;
+DRAW_POSITIONS_FIGURE    = 46436;
+DRAW_DETECTIONS_FIGURE   = 463;
 
 DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
+
+SAVE_VIDEO               = 0;
 
 %% open connection
 
@@ -91,7 +94,9 @@ action_names_gt   = struct([]);
 frames_info       = struct([]);
 bins_availability = nan(BIN_NUM, m.params.T);
 
-record_figures_data = record_figures_init();
+if SAVE_VIDEO
+    record_figures_data = record_figures_init();
+end
 
 %% LOOP
 
@@ -248,6 +253,12 @@ while t < m.params.T * m.params.downsample_ratio
             m_plot_distributions(m, DRAW_START_DISTRIBUTION, DRAW_END_DISTRIBUTION);
             hold on; plot([nt nt], [-999 999], 'g'); hold off;
             ylim([0 1.1]);
+            
+            
+            hold on;
+            text(10, 1, ['Path1 prob: ' num2str(m.g(20).i_final.prob_notnull)])
+            text(10, 0.8, ['Path2 prob: ' num2str(m.g(30).i_final.prob_notnull)])
+            hold off;
         end
         
     end
@@ -264,6 +275,7 @@ while t < m.params.T * m.params.downsample_ratio
         else
             k = n_planning2_process(k, m, nt, frame_info);
         end
+        
     end
     
     
@@ -434,15 +446,20 @@ while t < m.params.T * m.params.downsample_ratio
         end
     end
     
-    record_figures_data = record_figures_process(record_figures_data);
+    if SAVE_VIDEO
+        record_figures_data = record_figures_process(record_figures_data);
+    end
 end
 
 
 %% close
 
 k = k_planning_terminate(k);
-record_figures_data = record_figures_terminate(record_figures_data);
 fclose(ros_tcp_connection);
+
+if SAVE_VIDEO
+    record_figures_data = record_figures_terminate(record_figures_data);
+end
 
 disp 'The End'
 disp([num2str(inference_num * 30 / t) ' inferences per second']);

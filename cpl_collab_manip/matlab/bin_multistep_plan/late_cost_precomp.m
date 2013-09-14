@@ -22,6 +22,7 @@ if lastrmind < 0
     costs(1:nowtimeind) = 0;
 else
     % delivered previously
+    lastrmind = lastrmind
 
     % probability the bin was removed preemptuously last time:
     prob_rm_preempt = sum(startprobs(1:lastrmind))*sum(endprobs(lastrmind:end));

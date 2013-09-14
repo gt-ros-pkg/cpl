@@ -5,18 +5,19 @@ addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
 %clc; clear; % close all;
 
 % init_for_s3 % linear chain
-%init_for_s % 3 tasks
+% init_for_s % 3 tasks
 % init_for_linear_chain_7;
 % init_for_linear_chain_robot;
-init_for_iros_workshop_2chains_task
+% init_for_iros_workshop_2chains_task
+init_for_iros_workshop_2chains_task_human
 
 m = gen_inference_net(MODEL_PATH);
 m.bin_req = bin_req;
 
 making_movie = 0;
-if 0
+if 1
     kelsey_planning = 1;
-    kelsey_viz      = 1;
+    kelsey_viz      = 0;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
     %KPH_NOISY=-1;
@@ -25,15 +26,26 @@ if 0
     % IROS high confidence:
     % KPH_NOISY=2;
     % IROS low confidence
-    KPH_NOISY=3;
+    % KPH_NOISY=3;
+    % IROS human high confidence:
+    % KPH_NOISY=4;
+    % IROS human low confidence:
+    KPH_NOISY=5;
 
-    fig_planning = figure(101);
-    winsize = get(fig_planning, 'Position');
-    movie_frames = 120;
-    planning_movie = moviein(movie_frames, fig_planning, winsize);
-    planning_ind = 1;
-    making_movie = 1;
+    if kelsey_viz
+        fig_planning = figure(101);
+        % winsize = get(fig_planning, 'Position');
+        winsize = [560    13   794   935];
+        set(fig_planning, 'Position', winsize);
+        movie_frames = 120;
+        planning_movie = moviein(movie_frames, fig_planning, winsize);
+        planning_ind = 1;
+        making_movie = 1;
+    end
 end
+
+    NAM_NOISE_MODEL = 1;
+    NAM_NOISY       = 19;
 
 adjust_detection_var; % for adjust detection variance, see that file
 

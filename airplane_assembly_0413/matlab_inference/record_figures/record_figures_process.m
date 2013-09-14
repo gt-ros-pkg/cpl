@@ -13,7 +13,7 @@ function data = record_figures_process( data )
             %currFrame = getframe(get(0,'CurrentFigure'));
             %currFrame = getframe(f);
             
-            currFrame = getframe_nosteal_focus(f, [800 600]);
+            currFrame = getframe_nosteal_focus(f);
             
             %writeVideo(data.vidObj{f},currFrame);
             
@@ -34,7 +34,7 @@ function data = record_figures_process( data )
             %currFrame = getframe(get(0,'CurrentFigure'));
             %currFrame = getframe(f);
             
-            currFrame = getframe_nosteal_focus(f, [800 600]);
+            currFrame = getframe_nosteal_focus(f);
             
             %writeVideo(data.vidObj{f},currFrame);
             

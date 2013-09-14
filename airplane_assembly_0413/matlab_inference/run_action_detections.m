@@ -23,10 +23,14 @@ function [detections, dists, min_hand_pos] = run_action_detections( frame_info, 
         % run detector
         if data.params.use_onedetector
             if data.params.nam_noise_model
-                cur_mean = data.onedetector.learnt.mean;
-                cur_var = data.params.detector_var_scale * data.onedetector.learnt.var;
-                detect_score = data.onedetector.mean_detection_score;
-                detections(d) = (mvnpdf(closest_hand, cur_mean, cur_var) + data.onedetector.nam_uniform_component) / detect_score;
+                
+%                 cur_mean = data.onedetector.learnt.mean;
+%                 cur_var = data.params.detector_var_scale * data.onedetector.learnt.var;
+%                 detect_score = data.onedetector.mean_detection_score;
+%                 detections(d) = (mvnpdf(closest_hand, cur_mean, cur_var) + data.onedetector.nam_uniform_component) / detect_score;
+                
+                
+                detections(d) = (mvnpdf(closest_hand, data.detectors(d).x_setting.mean, data.detectors(d).x_setting.var) + data.detectors(d).x_setting.uni_component) / data.detectors(d).x_setting.mean_score;
             else
                 cur_mean = data.onedetector.learnt.mean;
                 cur_std = data.params.detector_std_prior;

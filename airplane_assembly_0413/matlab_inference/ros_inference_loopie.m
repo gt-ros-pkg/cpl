@@ -13,7 +13,7 @@ while 1
     
     load('loop_var.mat')
     if loop_var<=num_trials*1
-        KPH_NOISY=2;
+        KPH_NOISY=3;
     elseif loop_var<=num_trials*1*2
         KPH_NOISY=3;
     else

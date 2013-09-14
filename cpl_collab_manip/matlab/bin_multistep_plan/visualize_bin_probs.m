@@ -51,5 +51,6 @@ end
 AX = gca;
 set(AX,'YTick',(1:numbins)-0.5);
 set(AX,'YTickLabel',ylabels);
+set(AX,'XTickLabel','');
 set(AX,'YGrid','off');
 set(AX,'XGrid','on');
