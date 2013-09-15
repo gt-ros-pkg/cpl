@@ -1,20 +1,4 @@
 
-debug_planning = 1;
-create_movie = 0;
-
-if create_movie
-    fig_planning = figure(101);
-    winsize = get(fig_planning, 'Position');
-    movie_frames = 200;
-    planning_movie = moviein(movie_frames, fig_planning, winsize);
-    planning_ind = 1;
-end
-
-%% load data
-addpath(genpath('.'));
-addpath('../../cpl_collab_manip/matlab/bin_multistep_plan')
-addpath('../../cpl_collab_manip/matlab/bin_simulator')
-
 % init_for_s3 % linear chain
 %init_for_s % 3 tasks
 % init_for_linear_chain_7;
@@ -29,6 +13,19 @@ init_simulator
 % humplan is the human duration/bin id action plan
 % robplan is the robot's bin remove/delivery action plan
 
+if debug_planning
+    fig_planning = figure(101);
+    winsize = [560    13   794   935];
+    set(fig_planning, 'Position', winsize);
+
+    if create_movie
+        % winsize = get(fig_planning, 'Position');
+        movie_frames = 200;
+        planning_movie = moviein(movie_frames, fig_planning, winsize);
+        planning_ind = 1;
+    end
+end
+
 % adjust_detection_var; % for adjust detection variance, see that file
 
 %% set up variables
@@ -37,7 +34,7 @@ rate = 30 / m.params.downsample_ratio;
 
 % TODO FUTURE TIMES ARE == 1
 detection_raw_result  = ones(length(m.detection.result), m.params.T);
-m.start_conditions(:) = 1;
+% m.start_conditions(:) = 1;
 
 T = m.params.T;
 
@@ -46,7 +43,10 @@ T = m.params.T;
 
 while nowtimeind < m.params.T 
     
-    assert(nowtimeind < m.params.T - 10);
+    if nowtimeind > m.params.T - 30
+        'System failure'
+        break
+    end
     nowtimesec  = nowtimeind / rate;
 
     % ws_bins is the variable length array of bin IDs which are in the human workspace
@@ -93,15 +93,48 @@ while nowtimeind < m.params.T
     end
         
     % update start condition
-    for bin_id = 1:length(m.detection.detectors)
-        if ~any(bin_id == ws_bins); % true if bin not in ws
-            for i=1:length(m.grammar.symbols)
-                if (m.grammar.symbols(i).is_terminal == 1) && (m.grammar.symbols(i).detector_id == bin_id) 
-                    m.start_conditions(i,nowtimeind) = 0;
-                end
+    m.start_conditions(:) = 0;
+    for bin_ind = 1:numel(binavail)
+        bin_id = all_bin_ids(bin_ind);
+        symbol_inds = [];
+        for j = 1:numel(m.grammar.symbols)
+            if (m.grammar.symbols(j).is_terminal == 1) && ...
+               (m.grammar.symbols(j).detector_id == bin_id) 
+               symbol_inds(end+1) = j;
+           end
+        end
+        for t_ind = 2:2:numel(binavail{bin_ind})
+            avail_start = binavail{bin_ind}(t_ind-1);
+            avail_end = binavail{bin_ind}(t_ind);
+            if avail_start == -inf
+                avail_start_ind = 1;
+            else
+                avail_start_ind = ceil((avail_start) * rate)+1;
             end
+            if avail_end == inf
+                avail_end_ind = nowtimeind;
+            else
+                avail_end_ind = floor((avail_end) * rate)+1;
+            end
+            m.start_conditions(symbol_inds,avail_start_ind:avail_end_ind) = 1;
         end
     end
+    for j = 1:numel(m.grammar.symbols)
+        if ~m.grammar.symbols(j).is_terminal
+            m.start_conditions(j,1:nowtimeind) = 1;
+        end
+    end
+    m.start_conditions(:,nowtimeind+1:end) = 1;
+
+    % for bin_id = 1:length(m.detection.detectors)
+    %     if ~any(bin_id == ws_bins); % true if bin not in ws
+    %         for i=1:length(m.grammar.symbols)
+    %             if (m.grammar.symbols(i).is_terminal == 1) && (m.grammar.symbols(i).detector_id == bin_id) 
+    %                 m.start_conditions(i,nowtimeind) = 0;
+    %             end
+    %         end
+    %     end
+    % end
     
     start_inf = 1
     %------------------------------------------------
@@ -127,8 +160,11 @@ while nowtimeind < m.params.T
     end
 
     bin_distributions = extract_bin_requirement_distributions(m);
+    ws_slots = find([slots.row] == 1);
     next_action = bin_simulator_planning(bin_distributions, nowtimeind, ws_bins, ...
-                                         lastrminds, detection_raw_result, rate, debug_planning);
+                                         lastrminds, robacts, humacts, ws_slots, ...
+                                         detection_raw_result, rate, ...
+                                         debug_planning, ~viz_extra_info);
     % update robplan sequence with new action
     robplan.times(end+1) = nowtimesec;
     if next_action ~= 0

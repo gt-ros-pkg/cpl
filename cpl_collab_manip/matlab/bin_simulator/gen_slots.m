@@ -2,7 +2,7 @@ function [slots] = gen_slots()
 
 hand_off = 0.1;
 df_reach_off = homo2d(-0.1, 0.0, 0.0);
-df_table_width = 0.8;
+df_table_width = 0.6;
 df_bin_width = 0.1;
 row1_off = 0.5;
 row2_off = 0.9;
@@ -57,4 +57,7 @@ if 0
     p = [0.8*slots(3).hand_dist, 0.0, 1.0]';
     p2 = slots(3).task_frame * p;
     plot(-p2(2), p2(1), '+g')
+    for i = 1:numel(slots)
+        text(-slots(i).center(2,3), slots(i).center(1,3), sprintf('%d', i))
+    end
 end

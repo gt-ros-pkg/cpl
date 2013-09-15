@@ -1,24 +1,47 @@
 function [] = visualize_bin_activity(bin_seq, times, bin_names, history, ...
                                      slot_states, numbins, rate, tnow, t, maxtime, ...
-                                     event_hist, waiting_times, for_humanoids)
+                                     robacts, humacts, ws_slots, for_humanoids)
 bar_width = 100/numbins;
 hold on
 
-for i = 1:size(waiting_times,1)
-    bin_ind = waiting_times(i,1);
-    start_time = t(waiting_times(i,2));
-    end_time = t(waiting_times(i,3));
-    yval = numbins-(bin_ind-1);
-    plot([start_time, end_time], [yval, yval], 'c','LineWidth',bar_width*1.5);
-    
+% for i = 1:size(waiting_times,1)
+%     bin_ind = waiting_times(i,1);
+%     start_time = t(waiting_times(i,2));
+%     end_time = t(waiting_times(i,3));
+for i = 1:numel(humacts)
+    if humacts(i).type == 3 
+        start_time = max(0, humacts(i-1).time);
+        end_time = min(tnow, humacts(i).time);
+        bin_ind = humacts(i).bin_ind;
+        if start_time > tnow
+            break
+        end
+
+        yval = numbins-(bin_ind-1);
+        plot([start_time, end_time], [yval, yval], 'c','LineWidth',bar_width*1.5);
+    end
 end
 
-for i = 1:size(event_hist,1)
-    bin_ind = abs(event_hist(i,1));
-    is_remove = event_hist(i,1) < 0;
-    start_time = event_hist(i,2)/rate;
-    end_time = event_hist(i,3)/rate;
-    yval = numbins-(bin_ind-1);
+for act_ind = 2:numel(robacts)
+    bin_ind = robacts(act_ind).bin_ind;
+    if bin_ind <= 0
+        continue
+    end
+    start_time = robacts(act_ind).start_time;
+    end_time = robacts(act_ind).end_time;
+    source_slot = robacts(act_ind).source_slot;
+    target_slot = robacts(act_ind).target_slot;
+    if ismember(target_slot, ws_slots) && ~ismember(source_slot, ws_slots)
+        is_remove = 0; % deliver
+    elseif ~ismember(target_slot, ws_slots) && ismember(source_slot, ws_slots)
+        is_remove = 1; % remove
+    else
+        % shuffle
+        'SHUFFLE SHOULD NOT HAPPEN'
+        return
+    end
+    % rm_time = robacts(act_ind).rm_time;
+    % dv_time = robacts(act_ind).dv_time;
     if is_remove
         color = 'r';
         show_text = 'Remove';
@@ -26,6 +49,7 @@ for i = 1:size(event_hist,1)
         color = 'b';
         show_text = 'Deliver';       
     end
+    yval = numbins-(bin_ind-1);
     plot([start_time, end_time], [yval, yval], color,'LineWidth',bar_width*0.8);
 
     if for_humanoids

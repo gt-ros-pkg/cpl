@@ -1,8 +1,8 @@
 function [action, best_plan] = multistep(probs, slot_states, bin_names, ...
                                          nowtimesec, rate, ...
-                                         event_hist, waiting_times, ...
+                                         robacts, humacts, ws_slots, ...
                                          lastrminds, ...
-                                         debug, detections_sorted)
+                                         debug, detections_sorted, extra_info)
 
 if 1
     bin_names{1} = 'A';
@@ -144,32 +144,19 @@ if exit_early
     if debug
         figure(101)
         clf
-        subplot_tight(3,1,1,[.0,0.1]);
+        subplot_tight(3,1,1,[.02,0.1]);
         visualize_bin_activity([], [], bin_names, ...
                                [], slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, event_hist, waiting_times, false);
-        subplot_tight(3,1,2,[.0,0.1]);
+                               nowtimesec, t, max_time, robacts, humacts, ws_slots, extra_info);
+
+        subplot_tight(3,1,2,[.02,0.1]);
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time, true);
-        % subplot(3,1,3)
-        % visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
-        
-        % subplot(3,1,3)
+                            nowtimesec, nowtimeind, max_time, extra_info);
+
         subplot_tight(3,1,3,[.05,0.1]);
         visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
         
         pause(0.05)
-        
-    elseif debug
-        figure(101)
-        clf
-        subplot(2,1,1)
-        visualize_bin_activity([], [], bin_names, ...
-                               [], slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, event_hist, waiting_times, true);
-        subplot(2,1,2)
-        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time, true);
     end
     return
 end
@@ -274,50 +261,31 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    %if 1 && i == 1% debug && i == 1
-    if 0 && debug && i == 1
-        figure(100+i)
-        clf
-        % subplot(3,1,1)
-        subplot_tight(3,1,1,[.01,0.1]);
-        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
-                               [], slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, event_hist, waiting_times,false);
-        % subplot(3,1,2)
-        subplot_tight(3,1,2,[.01,0.1]);
-        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time, false);
-        % subplot(4,1,3)
-        % visualize_cost_funs(t, rm_cost_fns, lt_cost_fns, nowtimesec, max_time);
-        
-        % subplot(3,1,3)
-        subplot_tight(3,1,3,[.01,0.1]);
-        isualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
-        
-        if actions(i) == 0
-            action_name = 'WAIT';
-        elseif actions(i) > 0
-            action_name = sprintf('DELIVER %s', bin_names{actions(i)});
-        else
-            action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
-        end
-        title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
-        pause(0.05)
-        
-    elseif debug && i==1
-        figure(100+i)
+    if debug && i==1
+        figure(101)
         clf
         subplot_tight(3,1,1,[.02,0.1]);
         visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
                                [], slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, event_hist, waiting_times, true);
+                               nowtimesec, t, max_time, robacts, humacts, ws_slots, extra_info);
 
         subplot_tight(3,1,2,[.02,0.1]);
         visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time, true);
+                            nowtimesec, nowtimeind, max_time, extra_info);
         
         subplot_tight(3,1,3,[.05,0.1]);
         visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
+
+        % if actions(i) == 0
+        %     action_name = 'WAIT';
+        % elseif actions(i) > 0
+        %     action_name = sprintf('DELIVER %s', bin_names{actions(i)});
+        % else
+        %     action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
+        % end
+        % title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
+        % pause(0.05)
+        
         
     end
 end

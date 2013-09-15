@@ -22,7 +22,7 @@ likelihood_params.sigma = 0.10;
 likelihood_params.latent_noise = 0.05;
 likelihood_params.future_weight = 0.1;
 
-detector_offset = [0, -0.06];
+detector_offset = [0.0, 0.0];
 
 slots = gen_slots();
 [robacts, binstates, binavail, availslot] = gen_rob_bin_states(robplan, bin_init_slots, slots);

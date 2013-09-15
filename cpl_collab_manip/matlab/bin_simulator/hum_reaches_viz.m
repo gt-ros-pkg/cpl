@@ -53,6 +53,7 @@ for i = 1:numel(humacts)
             plot(t2+action_start_time, humacts(i).dist_reach+t2*0,color)
             t3 = linspace(dur_mid, dur_total, 100);
             plot(t3+action_start_time, humacts(i).dist_reach-humacts(i).vel_retreat*(t3-dur_mid),color)
+            text(t3(end)+action_start_time, 0.5, sprintf('Bin %d %1.2f', humacts(i).bin_ind, humacts(i).dist_reach));
             if humacts(i).type == 1 % reach
                 plot(humacts(i).time*[1 1], [1.1 1.5], 'g')
                 plot([humacts(i-1).time humacts(i).time], [1.3 1.3], 'g', 'LineWidth', 8)

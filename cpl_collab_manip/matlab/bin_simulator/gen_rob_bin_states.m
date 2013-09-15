@@ -1,9 +1,9 @@
 function [robacts, binstates, binavail, availslot] = gen_rob_bin_states(robplan, bin_init_slots, slots)
 
 % params
-vel_robot = 1.0;
-dur_lift = 1.1;
-dur_grasp = 0.8;
+vel_robot = 0.4;
+dur_lift = 1.7;
+dur_grasp = 1.0;
 
 row1_slots = find([slots.row] == 1);
 row_rest_slots = find([slots.row] ~= 1);

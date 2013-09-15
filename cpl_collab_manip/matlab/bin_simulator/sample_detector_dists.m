@@ -1,5 +1,5 @@
 function [detect_dists] = sample_detector_dists(humacts, slots, binavail, availslot, samp_interval, ...
-                                              samp_num, detector_off)
+                                                samp_num, detector_off)
 samp_start = samp_interval(1);
 samp_end = samp_interval(3);
 samp_per_sec = (samp_num-1)/(samp_end-samp_start);
@@ -55,7 +55,8 @@ for i = 2:numel(humacts)
             hand_pos_task = [reach_dists; ...
                              zeros(1,numel(reach_dists)); ...
                              ones(1,numel(reach_dists))];
-            reach_task_frame = slots(humacts(i).bin_ind).task_frame;
+            reach_slot = humacts(i).reach_slot;
+            reach_task_frame = slots(reach_slot).task_frame;
             detector_frame = slots(d_slot).reach_loc;
             hand_pos_det = repmat([detector_off';0],1,numel(reach_dists)) + ...
                                   detector_frame^-1 * reach_task_frame * hand_pos_task;

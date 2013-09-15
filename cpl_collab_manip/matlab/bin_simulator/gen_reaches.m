@@ -35,7 +35,8 @@ wait_after_fail = 0; % we're waiting from the last iteration
 assem_after_reach = 0; % we're assembling from the last iteration
 
 action_template = struct('time', -1.0, 'type', -1, 'bin_ind', -1, 'dist_reach', 0.0, ...
-                         'vel_reach', 0.0, 'dur_draw', -1.0, 'vel_retreat', 0.0);
+                         'vel_reach', 0.0, 'dur_draw', -1.0, 'vel_retreat', 0.0, ...
+                         'reach_slot', -1);
 % humacts is the structure array of human actions the human will perform
 humacts(1) = action_template;
 humacts(1).type = 0;
@@ -118,6 +119,7 @@ while 1
         new_action.vel_reach = vels_reach(i_rch);
         new_action.dur_draw = durs_draw(i_rch);
         new_action.vel_retreat = vels_retreat(i_rch);
+        new_action.reach_slot = avail_slot;
         humacts(end+1) = new_action;
 
         reach_final_mid_times(i_rch) = action_start + reach_mid - reach_start;
@@ -135,6 +137,7 @@ while 1
         new_action.vel_reach = vels_reach(i_rch);
         new_action.dur_draw = 0.0;
         new_action.vel_retreat = vels_retreat(i_rch);
+        new_action.reach_slot = avail_slot;
         humacts(end+1) = new_action;
 
         wait_after_fail = 1;
