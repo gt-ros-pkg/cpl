@@ -9,6 +9,8 @@
 #include <iostream>
 
 #define VISUALIZE_GRAPH_WEIGHTS 1
+// #define USE_CANNY_EDGES 1
+
 namespace tabletop_pushing
 {
 class NodeTable
@@ -156,15 +158,17 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   // std::cout << "\nBuilding bg color model\n";
   GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
 
-  cv::Mat Ix = getXImageDeriv(bw_img);
-  cv::Mat Iy = getYImageDeriv(bw_img);
-  cv::Mat Dx = getXImageDeriv(depth_img);
-  cv::Mat Dy = getYImageDeriv(depth_img);
-
+#ifdef USE_CANNY_EDGES
   cv::Mat canny_edges_8bit;
   cv::Mat canny_edges;
   cv::Canny(tmp_bw, canny_edges_8bit, 120, 250);
   canny_edges_8bit.convertTo(canny_edges, CV_32FC1, 1.0/255);
+#else
+  cv::Mat Ix = getXImageDeriv(bw_img);
+  cv::Mat Iy = getYImageDeriv(bw_img);
+#endif
+  cv::Mat Dx = getXImageDeriv(depth_img);
+  cv::Mat Dy = getYImageDeriv(depth_img);
 
   tabletop_pushing::GraphType *g;
   g = new GraphType(num_nodes, num_edges);
@@ -206,8 +210,13 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         if (c > 0 && much_larger_mask.at<uchar>(r, c-1) > 0)
         {
           int other_idx = nt.getIdx(r, c-1);
+#ifdef USE_CANNY_EDGES
           float w_l = getEdgeWeightBoundary(canny_edges.at<float>(r,c), Dx.at<float>(r,c),
                                             canny_edges.at<float>(r, c-1), Dx.at<float>(r, c-1));
+#else // USE_CANNY_EDGES
+          float w_l = getEdgeWeightBoundary(Ix.at<float>(r,c), Dx.at<float>(r,c),
+                                            Ix.at<float>(r, c-1), Dx.at<float>(r, c-1));
+#endif // USE_CANNY_EDGES
           g->add_edge(cur_idx, other_idx, /*capacities*/ w_l, w_l);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -220,8 +229,13 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
           if(much_larger_mask.at<uchar>(r-1,c) > 0)
           {
             int other_idx = nt.getIdx(r-1, c);
+#ifdef USE_CANNY_EDGES
             float w_u = getEdgeWeightBoundary(canny_edges.at<float>(r, c),   Dy.at<float>(r, c),
                                               canny_edges.at<float>(r-1, c), Dy.at<float>(r-1, c));
+#else // USE_CANNY_EDGES
+            float w_u = getEdgeWeightBoundary(Iy.at<float>(r,c), Dx.at<float>(r,c),
+                                              Iy.at<float>(r, c-1), Dx.at<float>(r, c-1));
+#endif // USE_CANNY_EDGES
             g->add_edge(cur_idx, other_idx, /*capacities*/ w_u, w_u);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
@@ -276,7 +290,9 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   std::cout << "Max left weight: " << max_val << std::endl;
   std::cout << "Min left weight: " << min_val << std::endl;
 #endif // VISUALIZE_GRAPH_WEIGHTS
+#ifdef USE_CANNY_EDGES
   cv::imshow("Canny", canny_edges);
+#endif
   return segs;
 }
 
