@@ -56,16 +56,22 @@ class NodeTable
   std::map<int, std::map<int, int> > table_;
 };
 
+ArmObjSegmentation::ArmObjSegmentation(float fg_tied_weight, float bg_tied_weight, float bg_enlarge_size,
+                                       float arm_enlarge_width, float arm_shrink_width, float sigma, float lambda) :
+    fg_tied_weight_(fg_tied_weight), bg_tied_weight_(bg_tied_weight), bg_enlarge_size_(bg_enlarge_size),
+    arm_enlarge_width_(arm_enlarge_width), arm_shrink_width_(arm_shrink_width),
+    sigma_d_(sigma), pairwise_lambda_(lambda)
+{
+  // Create derivative kernels for edge calculation
+  cv::getDerivKernels(dy_kernel_, dx_kernel_, 1, 0, CV_SCHARR, true, CV_32F);
+  // cv::flip(dy_kernel_, dy_kernel_, -1);
+  cv::transpose(dy_kernel_, dx_kernel_);
+}
+
+
 cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask,
                                     cv::Mat& table_mask)
 {
-
-  // TODO: Move to constructor
-  float fg_tied_weight_ = 10.0;
-  float bg_tied_weight_ = 15.0;
-  float bg_enlarge_size_ = 100;
-  float arm_enlarge_width_ = 15;
-  float arm_shrink_width_ = 15;
 
   cv::Mat color_img_lab_uchar(color_img.size(), color_img.type());
   cv::Mat color_img_lab(color_img.size(), CV_32FC3);
@@ -95,7 +101,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   cv::Mat enlarge_element(bg_enlarge_size_, bg_enlarge_size_, CV_8UC1, cv::Scalar(255));
   cv::dilate(inv_self_mask, much_larger_mask, enlarge_element);
   cv::Mat larger_mask, known_arm_mask;
-  cv::Mat arm_band = getArmBand(inv_self_mask, arm_enlarge_width_, arm_shrink_width_, false, larger_mask, known_arm_mask);
+  cv::Mat arm_band = getArmBand(inv_self_mask, arm_enlarge_width_, arm_shrink_width_, false,
+                                larger_mask, known_arm_mask);
 
   // Get known arm pixels
   cv::Mat known_arm_pixels;
@@ -314,10 +321,7 @@ cv::Mat ArmObjSegmentation::convertFlowToMat(GraphType *g, NodeTable& nt, int R,
 
 float ArmObjSegmentation::getEdgeWeightBoundary(float I0, float d0, float I1, float d1)
 {
-  // TODO: Move constants to constructor
-  float sigma_d = 1.0; // 0.5;
-  float pairwise_lambda_ = 5.0;
-  // float w = pairwise_lambda_*exp(-std::max(fabs(I0)+fabs(d0), fabs(I1)+fabs(d1))/sigma_d);
+  // float w = pairwise_lambda_*exp(-std::max(fabs(I0)+fabs(d0), fabs(I1)+fabs(d1))/sigma_d_);
   // float w = pairwise_lambda_*exp(-std::max(fabs(I0), fabs(I1)));
   float w = pairwise_lambda_*exp(-fabs(I0));
   return w;
@@ -325,31 +329,17 @@ float ArmObjSegmentation::getEdgeWeightBoundary(float I0, float d0, float I1, fl
 
 cv::Mat ArmObjSegmentation::getXImageDeriv(cv::Mat& input_img)
 {
-  // TODO: Move filters into constructor
-  // Speed up later
-  cv::Mat dy_kernel;
-  cv::Mat dx_kernel;
-  // Create derivative kernels for edge calculation
-  cv::getDerivKernels(dy_kernel, dx_kernel, 1, 0, CV_SCHARR, true, CV_32F);
-  // cv::flip(dy_kernel, dy_kernel, -1);
-  cv::transpose(dy_kernel, dx_kernel);
   cv::Mat Ix(input_img.size(), CV_32FC1);
-  // Get image derivatives
-  cv::filter2D(input_img, Ix, CV_32F, dx_kernel);
+  // Get image X derivative
+  cv::filter2D(input_img, Ix, CV_32F, dx_kernel_);
   return Ix;
 }
 
 cv::Mat ArmObjSegmentation::getYImageDeriv(cv::Mat& input_img)
 {
-  // TODO: Move filters into constructor
-  // Speed up later
-  cv::Mat dy_kernel;
-  cv::Mat dx_kernel;
-  // Create derivative kernels for edge calculation
-  cv::getDerivKernels(dy_kernel, dx_kernel, 1, 0, CV_SCHARR, true, CV_32F);
   cv::Mat Iy(input_img.size(), CV_32FC1);
-  // Get image derivatives
-  cv::filter2D(input_img, Iy, CV_32F, dy_kernel);
+  // Get image Y derivative
+  cv::filter2D(input_img, Iy, CV_32F, dy_kernel_);
   return Iy;
 }
 

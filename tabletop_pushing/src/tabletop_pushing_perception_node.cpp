@@ -430,7 +430,7 @@ class TabletopPushingPerceptionNode
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
     // NOTE: Just testing the new code
     cv::Mat table_mask = getTableMask(cloud, self_mask_down.size());
-    ArmObjSegmentation::segment(color_frame_down, depth_frame_down, self_mask_down, table_mask);
+    arm_obj_segmenter_.segment(color_frame_down, depth_frame_down, self_mask_down, table_mask);
 
 #ifdef PROFILE_CB_TIME
     double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
@@ -2320,6 +2320,7 @@ class TabletopPushingPerceptionNode
   double max_goal_x_;
   double min_goal_y_;
   double max_goal_y_;
+  ArmObjSegmentation arm_obj_segmenter_;
 };
 
 int main(int argc, char ** argv)
