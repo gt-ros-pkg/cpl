@@ -16,7 +16,8 @@ class ArmObjSegmentation
  public:
   ArmObjSegmentation(float fg_tied_weight = 10.0, float bg_tied_weight = 15.0, float bg_enlarge_size = 100,
                      float arm_enlarge_width = 15, float arm_shrink_width_ = 15,float sigma = 1.0, float lambda = 5.0);
-  cv::Mat segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask, cv::Mat& table_mask);
+  cv::Mat segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask, cv::Mat& table_mask,
+                  bool init_color_models=true);
   static cv::Mat getArmBand(cv::Mat& input_mask, int enlarge_width, int shrink_width, bool input_inverted=true);
   static cv::Mat getArmBand(cv::Mat& input_mask, int enlarge_width, int shrink_width, bool input_inverted,
                             cv::Mat& larger_mask,  cv::Mat& smaller_mask);
@@ -42,7 +43,9 @@ class ArmObjSegmentation
   float pairwise_lambda_;
   cv::Mat dy_kernel_;
   cv::Mat dx_kernel_;
-
+  GMM arm_color_model_;
+  GMM bg_color_model_;
+  bool no_color_models_;
 };
 };
 #endif // arm_obj_segmentation_h_DEFINED

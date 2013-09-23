@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <iostream>
 
-#define VISUALIZE_GRAPH_WEIGHTS 1
+// #define VISUALIZE_GRAPH_WEIGHTS 1
 // #define USE_CANNY_EDGES 1
 
 namespace tabletop_pushing
@@ -62,7 +62,7 @@ ArmObjSegmentation::ArmObjSegmentation(float fg_tied_weight, float bg_tied_weigh
                                        float arm_enlarge_width, float arm_shrink_width, float sigma, float lambda) :
     fg_tied_weight_(fg_tied_weight), bg_tied_weight_(bg_tied_weight), bg_enlarge_size_(bg_enlarge_size),
     arm_enlarge_width_(arm_enlarge_width), arm_shrink_width_(arm_shrink_width),
-    sigma_d_(sigma), pairwise_lambda_(lambda)
+    sigma_d_(sigma), pairwise_lambda_(lambda), no_color_models_(true)
 {
   // Create derivative kernels for edge calculation
   cv::getDerivKernels(dy_kernel_, dx_kernel_, 1, 0, CV_SCHARR, true, CV_32F);
@@ -72,7 +72,7 @@ ArmObjSegmentation::ArmObjSegmentation(float fg_tied_weight, float bg_tied_weigh
 
 
 cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask,
-                                    cv::Mat& table_mask)
+                                    cv::Mat& table_mask, bool init_color_models)
 {
 
   cv::Mat color_img_lab_uchar(color_img.size(), color_img.type());
@@ -153,10 +153,17 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     return empty;
   }
 
-  //std::cout << "\nBuilding arm color model\n";
-  GMM arm_color_model = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
-  // std::cout << "\nBuilding bg color model\n";
-  GMM bg_color_model = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
+  // arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
+  // bg_color_model_ = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
+
+  if (init_color_models || no_color_models_)
+  {
+    arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
+    arm_color_model_.dispparams();
+    bg_color_model_ = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
+    bg_color_model_.dispparams();
+    no_color_models_ = false;
+  }
 
 #ifdef USE_CANNY_EDGES
   cv::Mat canny_edges_8bit;
@@ -169,10 +176,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 #endif
   cv::Mat Dx = getXImageDeriv(depth_img);
   cv::Mat Dy = getYImageDeriv(depth_img);
-
   tabletop_pushing::GraphType *g;
   g = new GraphType(num_nodes, num_edges);
-
   // Populate unary and binary edge weights
   for (int r = 0; r < much_larger_mask.rows; ++r)
   {
@@ -195,8 +200,8 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         }
         else
         {
-          fg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), arm_color_model);
-          bg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model);
+          fg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), arm_color_model_);
+          bg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model_);
         }
         g->add_node();
         g->add_tweights(cur_idx, fg_weight, bg_weight);
@@ -249,7 +254,6 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   // Perform cut
   g->maxflow(false);
-
   // Convert output into image
   cv::Mat segs = convertFlowToMat(g, nt, color_img.rows, color_img.cols);
   // Cleanup
@@ -282,7 +286,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   cv::minMaxLoc(wu_weights, &min_val, &max_val);
   cv::imshow("up weights", wu_weights/max_val);
-  std::cout << "\nMax up weight: " << max_val << std::endl;
+  std::cout << "Max up weight: " << max_val << std::endl;
   std::cout << "Min up weight: " << min_val << std::endl;
 
   cv::minMaxLoc(wl_weights, &min_val, &max_val);
@@ -424,7 +428,6 @@ GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc
 
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
-  // return std::log(color_model.probability(sample));
   return color_model.grabCutLikelihood(sample);
 }
 

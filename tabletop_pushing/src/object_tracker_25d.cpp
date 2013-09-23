@@ -51,7 +51,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   XYZPointCloud table_cloud;
   cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size());
   ROS_INFO_STREAM("Segmenting arm.");
-  cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask);
+  cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask, init);
   pcl16::PointIndices obj_pts;
   ROS_INFO_STREAM("Removing table and arm points.");
   // Remove arm and table points from cloud
@@ -74,7 +74,6 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
       obj_pts.indices.push_back(i);
     }
   }
-  ROS_INFO_STREAM("Found " << obj_pts.indices.size() << " object points.");
   if (obj_pts.indices.size() < 1)
   {
     ROS_WARN_STREAM("No objects found in findTargetObjectGC");
@@ -105,7 +104,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     no_objects = true;
     return empty;
   }
-  ROS_INFO_STREAM("Matching object");
+  ROS_INFO_STREAM("Matching object\n");
   no_objects = false;
   return matchToTargetObject(objs, in_frame.size(), init);
 }
@@ -492,7 +491,7 @@ void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_e
 }
 
 void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                                  XYZPointCloud& cloud, std::string proxy_name, 
+                                  XYZPointCloud& cloud, std::string proxy_name,
                                   tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
 {
   paused_ = false;
