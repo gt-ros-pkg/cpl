@@ -50,6 +50,11 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   ROS_INFO_STREAM("Getting table cloud and mask.");
   XYZPointCloud table_cloud;
   cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size());
+  cv::Mat close_element(3, 3, CV_8UC1, cv::Scalar(255));
+  cv::Mat filled_table_mask;
+  cv::dilate(table_mask, filled_table_mask, close_element);
+  cv::erode(filled_table_mask, filled_table_mask, close_element);
+
   ROS_INFO_STREAM("Segmenting arm.");
   cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask, init);
   pcl16::PointIndices obj_pts;
@@ -67,7 +72,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     //                 img_pt.x << ", " << img_pt.y << ")");
     const bool is_arm = segs.at<uchar>(img_pt.y, img_pt.x) != 0;
     // ROS_INFO_STREAM("is_arm " << is_arm);
-    const bool is_table = table_mask.at<uchar>(img_pt.y, img_pt.x) != 0;
+    const bool is_table = filled_table_mask.at<uchar>(img_pt.y, img_pt.x) != 0;
     // ROS_INFO_STREAM("is_table " << is_table);
     if ( !is_arm && !is_table)
     {
@@ -104,6 +109,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     no_objects = true;
     return empty;
   }
+  cv::imshow("Table mask filled", filled_table_mask);
   ROS_INFO_STREAM("Matching object\n");
   no_objects = false;
   return matchToTargetObject(objs, in_frame.size(), init);
@@ -158,17 +164,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
         chosen_idx = i;
       }
     }
-    // // Assume we care about the highest currently
-    // float max_height = -1000.0;
-    // for (unsigned int i = 0; i < objs.size(); ++i)
-    // {
-    //   if (objs[i].centroid[2] > max_height)
-    //   {
-    //     max_height = objs[i].centroid[2];
-    //     chosen_idx = i;
-    //   }
-    // }
-    // TODO: Extract color histogram
+    // TODO: Extract color GMM model
   }
   else // Find closest object to last time
   {
@@ -181,7 +177,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
         min_dist = centroid_dist;
         chosen_idx = i;
       }
-      // TODO: Match color histogram
+      // TODO: Match color GMM model
     }
   }
 #ifdef PROFILE_FIND_TARGET_TIME

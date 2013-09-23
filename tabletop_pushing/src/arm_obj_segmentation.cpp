@@ -153,9 +153,6 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     return empty;
   }
 
-  // arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
-  // bg_color_model_ = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
-
   if (init_color_models || no_color_models_)
   {
     arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
@@ -266,11 +263,11 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   color_img.copyTo(segment_arm, segs);
   color_img.copyTo(segment_bg, (segs == 0));
   //cv::imshow("segments", segs);
-  cv::imshow("Graph input", graph_input);
+  // cv::imshow("Graph input", graph_input);
   cv::imshow("Arm segment", segment_arm);
-  cv::imshow("Background segment", segment_bg);
+  // cv::imshow("Background segment", segment_bg);
   cv::imshow("Table mask", table_mask);
-  cv::imshow("Known bg mask", known_bg_mask);
+  // cv::imshow("Known bg mask", known_bg_mask);
 
 #ifdef VISUALIZE_GRAPH_WEIGHTS
   double min_val, max_val;
