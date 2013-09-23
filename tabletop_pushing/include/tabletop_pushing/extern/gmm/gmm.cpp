@@ -297,9 +297,9 @@ void GMM::kmeansInit(const std::vector<GMMFloatPnt>& pts, const float sigma) {
     std::cout << std::endl;
     */
   }
-  std::cout << "Number of rows: " << rgbmat.rows << std::endl;
-  std::cout << "Number of cols: " << rgbmat.cols << std::endl;
-  std::cout << "nk: " << nk << std::endl;
+  // std::cout << "Number of rows: " << rgbmat.rows << std::endl;
+  // std::cout << "Number of cols: " << rgbmat.cols << std::endl;
+  // std::cout << "nk: " << nk << std::endl;
 
   // if the number of clusters needed is more than the number of points
   if (rgbmat.rows < nk || nk == 0) {

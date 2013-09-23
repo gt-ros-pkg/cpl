@@ -108,11 +108,9 @@ class Gaussian {
     SetMean(temp);
   }
 
-
   void SetMean(const GMMFloatPnt& mean_val) {
     mv = mean_val;
   }
-
 
   void SetSigma(const GMMSigmaVal& gmm_sigma_val) {
     // set all the values
@@ -197,15 +195,40 @@ class GMM {
 
 
   GMM(const double em_threshold=5.0e-2, const int max_iterations=50,
-      const int min_iterations=5) {
-    nk = 0;
-    w = NULL;
-    kernel = NULL;
-    em_thresh = em_threshold;
-    max_iter = max_iterations;
-    min_iter = min_iterations;
+      const int min_iterations=5) : nk(0), w(NULL), kernel(NULL), em_thresh(em_threshold),
+    max_iter(max_iterations), min_iter(min_iterations)
+  {
   }
 
+  GMM(const GMM& x) : nk(x.nk), em_thresh(x.em_thresh), max_iter(x.max_iter), min_iter(x.min_iter)
+  {
+    alloc(nk);
+    for (int i = 0; i < nk; ++i)
+    {
+      kernel[i] = x.kernel[i];
+      w[i] = x.w[i];
+    }
+  }
+
+  GMM& operator=(const GMM& x)
+  {
+    if (this != &x)
+    {
+      free();
+      std::cout << "Copying assignment of x" << std::endl;
+      em_thresh = x.em_thresh;
+      max_iter = x.max_iter;
+      min_iter = x.min_iter;
+      alloc(x.nk);
+      std::cout << "x.nk = " << x.nk << "\tnk = " << nk << std::endl;
+      for (int i = 0; i < nk; ++i)
+      {
+        kernel[i] = x.kernel[i];
+        w[i] = x.w[i];
+      }
+    }
+    return *this;
+  }
 
   ~GMM() {
     // dtor
