@@ -209,6 +209,7 @@ class TabletopPushingPerceptionNode
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
         new PointCloudSegmentation(tf_));
+    arm_obj_segmenter_ = shared_ptr<ArmObjSegmentation>(new ArmObjSegmentation());
     // Get parameters from the server
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
     n_private_.param("use_displays", use_displays_, false);
@@ -298,8 +299,9 @@ class TabletopPushingPerceptionNode
 
     // Initialize classes requiring parameters
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
-        new ObjectTracker25D(pcl_segmenter_, num_downsamples_, use_displays_, write_to_disk_,
-                             base_output_path_, camera_frame_, use_cv_ellipse, use_mps_segmentation_));
+        new ObjectTracker25D(pcl_segmenter_, arm_obj_segmenter_, num_downsamples_, use_displays_,
+                             write_to_disk_, base_output_path_, camera_frame_, use_cv_ellipse,
+                             use_mps_segmentation_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -428,9 +430,6 @@ class TabletopPushingPerceptionNode
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
     cv::Mat arm_mask_crop;
     color_frame_down.copyTo(arm_mask_crop, self_mask_down);
-    // NOTE: Just testing the new code
-    cv::Mat table_mask = getTableMask(cloud, self_mask_down.size());
-    arm_obj_segmenter_.segment(color_frame_down, depth_frame_down, self_mask_down, table_mask);
 
 #ifdef PROFILE_CB_TIME
     double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
@@ -1983,17 +1982,6 @@ class TabletopPushingPerceptionNode
     return true;
   }
 
-
-  cv::Mat getTableMask(XYZPointCloud& cloud, cv::Size mask_size)
-  {
-    XYZPointCloud obj_cloud, table_cloud;
-    cv::Mat table_mask(mask_size, CV_8UC1, cv::Scalar(0));
-    Eigen::Vector4f table_centroid;
-    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid);
-    pcl_segmenter_->projectPointCloudIntoImage(table_cloud, table_mask, camera_frame_, 255);
-    return table_mask;
-  }
-
   /**
    * Calculate the location of the dominant plane (table) in a point cloud
    *
@@ -2320,7 +2308,7 @@ class TabletopPushingPerceptionNode
   double max_goal_x_;
   double min_goal_y_;
   double max_goal_y_;
-  ArmObjSegmentation arm_obj_segmenter_;
+  shared_ptr<ArmObjSegmentation> arm_obj_segmenter_;
 };
 
 int main(int argc, char ** argv)

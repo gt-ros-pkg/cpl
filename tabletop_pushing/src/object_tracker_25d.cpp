@@ -29,16 +29,68 @@ typedef tabletop_pushing::VisFeedbackPushTrackingAction PushTrackerAction;
 
 typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 
-ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples,
+ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
+                                   shared_ptr<ArmObjSegmentation> arm_segmenter, int num_downsamples,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation) :
-    pcl_segmenter_(segmenter), num_downsamples_(num_downsamples), initialized_(false),
+    pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
+    num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
     base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation)
 {
   upscale_ = std::pow(2,num_downsamples_);
+}
+
+ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
+                                                 cv::Mat self_mask, bool& no_objects, bool init, bool find_tool)
+{
+  // Segment arm from background using graphcut
+  XYZPointCloud table_cloud;
+  cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size());
+  cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask);
+  pcl16::PointIndices obj_pts;
+
+  // Remove arm and table points from cloud
+  for(int i = 0; i < cloud.size(); ++i)
+  {
+    cv::Point img_pt = pcl_segmenter_->projectPointIntoImage(cloud.at(i), cloud.header.frame_id, camera_frame_);
+    if (segs.at<uchar>(img_pt.y, img_pt.x) == 0 && table_mask.at<uchar>(img_pt.y, img_pt.x) == 0)
+    {
+      obj_pts.indices.push_back(i);
+    }
+  }
+  if (obj_pts.indices.size() < 1)
+  {
+    ROS_WARN_STREAM("No objects found in findTargetObjectGC");
+    ProtoObject empty;
+    no_objects = true;
+    return empty;
+  }
+  no_objects = false;
+  XYZPointCloud objs_cloud;
+  pcl16::copyPointCloud(cloud, obj_pts, objs_cloud);
+
+  // Cluster objects from remaining point cloud
+  ProtoObjects objs;
+  XYZPointCloud objects_cloud_down;
+  // TODO: Add switch to choose between downsampling object cloud and not
+  pcl_segmenter_->downsampleCloud(objs_cloud, objects_cloud_down);
+  // Find independent regions
+  if (objects_cloud_down.size() > 0)
+  {
+    pcl_segmenter_->clusterProtoObjects(objects_cloud_down, objs);
+  }
+  else
+  {
+    ROS_WARN_STREAM("No objects found in findTargetObjectGC");
+    ProtoObject empty;
+    no_objects = true;
+    return empty;
+  }
+  no_objects = false;
+  return matchToTargetObject(objs, in_frame.size(), init);
 }
 
 ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
@@ -68,7 +120,12 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
 #endif
     return empty;
   }
+  no_objects = false;
+  return matchToTargetObject(objs, in_frame.size(), init);
+}
 
+ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size in_frame_size, bool init)
+{
   int chosen_idx = 0;
   if (objs.size() == 1)
   {
@@ -120,10 +177,9 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   if (use_displays_)
   {
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, in_frame.size(), cloud.header.frame_id);
+        objs, in_frame_size, objs[0].cloud.header.frame_id);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
   }
-  no_objects = false;
 #ifdef PROFILE_FIND_TARGET_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
@@ -782,3 +838,14 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
     cv::imwrite(out_name.str(), centroid_frame);
   }
 }
+
+cv::Mat ObjectTracker25D::getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size)
+{
+  XYZPointCloud obj_cloud;
+  cv::Mat table_mask(mask_size, CV_8UC1, cv::Scalar(0));
+  Eigen::Vector4f table_centroid;
+  pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid);
+  pcl_segmenter_->projectPointCloudIntoImage(table_cloud, table_mask, camera_frame_, 255);
+  return table_mask;
+}
+

@@ -52,6 +52,7 @@
 // tabletop_pushing
 #include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
 #include <tabletop_pushing/point_cloud_segmentation.h>
+#include <tabletop_pushing/arm_obj_segmentation.h>
 
 // STL
 #include <string>
@@ -61,13 +62,18 @@ namespace tabletop_pushing
 class ObjectTracker25D
 {
  public:
-  ObjectTracker25D(boost::shared_ptr<PointCloudSegmentation> segmenter, int num_downsamples = 0,
+  ObjectTracker25D(boost::shared_ptr<PointCloudSegmentation> segmenter,
+                   boost::shared_ptr<ArmObjSegmentation> arm_segmenter,
+                   int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
                    bool use_cv_ellipse = false, bool use_mps_segmentation=false);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false, bool find_tool=false);
+
+  ProtoObject findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
+                                 cv::Mat self_mask, bool& no_objects, bool init=false, bool find_tool=false);
 
   void computeState(ProtoObject& cur_obj, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                     std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
@@ -166,7 +172,10 @@ class ObjectTracker25D
                       bool other_color=false);
 
  protected:
+  ProtoObject matchToTargetObject(ProtoObjects& objects, cv::Size in_frame_size, bool init=false);
+  cv::Mat getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size);
   boost::shared_ptr<PointCloudSegmentation> pcl_segmenter_;
+  boost::shared_ptr<ArmObjSegmentation> arm_segmenter_;
   int num_downsamples_;
   bool initialized_;
   int frame_count_;
