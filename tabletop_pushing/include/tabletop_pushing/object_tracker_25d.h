@@ -70,15 +70,14 @@ class ObjectTracker25D
                    bool use_cv_ellipse = false, bool use_mps_segmentation=false);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                               bool& no_objects, bool init=false, bool find_tool=false);
+                               bool& no_objects, bool init=false);
 
   ProtoObject findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
-                                 cv::Mat self_mask, bool& no_objects, bool init=false, bool find_tool=false);
+                                 cv::Mat self_mask, bool& no_objects, bool init=false);
 
   void computeState(ProtoObject& cur_obj, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                    std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
-                    geometry_msgs::PoseStamped& arm_pose, tabletop_pushing::VisFeedbackPushTrackingFeedback& state,
-                    bool init_state=false);
+                    std::string proxy_name, cv::Mat& in_frame,
+                    tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state=false);
 
   void fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
@@ -88,14 +87,14 @@ class ObjectTracker25D
 
   void fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  void initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                  std::string proxy_name, geometry_msgs::PoseStamped& arm_pose, std::string tool_proxy_name,
+  void initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
+                  pcl16::PointCloud<pcl16::PointXYZ>& cloud, std::string proxy_name,
                   tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap=false);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
 
-  void updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                    std::string proxy_name, geometry_msgs::PoseStamped& arm_pose, std::string tool_proxy_name,
+  void updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
+                    pcl16::PointCloud<pcl16::PointXYZ>& cloud, std::string proxy_name,
                     tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
 
   void pausedUpdate(cv::Mat in_frame);

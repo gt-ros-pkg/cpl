@@ -44,23 +44,37 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
 }
 
 ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
-                                                 cv::Mat self_mask, bool& no_objects, bool init, bool find_tool)
+                                                 cv::Mat self_mask, bool& no_objects, bool init)
 {
   // Segment arm from background using graphcut
+  ROS_INFO_STREAM("Getting table cloud and mask.");
   XYZPointCloud table_cloud;
   cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size());
+  ROS_INFO_STREAM("Segmenting arm.");
   cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask);
   pcl16::PointIndices obj_pts;
-
+  ROS_INFO_STREAM("Removing table and arm points.");
   // Remove arm and table points from cloud
   for(int i = 0; i < cloud.size(); ++i)
   {
+    if (isnan(cloud.at(i).x) || isnan(cloud.at(i).y) || isnan(cloud.at(i).z))
+    {
+      continue;
+    }
+    // ROS_INFO_STREAM("Projecting point.");
     cv::Point img_pt = pcl_segmenter_->projectPointIntoImage(cloud.at(i), cloud.header.frame_id, camera_frame_);
-    if (segs.at<uchar>(img_pt.y, img_pt.x) == 0 && table_mask.at<uchar>(img_pt.y, img_pt.x) == 0)
+    // ROS_INFO_STREAM("(" << cloud.at(i).x << ", " << cloud.at(i).y << ", " << cloud.at(i).z << ") -> (" <<
+    //                 img_pt.x << ", " << img_pt.y << ")");
+    const bool is_arm = segs.at<uchar>(img_pt.y, img_pt.x) != 0;
+    // ROS_INFO_STREAM("is_arm " << is_arm);
+    const bool is_table = table_mask.at<uchar>(img_pt.y, img_pt.x) != 0;
+    // ROS_INFO_STREAM("is_table " << is_table);
+    if ( !is_arm && !is_table)
     {
       obj_pts.indices.push_back(i);
     }
   }
+  ROS_INFO_STREAM("Found " << obj_pts.indices.size() << " object points.");
   if (obj_pts.indices.size() < 1)
   {
     ROS_WARN_STREAM("No objects found in findTargetObjectGC");
@@ -68,7 +82,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     no_objects = true;
     return empty;
   }
-  no_objects = false;
+  ROS_INFO_STREAM("Copying object points");
   XYZPointCloud objs_cloud;
   pcl16::copyPointCloud(cloud, obj_pts, objs_cloud);
 
@@ -76,10 +90,12 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   ProtoObjects objs;
   XYZPointCloud objects_cloud_down;
   // TODO: Add switch to choose between downsampling object cloud and not
+  ROS_INFO_STREAM("Downsampling object points");
   pcl_segmenter_->downsampleCloud(objs_cloud, objects_cloud_down);
   // Find independent regions
   if (objects_cloud_down.size() > 0)
   {
+    ROS_INFO_STREAM("Clustering object points");
     pcl_segmenter_->clusterProtoObjects(objects_cloud_down, objs);
   }
   else
@@ -89,12 +105,13 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     no_objects = true;
     return empty;
   }
+  ROS_INFO_STREAM("Matching object");
   no_objects = false;
   return matchToTargetObject(objs, in_frame.size(), init);
 }
 
 ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
-                                               bool& no_objects, bool init, bool find_tool)
+                                               bool& no_objects, bool init)
 {
 #ifdef PROFILE_FIND_TARGET_TIME
   long long find_target_start_time = Timer::nanoTime();
@@ -194,9 +211,8 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
   return objs[chosen_idx];
 }
 
-void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
-                                    std::string proxy_name, cv::Mat& in_frame, std::string tool_proxy_name,
-                                    PoseStamped& arm_pose, PushTrackerState& state, bool init_state)
+void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, std::string proxy_name,
+                                    cv::Mat& in_frame, PushTrackerState& state, bool init_state)
 {
   // TODO: Have each proxy create an image, and send that image to the trackerDisplay
   // function to deal with saving and display.
@@ -348,32 +364,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud,
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
 
-  // TODO: Put in more tool proxy stuff here
-  // if (tool_proxy_name == HACK_TOOL_PROXY)
-  // {
-  //   // HACK: Need to replace this with the appropriately computed tool_proxy
-  //   PoseStamped tool_pose;
-  //   float tool_length = 0.16;
-  //   tf::Quaternion q;
-  //   double wrist_roll, wrist_pitch, wrist_yaw;
-  //   // ROS_INFO_STREAM("arm quaternion: " << arm_pose.pose.orientation);
-  //   tf::quaternionMsgToTF(arm_pose.pose.orientation, q);
-  //   tf::Matrix3x3(q).getRPY(wrist_roll, wrist_pitch, wrist_yaw);
-  //   // ROS_INFO_STREAM("Wrist yaw: " << wrist_yaw);
-  //   // TODO: Put tool proxy in "/?_gripper_tool_frame"
-  //   tool_pose.pose.position.x = arm_pose.pose.position.x + cos(wrist_yaw)*tool_length;
-  //   tool_pose.pose.position.y = arm_pose.pose.position.y + sin(wrist_yaw)*tool_length;
-  //   tool_pose.header.frame_id = arm_pose.header.frame_id;
-  //   state.tool_x = tool_pose;
-  // }
-  // else if(tool_proxy_name == EE_TOOL_PROXY)
-  // {
-  // }
-  // else
-  // {
-  //   ROS_WARN_STREAM("Unknown tool perceptual proxy: " << tool_proxy_name << " requested");
-  // }
-
   if (use_displays_ || write_to_disk_)
   {
     if (proxy_name == ELLIPSE_PROXY)
@@ -501,8 +491,8 @@ void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_e
   obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
 }
 
-void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                                  std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
+void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
+                                  XYZPointCloud& cloud, std::string proxy_name, 
                                   tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
 {
   paused_ = false;
@@ -513,7 +503,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   frame_count_ = 0;
   record_count_ = 0;
   frame_set_count_++;
-  ProtoObject cur_obj = findTargetObject(in_frame, cloud,  no_objects, true);
+  ProtoObject cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects, true);
   initialized_ = true;
   if (no_objects)
   {
@@ -525,7 +515,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   }
   else
   {
-    computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose, state, true);
+    computeState(cur_obj, cloud, proxy_name, in_frame, state, true);
     state.header.seq = 0;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -555,9 +545,8 @@ double ObjectTracker25D::getThetaFromEllipse(cv::RotatedRect& obj_ellipse)
   return subPIAngle(DEG2RAD(obj_ellipse.angle)+0.5*M_PI);
 }
 
-void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
-                                    std::string proxy_name, PoseStamped& arm_pose, std::string tool_proxy_name,
-                                    PushTrackerState& state)
+void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
+                                    XYZPointCloud& cloud, std::string proxy_name, PushTrackerState& state)
 {
 #ifdef PROFILE_TRACKING_TIME
   long long update_start_time = Timer::nanoTime();
@@ -567,7 +556,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
 #ifdef PROFILE_TRACKING_TIME
     long long init_start_time = Timer::nanoTime();
 #endif
-    initTracks(in_frame, self_mask, cloud, proxy_name, arm_pose, tool_proxy_name, state);
+    initTracks(in_frame, depth_frame, self_mask, cloud, proxy_name, state);
 #ifdef PROFILE_TRACKING_TIME
     double init_elapsed_time = (((double)(Timer::nanoTime() - init_start_time)) / Timer::NANOSECONDS_PER_SECOND);
     ROS_INFO_STREAM("init_elapsed_time " << init_elapsed_time);
@@ -578,7 +567,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
 #ifdef PROFILE_TRACKING_TIME
   long long find_target_start_time = Timer::nanoTime();
 #endif
-  ProtoObject cur_obj = findTargetObject(in_frame, cloud, no_objects);
+  ProtoObject cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects);
 #ifdef PROFILE_TRACKING_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long update_model_start_time = Timer::nanoTime();
@@ -606,7 +595,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPo
   else
   {
     obj_saved_ = true;
-    computeState(cur_obj, cloud, proxy_name, in_frame, tool_proxy_name, arm_pose, state);
+    computeState(cur_obj, cloud, proxy_name, in_frame, state);
     state.header.seq = frame_count_;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;

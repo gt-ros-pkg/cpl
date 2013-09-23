@@ -480,8 +480,8 @@ class TabletopPushingPerceptionNode
 #endif
 
       PushTrackerState tracker_state;
-      obj_tracker_->updateTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_,
-                                 arm_pose, tool_proxy_name_, tracker_state);
+      obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
+                                 proxy_name_, tracker_state);
 #ifdef PROFILE_CB_TIME
       update_tracks_elapsed_time = (((double)(Timer::nanoTime() - update_tracks_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
@@ -1677,6 +1677,7 @@ class TabletopPushingPerceptionNode
   void getObjectPose(LearnPush::Response& res)
   {
     bool no_objects = false;
+    // TODO: Switch to findTargetObjectGC?
     ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_,
                                                          cur_self_filtered_cloud_,
                                                          no_objects);
@@ -1713,17 +1714,8 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    PoseStamped arm_pose;
-    if (pushing_arm_ == "l")
-    {
-      arm_pose = l_arm_pose_;
-    }
-    else
-    {
-      arm_pose = r_arm_pose_;
-    }
-    obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                             proxy_name_, arm_pose, tool_proxy_name_, state, start_swap);
+    obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
+                             proxy_name_, state, start_swap);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
