@@ -1139,7 +1139,7 @@ class TabletopExecutive:
         if _USE_FIXED_GOAL or self.start_loc_use_fixed_goal:
             goal_pose = Pose2D()
             goal_pose.x = 0.65
-            goal_pose.y = 0.3
+            goal_pose.y = -0.3
             goal_pose.theta = 0
             if self.start_loc_use_fixed_goal:
                 goal_pose.y += self.start_loc_goal_y_delta

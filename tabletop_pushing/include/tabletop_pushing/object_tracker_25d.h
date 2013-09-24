@@ -171,6 +171,7 @@ class ObjectTracker25D
                       bool other_color=false);
 
  protected:
+  void updateHeading(tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state);
   ProtoObject matchToTargetObject(ProtoObjects& objects, cv::Size in_frame_size, bool init=false);
   cv::Mat getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size,
                        XYZPointCloud& obj_cloud);

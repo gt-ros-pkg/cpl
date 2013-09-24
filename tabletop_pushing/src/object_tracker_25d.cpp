@@ -107,7 +107,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     no_objects = true;
     return empty;
   }
-  ROS_INFO_STREAM("Matching object\n");
+  ROS_INFO_STREAM("Matching object");
   no_objects = false;
   return matchToTargetObject(objs, in_frame.size(), init);
 }
@@ -148,9 +148,11 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
   int chosen_idx = 0;
   if (objs.size() == 1)
   {
+    ROS_INFO_STREAM("Picking the only object");
   }
   else if (init || frame_count_ == 0)   // TODO: Change this to nearest neighbor
   {
+    ROS_INFO_STREAM("Picking the biggest object at initialization");
     // NOTE: Assume we care about the biggest currently
     unsigned int max_size = 0;
     for (unsigned int i = 0; i < objs.size(); ++i)
@@ -165,6 +167,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
   }
   else // Find closest object to last time
   {
+    ROS_INFO_STREAM("Finding the closest object to previous");
     double min_dist = 1000.0;
     for (unsigned int i = 0; i < objs.size(); ++i)
     {
@@ -176,6 +179,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
       }
       // TODO: Match color GMM model
     }
+    ROS_INFO_STREAM("Chose object " << chosen_idx << " at distance " << min_dist);
   }
 #ifdef PROFILE_FIND_TARGET_TIME
   double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
@@ -188,7 +192,9 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, in_frame_size, objs[0].cloud.header.frame_id);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
+    ROS_INFO_STREAM("Updating display");
   }
+  ROS_INFO_STREAM("Returning matched object\n");
 #ifdef PROFILE_FIND_TARGET_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
@@ -201,6 +207,28 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
 #endif
 
   return objs[chosen_idx];
+}
+
+void ObjectTracker25D::updateHeading(PushTrackerState& state, bool init_state)
+{
+  if(swap_orientation_)
+  {
+    state.x.theta += (state.x.theta > 0.0) ? - M_PI : M_PI;
+  }
+  // If not initializing, check if we need to swap our addition because of heading change
+  if (!init_state && (state.x.theta > 0) != (previous_state_.x.theta > 0))
+  {
+    // TODO: test if swapping makes a shorter distance than changing
+    float augmented_theta = state.x.theta + (state.x.theta > 0.0) ? - M_PI : M_PI;
+    float augmented_diff = fabs(subPIAngle(augmented_theta - previous_state_.x.theta));
+    float current_diff = fabs(subPIAngle(state.x.theta - previous_state_.x.theta));
+    if (augmented_diff < current_diff)
+    {
+      swap_orientation_ = !swap_orientation_;
+      // We either need to swap or need to undo the swap
+      state.x.theta = augmented_theta;
+    }
+  }
 }
 
 void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, std::string proxy_name,
@@ -219,29 +247,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
     state.z = cur_obj.centroid[2];
-
-    if(swap_orientation_)
-    {
-      if(state.x.theta > 0.0)
-        state.x.theta += - M_PI;
-      else
-        state.x.theta += M_PI;
-    }
-    if (!init_state && (state.x.theta > 0) != (previous_state_.x.theta > 0))
-    {
-      if ((fabs(state.x.theta) > M_PI*0.25 &&
-           fabs(state.x.theta) < (M_PI*0.75 )) ||
-          (fabs(previous_state_.x.theta) > 1.0 &&
-           fabs(previous_state_.x.theta) < (M_PI - 0.5)))
-      {
-        swap_orientation_ = !swap_orientation_;
-        // We either need to swap or need to undo the swap
-        if(state.x.theta > 0.0)
-          state.x.theta += -M_PI;
-        else
-          state.x.theta += M_PI;
-      }
-    }
+    updateHeading(state, init_state);
   }
   else if (proxy_name == BOUNDING_BOX_XY_PROXY)
   {
@@ -260,34 +266,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
     }
     previous_obj_ellipse_ = obj_ellipse;
-
     state.x.x = obj_ellipse.center.x;
     state.x.y = obj_ellipse.center.y;
     state.z = (min_z+max_z)*0.5;
-
     state.x.theta = getThetaFromEllipse(obj_ellipse);
-    if(swap_orientation_)
-    {
-      if(state.x.theta > 0.0)
-        state.x.theta += - M_PI;
-      else
-        state.x.theta += M_PI;
-    }
-    if ((state.x.theta > 0) != (previous_state_.x.theta > 0))
-    {
-      if ((fabs(state.x.theta) > M_PI*0.25 &&
-           fabs(state.x.theta) < (M_PI*0.75 )) ||
-          (fabs(previous_state_.x.theta) > 1.0 &&
-           fabs(previous_state_.x.theta) < (M_PI - 0.5)))
-      {
-        swap_orientation_ = !swap_orientation_;
-        // We either need to swap or need to undo the swap
-        if(state.x.theta > 0.0)
-          state.x.theta += -M_PI;
-        else
-          state.x.theta += M_PI;
-      }
-    }
+    updateHeading(state, init_state);
     // ROS_INFO_STREAM("box (x,y,z): " << state.x.x << ", " << state.x.y << ", " <<
     //                 state.z << ")");
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
@@ -652,10 +635,7 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
   double theta = getThetaFromEllipse(obj_ellipse);
   if(swap_orientation_)
   {
-    if(theta > 0.0)
-      theta += - M_PI;
-    else
-      theta += M_PI;
+    theta += (theta > 0.0) ? - M_PI : M_PI;
   }
   const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
   const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
@@ -710,10 +690,7 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   double theta = getThetaFromEllipse(obj_ellipse);
   if(swap_orientation_)
   {
-    if(theta > 0.0)
-      theta += - M_PI;
-    else
-      theta += M_PI;
+    theta += (theta > 0.0) ? - M_PI : M_PI;
   }
   const float x_min_rad = (std::cos(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
   const float y_min_rad = (std::sin(theta+0.5*M_PI)* obj_ellipse.size.width*0.5);
