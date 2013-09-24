@@ -172,7 +172,8 @@ class ObjectTracker25D
 
  protected:
   ProtoObject matchToTargetObject(ProtoObjects& objects, cv::Size in_frame_size, bool init=false);
-  cv::Mat getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size);
+  cv::Mat getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size,
+                       XYZPointCloud& obj_cloud);
   boost::shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   boost::shared_ptr<ArmObjSegmentation> arm_segmenter_;
   int num_downsamples_;

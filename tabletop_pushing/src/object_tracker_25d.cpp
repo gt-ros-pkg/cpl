@@ -48,31 +48,29 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
 {
   // Segment arm from background using graphcut
   ROS_INFO_STREAM("Getting table cloud and mask.");
-  XYZPointCloud table_cloud;
-  cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size());
+  XYZPointCloud table_cloud, non_table_cloud;
+  cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size(), non_table_cloud);
   cv::Mat close_element(3, 3, CV_8UC1, cv::Scalar(255));
-  cv::Mat filled_table_mask;
-  cv::dilate(table_mask, filled_table_mask, close_element);
-  cv::erode(filled_table_mask, filled_table_mask, close_element);
 
   ROS_INFO_STREAM("Segmenting arm.");
   cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask, init);
   pcl16::PointIndices obj_pts;
   ROS_INFO_STREAM("Removing table and arm points.");
   // Remove arm and table points from cloud
-  for(int i = 0; i < cloud.size(); ++i)
+  for(int i = 0; i < non_table_cloud.size(); ++i)
   {
-    if (isnan(cloud.at(i).x) || isnan(cloud.at(i).y) || isnan(cloud.at(i).z))
+    if (isnan(non_table_cloud.at(i).x) || isnan(non_table_cloud.at(i).y) || isnan(non_table_cloud.at(i).z))
     {
       continue;
     }
     // ROS_INFO_STREAM("Projecting point.");
-    cv::Point img_pt = pcl_segmenter_->projectPointIntoImage(cloud.at(i), cloud.header.frame_id, camera_frame_);
+    cv::Point img_pt = pcl_segmenter_->projectPointIntoImage(non_table_cloud.at(i),
+                                                             non_table_cloud.header.frame_id, camera_frame_);
     // ROS_INFO_STREAM("(" << cloud.at(i).x << ", " << cloud.at(i).y << ", " << cloud.at(i).z << ") -> (" <<
     //                 img_pt.x << ", " << img_pt.y << ")");
     const bool is_arm = segs.at<uchar>(img_pt.y, img_pt.x) != 0;
     // ROS_INFO_STREAM("is_arm " << is_arm);
-    const bool is_table = filled_table_mask.at<uchar>(img_pt.y, img_pt.x) != 0;
+    const bool is_table = table_mask.at<uchar>(img_pt.y, img_pt.x) != 0;
     // ROS_INFO_STREAM("is_table " << is_table);
     if ( !is_arm && !is_table)
     {
@@ -88,7 +86,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   }
   ROS_INFO_STREAM("Copying object points");
   XYZPointCloud objs_cloud;
-  pcl16::copyPointCloud(cloud, obj_pts, objs_cloud);
+  pcl16::copyPointCloud(non_table_cloud, obj_pts, objs_cloud);
 
   // Cluster objects from remaining point cloud
   ProtoObjects objs;
@@ -109,7 +107,6 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
     no_objects = true;
     return empty;
   }
-  cv::imshow("Table mask filled", filled_table_mask);
   ROS_INFO_STREAM("Matching object\n");
   no_objects = false;
   return matchToTargetObject(objs, in_frame.size(), init);
@@ -823,9 +820,9 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   }
 }
 
-cv::Mat ObjectTracker25D::getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size)
+cv::Mat ObjectTracker25D::getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size,
+                                       XYZPointCloud& obj_cloud)
 {
-  XYZPointCloud obj_cloud;
   cv::Mat table_mask(mask_size, CV_8UC1, cv::Scalar(0));
   Eigen::Vector4f table_centroid;
   pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid);
