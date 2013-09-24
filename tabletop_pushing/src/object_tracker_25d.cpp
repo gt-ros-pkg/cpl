@@ -118,7 +118,6 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
 #ifdef PROFILE_FIND_TARGET_TIME
   long long find_target_start_time = Timer::nanoTime();
 #endif
-  // TODO: Pass in arm mask
   ProtoObjects objs;
   pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
 #ifdef PROFILE_FIND_TARGET_TIME

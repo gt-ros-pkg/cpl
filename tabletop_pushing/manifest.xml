@@ -10,6 +10,7 @@
   <url>http://ros.org/wiki/tabletop_pushing</url>
 
   <depend package="roscpp"/>
+  <depend package="roslib"/>
   <depend package="stereo_msgs"/>
   <depend package="sensor_msgs"/>
   <depend package="geometry_msgs"/>

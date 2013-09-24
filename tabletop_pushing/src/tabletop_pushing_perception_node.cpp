@@ -33,6 +33,7 @@
  *********************************************************************/
 // ROS
 #include <ros/ros.h>
+#include <ros/package.h>
 
 #include <std_msgs/Header.h>
 #include <geometry_msgs/PointStamped.h>
@@ -209,7 +210,6 @@ class TabletopPushingPerceptionNode
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
         new PointCloudSegmentation(tf_));
-    arm_obj_segmenter_ = shared_ptr<ArmObjSegmentation>(new ArmObjSegmentation());
     // Get parameters from the server
     n_private_.param("display_wait_ms", display_wait_ms_, 3);
     n_private_.param("use_displays", use_displays_, false);
@@ -296,8 +296,17 @@ class TabletopPushingPerceptionNode
 
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
 
+    std::string arm_color_model_name;
+    n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
 
     // Initialize classes requiring parameters
+    arm_obj_segmenter_ = shared_ptr<ArmObjSegmentation>(new ArmObjSegmentation());
+    if (arm_color_model_name.length() > 0)
+    {
+      std::stringstream arm_color_model_path;
+      arm_color_model_path << ros::package::getPath("tabletop_pushing") << "/cfg/" << arm_color_model_name;
+      arm_obj_segmenter_->loadArmColorModel(arm_color_model_path.str());
+    }
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, arm_obj_segmenter_, num_downsamples_, use_displays_,
                              write_to_disk_, base_output_path_, camera_frame_, use_cv_ellipse,

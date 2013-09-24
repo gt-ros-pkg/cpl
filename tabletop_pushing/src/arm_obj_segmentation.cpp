@@ -62,7 +62,7 @@ ArmObjSegmentation::ArmObjSegmentation(float fg_tied_weight, float bg_tied_weigh
                                        float arm_enlarge_width, float arm_shrink_width, float sigma, float lambda) :
     fg_tied_weight_(fg_tied_weight), bg_tied_weight_(bg_tied_weight), bg_enlarge_size_(bg_enlarge_size),
     arm_enlarge_width_(arm_enlarge_width), arm_shrink_width_(arm_shrink_width),
-    sigma_d_(sigma), pairwise_lambda_(lambda), no_color_models_(true)
+    sigma_d_(sigma), pairwise_lambda_(lambda), have_arm_color_model_(false), have_bg_color_model_(false)
 {
   // Create derivative kernels for edge calculation
   cv::getDerivKernels(dy_kernel_, dx_kernel_, 1, 0, CV_SCHARR, true, CV_32F);
@@ -153,13 +153,17 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     return empty;
   }
 
-  if (init_color_models || no_color_models_)
+  if (!have_arm_color_model_)
   {
     arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
     arm_color_model_.dispparams();
+    have_arm_color_model_ = true;
+  }
+  if(init_color_models || !have_bg_color_model_)
+  {
     bg_color_model_ = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
     bg_color_model_.dispparams();
-    no_color_models_ = false;
+    have_bg_color_model_ = true;
   }
 
 #ifdef USE_CANNY_EDGES
@@ -426,6 +430,24 @@ GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
   return color_model.grabCutLikelihood(sample);
+}
+
+void ArmObjSegmentation::loadArmColorModel(std::string file_path)
+{
+  arm_color_model_.loadgmm(fs::path(file_path));
+  have_arm_color_model_ = true;
+}
+
+void ArmObjSegmentation::loadBGColorModel(std::string file_path)
+{
+  bg_color_model_.loadgmm(fs::path(file_path));
+  have_bg_color_model_ = true;
+}
+
+void ArmObjSegmentation::setBGColorModel(GMM& new_bg_model)
+{
+  bg_color_model_ = new_bg_model;
+  have_bg_color_model_ = true;
 }
 
 }; // namespace tabletop_pushing

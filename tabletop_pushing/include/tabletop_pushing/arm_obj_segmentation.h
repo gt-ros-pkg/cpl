@@ -21,7 +21,9 @@ class ArmObjSegmentation
   static cv::Mat getArmBand(cv::Mat& input_mask, int enlarge_width, int shrink_width, bool input_inverted=true);
   static cv::Mat getArmBand(cv::Mat& input_mask, int enlarge_width, int shrink_width, bool input_inverted,
                             cv::Mat& larger_mask,  cv::Mat& smaller_mask);
-  // TODO: Make non-static using parameters;
+  void loadArmColorModel(std::string file_path);
+  void loadBGColorModel(std::string file_path);
+  void setBGColorModel(GMM& new_bg_model);
  protected:
   cv::Mat getXImageDeriv(cv::Mat& color_img);
   cv::Mat getYImageDeriv(cv::Mat& color_img);
@@ -45,7 +47,8 @@ class ArmObjSegmentation
   cv::Mat dx_kernel_;
   GMM arm_color_model_;
   GMM bg_color_model_;
-  bool no_color_models_;
+  bool have_arm_color_model_;
+  bool have_bg_color_model_;
 };
 };
 #endif // arm_obj_segmentation_h_DEFINED
