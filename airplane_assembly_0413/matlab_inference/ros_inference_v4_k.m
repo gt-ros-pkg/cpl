@@ -16,7 +16,7 @@ m.bin_req = bin_req;
 
 making_movie = 0;
 if 1
-    kelsey_planning = 1;
+    kelsey_planning = 0;
     kelsey_viz      = 0;
     NAM_NOISE_MODEL = 0;
     NAM_NOISY = 0;
@@ -32,7 +32,7 @@ if 1
     % IROS human low confidence:
     KPH_NOISY=5;
 
-    if kelsey_viz
+    %if kelsey_viz
         fig_planning = figure(101);
         % winsize = get(fig_planning, 'Position');
         winsize = [560    13   794   935];
@@ -41,7 +41,7 @@ if 1
         planning_movie = moviein(movie_frames, fig_planning, winsize);
         planning_ind = 1;
         making_movie = 1;
-    end
+    %end
 end
 
     NAM_NOISE_MODEL = 1;

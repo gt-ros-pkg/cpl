@@ -20,7 +20,8 @@ function [] = m_plot_distributions(m, start_symbols, end_symbols, scale_max)
         end
         plot(d, '--', 'color', nxtocolor(sum(action{1})));
     end
-    legend([start_symbols, end_symbols]);
+    %legend([start_symbols, end_symbols]);
+    legend({'A1', 'B2', 'C2', 'B3', 'C3', 'B4', 'C4'})
     %plot(nt, 0, '*black');
     hold off;
 

@@ -32,7 +32,7 @@ if NAM_NOISE_MODEL
         m.detection.onedetector.mean_detection_score    = 70;
         m.detection.onedetector.nam_uniform_component   = 5;
         
-    elseif NAM_NOISY == 143569 % real exp, new kinect setting
+    elseif NAM_NOISY == 134349 % real exp, new kinect setting
         m.detection.params.detector_var_scale           = 4; % raw peak is usually 100-400
         m.detection.onedetector.mean_detection_score    = 2;
         m.detection.onedetector.nam_uniform_component   = 0.01;
@@ -58,7 +58,7 @@ if NAM_NOISE_MODEL
         m.detection.onedetector.mean_detection_score    = 20;
         m.detection.onedetector.nam_uniform_component   = 10;
         
-    elseif NAM_NOISY == 1559 % real exp, new kinect setting, low confidence, observation for bin 12, iros
+    elseif NAM_NOISY == 15559 % real exp, new kinect setting, low confidence, observation for bin 12, iros
         
         m.detection.params.detector_var_scale           = 9; % raw peak is usually 150
         m.detection.onedetector.mean_detection_score    = 3;
@@ -72,10 +72,11 @@ if NAM_NOISE_MODEL
             m.detection.detectors(i).x_setting.uni_component = m.detection.onedetector.nam_uniform_component;
             m.detection.detectors(i).x_setting.mean_score    = m.detection.onedetector.mean_detection_score ;
             
+            
         end
         
             m.detection.detectors(11).x_setting.uni_component = 10;
-            m.detection.detectors(11).x_setting.mean_score    = 80;
+            m.detection.detectors(11).x_setting.mean_score    = 110;
            
     elseif NAM_NOISY == 19 % low confidence for mis calibration
         

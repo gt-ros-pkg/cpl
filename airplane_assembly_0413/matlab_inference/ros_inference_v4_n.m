@@ -52,7 +52,7 @@ DRAW_GT_ACTIONS          = 1;
 
 DRAW_CURRENT_ACTION_PROB = 0; % todo
 
-SAVE_VIDEO               = 0;
+SAVE_VIDEO               = 1;
 
 %% open connection
 
@@ -256,8 +256,8 @@ while t < m.params.T * m.params.downsample_ratio
             
             
             hold on;
-            text(10, 1, ['Path1 prob: ' num2str(m.g(20).i_final.prob_notnull)])
-            text(10, 0.8, ['Path2 prob: ' num2str(m.g(30).i_final.prob_notnull)])
+            text(10, 1, ['Path-B prob: ' num2str(m.g(20).i_final.prob_notnull)])
+            text(10, 0.8, ['Path-C prob: ' num2str(m.g(30).i_final.prob_notnull)])
             hold off;
         end
         
