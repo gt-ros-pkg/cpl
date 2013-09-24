@@ -215,12 +215,10 @@ class GMM {
     if (this != &x)
     {
       free();
-      std::cout << "Copying assignment of x" << std::endl;
       em_thresh = x.em_thresh;
       max_iter = x.max_iter;
       min_iter = x.min_iter;
       alloc(x.nk);
-      std::cout << "x.nk = " << x.nk << "\tnk = " << nk << std::endl;
       for (int i = 0; i < nk; ++i)
       {
         kernel[i] = x.kernel[i];
