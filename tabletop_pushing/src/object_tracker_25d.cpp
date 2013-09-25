@@ -191,7 +191,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     }
     ROS_INFO_STREAM("Chose object " << chosen_idx << " at distance " << min_dist);
   }
-  if (init && !use_graphcut_arm_seg_)
+  if (init && use_graphcut_arm_seg_)
   {
     // Extract color GMM model
     ROS_INFO_STREAM("Building object color model.");
