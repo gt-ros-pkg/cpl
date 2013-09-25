@@ -112,6 +112,20 @@ class Gaussian {
     mv = mean_val;
   }
 
+  GMMSigmaVal GetSigma()
+  {
+    GMMSigmaVal cur_sigma;
+    // set all the values
+    int curr_idx = 0;
+    for (int d = 0; d < NUM_GMM_DIMS; d++) {
+      for (int e = d; e < NUM_GMM_DIMS; e++) {
+        cur_sigma[curr_idx] = mat.at<float>(d, e);
+        ++curr_idx;
+      }
+    }
+    return cur_sigma;
+  }
+
   void SetSigma(const GMMSigmaVal& gmm_sigma_val) {
     // set all the values
     int curr_idx = 0;
@@ -205,7 +219,8 @@ class GMM {
     alloc(nk);
     for (int i = 0; i < nk; ++i)
     {
-      kernel[i] = x.kernel[i];
+      kernel[i].SetMean(x.kernel[i].mv);
+      kernel[i].SetSigma(x.kernel[i].GetSigma());
       w[i] = x.w[i];
     }
   }
@@ -221,7 +236,8 @@ class GMM {
       alloc(x.nk);
       for (int i = 0; i < nk; ++i)
       {
-        kernel[i] = x.kernel[i];
+        kernel[i].SetMean(x.kernel[i].mv);
+        kernel[i].SetSigma(x.kernel[i].GetSigma());
         w[i] = x.w[i];
       }
     }

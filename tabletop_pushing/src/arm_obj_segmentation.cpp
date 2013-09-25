@@ -429,7 +429,7 @@ GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc
 
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
-  return color_model.grabCutLikelihood(sample);
+  return exp(-color_model.grabCutLikelihood(sample));
 }
 
 void ArmObjSegmentation::loadArmColorModel(std::string file_path)

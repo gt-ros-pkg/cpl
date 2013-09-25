@@ -194,7 +194,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
   {
     // Extract color GMM model
     ROS_INFO_STREAM("Building object color model.");
-    obj_color_model_ = buildColorModel(objs[chosen_idx].cloud, in_frame, 3);
+    obj_color_model_ = buildColorModel(objs[chosen_idx].cloud, in_frame, 5);
     have_obj_color_model_ = true;
     if (have_table_color_model_)
     {
