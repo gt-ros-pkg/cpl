@@ -295,6 +295,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("point_cloud_hist_res", point_cloud_hist_res_, 0.005);
 
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
+    n_.param("use_graphcut_arm_seg", use_graphcut_arm_seg_, false);
 
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
@@ -310,7 +311,7 @@ class TabletopPushingPerceptionNode
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, arm_obj_segmenter_, num_downsamples_, use_displays_,
                              write_to_disk_, base_output_path_, camera_frame_, use_cv_ellipse,
-                             use_mps_segmentation_));
+                             use_mps_segmentation_, use_graphcut_arm_seg_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -489,8 +490,17 @@ class TabletopPushingPerceptionNode
 #endif
 
       PushTrackerState tracker_state;
-      obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
-                                 proxy_name_, tracker_state);
+      if (use_graphcut_arm_seg_)
+      {
+        obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
+                                   proxy_name_, tracker_state);
+      }
+      else
+      {
+        obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
+                                   proxy_name_, tracker_state);
+      }
+
 #ifdef PROFILE_CB_TIME
       update_tracks_elapsed_time = (((double)(Timer::nanoTime() - update_tracks_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
@@ -1724,8 +1734,17 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
-                             proxy_name_, state, start_swap);
+    if (use_graphcut_arm_seg_)
+    {
+      obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
+                               proxy_name_, state, start_swap);
+    }
+    else
+    {
+      obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
+                               proxy_name_, state, start_swap);
+    }
+
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -2311,6 +2330,7 @@ class TabletopPushingPerceptionNode
   double min_goal_y_;
   double max_goal_y_;
   shared_ptr<ArmObjSegmentation> arm_obj_segmenter_;
+  bool use_graphcut_arm_seg_;
 };
 
 int main(int argc, char ** argv)

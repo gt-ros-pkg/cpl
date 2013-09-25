@@ -68,7 +68,7 @@ class ObjectTracker25D
                    int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
-                   bool use_cv_ellipse = false, bool use_mps_segmentation=false);
+                   bool use_cv_ellipse = false, bool use_mps_segmentation=false, bool use_graphcut_arm_seg_=false);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -203,6 +203,7 @@ class ObjectTracker25D
   GMM table_color_model_;
   bool have_obj_color_model_;
   bool have_table_color_model_;
+  bool use_graphcut_arm_seg_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

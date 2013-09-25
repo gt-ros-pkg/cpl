@@ -32,14 +32,15 @@ typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    shared_ptr<ArmObjSegmentation> arm_segmenter, int num_downsamples,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
-                                   std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation) :
+                                   std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
+                                   bool use_graphcut_arm_seg) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
     base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
-    have_obj_color_model_(false), have_table_color_model_(false)
+    have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg)
 {
   upscale_ = std::pow(2,num_downsamples_);
 }
@@ -190,7 +191,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     }
     ROS_INFO_STREAM("Chose object " << chosen_idx << " at distance " << min_dist);
   }
-  if (init)
+  if (init && !use_graphcut_arm_seg_)
   {
     // Extract color GMM model
     ROS_INFO_STREAM("Building object color model.");
@@ -500,7 +501,15 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   frame_count_ = 0;
   record_count_ = 0;
   frame_set_count_++;
-  ProtoObject cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects, true);
+  ProtoObject cur_obj;
+  if (use_graphcut_arm_seg_)
+  {
+    cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects, true);
+  }
+  else
+  {
+    cur_obj = findTargetObject(in_frame, cloud, no_objects, true);
+  }
   initialized_ = true;
   if (no_objects)
   {
@@ -564,7 +573,15 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
 #ifdef PROFILE_TRACKING_TIME
   long long find_target_start_time = Timer::nanoTime();
 #endif
-  ProtoObject cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects);
+  ProtoObject cur_obj;
+  if (use_graphcut_arm_seg_)
+  {
+    cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects);
+  }
+  else
+  {
+    cur_obj = findTargetObject(in_frame, cloud, no_objects);
+  }
 #ifdef PROFILE_TRACKING_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long update_model_start_time = Timer::nanoTime();

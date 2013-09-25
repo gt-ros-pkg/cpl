@@ -1,5 +1,6 @@
 <launch>
   <param name="start_loc_use_fixed_goal" value="false" type="bool"/>
+  <param name="use_graphcut_arm_seg" value="true" type="bool"/>
   <arg name="offline" value="false"/>
 
   <arg name="color_image_topic_name" value="/kinect_head/rgb/image_color" if="$(arg offline)"/>
