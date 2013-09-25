@@ -50,8 +50,17 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   ROS_INFO_STREAM("Getting table cloud and mask.");
   XYZPointCloud table_cloud, non_table_cloud;
   cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size(), non_table_cloud);
-  cv::Mat close_element(3, 3, CV_8UC1, cv::Scalar(255));
+  cv::Mat in_frame_lab_uchar(in_frame.size(), in_frame.type());
+  cv::Mat in_frame_lab(in_frame.size(), CV_32FC3);
+  cv::cvtColor(in_frame, in_frame_lab_uchar, CV_BGR2HSV);
+  in_frame_lab_uchar.convertTo(in_frame_lab, CV_32FC3, 1.0/255);
 
+  if (init)
+  {
+    ROS_INFO_STREAM("Building table color model.");
+    table_color_model_ = buildColorModel(table_cloud, in_frame_lab, 3);
+    ROS_INFO_STREAM("Built table color model.");
+  }
   ROS_INFO_STREAM("Segmenting arm.");
   cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask, init);
   pcl16::PointIndices obj_pts;
@@ -109,7 +118,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   }
   ROS_INFO_STREAM("Matching object");
   no_objects = false;
-  return matchToTargetObject(objs, in_frame.size(), init);
+  return matchToTargetObject(objs, in_frame_lab, init);
 }
 
 ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
@@ -139,17 +148,17 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
     return empty;
   }
   no_objects = false;
-  return matchToTargetObject(objs, in_frame.size(), init);
+  return matchToTargetObject(objs, in_frame, init);
 }
 
-ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size in_frame_size, bool init)
+ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& in_frame, bool init)
 {
   int chosen_idx = 0;
   if (objs.size() == 1)
   {
     ROS_INFO_STREAM("Picking the only object");
   }
-  else if (init || frame_count_ == 0)   // TODO: Change this to nearest neighbor
+  else if (init || frame_count_ == 0)
   {
     ROS_INFO_STREAM("Picking the biggest object at initialization");
     // NOTE: Assume we care about the biggest currently
@@ -162,7 +171,10 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
         chosen_idx = i;
       }
     }
-    // TODO: Extract color GMM model
+    // Extract color GMM model
+    ROS_INFO_STREAM("Building color model.");
+    obj_color_model_ = buildColorModel(objs[chosen_idx].cloud, in_frame, 3);
+    arm_segmenter_->buildBGColorModel(table_color_model_, obj_color_model_);
   }
   else // Find closest object to last time
   {
@@ -189,7 +201,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Size i
   if (use_displays_)
   {
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
-        objs, in_frame_size, objs[0].cloud.header.frame_id);
+        objs, in_frame.size(), objs[0].cloud.header.frame_id);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     ROS_INFO_STREAM("Updating display");
   }
@@ -217,7 +229,7 @@ void ObjectTracker25D::updateHeading(PushTrackerState& state, bool init_state)
   // If not initializing, check if we need to swap our addition because of heading change
   if (!init_state && (state.x.theta > 0) != (previous_state_.x.theta > 0))
   {
-    // TODO: test if swapping makes a shorter distance than changing
+    // Test if swapping makes a shorter distance than changing
     float augmented_theta = state.x.theta + (state.x.theta > 0.0) ? - M_PI : M_PI;
     float augmented_diff = fabs(subPIAngle(augmented_theta - previous_state_.x.theta));
     float current_diff = fabs(subPIAngle(state.x.theta - previous_state_.x.theta));
@@ -806,3 +818,23 @@ cv::Mat ObjectTracker25D::getTableMask(XYZPointCloud& cloud, XYZPointCloud& tabl
   return table_mask;
 }
 
+
+GMM ObjectTracker25D::buildColorModel(XYZPointCloud& cloud, cv::Mat& frame, int nc)
+{
+  std::vector<cv::Vec3f> pnts;
+  for (int i = 0; i < cloud.size(); ++i)
+  {
+    cv::Point img_pt = pcl_segmenter_->projectPointIntoImage(cloud.at(i), cloud.header.frame_id, camera_frame_);
+    cv::Vec3f img_val = frame.at<cv::Vec3f>(img_pt.y, img_pt.x);
+    pnts.push_back(img_val);
+  }
+  GMM color_model(0.0001);
+  color_model.alloc(nc);
+  if (pnts.size() > 1)
+  {
+    color_model.kmeansInit(pnts, 0.05);
+    color_model.GmmEm(pnts);
+    color_model.dispparams();
+  }
+  return color_model;
+}

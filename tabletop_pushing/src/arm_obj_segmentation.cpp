@@ -158,7 +158,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
     arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
     have_arm_color_model_ = true;
   }
-  if(init_color_models || !have_bg_color_model_)
+  if(!have_bg_color_model_)
   {
     bg_color_model_ = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
     have_bg_color_model_ = true;
@@ -445,6 +445,23 @@ void ArmObjSegmentation::loadBGColorModel(std::string file_path)
 void ArmObjSegmentation::setBGColorModel(GMM& new_bg_model)
 {
   bg_color_model_ = new_bg_model;
+  have_bg_color_model_ = true;
+}
+
+void ArmObjSegmentation::buildBGColorModel(GMM& table_color_model, GMM& obj_color_model)
+{
+  bg_color_model_.alloc(table_color_model.nk + obj_color_model.nk);
+  int j = 0;
+  for (int i = 0; i < table_color_model.nk; ++i, ++j)
+  {
+    bg_color_model_.kernel[j] = table_color_model.kernel[i];
+    bg_color_model_.w[j] = table_color_model.w[i];
+  }
+  for (int i = 0; i < obj_color_model.nk; ++i, ++j)
+  {
+    bg_color_model_.kernel[j] = obj_color_model.kernel[i];
+    bg_color_model_.w[j] = obj_color_model.w[i];
+  }
   have_bg_color_model_ = true;
 }
 

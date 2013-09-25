@@ -24,6 +24,7 @@ class ArmObjSegmentation
   void loadArmColorModel(std::string file_path);
   void loadBGColorModel(std::string file_path);
   void setBGColorModel(GMM& new_bg_model);
+  void buildBGColorModel(GMM& table_color_model, GMM& obj_color_model);
  protected:
   cv::Mat getXImageDeriv(cv::Mat& color_img);
   cv::Mat getYImageDeriv(cv::Mat& color_img);

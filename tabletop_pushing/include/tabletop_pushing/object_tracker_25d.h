@@ -53,6 +53,7 @@
 #include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
 #include <tabletop_pushing/point_cloud_segmentation.h>
 #include <tabletop_pushing/arm_obj_segmentation.h>
+#include <tabletop_pushing/extern/gmm/gmm.h>
 
 // STL
 #include <string>
@@ -172,9 +173,10 @@ class ObjectTracker25D
 
  protected:
   void updateHeading(tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state);
-  ProtoObject matchToTargetObject(ProtoObjects& objects, cv::Size in_frame_size, bool init=false);
+  ProtoObject matchToTargetObject(ProtoObjects& objects, cv::Mat& in_frame, bool init=false);
   cv::Mat getTableMask(XYZPointCloud& cloud, XYZPointCloud& table_cloud, cv::Size mask_size,
                        XYZPointCloud& obj_cloud);
+  GMM buildColorModel(XYZPointCloud& cloud, cv::Mat& frame, int num_clusters);
   boost::shared_ptr<PointCloudSegmentation> pcl_segmenter_;
   boost::shared_ptr<ArmObjSegmentation> arm_segmenter_;
   int num_downsamples_;
@@ -197,6 +199,8 @@ class ObjectTracker25D
   bool use_cv_ellipse_fit_;
   bool use_mps_segmentation_;
   bool obj_saved_;
+  GMM obj_color_model_;
+  GMM table_color_model_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED
