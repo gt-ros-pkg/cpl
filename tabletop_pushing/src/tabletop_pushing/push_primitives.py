@@ -13,7 +13,8 @@
 
 ROBOT_ARMS = ['r', 'l']
 # ROBOT_ARMS = ['r']
-ROBOT_ARMS = ['l']
+# ROBOT_ARMS = ['l']
+ROBOT_ARMS = [None]
 CENTROID_CONTROLLER ='centroid_controller'
 TOOL_CENTROID_CONTROLLER ='tool_centroid_controller'
 SPIN_COMPENSATION = 'spin_compensation'
