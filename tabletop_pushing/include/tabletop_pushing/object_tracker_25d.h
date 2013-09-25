@@ -201,6 +201,8 @@ class ObjectTracker25D
   bool obj_saved_;
   GMM obj_color_model_;
   GMM table_color_model_;
+  bool have_obj_color_model_;
+  bool have_table_color_model_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

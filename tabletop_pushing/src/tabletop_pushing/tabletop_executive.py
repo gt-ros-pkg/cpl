@@ -49,7 +49,7 @@ import time
 import random
 from push_primitives import *
 
-_OFFLINE = True
+_OFFLINE = False
 _USE_LEARN_IO = False
 _TEST_START_POSE = False
 _USE_FIXED_GOAL = True
@@ -87,9 +87,9 @@ class TabletopExecutive:
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
-        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.425)
+        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.5)
         self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.8)
-        self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.5)
+        self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.4)
         self.min_workspace_y = -self.max_workspace_y
 
         self.goal_y_base_delta = 0.01
@@ -1226,6 +1226,7 @@ if __name__ == '__main__':
             else:
                 node.start_loc_use_fixed_goal = False
                 node.init_loc_learning()
+                rospy.loginfo('Running push exploration')
                 clean_exploration = node.run_push_exploration(object_id=code_in)
                 node.finish_learning()
             if not clean_exploration:

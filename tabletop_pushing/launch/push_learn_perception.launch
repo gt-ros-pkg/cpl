@@ -22,7 +22,7 @@
     <remap from="point_cloud_topic" to="$(arg point_cloud_topic_name)"/>
     <param name="camera_frame" value="$(arg camera_frame_name)" type="string"/>
 
-    <param name="start_tracking_on_push_call" value="true" type="bool"/>
+    <param name="start_tracking_on_push_call" value="false" type="bool"/>
 
     <param name="start_loc_push_time_limit" value="6.0" type="double"/>
     <param name="start_loc_push_dist" value="0.30" type="double"/>
@@ -88,6 +88,6 @@
     <param name="object_not_between_tool_epsilon" value="0.05" type="double"/>
     <param name="point_cloud_hist_res" value="0.0051" type="double"/>
 
-    <param name="arm_color_model_name" value="tmp_arm_color_model.bin" type="string"/>
+    <param name="arm_color_model_name" value="arm_color_model_1.bin" type="string"/>
   </node>
 </launch>

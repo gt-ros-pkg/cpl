@@ -167,6 +167,7 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   extract.setIndices(boost::make_shared<pcl16::PointIndices>(plane_inliers));
   extract.setNegative(true);
   extract.filter(objs_cloud);
+  objs_cloud.header = cloud.header;
 #ifdef PROFILE_TABLE_SEGMENTATION_TIME
   double RANSAC_elapsed_time = (((double)(Timer::nanoTime() - RANSAC_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long find_centroid_start_time = Timer::nanoTime();

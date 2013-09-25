@@ -155,11 +155,13 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
 
   if (!have_arm_color_model_)
   {
+    std::cout << "[arm_obj_segmentation]: Building arm color model." << std::endl;
     arm_color_model_ = getGMMColorModel(known_arm_pixels, known_arm_mask, 3);
     have_arm_color_model_ = true;
   }
   if(!have_bg_color_model_)
   {
+    std::cout << "[arm_obj_segmentation]: Building bg color model." << std::endl;
     bg_color_model_ = getGMMColorModel(known_bg_pixels, known_bg_mask, 5);
     have_bg_color_model_ = true;
   }

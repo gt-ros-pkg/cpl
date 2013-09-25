@@ -1687,9 +1687,10 @@ class TabletopPushingPerceptionNode
   {
     bool no_objects = false;
     // TODO: Switch to findTargetObjectGC?
-    ProtoObject cur_obj = obj_tracker_->findTargetObjectGC(cur_color_frame_,
-                                                           cur_point_cloud_, cur_depth_frame_,
-                                                           cur_self_mask_, no_objects, true);
+    // ProtoObject cur_obj = obj_tracker_->findTargetObjectGC(cur_color_frame_,
+    //                                                        cur_point_cloud_, cur_depth_frame_,
+    //                                                        cur_self_mask_, no_objects, true);
+    ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_, cur_point_cloud_, no_objects, true);
     if (no_objects)
     {
       ROS_WARN_STREAM("No objects found on analysis");

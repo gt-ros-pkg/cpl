@@ -38,7 +38,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
     base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
-    use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation)
+    use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
+    have_obj_color_model_(false), have_table_color_model_(false)
 {
   upscale_ = std::pow(2,num_downsamples_);
 }
@@ -50,16 +51,17 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   ROS_INFO_STREAM("Getting table cloud and mask.");
   XYZPointCloud table_cloud, non_table_cloud;
   cv::Mat table_mask = getTableMask(cloud, table_cloud, self_mask.size(), non_table_cloud);
-  cv::Mat in_frame_lab_uchar(in_frame.size(), in_frame.type());
-  cv::Mat in_frame_lab(in_frame.size(), CV_32FC3);
-  cv::cvtColor(in_frame, in_frame_lab_uchar, CV_BGR2HSV);
-  in_frame_lab_uchar.convertTo(in_frame_lab, CV_32FC3, 1.0/255);
 
-  if (init)
+  if (!have_table_color_model_)
   {
     ROS_INFO_STREAM("Building table color model.");
-    table_color_model_ = buildColorModel(table_cloud, in_frame_lab, 3);
-    ROS_INFO_STREAM("Built table color model.");
+    table_color_model_ = buildColorModel(table_cloud, in_frame, 3);
+    have_table_color_model_ = true;
+    if (have_obj_color_model_)
+    {
+      ROS_INFO_STREAM("Combining bg color models");
+      arm_segmenter_->buildBGColorModel(table_color_model_, obj_color_model_);
+    }
   }
   ROS_INFO_STREAM("Segmenting arm.");
   cv::Mat segs = arm_segmenter_->segment(in_frame, depth_frame, self_mask, table_mask, init);
@@ -118,7 +120,7 @@ ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointClou
   }
   ROS_INFO_STREAM("Matching object");
   no_objects = false;
-  return matchToTargetObject(objs, in_frame_lab, init);
+  return matchToTargetObject(objs, in_frame, init);
 }
 
 ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud& cloud,
@@ -171,10 +173,6 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
         chosen_idx = i;
       }
     }
-    // Extract color GMM model
-    ROS_INFO_STREAM("Building color model.");
-    obj_color_model_ = buildColorModel(objs[chosen_idx].cloud, in_frame, 3);
-    arm_segmenter_->buildBGColorModel(table_color_model_, obj_color_model_);
   }
   else // Find closest object to last time
   {
@@ -192,6 +190,19 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     }
     ROS_INFO_STREAM("Chose object " << chosen_idx << " at distance " << min_dist);
   }
+  if (init)
+  {
+    // Extract color GMM model
+    ROS_INFO_STREAM("Building object color model.");
+    obj_color_model_ = buildColorModel(objs[chosen_idx].cloud, in_frame, 3);
+    have_obj_color_model_ = true;
+    if (have_table_color_model_)
+    {
+      ROS_INFO_STREAM("Combining bg color models");
+      arm_segmenter_->buildBGColorModel(table_color_model_, obj_color_model_);
+    }
+  }
+
 #ifdef PROFILE_FIND_TARGET_TIME
   double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
                                        Timer::NANOSECONDS_PER_SECOND);
@@ -821,13 +832,19 @@ cv::Mat ObjectTracker25D::getTableMask(XYZPointCloud& cloud, XYZPointCloud& tabl
 
 GMM ObjectTracker25D::buildColorModel(XYZPointCloud& cloud, cv::Mat& frame, int nc)
 {
+  cv::Mat frame_lab_uchar(frame.size(), frame.type());
+  cv::Mat frame_lab(frame.size(), CV_32FC3);
+  cv::cvtColor(frame, frame_lab_uchar, CV_BGR2HSV);
+  frame_lab_uchar.convertTo(frame_lab, CV_32FC3, 1.0/255);
+
   std::vector<cv::Vec3f> pnts;
   for (int i = 0; i < cloud.size(); ++i)
   {
     cv::Point img_pt = pcl_segmenter_->projectPointIntoImage(cloud.at(i), cloud.header.frame_id, camera_frame_);
-    cv::Vec3f img_val = frame.at<cv::Vec3f>(img_pt.y, img_pt.x);
+    cv::Vec3f img_val = frame_lab.at<cv::Vec3f>(img_pt.y, img_pt.x);
     pnts.push_back(img_val);
   }
+  ROS_INFO_STREAM("Have " << pnts.size() << " points for the model");
   GMM color_model(0.0001);
   color_model.alloc(nc);
   if (pnts.size() > 1)
