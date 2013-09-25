@@ -284,6 +284,19 @@ class GMM {
     return val;
   }
 
+  float maxProbability(const GMMFloatPnt& x) const {
+    float max_val = 0.0;
+    for (int i = 0; i < nk; i++) {
+      float val = kernel[i].density(x);
+      if (val > max_val)
+      {
+        max_val = val;
+      }
+    }
+    return max_val;
+  }
+
+
 
   float grabCutLikelihood(const GMMFloatPnt& x) const {
 
