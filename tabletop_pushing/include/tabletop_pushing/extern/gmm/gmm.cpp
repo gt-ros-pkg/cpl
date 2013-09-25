@@ -419,7 +419,7 @@ void GMM::initkernels(const std::vector<GMMFloatPnt>& pts, const float sigma) {
 void GMM::savegmm(const fs::path& savefilepath) const {
   std::ofstream fd_gmm;
 
-  fd_gmm.open(savefilepath.c_str(), std::ofstream::binary | std::ofstream::trunc);
+  fd_gmm.open(savefilepath.string().c_str(), std::ofstream::binary | std::ofstream::trunc);
 
   fd_gmm.write(reinterpret_cast<const char *>(&nk), sizeof(int));
   fd_gmm.write(reinterpret_cast<const char *>(&em_thresh), sizeof(double));
@@ -439,7 +439,7 @@ void GMM::savegmm(const fs::path& savefilepath) const {
 void GMM::loadgmm(const fs::path& loadfilepath) {
   std::ifstream fd_gmm;
 
-  fd_gmm.open(loadfilepath.c_str(), std::ofstream::binary);
+  fd_gmm.open(loadfilepath.string().c_str(), std::ofstream::binary);
 
   // clear all data before proceeding
   free();
