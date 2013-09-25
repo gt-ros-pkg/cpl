@@ -202,7 +202,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
         else
         {
           fg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), arm_color_model_);
-          bg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model_);
+          bg_weight = getUnaryWeight(color_img_lab.at<cv::Vec3f>(r,c), bg_color_model_)*0.5;
         }
         g->add_node();
         g->add_tweights(cur_idx, fg_weight, bg_weight);
@@ -269,7 +269,7 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   //cv::imshow("segments", segs);
   // cv::imshow("Graph input", graph_input);
   cv::imshow("Arm segment", segment_arm);
-  // cv::imshow("Background segment", segment_bg);
+  cv::imshow("Background segment", segment_bg);
   cv::imshow("Table mask", table_mask);
   // cv::imshow("Known bg mask", known_bg_mask);
 
@@ -277,23 +277,23 @@ cv::Mat ArmObjSegmentation::segment(cv::Mat& color_img, cv::Mat& depth_img, cv::
   double min_val, max_val;
   cv::minMaxLoc(fg_weights, &min_val, &max_val);
   cv::imshow("fg weights", (fg_weights-min_val)/(max_val-min_val));
-  std::cout << "Max fg weight: " << max_val << std::endl;
-  std::cout << "Min fg weight: " << min_val << std::endl;
+  // std::cout << "Max fg weight: " << max_val << std::endl;
+  // std::cout << "Min fg weight: " << min_val << std::endl;
 
   cv::minMaxLoc(bg_weights, &min_val, &max_val);
   cv::imshow("bg weights", (bg_weights-min_val)/(max_val-min_val));
-  std::cout << "Max bg weight: " << max_val << std::endl;
-  std::cout << "Min bg weight: " << min_val << std::endl;
+  // std::cout << "Max bg weight: " << max_val << std::endl;
+  // std::cout << "Min bg weight: " << min_val << std::endl;
 
-  cv::minMaxLoc(wu_weights, &min_val, &max_val);
-  cv::imshow("up weights", wu_weights/max_val);
-  std::cout << "Max up weight: " << max_val << std::endl;
-  std::cout << "Min up weight: " << min_val << std::endl;
+  // cv::minMaxLoc(wu_weights, &min_val, &max_val);
+  // cv::imshow("up weights", wu_weights/max_val);
+  // std::cout << "Max up weight: " << max_val << std::endl;
+  // std::cout << "Min up weight: " << min_val << std::endl;
 
-  cv::minMaxLoc(wl_weights, &min_val, &max_val);
-  cv::imshow("left weights", wl_weights/max_val);
-  std::cout << "Max left weight: " << max_val << std::endl;
-  std::cout << "Min left weight: " << min_val << std::endl;
+  // cv::minMaxLoc(wl_weights, &min_val, &max_val);
+  // cv::imshow("left weights", wl_weights/max_val);
+  // std::cout << "Max left weight: " << max_val << std::endl;
+  // std::cout << "Min left weight: " << min_val << std::endl;
 #endif // VISUALIZE_GRAPH_WEIGHTS
 #ifdef USE_CANNY_EDGES
   cv::imshow("Canny", canny_edges);
@@ -430,7 +430,7 @@ GMM ArmObjSegmentation::getGMMColorModel(cv::Mat& samples, cv::Mat& mask, int nc
 float ArmObjSegmentation::getUnaryWeight(cv::Vec3f sample, GMM& color_model)
 {
   // return exp(-color_model.grabCutLikelihood(sample));
-  return color_model.maxProbability(sample);
+  return color_model.probability(sample);
 }
 
 void ArmObjSegmentation::loadArmColorModel(std::string file_path)

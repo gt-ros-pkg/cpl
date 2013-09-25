@@ -14,7 +14,7 @@ class NodeTable;
 class ArmObjSegmentation
 {
  public:
-  ArmObjSegmentation(float fg_tied_weight = 2.0, float bg_tied_weight = 3.0, float bg_enlarge_size = 100,
+  ArmObjSegmentation(float fg_tied_weight = 10.0, float bg_tied_weight = 10.0, float bg_enlarge_size = 100,
                      float arm_enlarge_width = 15, float arm_shrink_width_ = 15,float sigma = 1.0, float lambda = 5.0);
   cv::Mat segment(cv::Mat& color_img, cv::Mat& depth_img, cv::Mat& self_mask, cv::Mat& table_mask,
                   bool init_color_models=true);
