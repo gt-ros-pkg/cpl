@@ -8,6 +8,7 @@
 #include <cpl_visual_features/features/shape_context.h>
 #include <vector>
 #include <tabletop_pushing/point_cloud_segmentation.h>
+#include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
 
 namespace tabletop_pushing
 {
@@ -42,6 +43,8 @@ void extractPCAFeaturesXY(XYZPointCloud& samples, cpl_visual_features::ShapeDesc
 void extractBoundingBoxFeatures(XYZPointCloud& samples, cpl_visual_features::ShapeDescriptor& sd);
 
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
+
+cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state);
 
 ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center = true);
 

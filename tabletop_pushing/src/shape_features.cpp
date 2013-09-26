@@ -16,14 +16,23 @@
 
 using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
+typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
+
 namespace tabletop_pushing
 {
+
+
 inline int getHistBinIdx(int x_idx, int y_idx, int n_x_bins, int n_y_bins)
 {
   return x_idx*n_y_bins+y_idx;
 }
 
 inline int worldLocToIdx(double val, double min_val, double max_val)
+{
+  return round((val-min_val)/XY_RES);
+}
+
+inline int objLocToIdx(double val, double min_val, double max_val)
 {
   return round((val-min_val)/XY_RES);
 }
@@ -35,6 +44,24 @@ cv::Point worldPtToImgPt(pcl16::PointXYZ world_pt, double min_x, double max_x,
                    worldLocToIdx(world_pt.y, min_y, max_y));
   return img_pt;
 }
+
+pcl16::PointXYZ worldPointInObjectFrame(pcl16::PointXYZ world_pt, PushTrackerState& cur_state)
+{
+  // Center on object frame
+  pcl16::PointXYZ shifted_pt;
+  shifted_pt.x = world_pt.x - cur_state.x.x;
+  shifted_pt.y = world_pt.y - cur_state.x.y;
+  shifted_pt.z = world_pt.z - cur_state.z;
+  double ct = cos(cur_state.x.theta);
+  double st = sin(cur_state.x.theta);
+  // Rotate into correct frame
+  pcl16::PointXYZ obj_pt;
+  obj_pt.x =  ct*shifted_pt.x + st*shifted_pt.y;
+  obj_pt.y = -st*shifted_pt.x + ct*shifted_pt.y;
+  obj_pt.z = shifted_pt.z; // NOTE: Currently assume 2D motion
+  return obj_pt;
+}
+
 std::vector<int> getJumpIndices(XYZPointCloud& concave_hull, double alpha)
 {
   std::vector<int> jump_indices;
@@ -67,6 +94,27 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
   return hull_cloud;
+}
+
+cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
+{
+  double max_y = 0.3;
+  double min_y = -0.3;
+  double max_x = 0.3;
+  double min_x = -0.3;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
+    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
+    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    cv::Scalar color(128, 0, 0);
+    cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+  }
+  return footprint;
 }
 
 cv::Mat getObjectFootprint(cv::Mat obj_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud)

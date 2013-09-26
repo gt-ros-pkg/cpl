@@ -52,7 +52,7 @@
     <param name="pcl_max_cluster_size" value="25000" type="int"/>
     <param name="pcl_voxel_downsample_res" value="0.005" type="double"/>
     <param name="pcl_cloud_intersect_thresh" value="0.0025" type="double"/>
-    <param name="pcl_concave_hull_alpha" value="0.1" type="double"/>
+    <param name="pcl_table_hull_alpha" value="0.1" type="double"/>
     <param name="use_pcl_voxel_downsample" value="true" type="bool"/>
     <param name="table_ransac_thresh" value="0.015" type="double"/>
     <param name="table_ransac_angle_thresh" value="5.0" type="double"/>
@@ -88,6 +88,9 @@
     <param name="object_not_between_epsilon" value="0.02" type="double"/>
     <param name="object_not_between_tool_epsilon" value="0.05" type="double"/>
     <param name="point_cloud_hist_res" value="0.0051" type="double"/>
+
+    <param name="boundary_hull_alpha" value="0.01" type="double"/>
+    <param name="hull_gripper_spread" value="0.05" type="double"/>
 
     <param name="arm_color_model_name" value="arm_color_model_1.bin" type="string"/>
   </node>

@@ -205,7 +205,7 @@ class TabletopPushingPerceptionNode
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
       gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false),
-      num_position_failures_(0)
+      num_position_failures_(0), footprint_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -263,7 +263,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("pcl_max_cluster_size", pcl_segmenter_->max_cluster_size_, 2500);
     n_private_.param("pcl_voxel_downsample_res", pcl_segmenter_->voxel_down_res_, 0.005);
     n_private_.param("pcl_cloud_intersect_thresh", pcl_segmenter_->cloud_intersect_thresh_, 0.005);
-    n_private_.param("pcl_concave_hull_alpha", pcl_segmenter_->hull_alpha_, 0.1);
+    n_private_.param("pcl_table_hull_alpha", pcl_segmenter_->hull_alpha_, 0.1);
     n_private_.param("use_pcl_voxel_downsample", pcl_segmenter_->use_voxel_down_, true);
     n_private_.param("icp_max_iters", pcl_segmenter_->icp_max_iters_, 100);
     n_private_.param("icp_transform_eps", pcl_segmenter_->icp_transform_eps_, 0.0);
@@ -293,9 +293,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
     n_private_.param("self_mask_dilate_size", mask_dilate_size_, 5);
     n_private_.param("point_cloud_hist_res", point_cloud_hist_res_, 0.005);
+    n_private_.param("boundary_hull_alpha", hull_alpha_, 0.01);
+    n_private_.param("hull_gripper_spread", gripper_spread_, 0.05);
 
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
     n_.param("use_graphcut_arm_seg", use_graphcut_arm_seg_, false);
+
 
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
@@ -371,6 +374,8 @@ class TabletopPushingPerceptionNode
     color_frame = color_cv_ptr->image;
     depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
+
+    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
 #ifdef PROFILE_CB_TIME
     long long grow_mask_start_time = Timer::nanoTime();
@@ -506,6 +511,18 @@ class TabletopPushingPerceptionNode
                                     Timer::NANOSECONDS_PER_SECOND);
       long long copy_tracks_start_time = Timer::nanoTime();
 #endif
+      ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+      XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+
+      // Visualize hull_cloud;
+      cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectBoundarySamples(hull_cloud, tracker_state);
+      cv::imshow("obj footprint", hull_cloud_viz);
+      // std::stringstream input_out_name;
+      // input_out_name << base_output_path_ << "input" << footprint_count_ << ".png";
+      // cv::imwrite(input_out_name.str(), cur_color_frame_);
+      // std::stringstream footprint_out_name;
+      // footprint_out_name << base_output_path_ << "footprint" << footprint_count_++ << ".png";
+      // cv::imwrite(footprint_out_name.str(), hull_cloud_viz);
 
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
@@ -1174,8 +1191,7 @@ class TabletopPushingPerceptionNode
                                             int num_start_loc_pushes_per_sample, int num_start_loc_sample_locs,
                                             std::string trial_id)
   {
-    float hull_alpha = 0.01;
-    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
 
     int rot_idx = -1;
     if (new_object)
@@ -1276,11 +1292,10 @@ class TabletopPushingPerceptionNode
     // Get descriptor at the chosen location
     // ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj,
     //                                                                         use_center_pointing_shape_context_);
-    float gripper_spread = 0.05;
     pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
     ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
-                                                                              boundary_loc_idx, gripper_spread,
-                                                                              hull_alpha, point_cloud_hist_res_);
+                                                                              boundary_loc_idx, gripper_spread_,
+                                                                              hull_alpha_, point_cloud_hist_res_);
     // Add into pushing history in object frame
     // ShapeLocation s(worldPointInObjectFrame(locs[boundary_loc_idx].boundary_loc_, cur_state),
     //                 locs[boundary_loc_idx].descriptor_);
@@ -1321,13 +1336,11 @@ class TabletopPushingPerceptionNode
   {
     // Get features for all of the boundary locations
     // TODO: Set these values somewhere else
-    float hull_alpha = 0.01;
-    float gripper_spread = 0.05;
     int local_length = 36;
     int global_length = 60;
-    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
-                                                                                gripper_spread, hull_alpha,
+                                                                                gripper_spread_, hull_alpha_,
                                                                                 point_cloud_hist_res_);
     // Read in model SVs and coefficients
     svm_model* push_model;
@@ -1456,11 +1469,9 @@ class TabletopPushingPerceptionNode
   {
     // Get features for all of the boundary locations
     // TODO: Set these values somewhere else
-    float hull_alpha = 0.01;
-    float gripper_spread = 0.05;
-    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
-                                                                                gripper_spread, hull_alpha,
+                                                                                gripper_spread_, hull_alpha_,
                                                                                 point_cloud_hist_res_);
     std::vector<int> available_indices;
     for (int i = 0; i < hull_cloud.size(); ++i)
@@ -2331,6 +2342,9 @@ class TabletopPushingPerceptionNode
   double max_goal_y_;
   shared_ptr<ArmObjSegmentation> arm_obj_segmenter_;
   bool use_graphcut_arm_seg_;
+  double hull_alpha_;
+  double gripper_spread_;
+  int footprint_count_;
 };
 
 int main(int argc, char ** argv)
