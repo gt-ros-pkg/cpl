@@ -786,7 +786,6 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
   }
 }
 
-// TODO: Make this draw the bounding box
 void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse)
 {
   cv::Mat centroid_frame;
