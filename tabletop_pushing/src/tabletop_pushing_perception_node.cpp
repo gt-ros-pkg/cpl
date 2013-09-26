@@ -314,7 +314,7 @@ class TabletopPushingPerceptionNode
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, arm_obj_segmenter_, num_downsamples_, use_displays_,
                              write_to_disk_, base_output_path_, camera_frame_, use_cv_ellipse,
-                             use_mps_segmentation_, use_graphcut_arm_seg_));
+                             use_mps_segmentation_, use_graphcut_arm_seg_, hull_alpha_));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,

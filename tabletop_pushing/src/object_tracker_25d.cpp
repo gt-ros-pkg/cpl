@@ -1,6 +1,7 @@
 // TabletopPushing
 #include <tabletop_pushing/object_tracker_25d.h>
 #include <tabletop_pushing/push_primitives.h>
+#include <tabletop_pushing/shape_features.h>
 #include <tabletop_pushing/extern/Timer.hpp>
 
 // OpenCV
@@ -33,14 +34,15 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    shared_ptr<ArmObjSegmentation> arm_segmenter, int num_downsamples,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
-                                   bool use_graphcut_arm_seg) :
+                                   bool use_graphcut_arm_seg, double hull_alpha) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
     base_output_path_(base_output_path), record_count_(0), swap_orientation_(false),
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
-    have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg)
+    have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg),
+    hull_alpha_(hull_alpha)
 {
   upscale_ = std::pow(2,num_downsamples_);
 }
@@ -260,16 +262,31 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   // TODO: Have each proxy create an image, and send that image to the trackerDisplay
   // function to deal with saving and display.
   cv::RotatedRect obj_ellipse;
-  if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY || proxy_name == SPHERE_PROXY ||
-      proxy_name == CYLINDER_PROXY)
+  if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY ||
+      proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY)
   {
-    obj_ellipse;
     fitObjectEllipse(cur_obj, obj_ellipse);
     previous_obj_ellipse_ = obj_ellipse;
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
     state.z = cur_obj.centroid[2];
+    updateHeading(state, init_state);
+  }
+  else if (proxy_name == HULL_ELLIPSE_PROXY)
+  {
+    // Get 2D object boundary
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+    // TODO: Get ellipse orientation from the 2D boundary
+    fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
+    state.x.theta = getThetaFromEllipse(obj_ellipse);
+    // Get (x,y) centroid of boundary
+    state.x.x = obj_ellipse.center.x;
+    state.x.y = obj_ellipse.center.y;
+    // Use vertical z centroid from object
+    state.z = cur_obj.centroid[2];
+    // Update stuff
+    previous_obj_ellipse_ = obj_ellipse;
     updateHeading(state, init_state);
   }
   else if (proxy_name == BOUNDING_BOX_XY_PROXY)
@@ -389,6 +406,59 @@ void ObjectTracker25D::fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellip
   {
     fit2DMassEllipse(obj, ellipse);
   }
+}
+
+void ObjectTracker25D::fitHullEllipse(ProtoObject& cur_obj, XYZPointCloud& hull_cloud, cv::RotatedRect& obj_ellipse)
+{
+  Eigen::Vector3f eigen_values;
+  Eigen::Matrix3f eigen_vectors;
+  Eigen::Vector4f centroid;
+
+  // HACK: Copied/adapted from PCA in PCL because PCL was seg faulting after an update on the robot
+  // Compute mean
+  centroid = Eigen::Vector4f::Zero();
+  // ROS_INFO_STREAM("Getting centroid");
+  pcl16::compute3DCentroid(hull_cloud, centroid);
+  // Compute demeanished cloud
+  Eigen::MatrixXf cloud_demean;
+  // ROS_INFO_STREAM("Demenaing point cloud");
+  pcl16::demeanPointCloud(hull_cloud, centroid, cloud_demean);
+
+  // Compute the product cloud_demean * cloud_demean^T
+  // ROS_INFO_STREAM("Getting alpha");
+  Eigen::Matrix3f alpha = static_cast<Eigen::Matrix3f> (cloud_demean.topRows<3> () * cloud_demean.topRows<3> ().transpose ());
+
+  // Compute eigen vectors and values
+  // ROS_INFO_STREAM("Getting eigenvectors");
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> evd (alpha);
+  // Organize eigenvectors and eigenvalues in ascendent order
+  for (int i = 0; i < 3; ++i)
+  {
+    eigen_values[i] = evd.eigenvalues()[2-i];
+    eigen_vectors.col(i) = evd.eigenvectors().col(2-i);
+  }
+
+  // try{
+  //   pca.setInputCloud(cloud_no_z.makeShared());
+  //   ROS_INFO_STREAM("Getting mean");
+  //   centroid = pca.getMean();
+  //   ROS_INFO_STREAM("Getting eiven values");
+  //   eigen_values = pca.getEigenValues();
+  //   ROS_INFO_STREAM("Getting eiven vectors");
+  //   eigen_vectors = pca.getEigenVectors();
+  // } catch(pcl16::InitFailedException ife)
+  // {
+  //   ROS_WARN_STREAM("Failed to compute PCA");
+  //   ROS_WARN_STREAM("ife: " << ife.what());
+  // }
+
+  obj_ellipse.center.x = centroid[0];
+  obj_ellipse.center.y = centroid[1];
+  obj_ellipse.angle = RAD2DEG(atan2(eigen_vectors(1,0), eigen_vectors(0,0))-0.5*M_PI);
+  // NOTE: major axis is defined by height
+  obj_ellipse.size.height = std::max(eigen_values(0)*0.1, 0.07);
+  obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
+
 }
 
 void ObjectTracker25D::findFootprintEllipse(ProtoObject& obj, cv::RotatedRect& obj_ellipse)
