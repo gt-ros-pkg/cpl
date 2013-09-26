@@ -515,7 +515,20 @@ class TabletopPushingPerceptionNode
       XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
 
       // Visualize hull_cloud;
-      cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectBoundarySamples(hull_cloud, tracker_state);
+      // NOTE: Get this point with tf for offline use
+      geometry_msgs::PointStamped hand_pt_ros;
+      geometry_msgs::PointStamped base_point;
+      base_point.point.x = 0.0;
+      base_point.point.y = 0.0;
+      base_point.point.z = 0.0;
+      base_point.header.frame_id = (pushing_arm_ == "l") ? "l_gripper_tool_frame" : "r_gripper_tool_frame";
+      // base_point.header.stamp = ros::Time::now();
+      tf_->transformPoint(workspace_frame_, base_point, hand_pt_ros);
+      pcl16::PointXYZ hand_pt;
+      hand_pt.x = hand_pt_ros.point.x;
+      hand_pt.y = hand_pt_ros.point.y;
+      hand_pt.z = hand_pt_ros.point.z;
+      cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectContactLocation(hull_cloud, tracker_state, hand_pt);
       cv::imshow("obj footprint", hull_cloud_viz);
       // std::stringstream input_out_name;
       // input_out_name << base_output_path_ << "input" << footprint_count_ << ".png";
