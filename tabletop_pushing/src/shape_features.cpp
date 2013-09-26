@@ -118,7 +118,7 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
 }
 
 cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerState& cur_state,
-                                       pcl16::PointXYZ& contact_pt)
+                                       pcl16::PointXYZ& contact_pt, pcl16::PointXYZ& forward_pt)
 {
   double max_y = 0.3;
   double min_y = -0.3;
@@ -129,11 +129,19 @@ cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerSta
   pcl16::PointXYZ contact_pt_obj =  worldPointInObjectFrame(contact_pt, cur_state);
   int img_x = objLocToIdx(contact_pt_obj.x, min_x, max_x);
   int img_y = objLocToIdx(contact_pt_obj.y, min_y, max_y);
+  pcl16::PointXYZ forward_pt_obj =  worldPointInObjectFrame(forward_pt, cur_state);
+  int img_x_1 = objLocToIdx(forward_pt_obj.x, min_x, max_x);
+  int img_y_1 = objLocToIdx(forward_pt_obj.y, min_y, max_y);
+  cv::Scalar color(0, 0, 128);
+  cv::line(footprint, cv::Point(img_x, img_y), cv::Point(img_x_1, img_y_1), color, 1);
+  cv::circle(footprint, cv::Point(img_x, img_y), 3, color, 3);
+  cv::circle(footprint, cv::Point(img_x_1, img_y_1), 3, color, 3);
   // ROS_WARN_STREAM("World point: (" << contact_pt.x << ", " << contact_pt.y << ")");
   // ROS_WARN_STREAM("Obj point: (" << contact_pt_obj.x << ", " << contact_pt_obj.y << ")");
   // ROS_WARN_STREAM("Img point: (" << img_x << ", " << img_y << ")");
-  cv::Scalar color(0, 0, 128);
-  cv::circle(footprint, cv::Point(img_x, img_y), 3, color, 3);
+  // ROS_WARN_STREAM("World point: (" << forward_pt.x << ", " << forward_pt.y << ")");
+  // ROS_WARN_STREAM("Obj point: (" << forward_pt_obj.x << ", " << forward_pt_obj.y << ")");
+  // ROS_WARN_STREAM("Img point: (" << img_x_1 << ", " << img_y_1 << ")");
   return footprint;
 }
 

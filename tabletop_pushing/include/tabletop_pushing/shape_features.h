@@ -48,7 +48,7 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state);
 cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,
-                                       pcl16::PointXYZ& contact_pt);
+                                       pcl16::PointXYZ& contact_pt, pcl16::PointXYZ& forward_pt);
 
 ShapeLocations extractObjectShapeContext(ProtoObject& cur_obj, bool use_center = true);
 
