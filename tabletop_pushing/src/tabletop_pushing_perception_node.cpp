@@ -375,7 +375,7 @@ class TabletopPushingPerceptionNode
     depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
 
-    cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
+    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
 #ifdef PROFILE_CB_TIME
     long long grow_mask_start_time = Timer::nanoTime();
