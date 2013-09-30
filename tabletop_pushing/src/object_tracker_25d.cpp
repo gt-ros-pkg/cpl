@@ -273,13 +273,14 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     state.z = cur_obj.centroid[2];
     updateHeading(state, init_state);
   }
-  else if (proxy_name == HULL_ELLIPSE_PROXY)
+  else if (proxy_name == HULL_ELLIPSE_PROXY || proxy_name == HULL_ICP_PROXY ||
+           proxy_name == HULL_SHAPE_CONTEXT_PROXY)
   {
     // Get 2D object boundary
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
     // Get ellipse orientation from the 2D boundary
     // TODO: Add in switch for different hull proxies
-    if (frame_count_ < 1)
+    if (frame_count_ < 1 || proxy_name == HULL_ELLIPSE_PROXY)
     {
       fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
       state.x.theta = getThetaFromEllipse(obj_ellipse);
@@ -291,13 +292,19 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     }
     else
     {
-      // TODO: Add switch for matching with ICP (make new proxies HULL_ICP / HULL_SHAPE_CONTEXT)
-      double match_cost;
-      cpl_visual_features::Path matches = compareBoundaryShapes(previous_hull_cloud_, hull_cloud, match_cost);
-      ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
-      // TODO: Get Transform to explain the match
+      cpl_visual_features::Path matches;
       Eigen::Matrix4f transform;
-      estimateTransformFromMatches(previous_hull_cloud_, hull_cloud, matches, transform);
+      if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
+      {
+        double match_cost;
+        matches = compareBoundaryShapes(previous_hull_cloud_, hull_cloud, match_cost);
+        ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
+        // TODO: Get Transform to explain the match
+        estimateTransformFromMatches(previous_hull_cloud_, hull_cloud, matches, transform);
+      }
+      else // (proxy_name == HULL_ICP_PROXY)
+      {
+      }
 
       // TODO: Transform previous state using the estimate and update current state
 
@@ -311,8 +318,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       state.z = cur_obj.centroid[2];
 
       // Visualize the matches
-      cv::Mat match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, hull_cloud, state, matches);
-      cv::imshow("Boundary matches", match_img);
+      if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
+      {
+        cv::Mat match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, hull_cloud, state, matches);
+        cv::imshow("Boundary matches", match_img);
+      }
     }
     // Update stuff
     previous_obj_ellipse_ = obj_ellipse;
