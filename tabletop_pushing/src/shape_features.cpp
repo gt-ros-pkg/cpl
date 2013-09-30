@@ -167,6 +167,7 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
   double min_y = -0.3;
   double max_x = 0.3;
   double min_x = -0.3;
+  double max_displacement = 100;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat match_img(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
@@ -192,7 +193,9 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
     cv::circle(match_img, end_point, 1, blue, 3);
     // Draw red line between matches
     if (end_point.x > 0 && end_point.x < match_img.rows &&
-        end_point.y > 0 && end_point.x < match_img.cols)
+        end_point.y > 0 && end_point.x < match_img.cols &&
+        std::abs(start_point.x - end_point.x) +
+        std::abs(start_point.y - end_point.y) < max_displacement)
     {
       cv::line(match_img, start_point, end_point, red);
     }
