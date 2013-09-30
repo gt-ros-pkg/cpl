@@ -95,7 +95,8 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
   return hull_cloud;
 }
 
-double compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b, double epsilon_cost)
+cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
+                                                double& min_cost, double epsilon_cost)
 {
   Samples2f samples_a, samples_b;
   for (unsigned int i = 0; i < hull_a.size(); ++i)
@@ -111,14 +112,23 @@ double compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b, doubl
   // TODO: Expose these parameters
   int radius_bins = 5;
   int theta_bins = 12;
+  ROS_INFO_STREAM("Getting descriptor a");
   ShapeDescriptors descriptors_a = constructDescriptors<Samples2f>(samples_a, radius_bins, theta_bins);
+  ROS_INFO_STREAM("Getting descriptor b");
   ShapeDescriptors descriptors_b = constructDescriptors<Samples2f>(samples_b, radius_bins, theta_bins);
+  ROS_INFO_STREAM("Computing cost matrix");
   cv::Mat cost_mat = computeCostMatrix(descriptors_a, descriptors_b, epsilon_cost);
+  cv::imshow("cost matrix", cost_mat);
   cpl_visual_features::Path path;
-  double min_cost = getMinimumCostPath(cost_mat, path);
-  // TODO: Write visualization of the object
-  // TODO: Return the correspondences
-  return min_cost;
+  ROS_INFO_STREAM("Getting min cost path");
+  min_cost = getMinimumCostPath(cost_mat, path);
+
+  return path;
+}
+
+void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud_t_1,
+                                  cpl_visual_features::Path p, Eigen::Matrix4f& transform)
+{
 }
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
@@ -140,6 +150,47 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
     cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
   }
   return footprint;
+}
+
+cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
+                                       PushTrackerState& cur_state, cpl_visual_features::Path& path)
+{
+  double max_y = 0.3;
+  double min_y = -0.3;
+  double max_x = 0.3;
+  double min_x = -0.3;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat match_img(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+
+  cv::Scalar blue(128, 0, 0);
+  cv::Scalar green(0, 128, 0);
+  cv::Scalar red(0, 0, 128);
+
+  for (int i = 0; i < hull_a.size(); ++i)
+  {
+    pcl16::PointXYZ start_point_world = hull_a[i];
+    pcl16::PointXYZ end_point_world = hull_b[path[i]];
+    // Transform to display frame
+    pcl16::PointXYZ start_point_obj = worldPointInObjectFrame(start_point_world, cur_state);
+    pcl16::PointXYZ end_point_obj = worldPointInObjectFrame(end_point_world, cur_state);
+    cv::Point start_point(objLocToIdx(start_point_obj.x, min_x, max_x),
+                          objLocToIdx(start_point_obj.y, min_y, max_y));
+    cv::Point end_point(objLocToIdx(end_point_obj.x, min_x, max_x),
+                        objLocToIdx(end_point_obj.y, min_y, max_y));
+
+    // Draw green point for previous, blue point for current
+    cv::circle(match_img, start_point, 1, green, 3);
+    cv::circle(match_img, end_point, 1, blue, 3);
+    // Draw red line between matches
+    if (end_point.x > 0 && end_point.x < match_img.rows &&
+        end_point.y > 0 && end_point.x < match_img.cols)
+    {
+      cv::line(match_img, start_point, end_point, red);
+    }
+
+  }
+  return match_img;
 }
 
 cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerState& cur_state,

@@ -113,12 +113,8 @@ template <class sample_type> ShapeDescriptors constructDescriptors(sample_type& 
         radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
         radius = log(radius);
         radius /= max_radius;
-        theta = atan(fabs(y1-y2) / fabs(x1-x2));
+        theta = atan2(y1-y2,x1-x2);
         theta += M_PI;
-        if (y1-y2 < 0)
-        {
-          theta += M_PI;
-        }
         theta /= 2*M_PI;
         // std::cout << "Getting idx for (" << radius << ", " << theta << ")" << std::endl;
         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);

@@ -44,10 +44,19 @@ void extractBoundingBoxFeatures(XYZPointCloud& samples, cpl_visual_features::Sha
 
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
 
-double compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b, double epsilon_cost = 9e5);
+cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
+                                                double& min_cost, double epsilon_cost = 9e5);
+
+void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud_t_1,
+                                  cpl_visual_features::Path p, Eigen::Matrix4f& transform);
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state);
+
+cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
+                                       tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,
+                                       cpl_visual_features::Path& path);
+
 cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,
                                        pcl16::PointXYZ& contact_pt, pcl16::PointXYZ& forward_pt);
