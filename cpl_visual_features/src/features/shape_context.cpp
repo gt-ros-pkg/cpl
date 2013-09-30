@@ -55,9 +55,9 @@ double compareShapes(cv::Mat& imageA, cv::Mat& imageB, double epsilonCost, bool 
 
   // construct shape descriptors for each sample
   // std::cout << "Getting descriptors for samples A" << std::endl;
-  ShapeDescriptors descriptorsA = constructDescriptors(samplesA);
+  ShapeDescriptors descriptorsA = constructDescriptors<Samples>(samplesA);
   // std::cout << "Getting descriptors for samples B" << std::endl;
-  ShapeDescriptors descriptorsB = constructDescriptors(samplesB);
+  ShapeDescriptors descriptorsB = constructDescriptors<Samples>(samplesB);
   // for (int i = 0; i < descriptorsA.size(); ++i)
   // {
   //   // std::cout << "Filled bins are: [";
@@ -129,7 +129,7 @@ ShapeDescriptors extractDescriptors(cv::Mat& image)
   Samples samples = samplePoints(edge_image);
 
   // construct shape descriptors for each sample
-  ShapeDescriptors descriptors = constructDescriptors(samples);
+  ShapeDescriptors descriptors = constructDescriptors<Samples>(samples);
   return descriptors;
 }
 
@@ -274,84 +274,84 @@ ShapeDescriptors constructDescriptors(Samples2f& samples,
   return descriptors;
 }
 
-ShapeDescriptors constructDescriptors(Samples& samples,
-                                      unsigned int radius_bins,
-                                      unsigned int theta_bins)
-{
-  ShapeDescriptors descriptors;
-  ShapeDescriptor descriptor;
-  double max_radius = 0;
-  double radius, theta;
-  double x1, x2, y1, y2;
-  unsigned int i, j, k, m;
+// template <class sample_type> ShapeDescriptors constructDescriptors(sample_type& samples,
+//                                                                    unsigned int radius_bins,
+//                                                                    unsigned int theta_bins)
+// {
+//   ShapeDescriptors descriptors;
+//   ShapeDescriptor descriptor;
+//   double max_radius = 0;
+//   double radius, theta;
+//   double x1, x2, y1, y2;
+//   unsigned int i, j, k, m;
 
-  // find maximum radius for normalization purposes
-  for (i=0; i < samples.size(); i++)
-  {
-    for (k=0; k < samples.size(); k++)
-    {
-      if (k != i)
-      {
-        x1 = samples.at(i).x;
-        y1 = samples.at(i).y;
-        x2 = samples.at(k).x;
-        y2 = samples.at(k).y;
+//   // find maximum radius for normalization purposes
+//   for (i=0; i < samples.size(); i++)
+//   {
+//     for (k=0; k < samples.size(); k++)
+//     {
+//       if (k != i)
+//       {
+//         x1 = samples.at(i).x;
+//         y1 = samples.at(i).y;
+//         x2 = samples.at(k).x;
+//         y2 = samples.at(k).y;
 
-        radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
-        if (radius > max_radius)
-        {
-          max_radius = radius;
-        }
-      }
-    }
-  }
-  max_radius = log(max_radius);
-  // std::cout << "Got max_radius of: " << max_radius << std::endl;
+//         radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
+//         if (radius > max_radius)
+//         {
+//           max_radius = radius;
+//         }
+//       }
+//     }
+//   }
+//   max_radius = log(max_radius);
+//   // std::cout << "Got max_radius of: " << max_radius << std::endl;
 
-  // build a descriptor for each sample
-  for (i=0; i < samples.size(); i++)
-  {
-    // initialize descriptor
-    descriptor.clear();
-    for (j=0; j < radius_bins*theta_bins; j++)
-    {
-      descriptor.push_back(0);
-    }
-    x1 = samples.at(i).x;
-    y1 = samples.at(i).y;
+//   // build a descriptor for each sample
+//   for (i=0; i < samples.size(); i++)
+//   {
+//     // initialize descriptor
+//     descriptor.clear();
+//     for (j=0; j < radius_bins*theta_bins; j++)
+//     {
+//       descriptor.push_back(0);
+//     }
+//     x1 = samples.at(i).x;
+//     y1 = samples.at(i).y;
 
-    // construct descriptor
-    for (m=0; m < samples.size(); m++)
-    {
-      if (m != i)
-      {
-        // std::cout << "Constructing descriptor for (" << i << ", " << m << ")" << std::endl;
-        x2 = samples.at(m).x;
-        y2 = samples.at(m).y;
+//     // construct descriptor
+//     for (m=0; m < samples.size(); m++)
+//     {
+//       if (m != i)
+//       {
+//         // std::cout << "Constructing descriptor for (" << i << ", " << m << ")" << std::endl;
+//         x2 = samples.at(m).x;
+//         y2 = samples.at(m).y;
 
-        radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
-        radius = log(radius);
-        radius /= max_radius;
-        theta = atan(fabs(y1-y2) / fabs(x1-x2));
-        theta += M_PI;
-        if (y1-y2 < 0)
-        {
-          theta += M_PI;
-        }
-        theta /= 2*M_PI;
-        // std::cout << "Getting idx for (" << radius << ", " << theta << ")" << std::endl;
-        int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
-        // std::cout << "Idx is: " << idx << std::endl;
-        descriptor.at(idx)++;
-      }
-    }
+//         radius = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
+//         radius = log(radius);
+//         radius /= max_radius;
+//         theta = atan(fabs(y1-y2) / fabs(x1-x2));
+//         theta += M_PI;
+//         if (y1-y2 < 0)
+//         {
+//           theta += M_PI;
+//         }
+//         theta /= 2*M_PI;
+//         // std::cout << "Getting idx for (" << radius << ", " << theta << ")" << std::endl;
+//         int idx = getHistogramIndex(radius, theta, radius_bins, theta_bins);
+//         // std::cout << "Idx is: " << idx << std::endl;
+//         descriptor.at(idx)++;
+//       }
+//     }
 
-    // add descriptor to std::vector of descriptors
-    descriptors.push_back(descriptor);
-  }
+//     // add descriptor to std::vector of descriptors
+//     descriptors.push_back(descriptor);
+//   }
 
-  return descriptors;
-}
+//   return descriptors;
+// }
 
 cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
                           ShapeDescriptors& descriptorsB,

@@ -208,6 +208,7 @@ class ObjectTracker25D
   bool have_table_color_model_;
   bool use_graphcut_arm_seg_;
   double hull_alpha_;
+  XYZPointCloud previous_hull_cloud_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

@@ -16,7 +16,7 @@
 
 // Debugging IFDEFS
 // #define PROFILE_TRACKING_TIME 1
-// #define PROFILE_FIND_TARGET_TIME 1 // TODO: Setup these timers
+// #define PROFILE_FIND_TARGET_TIME 1
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
@@ -277,16 +277,38 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   {
     // Get 2D object boundary
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
-    // TODO: Get ellipse orientation from the 2D boundary
-    fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
-    state.x.theta = getThetaFromEllipse(obj_ellipse);
-    // Get (x,y) centroid of boundary
-    state.x.x = obj_ellipse.center.x;
-    state.x.y = obj_ellipse.center.y;
-    // Use vertical z centroid from object
-    state.z = cur_obj.centroid[2];
+    // Get ellipse orientation from the 2D boundary
+    if (frame_count_ < 1)
+    {
+      fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
+      state.x.theta = getThetaFromEllipse(obj_ellipse);
+      // Get (x,y) centroid of boundary
+      state.x.x = obj_ellipse.center.x;
+      state.x.y = obj_ellipse.center.y;
+      // Use vertical z centroid from object
+      state.z = cur_obj.centroid[2];
+    }
+    else
+    {
+      // TODO: Perform match using ICP or Shape Context
+      double match_cost = compareBoundaryShapes(hull_cloud, previous_hull_cloud_);
+      ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
+      // TODO: Get Transform to explain the match
+      // TODO: Transform previous state using the estimate and update current state
+
+      // HACK: Currently running the same as frame 1 to get a state estimate while setting up the matching
+      fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
+      state.x.theta = getThetaFromEllipse(obj_ellipse);
+      // Get (x,y) centroid of boundary
+      state.x.x = obj_ellipse.center.x;
+      state.x.y = obj_ellipse.center.y;
+      // Use vertical z centroid from object
+      state.z = cur_obj.centroid[2];
+
+    }
     // Update stuff
     previous_obj_ellipse_ = obj_ellipse;
+    previous_hull_cloud_ = hull_cloud;
     updateHeading(state, init_state);
   }
   else if (proxy_name == BOUNDING_BOX_XY_PROXY)
@@ -614,6 +636,8 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   init_state_ = state;
   previous_obj_ = cur_obj;
   obj_saved_ = true;
+  frame_count_ = 1;
+  record_count_ = 1;
 }
 
 double ObjectTracker25D::getThetaFromEllipse(cv::RotatedRect& obj_ellipse)

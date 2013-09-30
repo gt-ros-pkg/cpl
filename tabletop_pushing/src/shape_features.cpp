@@ -21,7 +21,6 @@ typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 namespace tabletop_pushing
 {
 
-
 inline int getHistBinIdx(int x_idx, int y_idx, int n_x_bins, int n_y_bins)
 {
   return x_idx*n_y_bins+y_idx;
@@ -94,6 +93,32 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
   return hull_cloud;
+}
+
+double compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b, double epsilon_cost)
+{
+  Samples2f samples_a, samples_b;
+  for (unsigned int i = 0; i < hull_a.size(); ++i)
+  {
+    cv::Point2f pt(hull_a[i].x, hull_a[i].y);
+    samples_a.push_back(pt);
+  }
+  for (unsigned int i = 0; i < hull_b.size(); ++i)
+  {
+    cv::Point2f pt(hull_b[i].x, hull_b[i].y);
+    samples_b.push_back(pt);
+  }
+  // TODO: Expose these parameters
+  int radius_bins = 5;
+  int theta_bins = 12;
+  ShapeDescriptors descriptors_a = constructDescriptors<Samples2f>(samples_a, radius_bins, theta_bins);
+  ShapeDescriptors descriptors_b = constructDescriptors<Samples2f>(samples_b, radius_bins, theta_bins);
+  cv::Mat cost_mat = computeCostMatrix(descriptors_a, descriptors_b, epsilon_cost);
+  cpl_visual_features::Path path;
+  double min_cost = getMinimumCostPath(cost_mat, path);
+  // TODO: Write visualization of the object
+  // TODO: Return the correspondences
+  return min_cost;
 }
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
@@ -237,6 +262,7 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl, ProtoO
   // computeShapeFeatureAffinityMatrix(locs, use_center);
   return locs;
 }
+
 cv::Mat makeHistogramImage(ShapeDescriptor histogram, int n_x_bins, int n_y_bins, int bin_width_pixels)
 {
   cv::Mat hist_img(n_x_bins*bin_width_pixels+1, n_y_bins*bin_width_pixels+1, CV_8UC1, cv::Scalar(255));
