@@ -310,7 +310,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
 
       // TODO: Transform previous state using the estimate and update current state
-      ROS_INFO_STREAM("Found transform of: " << transform);
+      ROS_INFO_STREAM("Found transform of: \n" << transform);
       Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, 0.0, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
       Eigen::Matrix3f rot = transform.block<3,3>(0,0);

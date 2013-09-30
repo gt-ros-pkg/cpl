@@ -397,16 +397,14 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
       cost_matrix.at<double>(i,j) = d_cost;
     }
   }
-
-  cv::Mat int_cost_matrix;
-  cost_matrix.convertTo(int_cost_matrix, CV_8UC1, 255);
   if (write_images)
   {
+    cv::Mat int_cost_matrix;
+    cost_matrix.convertTo(int_cost_matrix, CV_8UC1, 255);
     std::stringstream cost_matrix_path;
     cost_matrix_path << filePath << "/cost_matrix" << filePostFix << ".bmp";
     cv::imwrite(cost_matrix_path.str().c_str(), int_cost_matrix);
   }
-
   return cost_matrix;
   // return int_cost_matrix;
 }

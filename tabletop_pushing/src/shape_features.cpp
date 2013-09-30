@@ -6,6 +6,7 @@
 #include <pcl16/ros/conversions.h>
 #include <pcl16/surface/concave_hull.h>
 #include <pcl16/common/pca.h>
+#include <pcl16/registration/transformation_estimation_lm.h>
 #include <cpl_visual_features/comp_geometry.h>
 #include <cpl_visual_features/helpers.h>
 #include <iostream>
@@ -112,9 +113,7 @@ cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointC
   // TODO: Expose these parameters
   int radius_bins = 5;
   int theta_bins = 12;
-  ROS_INFO_STREAM("Getting descriptor a");
   ShapeDescriptors descriptors_a = constructDescriptors<Samples2f>(samples_a, radius_bins, theta_bins);
-  ROS_INFO_STREAM("Getting descriptor b");
   ShapeDescriptors descriptors_b = constructDescriptors<Samples2f>(samples_b, radius_bins, theta_bins);
   ROS_INFO_STREAM("Computing cost matrix");
   cv::Mat cost_mat = computeCostMatrix(descriptors_a, descriptors_b, epsilon_cost);
@@ -129,6 +128,15 @@ cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointC
 void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud_t_1,
                                   cpl_visual_features::Path p, Eigen::Matrix4f& transform)
 {
+  // TODO: Get inliers
+  // Do least squares estimate of the change
+  std::vector<int> source_indices;
+  for (int i = 0; i < p.size(); ++i)
+  {
+    source_indices.push_back(i);
+  }
+  pcl16::registration::TransformationEstimationLM<pcl16::PointXYZ, pcl16::PointXYZ> tlm;
+  tlm.estimateRigidTransformation(cloud_t_0, source_indices, cloud_t_1, p, transform);
 }
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
