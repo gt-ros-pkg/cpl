@@ -16,7 +16,6 @@ namespace cpl_visual_features
 
 /*************** TYPES      *******************/
 
-// TODO: Move into the namespace
 typedef int LapRow;
 typedef int LapCol;
 typedef float LapCost;
