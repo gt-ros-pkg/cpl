@@ -69,12 +69,12 @@ template <class sample_type> ShapeDescriptors constructDescriptors(sample_type& 
   // find maximum radius for normalization purposes
   for (i=0; i < samples.size(); i++)
   {
+    x1 = samples.at(i).x;
+    y1 = samples.at(i).y;
     for (k=0; k < samples.size(); k++)
     {
       if (k != i)
       {
-        x1 = samples.at(i).x;
-        y1 = samples.at(i).y;
         x2 = samples.at(k).x;
         y2 = samples.at(k).y;
 

@@ -278,7 +278,6 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_mps_segmentation", use_mps_segmentation_, false);
 
     n_private_.param("max_object_gripper_dist", max_object_gripper_dist_, 0.10);
-    n_private_.param("max_object_tool_dist", max_object_tool_dist_, 0.10);
     n_private_.param("gripper_not_moving_thresh", gripper_not_moving_thresh_, 0.005);
     n_private_.param("object_not_moving_thresh", object_not_moving_thresh_, 0.005);
     n_private_.param("gripper_not_moving_count_limit", gripper_not_moving_count_limit_, 100);
@@ -287,7 +286,6 @@ class TabletopPushingPerceptionNode
     n_private_.param("object_too_far_count_limit", object_too_far_count_limit_, 5);
     n_private_.param("object_not_between_count_limit", object_not_between_count_limit_, 5);
     n_private_.param("object_not_between_epsilon", object_not_between_epsilon_, 0.01);
-    n_private_.param("object_not_between_tool_epsilon", object_not_between_tool_epsilon_, 0.01);
     n_private_.param("start_loc_push_time_limit", start_loc_push_time_, 5.0);
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
@@ -554,7 +552,6 @@ class TabletopPushingPerceptionNode
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
-      tracker_state.tool_proxy_name = tool_proxy_name_;
 
       PointStamped start_point;
       PointStamped end_point;
@@ -760,38 +757,15 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object disappeared");
     }
-    else if (controller_name_ != "tool_centroid_controller")
+    else
     {
       if (objectTooFarFromGripper(tracker_state.x))
       {
         abortPushingGoal("Object is too far from gripper.");
       }
-      else if (behavior_primitive_ != "gripper_pull" &&
-               objectNotBetweenGoalAndGripper(tracker_state.x))
+      else if (behavior_primitive_ != "gripper_pull")
       {
         abortPushingGoal("Object is not between gripper and goal.");
-      }
-    }
-    else
-    {
-      // TODO: Fix this to be based on the tool_proxy being used
-      PoseStamped tool_state;
-      if (pushing_arm_ == "l")
-      {
-        tool_state = l_arm_pose_;
-      }
-      else
-      {
-        tool_state = r_arm_pose_;
-      }
-
-      if (objectTooFarFromTool(tracker_state.x, tool_state))
-      {
-        abortPushingGoal("Object is too far from tool.");
-      }
-      else if (objectNotBetweenGoalAndTool(tracker_state.x, tool_state))
-      {
-        abortPushingGoal("Object is not between tool and goal.");
       }
     }
   }
@@ -823,7 +797,6 @@ class TabletopPushingPerceptionNode
         controller_name_ = req.controller_name;
         proxy_name_ = req.proxy_name;
         behavior_primitive_ = req.behavior_primitive;
-        tool_proxy_name_ = req.tool_proxy_name;
       }
 
       if (req.initialize)
@@ -960,7 +933,6 @@ class TabletopPushingPerceptionNode
     res.centroid.y = cur_obj.centroid[1];
     res.centroid.z = cur_obj.centroid[2];
     res.theta = cur_state.x.theta;
-    res.tool_x = cur_state.tool_x;
 
     // Set basic push information
     PushVector p;
@@ -1815,7 +1787,6 @@ class TabletopPushingPerceptionNode
     controller_name_ = tracker_goal->controller_name;
     proxy_name_ = tracker_goal->proxy_name;
     behavior_primitive_ = tracker_goal->behavior_primitive;
-    tool_proxy_name_ = tracker_goal->tool_proxy_name;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
@@ -1922,20 +1893,6 @@ class TabletopPushingPerceptionNode
     return object_not_between_count_ >= object_not_between_count_limit_;
   }
 
-  bool objectNotBetweenGoalAndTool(Pose2D& obj_state, PoseStamped& tool_state)
-  {
-    if( pointIsBetweenOthers(tool_state.pose.position, obj_state, tracker_goal_pose_,
-                             object_not_between_tool_epsilon_))
-    {
-      ++object_not_between_count_;
-    }
-    else
-    {
-      object_not_between_count_ = 0;
-    }
-    return object_not_between_count_ >= object_not_between_count_limit_;
-  }
-
   // TODO: Make this threshold the initial distance when pushing + some epsilon
   bool objectTooFarFromGripper(Pose2D& obj_state)
   {
@@ -1950,22 +1907,6 @@ class TabletopPushingPerceptionNode
     }
     float gripper_dist = hypot(gripper_pt.x-obj_state.x,gripper_pt.y-obj_state.y);
     if (gripper_dist  > max_object_gripper_dist_)
-    {
-      ++object_too_far_count_;
-    }
-    else
-    {
-      object_too_far_count_ = 0;
-    }
-    return object_too_far_count_ >= object_too_far_count_limit_;
-  }
-
-  bool objectTooFarFromTool(Pose2D& obj_state, PoseStamped& tool_state)
-  {
-    geometry_msgs::Point tool_pt;
-    tool_pt = tool_state.pose.position;
-    float tool_dist = hypot(tool_pt.x-obj_state.x, tool_pt.y-obj_state.y);
-    if (tool_dist  > max_object_tool_dist_)
     {
       ++object_too_far_count_;
     }
@@ -2321,7 +2262,6 @@ class TabletopPushingPerceptionNode
   std::string proxy_name_;
   std::string controller_name_;
   std::string behavior_primitive_;
-  std::string tool_proxy_name_;
   double tracker_dist_thresh_;
   double tracker_angle_thresh_;
   bool just_spun_;
@@ -2333,7 +2273,6 @@ class TabletopPushingPerceptionNode
   Twist r_arm_vel_;
   bool use_mps_segmentation_;
   double max_object_gripper_dist_;
-  double max_object_tool_dist_;
   double object_not_moving_thresh_;
   int object_not_moving_count_;
   int object_not_moving_count_limit_;
@@ -2347,7 +2286,6 @@ class TabletopPushingPerceptionNode
   int object_not_between_count_;
   int object_not_between_count_limit_;
   double object_not_between_epsilon_;
-  double object_not_between_tool_epsilon_;
   ShapeLocations start_loc_history_;
   double start_loc_push_time_;
   double start_loc_push_dist_;

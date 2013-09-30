@@ -77,7 +77,6 @@
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
     <param name="use_cv_ellipse" value="false" type="bool"/>
     <param name="max_object_gripper_dist" value="0.25" type="double"/>
-    <param name="max_object_tool_dist" value="0.30" type="double"/>
     <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
     <param name="object_not_moving_thresh" value="0.003" type="double"/>
     <param name="gripper_not_moving_count_limit" value="50" type="int"/>
@@ -86,7 +85,6 @@
     <param name="object_too_far_count_limit" value="2" type="int"/>
     <param name="object_not_between_count_limit" value="2" type="int"/>
     <param name="object_not_between_epsilon" value="0.02" type="double"/>
-    <param name="object_not_between_tool_epsilon" value="0.05" type="double"/>
     <param name="point_cloud_hist_res" value="0.0051" type="double"/>
 
     <param name="boundary_hull_alpha" value="0.01" type="double"/>

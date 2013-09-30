@@ -7,7 +7,6 @@ bool get_pose_only
 string controller_name
 string proxy_name
 string behavior_primitive
-string tool_proxy_name
 string trial_id
 string start_loc_param_path
 int32 num_start_loc_clusters
@@ -17,7 +16,6 @@ bool previous_position_worked
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid
-geometry_msgs/PoseStamped tool_x
 geometry_msgs/Pose2D goal_pose
 float64 theta
 bool no_push

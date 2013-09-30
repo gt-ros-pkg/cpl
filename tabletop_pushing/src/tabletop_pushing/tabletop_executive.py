@@ -261,22 +261,21 @@ class TabletopExecutive:
                             return False
         return True
 
-    def run_push_exploration(self, object_id, tool_proxy_name=EE_TOOL_PROXY):
+    def run_push_exploration(self, object_id):
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
                     for arm in ROBOT_ARMS:
                         precondition_method = PRECONDITION_METHODS[behavior_primitive]
                         res = self.explore_push(behavior_primitive, controller, proxy, object_id,
-                                                precondition_method, arm, tool_proxy_name)
+                                                precondition_method, arm)
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
                             return False
         return True
 
     def explore_push(self, behavior_primitive, controller_name, proxy_name, object_id,
-                     precondition_method=CENTROID_PUSH_PRECONDITION, input_arm=None,
-                     tool_proxy_name=EE_TOOL_PROXY):
+                     precondition_method=CENTROID_PUSH_PRECONDITION, input_arm=None):
         if input_arm is not None:
             rospy.loginfo('Exploring push behavior: (' + behavior_primitive + ', '
                           + controller_name + ', ' + proxy_name + ', ' + input_arm + ')')
@@ -314,7 +313,7 @@ class TabletopExecutive:
             start_time = time.time()
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
                                                              proxy_name, behavior_primitive,
-                                                             tool_proxy_name, learn_start_loc=False)
+                                                             learn_start_loc=False)
 
             if push_vec_res is None:
                 return None
@@ -334,7 +333,7 @@ class TabletopExecutive:
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
                                               push_vec_res, goal_pose,
-                                              controller_name, proxy_name, tool_proxy_name)
+                                              controller_name, proxy_name)
             push_time = time.time() - start_time
             if push_res.failed_pre_position:
                 if _USE_LEARN_IO:
@@ -496,10 +495,8 @@ class TabletopExecutive:
             controller_name = CENTROID_CONTROLLER
             proxy_name = ELLIPSE_PROXY
             behavior_primitive = OVERHEAD_PUSH
-            tool_proxy_name = EE_TOOL_PROXY
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
                                                                  proxy_name, behavior_primitive,
-                                                                 tool_proxy_name,
                                                                  get_pose_only=True)
 
             if push_vec_res is None:
@@ -513,7 +510,7 @@ class TabletopExecutive:
 
 
     def get_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
-                                     behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
+                                     behavior_primitive,
                                      learn_start_loc=False, new_object=False, num_clusters=1,
                                      trial_id='',num_sample_locs=1, num_pushes_per_sample=1,
                                      start_loc_param_path='', position_worked=True):
@@ -521,7 +518,6 @@ class TabletopExecutive:
         while get_push:
             push_vec_res = self.request_feedback_push_start_pose(goal_pose, controller_name,
                                                                  proxy_name, behavior_primitive,
-                                                                 tool_proxy_name,
                                                                  learn_start_loc=learn_start_loc,
                                                                  new_object=new_object,
                                                                  num_clusters=num_clusters,
@@ -595,7 +591,7 @@ class TabletopExecutive:
         return which_arm
 
     def perform_push(self, which_arm, behavior_primitive, push_vector_res, goal_pose,
-                     controller_name, proxy_name, tool_proxy_name=EE_TOOL_PROXY, high_init = True):
+                     controller_name, proxy_name, high_init = True):
         push_angle = push_vector_res.push.push_angle
         # NOTE: Use commanded push distance not visually decided minimal distance
         if push_vector_res is None:
@@ -622,15 +618,10 @@ class TabletopExecutive:
                 result = self.gripper_feedback_push_object(which_arm,
                                                            push_vector_res.push, goal_pose,
                                                            controller_name, proxy_name, behavior_primitive)
-            elif behavior_primitive == TOOL_SWEEP:
-                result = self.feedback_tool_sweep_object(which_arm, push_vector_res,
-                                                         goal_pose, controller_name, proxy_name, behavior_primitive,
-                                                         tool_proxy_name)
             else:
                 rospy.logwarn('Unknown behavior_primitive: ' + str(behavior_primitive))
                 result = None
         else:
-            # rospy.loginfo('Tool Pose: ' + str(push_vector_res.tool_x))
             result = FeedbackPushResponse()
 
         # NOTE: If the call aborted, recall with the same settings
@@ -687,7 +678,7 @@ class TabletopExecutive:
             return None
 
     def request_feedback_push_start_pose(self, goal_pose, controller_name, proxy_name,
-                                         behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
+                                         behavior_primitive,
                                          get_pose_only=False, learn_start_loc=False,
                                          new_object=False, num_clusters=1, trial_id='',
                                          num_sample_locs=1, num_pushes_per_sample=1,start_loc_param_path='',
@@ -698,7 +689,6 @@ class TabletopExecutive:
         push_vector_req.goal_pose = goal_pose
         push_vector_req.controller_name = controller_name
         push_vector_req.proxy_name = proxy_name
-        push_vector_req.tool_proxy_name = tool_proxy_name
         push_vector_req.behavior_primitive = behavior_primitive
         push_vector_req.get_pose_only = get_pose_only
         push_vector_req.learn_start_loc = learn_start_loc
@@ -810,7 +800,6 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = EE_TOOL_PROXY
 
         rospy.loginfo('Overhead push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -873,7 +862,6 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = EE_TOOL_PROXY
 
         rospy.loginfo('Gripper push augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -939,7 +927,6 @@ class TabletopExecutive:
         push_req.controller_name = controller_name
         push_req.proxy_name = proxy_name
         push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = EE_TOOL_PROXY
 
         rospy.loginfo('Gripper sweep augmented start_point: (' +
                       str(push_req.start_point.point.x) + ', ' +
@@ -958,78 +945,6 @@ class TabletopExecutive:
         rospy.loginfo("Calling feedback post sweep service")
         post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
         return push_res
-
-    def feedback_tool_sweep_object(self, which_arm, push_info, goal_pose, controller_name,
-                                   proxy_name, behavior_primitive, tool_proxy_name=EE_TOOL_PROXY,
-                                   high_init=True, open_gripper=True):
-        push_vector = push_info.push
-        # Convert pose response to correct push request format
-        push_req = FeedbackPushRequest()
-        push_req.start_point.header = push_vector.header
-        push_req.start_point.point = push_vector.start_point
-
-        # TODO: Note, curently a hack
-        push_req.open_gripper = False
-        push_req.goal_pose = goal_pose
-        if _USE_LEARN_IO:
-            push_req.learn_out_file_name = self.learn_out_file_name
-
-        # if push_req.left_arm:
-        if push_vector.push_angle > 0:
-            y_offset_dir = -1
-            wrist_yaw = push_vector.push_angle - pi/2.0
-        else:
-            y_offset_dir = +1
-            wrist_yaw = push_vector.push_angle + pi/2.0
-        if abs(push_vector.push_angle) > pi/2:
-            x_offset_dir = +1
-        else:
-            x_offset_dir = -1
-
-        # Set offset in x y, based on distance
-        push_req.wrist_yaw = wrist_yaw
-        # TODO: Have tool proxy in hand frame. Use x and y values as the offset distance
-        # Use tool_x to do this
-        tool_pose = push_info.tool_x
-        tool_face_offset_dist = 0.07
-        tool_sweep_wrist_offset_dist = -0.16
-        face_x_offset = tool_face_offset_dist*x_offset_dir*abs(sin(wrist_yaw))
-        face_y_offset = y_offset_dir*tool_face_offset_dist*cos(wrist_yaw)
-        wrist_x_offset = tool_sweep_wrist_offset_dist*cos(wrist_yaw)
-        wrist_y_offset = tool_sweep_wrist_offset_dist*sin(wrist_yaw)
-        rospy.loginfo('wrist_yaw: ' + str(wrist_yaw))
-        rospy.loginfo('Face offset: (' + str(face_x_offset) + ', ' + str(face_y_offset) +')')
-        rospy.loginfo('Wrist offset: (' + str(wrist_x_offset) + ', ' + str(wrist_y_offset) +')')
-
-        push_req.start_point.point.x += face_x_offset + wrist_x_offset
-        push_req.start_point.point.y += face_y_offset + wrist_y_offset
-        push_req.start_point.point.z = self.sweep_start_z
-        push_req.left_arm = (which_arm == 'l')
-        push_req.right_arm = not push_req.left_arm
-        push_req.high_arm_init = high_init
-        push_req.controller_name = controller_name
-        push_req.proxy_name = proxy_name
-        push_req.behavior_primitive = behavior_primitive
-        push_req.tool_proxy_name = tool_proxy_name
-
-        rospy.loginfo('Gripper sweep augmented start_point: (' +
-                      str(push_req.start_point.point.x) + ', ' +
-                      str(push_req.start_point.point.y) + ', ' +
-                      str(push_req.start_point.point.z) + ')')
-
-        rospy.loginfo("Calling feedback pre sweep service")
-        pre_push_res = self.gripper_feedback_pre_sweep_proxy(push_req)
-        rospy.loginfo("Calling feedback sweep service")
-
-        if _TEST_START_POSE:
-            raw_input('waiting for input to recall arm: ')
-            push_res = FeedbackPushResponse()
-        else:
-            push_res = self.gripper_feedback_sweep_proxy(push_req)
-        rospy.loginfo("Calling feedback post sweep service")
-        post_push_res = self.gripper_feedback_post_sweep_proxy(push_req)
-        return push_res
-
 
     def gripper_push_object(self, push_dist, which_arm, pose_res, high_init):
         # Convert pose response to correct push request format
