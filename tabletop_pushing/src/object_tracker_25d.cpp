@@ -278,6 +278,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   {
     // Get 2D object boundary
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+    // Use vertical z centroid from object
+    state.z = cur_obj.centroid[2];
+
     // Get ellipse orientation from the 2D boundary
     // TODO: Add in switch for different hull proxies
     if (frame_count_ < 1 || proxy_name == HULL_ELLIPSE_PROXY)
@@ -287,36 +290,35 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       // Get (x,y) centroid of boundary
       state.x.x = obj_ellipse.center.x;
       state.x.y = obj_ellipse.center.y;
-      // Use vertical z centroid from object
-      state.z = cur_obj.centroid[2];
     }
     else
     {
       cpl_visual_features::Path matches;
-      Eigen::Matrix4f transform;
+      Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
       if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
       {
         double match_cost;
         matches = compareBoundaryShapes(previous_hull_cloud_, hull_cloud, match_cost);
         ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
-        // TODO: Get Transform to explain the match
+        // TODO: Implement this method to get the transform
         estimateTransformFromMatches(previous_hull_cloud_, hull_cloud, matches, transform);
       }
       else // (proxy_name == HULL_ICP_PROXY)
       {
+        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform);
+        ROS_INFO_STREAM("Found ICP match with score: " << match_score);
       }
 
       // TODO: Transform previous state using the estimate and update current state
-
-      // HACK: Currently running the same as frame 1 to get a state estimate while setting up the matching
-      fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
-      state.x.theta = getThetaFromEllipse(obj_ellipse);
-      // Get (x,y) centroid of boundary
-      state.x.x = obj_ellipse.center.x;
-      state.x.y = obj_ellipse.center.y;
-      // Use vertical z centroid from object
-      state.z = cur_obj.centroid[2];
-
+      ROS_INFO_STREAM("Found transform of: " << transform);
+      Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, 0.0, 1.0);
+      Eigen::Vector4f x_t_1 = transform*x_t_0;
+      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+      state.x.x = x_t_1(0);
+      state.x.y = x_t_1(1);
+      const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
+      const Eigen::Vector3f x_axis_t = rot*x_axis;
+      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
       // Visualize the matches
       if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
       {

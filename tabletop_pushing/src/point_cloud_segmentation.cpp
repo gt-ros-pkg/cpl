@@ -467,6 +467,34 @@ double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
 }
 
 /**
+ * Perform Iterated Closest Point between two object boundaries.
+ *
+ * @param a The first object boundary
+ * @param b The second object boundary
+ * @param transform The transform from a to b
+ *
+ * @return The ICP fitness score of the match
+ */
+double PointCloudSegmentation::ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1,
+                                                  Eigen::Matrix4f& transform)
+{
+  // TODO: Investigate this!
+  // pcl16::IterativeClosestPointNonLinear<PointXYZ, PointXYZ> icp;
+  pcl16::IterativeClosestPoint<PointXYZ, PointXYZ> icp;
+  icp.setMaximumIterations(icp_max_iters_);
+  icp.setTransformationEpsilon(icp_transform_eps_);
+  icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
+  icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
+  icp.setInputCloud(boost::make_shared<XYZPointCloud>(hull_t_0));
+  icp.setInputTarget(boost::make_shared<XYZPointCloud>(hull_t_1));
+  XYZPointCloud aligned;
+  icp.align(aligned);
+  double score = icp.getFitnessScore();
+  transform = icp.getFinalTransformation();
+  return score;
+}
+
+/**
  * Find the regions that have moved between two point clouds
  *
  * @param prev_cloud    The first cloud to use in differencing
