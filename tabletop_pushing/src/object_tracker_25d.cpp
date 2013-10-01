@@ -305,13 +305,14 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       else // (proxy_name == HULL_ICP_PROXY)
       {
+        // TODO: Add guess of movement based on previous state estimates
         double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform,
                                                                 aligned);
-        ROS_INFO_STREAM("Found ICP match with score: " << match_score);
+        // ROS_INFO_STREAM("Found ICP match with score: " << match_score);
       }
 
-      // TODO: Transform previous state using the estimate and update current state
-      ROS_INFO_STREAM("Found transform of: \n" << transform);
+      // Transform previous state using the estimate and update current state
+      // ROS_INFO_STREAM("Found transform of: \n" << transform);
       Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
       Eigen::Matrix3f rot = transform.block<3,3>(0,0);
@@ -321,19 +322,32 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       const Eigen::Vector3f x_axis_t = rot*x_axis;
       state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
       // Visualize the matches
-      if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
+      if (use_displays_ || write_to_disk_)
       {
-        cv::Mat match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, hull_cloud, state, matches);
-        cv::imshow("Boundary matches", match_img);
-      }
-      else
-      {
-        for (int i = 0; i < previous_hull_cloud_.size(); ++i)
+        cv::Mat match_img;
+        if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
         {
-          matches.push_back(i);
+          match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, hull_cloud, state, matches);
         }
-        cv::Mat match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, aligned, state, matches);
-        cv::imshow("Boundary matches", match_img);
+        else
+        {
+          for (int i = 0; i < previous_hull_cloud_.size(); ++i)
+          {
+            matches.push_back(i);
+          }
+          match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, aligned, state, matches);
+        }
+        if (use_displays_)
+        {
+          cv::imshow("Boundary matches", match_img);
+        }
+        if (write_to_disk_ && !isPaused())
+        {
+          std::stringstream out_name;
+          out_name << base_output_path_ << "boundary_matches_" << frame_set_count_ << "_"
+                   << record_count_ << ".png";
+          cv::imwrite(out_name.str(), match_img);
+        }
       }
     }
     // Update stuff

@@ -303,7 +303,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
 
 #ifdef DEBUG_POSE_ESTIMATION
-    pose_est_stream_.open("/u/thermans/pose_ests.txt");
+    pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
 #endif // DEBUG_POSE_ESTIMATION
 
     // Initialize classes requiring parameters
