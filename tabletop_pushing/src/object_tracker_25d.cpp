@@ -161,11 +161,11 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
   int chosen_idx = 0;
   if (objs.size() == 1)
   {
-    ROS_INFO_STREAM("Picking the only object");
+    // ROS_INFO_STREAM("Picking the only object");
   }
   else if (init || frame_count_ == 0)
   {
-    ROS_INFO_STREAM("Picking the biggest object at initialization");
+    // ROS_INFO_STREAM("Picking the biggest object at initialization");
     // NOTE: Assume we care about the biggest currently
     unsigned int max_size = 0;
     for (unsigned int i = 0; i < objs.size(); ++i)
@@ -179,7 +179,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
   }
   else // Find closest object to last time
   {
-    ROS_INFO_STREAM("Finding the closest object to previous");
+    // ROS_INFO_STREAM("Finding the closest object to previous");
     double min_dist = 1000.0;
     for (unsigned int i = 0; i < objs.size(); ++i)
     {
@@ -191,17 +191,17 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
       }
       // TODO: Match color GMM model
     }
-    ROS_INFO_STREAM("Chose object " << chosen_idx << " at distance " << min_dist);
+    // ROS_INFO_STREAM("Chose object " << chosen_idx << " at distance " << min_dist);
   }
   if (init && use_graphcut_arm_seg_)
   {
     // Extract color GMM model
-    ROS_INFO_STREAM("Building object color model.");
+    // ROS_INFO_STREAM("Building object color model.");
     obj_color_model_ = buildColorModel(objs[chosen_idx].cloud, in_frame, 5);
     have_obj_color_model_ = true;
     if (have_table_color_model_)
     {
-      ROS_INFO_STREAM("Combining bg color models");
+      // ROS_INFO_STREAM("Combining bg color models");
       arm_segmenter_->buildBGColorModel(table_color_model_, obj_color_model_);
     }
   }
@@ -217,9 +217,9 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
         objs, in_frame.size(), objs[0].cloud.header.frame_id);
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
-    ROS_INFO_STREAM("Updating display");
+    // ROS_INFO_STREAM("Updating display");
   }
-  ROS_INFO_STREAM("Returning matched object\n");
+  // ROS_INFO_STREAM("Returning matched object\n");
 #ifdef PROFILE_FIND_TARGET_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
@@ -312,7 +312,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 
       // TODO: Transform previous state using the estimate and update current state
       ROS_INFO_STREAM("Found transform of: \n" << transform);
-      Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, 0.0, 1.0);
+      Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
       Eigen::Matrix3f rot = transform.block<3,3>(0,0);
       state.x.x = x_t_1(0);

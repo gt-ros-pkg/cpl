@@ -119,6 +119,7 @@
 // #define DISPLAY_INPUT_DEPTH 1
 #define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
+// #define DEBUG_POSE_ESTIMATION 1
 
 using boost::shared_ptr;
 
@@ -300,6 +301,10 @@ class TabletopPushingPerceptionNode
 
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
+
+#ifdef DEBUG_POSE_ESTIMATION
+    pose_est_stream_.open("/u/thermans/pose_ests.txt");
+#endif // DEBUG_POSE_ESTIMATION
 
     // Initialize classes requiring parameters
     arm_obj_segmenter_ = shared_ptr<ArmObjSegmentation>(new ArmObjSegmentation());
@@ -503,6 +508,11 @@ class TabletopPushingPerceptionNode
         obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
                                    proxy_name_, tracker_state);
       }
+
+#ifdef DEBUG_POSE_ESTIMATION
+      pose_est_stream_ << tracker_state.x.x << " " << tracker_state.x.y << " " << tracker_state.z << " "
+                       << tracker_state.x.theta << "\n";
+#endif // DEBUG_POSE_ESTIMATION
 
 #ifdef PROFILE_CB_TIME
       update_tracks_elapsed_time = (((double)(Timer::nanoTime() - update_tracks_start_time)) /
@@ -2311,6 +2321,10 @@ class TabletopPushingPerceptionNode
   double hull_alpha_;
   double gripper_spread_;
   int footprint_count_;
+#ifdef DEBUG_POSE_ESTIMATION
+  std::ofstream pose_est_stream_;
+#endif
+
 };
 
 int main(int argc, char ** argv)
