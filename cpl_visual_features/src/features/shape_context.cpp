@@ -405,8 +405,10 @@ cv::Mat computeCostMatrix(ShapeDescriptors& descriptorsA,
     cost_matrix_path << filePath << "/cost_matrix" << filePostFix << ".bmp";
     cv::imwrite(cost_matrix_path.str().c_str(), int_cost_matrix);
   }
+  // double min_val, max_val;
+  // cv::minMaxLoc(cost_matrix, &min_val, &max_val);
+  // std::cout << "Cost range: [" << min_val << ", " << max_val << "]" << std::endl;
   return cost_matrix;
-  // return int_cost_matrix;
 }
 
 double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
@@ -414,7 +416,7 @@ double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
   const int dim = cost_matrix.rows;
   LapCost **cost_mat;
   cost_mat = new LapCost*[dim];
-  // std::cout << "Allocating cost matrix" << std::endl;
+  // std::cout << "Allocating cost matrix of size " << dim << std::endl;
   for (int r = 0; r < dim; ++r)
   {
     cost_mat[r] = new LapCost[dim];
@@ -424,7 +426,7 @@ double getMinimumCostPath(cv::Mat& cost_matrix, Path& path)
   {
     for (int c = 0; c < dim; ++c)
     {
-      cost_mat[r][c] = cost_matrix.at<double>(r,c);
+      cost_mat[r][c] = (float)cost_matrix.at<double>(r,c);
     }
   }
   LapRow* rowsol;

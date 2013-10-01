@@ -45,7 +45,7 @@ void extractBoundingBoxFeatures(XYZPointCloud& samples, cpl_visual_features::Sha
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha = 0.01);
 
 cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
-                                                double& min_cost, double epsilon_cost = 9e5);
+                                                double& min_cost, double epsilon_cost = 0.99);
 
 void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud_t_1,
                                   cpl_visual_features::Path p, Eigen::Matrix4f& transform);
