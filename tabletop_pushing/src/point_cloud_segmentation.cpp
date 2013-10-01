@@ -57,6 +57,7 @@
 #include <pcl16/filters/extract_indices.h>
 #include <pcl16/surface/concave_hull.h>
 #include <pcl16/registration/icp.h>
+#include <pcl16/registration/icp_nl.h>
 #include <pcl16/features/integral_image_normal.h>
 #include <pcl16/features/normal_3d.h>
 
@@ -476,18 +477,17 @@ double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
  * @return The ICP fitness score of the match
  */
 double PointCloudSegmentation::ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1,
-                                                  Eigen::Matrix4f& transform)
+                                                  Eigen::Matrix4f& transform, XYZPointCloud& aligned)
 {
   // TODO: Investigate this!
-  // pcl16::IterativeClosestPointNonLinear<PointXYZ, PointXYZ> icp;
-  pcl16::IterativeClosestPoint<PointXYZ, PointXYZ> icp;
+  pcl16::IterativeClosestPointNonLinear<PointXYZ, PointXYZ> icp;
+  // pcl16::IterativeClosestPoint<PointXYZ, PointXYZ> icp;
   icp.setMaximumIterations(icp_max_iters_);
   icp.setTransformationEpsilon(icp_transform_eps_);
   icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
   icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
   icp.setInputCloud(boost::make_shared<XYZPointCloud>(hull_t_0));
   icp.setInputTarget(boost::make_shared<XYZPointCloud>(hull_t_1));
-  XYZPointCloud aligned;
   icp.align(aligned);
   double score = icp.getFitnessScore();
   transform = icp.getFinalTransformation();

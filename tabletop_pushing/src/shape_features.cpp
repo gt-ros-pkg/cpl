@@ -6,6 +6,7 @@
 #include <pcl16/ros/conversions.h>
 #include <pcl16/surface/concave_hull.h>
 #include <pcl16/common/pca.h>
+// #include <pcl16/registration/transformation_estimation_svd.h>
 #include <pcl16/registration/transformation_estimation_lm.h>
 #include <cpl_visual_features/comp_geometry.h>
 #include <cpl_visual_features/helpers.h>
@@ -126,17 +127,30 @@ cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointC
 }
 
 void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud_t_1,
-                                  cpl_visual_features::Path p, Eigen::Matrix4f& transform)
+                                  cpl_visual_features::Path p, Eigen::Matrix4f& transform, double max_dist)
 {
-  // TODO: Get inliers
   // Do least squares estimate of the change
   std::vector<int> source_indices;
+  std::vector<int> target_indices;
+  // Get inliers
+  // TODO: Make sure have at least 1
+  // TODO: Make max dist the average distance of matches? (median+epsilon?)
+  // ROS_INFO_STREAM("Path has: " << p.size() << " elements");
+  // ROS_INFO_STREAM("cloud_t_0 has: " << cloud_t_0.size() << " elements");
+  // ROS_INFO_STREAM("cloud_t_1 has: " << cloud_t_1.size() << " elements");
   for (int i = 0; i < p.size(); ++i)
   {
-    source_indices.push_back(i);
+    // NOTE: Filter out matches with distance greater than max_dist
+    if(i < cloud_t_0.size() && p[i] < cloud_t_1.size() &&
+       PointCloudSegmentation::sqrDist(cloud_t_0.at(i), cloud_t_1.at(p[i])) < max_dist)
+    {
+      source_indices.push_back(i);
+      target_indices.push_back(p[i]);
+    }
   }
+  ROS_INFO_STREAM("Path had " << p.size() << " matches.\tNow have " << source_indices.size() << " matches.");
   pcl16::registration::TransformationEstimationLM<pcl16::PointXYZ, pcl16::PointXYZ> tlm;
-  tlm.estimateRigidTransformation(cloud_t_0, source_indices, cloud_t_1, p, transform);
+  tlm.estimateRigidTransformation(cloud_t_0, source_indices, cloud_t_1, target_indices, transform);
 }
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)

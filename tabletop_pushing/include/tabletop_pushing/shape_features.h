@@ -48,7 +48,7 @@ cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointC
                                                 double& min_cost, double epsilon_cost = 0.99);
 
 void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud_t_1,
-                                  cpl_visual_features::Path p, Eigen::Matrix4f& transform);
+                                  cpl_visual_features::Path p, Eigen::Matrix4f& transform, double max_dist=0.3);
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state);

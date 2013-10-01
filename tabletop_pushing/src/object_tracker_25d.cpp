@@ -294,18 +294,19 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     else
     {
       cpl_visual_features::Path matches;
+      XYZPointCloud aligned;
       Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
       if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
       {
         double match_cost;
         matches = compareBoundaryShapes(previous_hull_cloud_, hull_cloud, match_cost);
         ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
-        // TODO: Implement this method to get the transform
         estimateTransformFromMatches(previous_hull_cloud_, hull_cloud, matches, transform);
       }
       else // (proxy_name == HULL_ICP_PROXY)
       {
-        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform);
+        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform,
+                                                                aligned);
         ROS_INFO_STREAM("Found ICP match with score: " << match_score);
       }
 
@@ -323,6 +324,15 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
       {
         cv::Mat match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, hull_cloud, state, matches);
+        cv::imshow("Boundary matches", match_img);
+      }
+      else
+      {
+        for (int i = 0; i < previous_hull_cloud_.size(); ++i)
+        {
+          matches.push_back(i);
+        }
+        cv::Mat match_img = visualizeObjectBoundaryMatches(previous_hull_cloud_, aligned, state, matches);
         cv::imshow("Boundary matches", match_img);
       }
     }
