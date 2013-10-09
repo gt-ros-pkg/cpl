@@ -116,11 +116,11 @@ cpl_visual_features::Path compareBoundaryShapes(XYZPointCloud& hull_a, XYZPointC
   int theta_bins = 12;
   ShapeDescriptors descriptors_a = constructDescriptors<Samples2f>(samples_a, radius_bins, theta_bins);
   ShapeDescriptors descriptors_b = constructDescriptors<Samples2f>(samples_b, radius_bins, theta_bins);
-  ROS_INFO_STREAM("Computing cost matrix");
+  // ROS_INFO_STREAM("Computing cost matrix");
   cv::Mat cost_mat = computeCostMatrix(descriptors_a, descriptors_b, epsilon_cost);
   cv::imshow("cost matrix", cost_mat);
   cpl_visual_features::Path path;
-  ROS_INFO_STREAM("Getting min cost path");
+  // ROS_INFO_STREAM("Getting min cost path");
   min_cost = getMinimumCostPath(cost_mat, path);
 
   return path;

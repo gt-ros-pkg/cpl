@@ -86,12 +86,7 @@ XYZPointCloud getHullFromPCDFile(std::string cloud_path)
   {
     ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
   }
-  // Remove cloud z components
-  // for (int i = 0; i < cloud.size(); ++i)
-  // {
-  //   cloud.at(i).z = 0;
-  // }
-  ROS_INFO_STREAM("Cloud has " << cloud.size() << " points.");
+  // ROS_INFO_STREAM("Cloud has " << cloud.size() << " points.");
   XYZPointCloud hull_cloud;
   float hull_alpha = 0.01;
   pcl16::ConcaveHull<pcl16::PointXYZ> hull;
@@ -99,28 +94,17 @@ XYZPointCloud getHullFromPCDFile(std::string cloud_path)
   hull.setInputCloud(cloud.makeShared());
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
-  ROS_INFO_STREAM("Hull has " << hull_cloud.size() << " points.");
+  // ROS_INFO_STREAM("Hull has " << hull_cloud.size() << " points.");
   return hull_cloud;
 }
 
-int main(int argc, char** argv)
+float compareObjectHullShapes(XYZPointCloud& hull_cloud_a,XYZPointCloud& hull_cloud_b)
 {
-  // Parse file names for a and b
-  if (argc != 3)
-  {
-    ROS_INFO_STREAM("usage: " << argv[0] << " cloud_a_path cloud_b_path");
-    return -1;
-  }
-  std::string cloud_a_path(argv[1]);
-  std::string cloud_b_path(argv[2]);
-  // Read in point clouds for a & b and extract the hulls
-  XYZPointCloud hull_cloud_a = getHullFromPCDFile(cloud_a_path);
-  XYZPointCloud hull_cloud_b = getHullFromPCDFile(cloud_b_path);
   // Extract shape features from hull_a & hull_b and perform alignment
   double match_cost;
   cpl_visual_features::Path matches = compareBoundaryShapes(hull_cloud_a, hull_cloud_b, match_cost);
   // Visualize the matches & report the score
-  ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
+  // ROS_INFO_STREAM("Found minimum cost match of: " << match_cost);
   PushTrackerState state;
   cv::RotatedRect obj_ellipse;
   fitHullEllipse(hull_cloud_a, obj_ellipse);
@@ -128,11 +112,49 @@ int main(int argc, char** argv)
   // Get (x,y) centroid of boundary
   state.x.x = obj_ellipse.center.x;
   state.x.y = obj_ellipse.center.y;
-
-  // TODO: Fill out the necessary state valuesx
   cv::Mat match_img = visualizeObjectBoundaryMatches(hull_cloud_a, hull_cloud_b, state, matches);
   cv::imshow("Object boundary matches", match_img);
-  cv::waitKey();
+  cv::waitKey(3);
+  return match_cost;
+}
+
+int main(int argc, char** argv)
+{
+  // Parse file names for a and b
+  if (argc != 5)
+  {
+    ROS_INFO_STREAM("usage: " << argv[0] << " cloud_a_path cloud_b_path");
+    return -1;
+  }
+  // TODO: Cycle through multiple directories comparing values and computing statistics
+  std::string cloud_a_base_path(argv[1]);
+  std::string cloud_b_base_path(argv[2]);
+  int num_a = atoi(argv[3]);
+  int num_b = atoi(argv[4]);
+  std::vector<std::vector<float> > match_scores;
+  float score_sum = 0;
+  for (int a = 0; a < num_a; ++a)
+  {
+    std::stringstream cloud_a_path;
+    cloud_a_path << cloud_a_base_path << a << ".pcd";
+    // Read in point clouds for a & b and extract the hulls
+    XYZPointCloud hull_cloud_a = getHullFromPCDFile(cloud_a_path.str());
+    std::vector<float> scores_b;
+    float score_sum_b = 0;
+    for (int b = 0; b < num_b; ++b)
+    {
+      std::stringstream cloud_b_path;
+      cloud_b_path << cloud_b_base_path << b << ".pcd";
+      XYZPointCloud hull_cloud_b = getHullFromPCDFile(cloud_b_path.str());
+      float match_score = compareObjectHullShapes(hull_cloud_a, hull_cloud_b);
+      scores_b.push_back(match_score);
+      score_sum += match_score;
+      score_sum_b += match_score;
+    }
+    match_scores.push_back(scores_b);
+    ROS_INFO_STREAM("Mean score: " << score_sum_b/num_b);
+  }
+  ROS_INFO_STREAM("Overall mean score: " << score_sum/(num_b*num_a));
   // TODO: Examine interclass and intraclass distributions of score matches
   return 0;
 }
