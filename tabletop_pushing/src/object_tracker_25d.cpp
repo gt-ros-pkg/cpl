@@ -285,7 +285,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     // TODO: Add in switch for different hull proxies
     if (frame_count_ < 1 || proxy_name == HULL_ELLIPSE_PROXY)
     {
-      fitHullEllipse(cur_obj, hull_cloud, obj_ellipse);
+      fitHullEllipse(hull_cloud, obj_ellipse);
       state.x.theta = getThetaFromEllipse(obj_ellipse);
       // Get (x,y) centroid of boundary
       state.x.x = obj_ellipse.center.x;
@@ -474,7 +474,7 @@ void ObjectTracker25D::fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellip
   }
 }
 
-void ObjectTracker25D::fitHullEllipse(ProtoObject& cur_obj, XYZPointCloud& hull_cloud, cv::RotatedRect& obj_ellipse)
+void ObjectTracker25D::fitHullEllipse(XYZPointCloud& hull_cloud, cv::RotatedRect& obj_ellipse)
 {
   Eigen::Vector3f eigen_values;
   Eigen::Matrix3f eigen_vectors;

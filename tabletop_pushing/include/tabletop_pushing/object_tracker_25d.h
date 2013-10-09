@@ -83,7 +83,7 @@ class ObjectTracker25D
 
   void fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  void fitHullEllipse(ProtoObject& cur_obj, XYZPointCloud& hull_cloud, cv::RotatedRect& obj_ellipse);
+  void fitHullEllipse(XYZPointCloud& hull_cloud, cv::RotatedRect& obj_ellipse);
 
   void findFootprintEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 

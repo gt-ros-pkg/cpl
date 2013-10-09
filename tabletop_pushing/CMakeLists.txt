@@ -94,5 +94,9 @@ rosbuild_link_boost(extract_color_model filesystem)
 rosbuild_add_executable(draw_log_polar_hist src/draw_log_polar_hist.cpp)
 target_link_libraries(draw_log_polar_hist shape_features)
 
+rosbuild_add_executable(compare_object_boundaries src/compare_object_boundaries.cpp)
+target_link_libraries(compare_object_boundaries ${OpenCV_LIBRARIES})
+target_link_libraries(compare_object_boundaries shape_features)
+target_link_libraries(compare_object_boundaries point_cloud_segmentation)
 
 # rosbuild_add_executable(pca_test src/pca_test.cpp)
