@@ -108,5 +108,7 @@ cv::Mat computeChi2Kernel(cpl_visual_features::ShapeDescriptors& sds, std::strin
                           int global_length, double gamma_local, double gamma_global, double mixture_weight);
 
 XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m=1);
+XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k);
+std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud);
 };
 #endif // shape_features_h_DEFINED

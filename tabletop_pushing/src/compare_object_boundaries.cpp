@@ -142,13 +142,13 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   cv::imshow("Input hull", hull_img);
 
   // Run laplacian smoothing
-  XYZPointCloud smoothed_hull_cloud = laplacianSmoothBoundary(hull_cloud, m);
+  // XYZPointCloud smoothed_hull_cloud = laplacianSmoothBoundary(hull_cloud, m);
+  XYZPointCloud smoothed_hull_cloud = laplacianBoundaryCompression(hull_cloud, m);
   cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
-  std::stringstream smoothed_name;
-  smoothed_name << "smoothed_hull_" << m;
-  cv::imshow(smoothed_name.str(), smoothed_hull_img);
+  std::stringstream smoothed_hull_name;
+  smoothed_hull_name << "smoothed_hull_" << m;
+  cv::imshow(smoothed_hull_name.str(), smoothed_hull_img);
   cv::waitKey();
-
   return 0;
 }
 

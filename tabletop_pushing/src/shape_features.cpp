@@ -1486,6 +1486,8 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
     S.at<double>(i, i_plus_1) = 0.25;
   }
 
+  // cv::Mat L = 2.0*(cv::Mat::eye(n, n, CV_64F)-S);
+
   cv::Mat X(n, 3, CV_64FC1);
   for (int i = 0; i < n; ++i)
   {
@@ -1516,4 +1518,115 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
   return smoothed_cloud;
 }
 
+XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
+{
+  const int n = hull_cloud.size();
+  cv::Mat X(n, 3, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    X.at<double>(i,0) = hull_cloud.at(i).x;
+    X.at<double>(i,1) = hull_cloud.at(i).y;
+    X.at<double>(i,2) = hull_cloud.at(i).z;
+  }
+
+  // Construct the smoothing matrix
+  cv::Mat S(n, n, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    S.at<double>(i, i_minus_1) = 0.25;
+    S.at<double>(i, i) = 0.5;
+    S.at<double>(i, i_plus_1) = 0.25;
+  }
+  cv::Mat L = 2.0*(cv::Mat::eye(n, n, CV_64F)-S);
+  cv::Mat Lambda, E;
+  // E is eigenvalues of rows
+  // TODO: Replace with a sparse eigen solver
+  cv::eigen(L, Lambda, E);
+  cv::Mat X_tilde = E*X;
+
+  if (k > n) k = n;
+  for (int i = n-k-1; i >= 0; --i)
+  {
+    X_tilde.at<double>(i,0) = 0.0;
+    X_tilde.at<double>(i,1) = 0.0;
+    X_tilde.at<double>(i,2) = 0.0;
+  }
+  ROS_INFO_STREAM("Lambda_" << n << " = " << Lambda.at<double>(n-1));
+  ROS_INFO_STREAM("Lambda_" << (n-k-1) << " = " << Lambda.at<double>(n-k-1));
+
+  cv::Mat X_hat = E.t()*X_tilde;
+
+  XYZPointCloud compressed_cloud;
+  compressed_cloud.header = hull_cloud.header;
+  compressed_cloud.width = hull_cloud.size();
+  compressed_cloud.height = 1;
+  compressed_cloud.is_dense = false;
+  compressed_cloud.resize(compressed_cloud.width);
+  for (int i = 0; i < n; ++i)
+  {
+    compressed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
+    // ROS_INFO_STREAM("X_hat[" << i << "] = " << compressed_cloud.at(i) << "\t<=\t" << hull_cloud.at(i));
+  }
+  return compressed_cloud;
+}
+
+std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud)
+{
+  const int n = hull_cloud.size();
+  cv::Mat X(n, 3, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    X.at<double>(i,0) = hull_cloud.at(i).x;
+    X.at<double>(i,1) = hull_cloud.at(i).y;
+    X.at<double>(i,2) = hull_cloud.at(i).z;
+  }
+
+  // Construct the smoothing matrix
+  cv::Mat S(n, n, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    S.at<double>(i, i_minus_1) = 0.25;
+    S.at<double>(i, i) = 0.5;
+    S.at<double>(i, i_plus_1) = 0.25;
+  }
+  cv::Mat L = 2.0*(cv::Mat::eye(n, n, CV_64F)-S);
+  cv::Mat Lambda, E;
+  // E is eigenvalues of rows
+  // TODO: Replace with a sparse eigen solver
+  cv::eigen(L, Lambda, E);
+  cv::Mat X_tilde = E*X;
+  std::vector<XYZPointCloud> clouds;
+  for (int i = 0; i < n; ++i)
+  {
+    X_tilde.at<double>(i,0) = 0.0;
+    X_tilde.at<double>(i,1) = 0.0;
+    X_tilde.at<double>(i,2) = 0.0;
+
+    ROS_INFO_STREAM("Lambda_" << i << " = " << Lambda.at<double>(i) << "\tLambda_" << (n-1) << " = " <<
+                    Lambda.at<double>(n-1));
+
+    cv::Mat X_hat = E.t()*X_tilde;
+
+    XYZPointCloud compressed_cloud;
+    compressed_cloud.header = hull_cloud.header;
+    compressed_cloud.width = hull_cloud.size();
+    compressed_cloud.height = 1;
+    compressed_cloud.is_dense = false;
+    compressed_cloud.resize(compressed_cloud.width);
+    for (int i = 0; i < n; ++i)
+    {
+      compressed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
+      // ROS_INFO_STREAM("X_hat[" << i << "] = " << compressed_cloud.at(i) << "\t<=\t" << hull_cloud.at(i));
+    }
+
+    clouds.push_back(compressed_cloud);
+  }
+  return clouds;
+}
 };
