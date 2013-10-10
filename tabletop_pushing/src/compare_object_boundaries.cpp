@@ -118,12 +118,46 @@ float compareObjectHullShapes(XYZPointCloud& hull_cloud_a,XYZPointCloud& hull_cl
   return match_cost;
 }
 
-int main(int argc, char** argv)
+int mainComputeHeatKernelSignature(int argc, char** argv)
+{
+  if (argc < 2 || argc > 3)
+  {
+    ROS_INFO_STREAM("usage: " << argv[0] << " cloud_path [m]");
+    return -1;
+  }
+  std::string cloud_path(argv[1]);
+  int m = (argc == 3) ? atoi(argv[2]) : 1;
+  std::vector<std::vector<float> > match_scores;
+  // Read in point clouds for a & b and extract the hulls
+  XYZPointCloud hull_cloud = getHullFromPCDFile(cloud_path);
+
+  PushTrackerState state;
+  cv::RotatedRect obj_ellipse;
+  fitHullEllipse(hull_cloud, obj_ellipse);
+  state.x.theta = getThetaFromEllipse(obj_ellipse);
+  // Get (x,y) centroid of boundary
+  state.x.x = obj_ellipse.center.x;
+  state.x.y = obj_ellipse.center.y;
+  cv::Mat hull_img = visualizeObjectBoundarySamples(hull_cloud, state);
+  cv::imshow("Input hull", hull_img);
+
+  // Run laplacian smoothing
+  XYZPointCloud smoothed_hull_cloud = laplacianSmoothBoundary(hull_cloud, m);
+  cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
+  std::stringstream smoothed_name;
+  smoothed_name << "smoothed_hull_" << m;
+  cv::imshow(smoothed_name.str(), smoothed_hull_img);
+  cv::waitKey();
+
+  return 0;
+}
+
+int mainCompareShapeContext(int argc, char** argv)
 {
   // Parse file names for a and b
   if (argc != 5)
   {
-    ROS_INFO_STREAM("usage: " << argv[0] << " cloud_a_path cloud_b_path");
+    ROS_INFO_STREAM("usage: " << argv[0] << " class_a_cloud_path class_b_cloud_path num_a num_b");
     return -1;
   }
   // TODO: Cycle through multiple directories comparing values and computing statistics
@@ -157,4 +191,10 @@ int main(int argc, char** argv)
   ROS_INFO_STREAM("Overall mean score: " << score_sum/(num_b*num_a));
   // TODO: Examine interclass and intraclass distributions of score matches
   return 0;
+}
+
+int main(int argc, char** argv)
+{
+  // return mainCompareShapeContext(argc, argv);
+  return mainComputeHeatKernelSignature(argc, argv);
 }

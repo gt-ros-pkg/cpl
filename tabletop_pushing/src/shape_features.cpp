@@ -155,14 +155,16 @@ void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
 {
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
 
+  int prev_img_x;
+  int prev_img_y;
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
@@ -170,6 +172,12 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
     int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
     cv::Scalar color(128, 0, 0);
     cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+    if (i > 0)
+    {
+      cv::line(footprint, cv::Point(img_x, img_y), cv::Point(prev_img_x, prev_img_y), color, 1);
+    }
+    prev_img_x = img_x;
+    prev_img_y = img_y;
   }
   return footprint;
 }
@@ -211,7 +219,7 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
         std::abs(start_point.x - end_point.x) +
         std::abs(start_point.y - end_point.y) < max_displacement)
     {
-      cv::line(match_img, start_point, end_point, red);
+      cv::line(match_img, start_point, end_point, red, 3);
     }
 
   }
@@ -1460,6 +1468,52 @@ cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int loca
   // Linear combination of local and global kernels
   cv::Mat K = mixture_weight * K_global + (1 - mixture_weight) * K_local;
   return K;
+}
+
+XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
+{
+  const int n = hull_cloud.size();
+
+  // Construct the smoothing matrix
+  cv::Mat S(n, n, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    S.at<double>(i, i_minus_1) = 0.25;
+    S.at<double>(i, i) = 0.5;
+    S.at<double>(i, i_plus_1) = 0.25;
+  }
+
+  cv::Mat X(n, 3, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    X.at<double>(i,0) = hull_cloud.at(i).x;
+    X.at<double>(i,1) = hull_cloud.at(i).y;
+    X.at<double>(i,2) = hull_cloud.at(i).z;
+  }
+
+  // Raise matrix to the m power
+  cv::Mat Sm;
+  S.copyTo(Sm);
+  for (int i = 1; i < m; ++i)
+  {
+    Sm *= S;
+  }
+  cv::Mat X_hat = S*X;
+
+  XYZPointCloud smoothed_cloud;
+  smoothed_cloud.header = hull_cloud.header;
+  smoothed_cloud.width = hull_cloud.size();
+  smoothed_cloud.height = 1;
+  smoothed_cloud.is_dense = false;
+  smoothed_cloud.resize(smoothed_cloud.width);
+  for (int i = 0; i < n; ++i)
+  {
+    smoothed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
+  }
+  return smoothed_cloud;
 }
 
 };

@@ -107,5 +107,6 @@ cpl_visual_features::ShapeDescriptors loadSVRTrainingFeatures(std::string featur
 cv::Mat computeChi2Kernel(cpl_visual_features::ShapeDescriptors& sds, std::string feat_path, int local_length,
                           int global_length, double gamma_local, double gamma_global, double mixture_weight);
 
+XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m=1);
 };
 #endif // shape_features_h_DEFINED
