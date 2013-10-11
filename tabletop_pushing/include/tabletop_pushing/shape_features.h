@@ -110,5 +110,6 @@ cv::Mat computeChi2Kernel(cpl_visual_features::ShapeDescriptors& sds, std::strin
 XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m=1);
 XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k);
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud);
+cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, std::vector<int> T);
 };
 #endif // shape_features_h_DEFINED

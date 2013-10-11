@@ -1474,6 +1474,8 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
 {
   const int n = hull_cloud.size();
 
+  // TODO: modify with the graph distances
+
   // Construct the smoothing matrix
   cv::Mat S(n, n, CV_64FC1);
   for (int i = 0; i < n; ++i)
@@ -1624,9 +1626,63 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
       compressed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
       // ROS_INFO_STREAM("X_hat[" << i << "] = " << compressed_cloud.at(i) << "\t<=\t" << hull_cloud.at(i));
     }
-
     clouds.push_back(compressed_cloud);
   }
   return clouds;
+}
+
+cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, std::vector<int> T)
+{
+  const int n = hull_cloud.size();
+  cv::Mat X(n, 3, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    X.at<double>(i,0) = hull_cloud.at(i).x;
+    X.at<double>(i,1) = hull_cloud.at(i).y;
+    X.at<double>(i,2) = hull_cloud.at(i).z;
+  }
+  cv::Mat A(n, n, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    A.at<double>(i,i) = dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
+  }
+
+  // Construct the smoothing matrix
+  cv::Mat L(n, n, CV_64FC1);
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    L.at<double>(i, i_minus_1) = -0.5;
+    L.at<double>(i, i) = 1;
+    L.at<double>(i, i_plus_1) = -0.5;
+  }
+  cv::Mat Lambda, Phi;
+  // TODO: Replace with a sparse eigen solver
+  // E is eigenvalues of rows
+  cv::eigen(L, Lambda, Phi);
+
+  // TODO: Figure out correct phi computation
+  cv::Mat K_xx(n, T.size(), CV_64FC1, cv::Scalar(0.0));
+  // Compute the heat kernel signature at each point for the specified time scalse
+  for (int x = 0; x < n; ++x)
+  {
+    for (int j = 0; j < T.size(); ++j)
+    {
+      int t = T[j];
+      float heat_trace = 0.0;
+      for (int i = 0; i < n; ++i)
+      {
+        // TODO: Compute these only once?
+        const float h = std::exp(-Lambda.at<double>(i)*t);
+        // TODO: Multiple by A?
+        // TODO: Add impulse?
+        K_xx.at<double>(i,j) += h*Phi.at<double>(i,x)*Phi.at<double>(i,x);
+        heat_trace += h;
+      }
+    }
+  }
+  return K_xx;
 }
 };
