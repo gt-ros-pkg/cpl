@@ -1631,7 +1631,7 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
   return clouds;
 }
 
-cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, std::vector<int> T)
+cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
   cv::Mat X(n, 3, CV_64FC1);
@@ -1641,6 +1641,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, std::vector<int> 
     X.at<double>(i,1) = hull_cloud.at(i).y;
     X.at<double>(i,2) = hull_cloud.at(i).z;
   }
+
   cv::Mat A(n, n, CV_64FC1);
   for (int i = 0; i < n; ++i)
   {
@@ -1658,10 +1659,22 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, std::vector<int> 
     L.at<double>(i, i) = 1;
     L.at<double>(i, i_plus_1) = -0.5;
   }
+
   cv::Mat Lambda, Phi;
-  // TODO: Replace with a sparse eigen solver
+  // TODO: Replace with a sparse eigen solver?
+  // TODO: Perform the generalized eigenvalue decomposition with matrix A
   // E is eigenvalues of rows
   cv::eigen(L, Lambda, Phi);
+
+  std::vector<double> T;
+  const int num_ts = 100;
+  const double min_t = abs(4*log(10) / Lambda.at<double>(0));
+  const double max_t = abs(4*log(10) / Lambda.at<double>(n-2));
+  for (int i = 0; i < num_ts; ++i)
+  {
+    T.push_back((log(max_t)-log(min_t))*(i+1.0)/num_ts);
+  }
+
 
   // TODO: Figure out correct phi computation
   cv::Mat K_xx(n, T.size(), CV_64FC1, cv::Scalar(0.0));
@@ -1670,19 +1683,32 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, std::vector<int> 
   {
     for (int j = 0; j < T.size(); ++j)
     {
-      int t = T[j];
+      const double t = T[j];
       float heat_trace = 0.0;
       for (int i = 0; i < n; ++i)
       {
         // TODO: Compute these only once?
         const float h = std::exp(-Lambda.at<double>(i)*t);
-        // TODO: Multiple by A?
         // TODO: Add impulse?
         K_xx.at<double>(i,j) += h*Phi.at<double>(i,x)*Phi.at<double>(i,x);
         heat_trace += h;
       }
     }
   }
+
+  // TODO: Scale by the inverse of A*hks for different eigenvalues
+
   return K_xx;
+}
+
+double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
+{
+  double sum;
+  for (int r = 0; r < a.rows; ++r)
+  {
+    double diff_i = a.at<double>(r,0) - b.at<double>(r,0);
+    sum += diff_i*diff_i;
+  }
+  return sum/=a.rows;
 }
 };

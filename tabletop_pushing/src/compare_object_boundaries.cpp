@@ -144,23 +144,22 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   // Run laplacian smoothing
   // XYZPointCloud smoothed_hull_cloud = laplacianSmoothBoundary(hull_cloud, m);
   // XYZPointCloud smoothed_hull_cloud0 = laplacianBoundaryCompression(hull_cloud, m);
-  std::vector<XYZPointCloud> clouds = laplacianBoundaryCompressionAllKs(hull_cloud);
-  for (int k = 0; k < clouds.size(); ++k)
-  {
-    XYZPointCloud smoothed_hull_cloud = clouds[k];
-    cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
-    std::stringstream smoothed_hull_name;
-    smoothed_hull_name << "/home/thermans/Desktop/hull_smoothing/smoothed_hull_" << k << ".png";
-    cv::imshow("smooted_hull", smoothed_hull_img);
-    cv::imwrite(smoothed_hull_name.str(), smoothed_hull_img);
-    cv::waitKey(100);
-  }
-  std::vector<int> T;
-  for (int i = 0; i < 50; ++i)
-  {
-    T.push_back(i);
-  }
-  cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud, T);
+
+  // std::vector<XYZPointCloud> clouds = laplacianBoundaryCompressionAllKs(hull_cloud);
+  // for (int k = 0; k < clouds.size(); ++k)
+  // {
+  //   XYZPointCloud smoothed_hull_cloud = clouds[k];
+  //   cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
+  //   std::stringstream smoothed_hull_name;
+  //   smoothed_hull_name << "/home/thermans/Desktop/hull_smoothing/smoothed_hull_" << k << ".png";
+  //   cv::imshow("smooted_hull", smoothed_hull_img);
+  //   cv::imwrite(smoothed_hull_name.str(), smoothed_hull_img);
+  //   cv::waitKey(100);
+  // }
+
+  cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
+  cv::imshow("K", K_xx);
+  cv::waitKey();
   return 0;
 }
 
