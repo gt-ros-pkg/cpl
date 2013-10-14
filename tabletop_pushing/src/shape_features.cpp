@@ -1687,16 +1687,16 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
       float heat_trace = 0.0;
       for (int i = 0; i < n; ++i)
       {
-        // TODO: Compute these only once?
+        // TODO: Compute these coefficients only once and store and use
         const float h = std::exp(-Lambda.at<double>(i)*t);
-        // TODO: Add impulse?
-        K_xx.at<double>(i,j) += h*Phi.at<double>(i,x)*Phi.at<double>(i,x);
+        K_xx.at<double>(x,j) += h*Phi.at<double>(i,x)*Phi.at<double>(i,x);
         heat_trace += h;
       }
     }
   }
 
   // TODO: Scale by the inverse of A*hks for different eigenvalues
+  // cv::Mat row_sums;
 
   return K_xx;
 }
@@ -1704,11 +1704,67 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
 {
   double sum;
-  for (int r = 0; r < a.rows; ++r)
+  for (int i = 0; i < a.cols; ++i)
   {
-    double diff_i = a.at<double>(r,0) - b.at<double>(r,0);
+    double diff_i = a.at<double>(0,i) - b.at<double>(0,i);
     sum += diff_i*diff_i;
   }
-  return sum/=a.rows;
+  ROS_INFO_STREAM("dist^2 = " << sum);
+  return std::sqrt(sum);
+}
+
+cv::Scalar getColorFromDist(const double dist, const double max_dist)
+{
+  const double dist_norm = dist/max_dist;
+  cv::Scalar color(0, dist_norm*255, (1-dist_norm)*255);
+  return color;
+}
+
+cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerState& cur_state, int target_idx)
+{
+
+  std::vector<double> K_dists;
+  for (int x = 0; x < hull_cloud.size(); ++x)
+  {
+    K_dists.push_back(compareHeatKernelSignatures(K_xx.row(target_idx), K_xx.row(x)));
+    ROS_INFO_STREAM("dist = " << K_dists[x]);
+  }
+
+  double min_dist = 0;
+  double max_dist = 0;
+  cv::minMaxLoc(K_dists, &min_dist, &max_dist);
+  ROS_INFO_STREAM("Min dist: " << min_dist);
+  ROS_INFO_STREAM("Max dist: " << max_dist);
+
+  // Project hull into image with colors projected based on distance
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+
+  int prev_img_x;
+  int prev_img_y;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
+    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
+    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    cv::Scalar color = getColorFromDist(K_dists[i], max_dist);
+    cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+    if (i > 0)
+    {
+      cv::line(footprint, cv::Point(img_x, img_y), cv::Point(prev_img_x, prev_img_y), color, 1);
+    }
+    if (i == target_idx) // Circle target index location
+    {
+      cv::circle(footprint, cv::Point(img_x, img_y), 3, cv::Scalar(255,255,0), 3);
+    }
+    prev_img_x = img_x;
+    prev_img_y = img_y;
+  }
+  return footprint;
 }
 };

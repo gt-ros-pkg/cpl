@@ -159,7 +159,13 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
 
   cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
   cv::imshow("K", K_xx);
-  cv::waitKey();
+
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    cv::Mat K_dists = visualizeHKSDists(hull_cloud, K_xx, state, i);
+    cv::imshow("K_dists", K_dists);
+    cv::waitKey();
+  }
   return 0;
 }
 

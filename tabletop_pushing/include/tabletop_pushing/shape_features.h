@@ -112,5 +112,7 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k);
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud);
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud);
 double compareHeatKernelSignatures(cv::Mat a, cv::Mat b);
+cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx,
+                          tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state, int target_idx=0);
 };
 #endif // shape_features_h_DEFINED
