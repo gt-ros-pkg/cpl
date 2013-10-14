@@ -1709,7 +1709,7 @@ double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
     double diff_i = a.at<double>(0,i) - b.at<double>(0,i);
     sum += diff_i*diff_i;
   }
-  // ROS_INFO_STREAM("dist^2 = " << sum);
+  ROS_INFO_STREAM("dist^2 = " << sum);
   return std::sqrt(sum);
 }
 
