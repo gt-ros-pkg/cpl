@@ -1709,7 +1709,7 @@ double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
     double diff_i = a.at<double>(0,i) - b.at<double>(0,i);
     sum += diff_i*diff_i;
   }
-  ROS_INFO_STREAM("dist^2 = " << sum);
+  // ROS_INFO_STREAM("dist^2 = " << sum);
   return std::sqrt(sum);
 }
 
@@ -1727,14 +1727,14 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
   for (int x = 0; x < hull_cloud.size(); ++x)
   {
     K_dists.push_back(compareHeatKernelSignatures(K_xx.row(target_idx), K_xx.row(x)));
-    ROS_INFO_STREAM("dist = " << K_dists[x]);
+    // ROS_INFO_STREAM("dist = " << K_dists[x]);
   }
 
   double min_dist = 0;
   double max_dist = 0;
   cv::minMaxLoc(K_dists, &min_dist, &max_dist);
-  ROS_INFO_STREAM("Min dist: " << min_dist);
-  ROS_INFO_STREAM("Max dist: " << max_dist);
+  // ROS_INFO_STREAM("Min dist: " << min_dist);
+  // ROS_INFO_STREAM("Max dist: " << max_dist);
 
   // Project hull into image with colors projected based on distance
   double max_y = 0.2;
