@@ -148,27 +148,32 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   // cv::imshow("smooted_hull", smoothed_hull_img);
   // cv::waitKey();
 
-  std::vector<XYZPointCloud> clouds = laplacianBoundaryCompressionAllKs(hull_cloud);
-  for (int k = 0; k < clouds.size(); ++k)
-  {
-    XYZPointCloud smoothed_hull_cloud = clouds[k];
-    cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
-    std::stringstream smoothed_hull_name;
-    smoothed_hull_name << "/home/thermans/Desktop/hull_smoothing/smoothed_hull_" << k << ".png";
-    cv::imshow("smooted_hull", smoothed_hull_img);
-    cv::imwrite(smoothed_hull_name.str(), smoothed_hull_img);
-    cv::waitKey(100);
-  }
-
-  // cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
-  // cv::imshow("K", K_xx);
-
-  // for (int i = 0; i < hull_cloud.size(); ++i)
+  // std::vector<XYZPointCloud> clouds = laplacianBoundaryCompressionAllKs(hull_cloud);
+  // for (int k = 0; k < clouds.size(); ++k)
   // {
-  //   cv::Mat K_dists = visualizeHKSDists(hull_cloud, K_xx, state, i);
-  //   cv::imshow("K_dists", K_dists);
-  //   cv::waitKey();
+  //   XYZPointCloud smoothed_hull_cloud = clouds[k];
+  //   cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
+  //   std::stringstream smoothed_hull_name;
+  //   smoothed_hull_name << "/home/thermans/Desktop/hull_smoothing/smoothed_hull_" << k << ".png";
+  //   cv::imshow("smooted_hull", smoothed_hull_img);
+  //   cv::imwrite(smoothed_hull_name.str(), smoothed_hull_img);
+  //   cv::waitKey(100);
   // }
+
+  cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
+  double min_score, max_score;
+  cv::minMaxLoc(K_xx, &min_score, &max_score);
+  cv::imshow("K", K_xx);
+  cv::imshow("K_scaled", (K_xx-min_score)/(max_score-min_score));
+  ROS_INFO_STREAM("Min score: " << min_score);
+  ROS_INFO_STREAM("Max score: " << max_score);
+
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    cv::Mat K_dists = visualizeHKSDists(hull_cloud, K_xx, state, i);
+    cv::imshow("K_dists", K_dists);
+    cv::waitKey();
+  }
   return 0;
 }
 

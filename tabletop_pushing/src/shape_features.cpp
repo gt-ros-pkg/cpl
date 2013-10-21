@@ -1539,9 +1539,12 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    L(i, i_minus_1) = -0.5;
-    L(i, i) = 1.0;
-    L(i, i_plus_1) = -0.5;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
   }
 
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> es(L);
@@ -1629,61 +1632,82 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
-  Eigen::MatrixXf A(n,n);
-  for (int i = 0; i < n; ++i)
-  {
-    A(i,i) = 1.0/dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
-  }
-  Eigen::MatrixXf L(n,n);
+  // Eigen::MatrixXd A(n,n);
+  // for (int i = 0; i < n; ++i)
+  // {
+  //   A(i,i) = 1.0/dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
+  // }
+  Eigen::MatrixXd L(n,n);
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    L(i, i_minus_1) = -0.5;
-    L(i, i) = 1;
-    L(i, i_plus_1) = -0.5;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
   }
 
   // Perform the generalized eigenvalue decomposition with matrix A
-  Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXf> ges(L, A);
-  Eigen::VectorXf Lambda = ges.eigenvalues();
-  Eigen::MatrixXf Phi = ges.eigenvectors();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
+  Eigen::VectorXd Lambda = ges.eigenvalues();
+  Eigen::MatrixXd Phi = ges.eigenvectors();
 
   ROS_INFO_STREAM("Eigenvalues: " << Lambda);
-
-  std::vector<double> T;
-  const int num_ts = 100;
-  const double min_t = abs(4*log(10) / Lambda(0));
-  const double max_t = abs(4*log(10) / Lambda(n-2));
-  for (int i = 0; i < num_ts; ++i)
+  double eigen_sum = 0.0;
+  Eigen::VectorXd Lambda_norm(n);
+  for(int i = 0; i < n; ++i)
   {
-    T.push_back((log(max_t)-log(min_t))*(i+1.0)/num_ts);
+    eigen_sum += Lambda(i);
+  }
+  Lambda_norm = Lambda/eigen_sum;
+
+  const int num_ts = 100;
+  const double min_t = abs(4.0*log(10.0) / Lambda(n-2));
+  const double max_t = abs(4.0*log(10.0) / Lambda(0));
+  ROS_INFO_STREAM("Min_t: "  << min_t);
+  ROS_INFO_STREAM("Max_t: "  << max_t);
+
+  Eigen::VectorXd T(num_ts);
+  Eigen::MatrixXd hs(n, num_ts);
+  for (int j = 0; j < num_ts; ++j)
+  {
+    T(j) = ((log(max_t)-log(min_t))*(j+1.0)/num_ts);
+    float heat_trace = 0.0;
+    for (int i = 0; i < n; ++i)
+    {
+      // TODO: Compute these coefficients only once and store and use
+      const float h = std::exp(-Lambda_norm(i)*T(j));
+      // ROS_INFO_STREAM("h[" << i << ", " << j << "] = " << h);
+      hs(i, j) = h;
+      if (!isinf(h))
+      {
+        heat_trace += h;
+      }
+    }
+    // ROS_INFO_STREAM("Heat trace[" << j << "] = " << heat_trace);
   }
 
-
-  // TODO: Figure out correct phi computation
-  cv::Mat K_xx(n, T.size(), CV_64FC1, cv::Scalar(0.0));
   // Compute the heat kernel signature at each point for the specified time scalse
+  cv::Mat K_xx(n, num_ts, CV_64FC1, cv::Scalar(0.0));
   for (int x = 0; x < n; ++x)
   {
     for (int j = 0; j < T.size(); ++j)
     {
-      const double t = T[j];
-      float heat_trace = 0.0;
       for (int i = 0; i < n; ++i)
       {
-        // TODO: Compute these coefficients only once and store and use
-        const float h = std::exp(-Lambda(i)*t);
-        K_xx.at<double>(x,j) += h*Phi(x,i)*Phi(x,i);
-        heat_trace += h;
+        if (!isinf(hs(i,j)))
+        {
+          K_xx.at<double>(x,j) += hs(i,j)*Phi(x,i)*Phi(x,i);
+        }
       }
     }
   }
-
   // TODO: Scale by the inverse of A*hks for different eigenvalues
   // cv::Mat row_sums;
-
   return K_xx;
 }
 
@@ -1719,8 +1743,8 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
   double min_dist = 0;
   double max_dist = 0;
   cv::minMaxLoc(K_dists, &min_dist, &max_dist);
-  ROS_INFO_STREAM("Min dist: " << min_dist);
-  ROS_INFO_STREAM("Max dist: " << max_dist);
+  // ROS_INFO_STREAM("Min dist: " << min_dist);
+  // ROS_INFO_STREAM("Max dist: " << max_dist);
 
   // Project hull into image with colors projected based on distance
   double max_y = 0.2;
