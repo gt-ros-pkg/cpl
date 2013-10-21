@@ -12,6 +12,8 @@
 #include <cpl_visual_features/helpers.h>
 #include <iostream>
 
+#include <Eigen/Eigenvalues>
+
 #define XY_RES 0.00075
 #define DRAW_LR_LIMITS 1
 // #define USE_RANGE_AND_VAR_FEATS 1
@@ -1523,43 +1525,39 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
 XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
 {
   const int n = hull_cloud.size();
-  cv::Mat X(n, 3, CV_64FC1);
+  Eigen::MatrixXf X(n, 3);
   for (int i = 0; i < n; ++i)
   {
-    X.at<double>(i,0) = hull_cloud.at(i).x;
-    X.at<double>(i,1) = hull_cloud.at(i).y;
-    X.at<double>(i,2) = hull_cloud.at(i).z;
+    X(i,0) = hull_cloud.at(i).x;
+    X(i,1) = hull_cloud.at(i).y;
+    X(i,2) = hull_cloud.at(i).z;
   }
 
-  // Construct the smoothing matrix
-  cv::Mat S(n, n, CV_64FC1);
+  Eigen::MatrixXf L(n,n);
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    S.at<double>(i, i_minus_1) = 0.25;
-    S.at<double>(i, i) = 0.5;
-    S.at<double>(i, i_plus_1) = 0.25;
+    L(i, i_minus_1) = -0.5;
+    L(i, i) = 1.0;
+    L(i, i_plus_1) = -0.5;
   }
-  cv::Mat L = 2.0*(cv::Mat::eye(n, n, CV_64F)-S);
-  cv::Mat Lambda, E;
-  // E is eigenvalues of rows
-  // TODO: Replace with a sparse eigen solver
-  cv::eigen(L, Lambda, E);
-  cv::Mat X_tilde = E*X;
 
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> es(L);
+  Eigen::VectorXf Lambda = es.eigenvalues();
+  Eigen::MatrixXf E = es.eigenvectors();
+
+  Eigen::MatrixXf X_tilde = E.transpose()*X;
   if (k > n) k = n;
-  for (int i = n-k-1; i >= 0; --i)
+  for (int i = n-1; i >= k; --i)
   {
-    X_tilde.at<double>(i,0) = 0.0;
-    X_tilde.at<double>(i,1) = 0.0;
-    X_tilde.at<double>(i,2) = 0.0;
+    X_tilde(i,0) = 0.0;
+    X_tilde(i,1) = 0.0;
+    X_tilde(i,2) = 0.0;
   }
-  ROS_INFO_STREAM("Lambda_" << n << " = " << Lambda.at<double>(n-1));
-  ROS_INFO_STREAM("Lambda_" << (n-k-1) << " = " << Lambda.at<double>(n-k-1));
 
-  cv::Mat X_hat = E.t()*X_tilde;
+  Eigen::MatrixXf X_hat = E*X_tilde;
 
   XYZPointCloud compressed_cloud;
   compressed_cloud.header = hull_cloud.header;
@@ -1569,8 +1567,7 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
   compressed_cloud.resize(compressed_cloud.width);
   for (int i = 0; i < n; ++i)
   {
-    compressed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
-    // ROS_INFO_STREAM("X_hat[" << i << "] = " << compressed_cloud.at(i) << "\t<=\t" << hull_cloud.at(i));
+    compressed_cloud.at(i) = pcl16::PointXYZ(X_hat(i,0), X_hat(i,1), X_hat(i,2));
   }
   return compressed_cloud;
 }
@@ -1578,42 +1575,41 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
-  cv::Mat X(n, 3, CV_64FC1);
+  Eigen::MatrixXf X(n, 3);
   for (int i = 0; i < n; ++i)
   {
-    X.at<double>(i,0) = hull_cloud.at(i).x;
-    X.at<double>(i,1) = hull_cloud.at(i).y;
-    X.at<double>(i,2) = hull_cloud.at(i).z;
+    X(i,0) = hull_cloud.at(i).x;
+    X(i,1) = hull_cloud.at(i).y;
+    X(i,2) = hull_cloud.at(i).z;
   }
 
-  // Construct the smoothing matrix
-  cv::Mat S(n, n, CV_64FC1);
+  Eigen::MatrixXf L(n,n);
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    S.at<double>(i, i_minus_1) = 0.25;
-    S.at<double>(i, i) = 0.5;
-    S.at<double>(i, i_plus_1) = 0.25;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
   }
-  cv::Mat L = 2.0*(cv::Mat::eye(n, n, CV_64F)-S);
-  cv::Mat Lambda, E;
-  // E is eigenvalues of rows
-  // TODO: Replace with a sparse eigen solver
-  cv::eigen(L, Lambda, E);
-  cv::Mat X_tilde = E*X;
+
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> es(L);
+  Eigen::VectorXf Lambda = es.eigenvalues();
+  Eigen::MatrixXf E = es.eigenvectors();
+
+  Eigen::MatrixXf X_tilde = E.transpose()*X;
   std::vector<XYZPointCloud> clouds;
-  for (int i = 0; i < n; ++i)
+  for (int i = n-1; i > 0; --i)
   {
-    X_tilde.at<double>(i,0) = 0.0;
-    X_tilde.at<double>(i,1) = 0.0;
-    X_tilde.at<double>(i,2) = 0.0;
+    X_tilde(i,0) = 0.0;
+    X_tilde(i,1) = 0.0;
+    X_tilde(i,2) = 0.0;
 
-    ROS_INFO_STREAM("Lambda_" << i << " = " << Lambda.at<double>(i) << "\tLambda_" << (n-1) << " = " <<
-                    Lambda.at<double>(n-1));
-
-    cv::Mat X_hat = E.t()*X_tilde;
+    Eigen::MatrixXf X_hat = E*X_tilde;
 
     XYZPointCloud compressed_cloud;
     compressed_cloud.header = hull_cloud.header;
@@ -1621,10 +1617,9 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
     compressed_cloud.height = 1;
     compressed_cloud.is_dense = false;
     compressed_cloud.resize(compressed_cloud.width);
-    for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j)
     {
-      compressed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
-      // ROS_INFO_STREAM("X_hat[" << i << "] = " << compressed_cloud.at(i) << "\t<=\t" << hull_cloud.at(i));
+      compressed_cloud.at(j) = pcl16::PointXYZ(X_hat(j,0), X_hat(j,1), X_hat(j,2));
     }
     clouds.push_back(compressed_cloud);
   }
@@ -1634,42 +1629,33 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
-  cv::Mat X(n, 3, CV_64FC1);
+  Eigen::MatrixXf A(n,n);
   for (int i = 0; i < n; ++i)
   {
-    X.at<double>(i,0) = hull_cloud.at(i).x;
-    X.at<double>(i,1) = hull_cloud.at(i).y;
-    X.at<double>(i,2) = hull_cloud.at(i).z;
+    A(i,i) = 1.0/dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
   }
-
-  cv::Mat A(n, n, CV_64FC1);
-  for (int i = 0; i < n; ++i)
-  {
-    A.at<double>(i,i) = dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
-  }
-
-  // Construct the smoothing matrix
-  cv::Mat L(n, n, CV_64FC1);
+  Eigen::MatrixXf L(n,n);
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    L.at<double>(i, i_minus_1) = -0.5;
-    L.at<double>(i, i) = 1;
-    L.at<double>(i, i_plus_1) = -0.5;
+    L(i, i_minus_1) = -0.5;
+    L(i, i) = 1;
+    L(i, i_plus_1) = -0.5;
   }
 
-  cv::Mat Lambda, Phi;
-  // TODO: Replace with a sparse eigen solver?
-  // TODO: Perform the generalized eigenvalue decomposition with matrix A
-  // E is eigenvalues of rows
-  cv::eigen(L, Lambda, Phi);
+  // Perform the generalized eigenvalue decomposition with matrix A
+  Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXf> ges(L, A);
+  Eigen::VectorXf Lambda = ges.eigenvalues();
+  Eigen::MatrixXf Phi = ges.eigenvectors();
+
+  ROS_INFO_STREAM("Eigenvalues: " << Lambda);
 
   std::vector<double> T;
   const int num_ts = 100;
-  const double min_t = abs(4*log(10) / Lambda.at<double>(0));
-  const double max_t = abs(4*log(10) / Lambda.at<double>(n-2));
+  const double min_t = abs(4*log(10) / Lambda(0));
+  const double max_t = abs(4*log(10) / Lambda(n-2));
   for (int i = 0; i < num_ts; ++i)
   {
     T.push_back((log(max_t)-log(min_t))*(i+1.0)/num_ts);
@@ -1688,8 +1674,8 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
       for (int i = 0; i < n; ++i)
       {
         // TODO: Compute these coefficients only once and store and use
-        const float h = std::exp(-Lambda.at<double>(i)*t);
-        K_xx.at<double>(x,j) += h*Phi.at<double>(i,x)*Phi.at<double>(i,x);
+        const float h = std::exp(-Lambda(i)*t);
+        K_xx.at<double>(x,j) += h*Phi(x,i)*Phi(x,i);
         heat_trace += h;
       }
     }
@@ -1709,7 +1695,7 @@ double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
     double diff_i = a.at<double>(0,i) - b.at<double>(0,i);
     sum += diff_i*diff_i;
   }
-  ROS_INFO_STREAM("dist^2 = " << sum);
+  // ROS_INFO_STREAM("dist^2 = " << sum);
   return std::sqrt(sum);
 }
 
@@ -1733,8 +1719,8 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
   double min_dist = 0;
   double max_dist = 0;
   cv::minMaxLoc(K_dists, &min_dist, &max_dist);
-  // ROS_INFO_STREAM("Min dist: " << min_dist);
-  // ROS_INFO_STREAM("Max dist: " << max_dist);
+  ROS_INFO_STREAM("Min dist: " << min_dist);
+  ROS_INFO_STREAM("Max dist: " << max_dist);
 
   // Project hull into image with colors projected based on distance
   double max_y = 0.2;
