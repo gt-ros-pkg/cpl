@@ -1657,13 +1657,6 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   Eigen::MatrixXd Phi = ges.eigenvectors();
 
   ROS_INFO_STREAM("Eigenvalues: " << Lambda);
-  double eigen_sum = 0.0;
-  Eigen::VectorXd Lambda_norm(n);
-  for(int i = 0; i < n; ++i)
-  {
-    eigen_sum += Lambda(i);
-  }
-  Lambda_norm = Lambda/eigen_sum;
 
   const int num_ts = 100;
   const double min_t = abs(4.0*log(10.0) / Lambda(n-2));
@@ -1680,7 +1673,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
     for (int i = 0; i < n; ++i)
     {
       // TODO: Compute these coefficients only once and store and use
-      const float h = std::exp(-Lambda_norm(i)*T(j));
+      const float h = std::exp(-Lambda(i)*T(j));
       // ROS_INFO_STREAM("h[" << i << ", " << j << "] = " << h);
       hs(i, j) = h;
       if (!isinf(h))
