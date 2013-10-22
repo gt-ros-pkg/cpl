@@ -175,8 +175,8 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   cv::minMaxLoc(K_dists_all, &min_dist, &max_dist);
   ROS_INFO_STREAM("Min dist: " << min_dist);
   ROS_INFO_STREAM("Max dist: " << max_dist);
-  cv::imshow("K_dists_all", K_dists_all);
-  cv::imshow("K_dists_all_norm", (K_dists_all-min_score)/(max_dist-min_score));
+  cv::imshow("Dists_all", K_dists_all);
+  cv::imshow("Dists_all_norm", (K_dists_all-min_dist)/(max_dist-min_dist));
 
   // Visualize pairwise distances on the object
   for (int i = 0; i < hull_cloud.size(); ++i)

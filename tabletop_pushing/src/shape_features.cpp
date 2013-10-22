@@ -1644,8 +1644,8 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    const float dist_r = dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
-    const float dist_f = dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
     const float dist_sum = dist_r + dist_f;
     L(i, i_minus_1) = -dist_r;
     L(i, i) = dist_sum;
@@ -1657,7 +1657,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   Eigen::VectorXd Lambda = ges.eigenvalues();
   Eigen::MatrixXd Phi = ges.eigenvectors();
 
-  ROS_INFO_STREAM("Eigenvalues: " << Lambda);
+  // ROS_INFO_STREAM("Eigenvalues: " << Lambda);
   // ROS_INFO_STREAM("Phi[0] = " << Phi.col(0));
   // ROS_INFO_STREAM("Phi[n-1] = " << Phi.col(n-1));
   const int num_ts = 100;
@@ -1669,11 +1669,13 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 
   Eigen::VectorXd T(num_ts);
   Eigen::MatrixXd hs(n, num_ts);
-  // TODO: Ignore eigenvector 0?
+  // NOTE: Ignore eigenvector 0
+  // const int start_eig = 0;
+  const int start_eig = 1;
   for (int j = 0; j < num_ts; ++j)
   {
     T(j) = exp(t_step*(j+1.0));
-    for (int i = 1; i < n; ++i)
+    for (int i = start_eig; i < n; ++i)
     {
       const float h = std::exp(-Lambda(i)*T(j));
       // ROS_INFO_STREAM("h[" << i << ", " << j << "] = " << h);
@@ -1688,12 +1690,9 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   {
     for (int j = 0; j < T.size(); ++j)
     {
-      for (int i = 1; i < n; ++i)
+      for (int i = start_eig; i < n; ++i)
       {
-        if (!isinf(hs(i,j)))
-        {
-          K_xx.at<double>(x,j) += hs(i,j)*Phi(x,i)*Phi(x,i);
-        }
+        K_xx.at<double>(x,j) += hs(i,j)*Phi(x,i)*Phi(x,i);
       }
     }
   }
@@ -1704,13 +1703,24 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 
 double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
 {
-  double sum;
+  double sum = 0.0;
   for (int i = 0; i < a.cols; ++i)
   {
     double diff_i = a.at<double>(0,i) - b.at<double>(0,i);
     sum += diff_i*diff_i;
   }
   // ROS_INFO_STREAM("dist^2 = " << sum);
+  return std::sqrt(sum);
+}
+
+double compareHeatKernelSignatures(cv::Mat& K_xx, int a, int b)
+{
+  double sum = 0.0;
+  for (int i = 0; i < K_xx.cols; ++i)
+  {
+    double diff_i = K_xx.at<double>(a,i) - K_xx.at<double>(b,i);
+    sum += diff_i*diff_i;
+  }
   return std::sqrt(sum);
 }
 
@@ -1753,15 +1763,17 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
     int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
     int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    if (i == target_idx) // Circle target index location
+    {
+      cv::circle(footprint, cv::Point(img_x, img_y), 3, cv::Scalar(0,0,0), 3);
+      ROS_INFO_STREAM("Dist from target to target is: " << K_dists[i]);
+    }
     cv::Scalar color = getColorFromDist(K_dists[i], max_dist, min_dist);
+
     cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
     if (i > 0)
     {
       cv::line(footprint, cv::Point(img_x, img_y), cv::Point(prev_img_x, prev_img_y), color, 1);
-    }
-    if (i == target_idx) // Circle target index location
-    {
-      cv::circle(footprint, cv::Point(img_x, img_y), 3, cv::Scalar(255,255,0), 3);
     }
     prev_img_x = img_x;
     prev_img_y = img_y;

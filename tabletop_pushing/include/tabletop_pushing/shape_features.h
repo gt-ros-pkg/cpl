@@ -112,6 +112,7 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k);
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud);
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud);
 double compareHeatKernelSignatures(cv::Mat a, cv::Mat b);
+double compareHeatKernelSignatures(cv::Mat& K_xx, int a, int b);
 cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx,
                           tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state, int target_idx=0);
 cv::Scalar getColorFromDist(const double dist, const double max_dist, const double min_dist=0);
