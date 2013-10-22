@@ -1675,7 +1675,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   Eigen::MatrixXd hs(n, num_ts);
   for (int j = 0; j < num_ts; ++j)
   {
-    T(j) = ((log(max_t)-log(min_t))*(j+1.0)/num_ts);
+    T(j) = exp((log(max_t)-log(min_t))*(j+1.0)/num_ts);
     float heat_trace = 0.0;
     for (int i = 0; i < n; ++i)
     {
