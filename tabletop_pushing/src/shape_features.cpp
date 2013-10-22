@@ -1637,14 +1637,15 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   // {
   //   A(i,i) = 1.0/dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
   // }
+  // TODO: Make the laplacian computation into a separate method for comparisons of different versions
   Eigen::MatrixXd L(n,n);
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
     const int i_minus_1 = (n+i-1)%n;
     const int i_plus_1 = (i+1)%n;
-    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
-    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_r = dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
     const float dist_sum = dist_r + dist_f;
     L(i, i_minus_1) = -dist_r;
     L(i, i) = dist_sum;
@@ -1713,16 +1714,16 @@ double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
   return std::sqrt(sum);
 }
 
-cv::Scalar getColorFromDist(const double dist, const double max_dist)
+cv::Scalar getColorFromDist(const double dist, const double max_dist,const double min_dist)
 {
-  const double dist_norm = dist/max_dist;
-  cv::Scalar color(0, dist_norm*255, (1-dist_norm)*255);
+  const double dist_norm = (dist-min_dist)/(max_dist-min_dist);
+  cv::Scalar color(0, (1.0-dist_norm)*255, dist_norm*255);
   return color;
 }
 
 cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerState& cur_state, int target_idx)
 {
-
+  ROS_INFO_STREAM("Comparing all points to point: " << target_idx);
   std::vector<double> K_dists;
   for (int x = 0; x < hull_cloud.size(); ++x)
   {
@@ -1733,8 +1734,8 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
   double min_dist = 0;
   double max_dist = 0;
   cv::minMaxLoc(K_dists, &min_dist, &max_dist);
-  // ROS_INFO_STREAM("Min dist: " << min_dist);
-  // ROS_INFO_STREAM("Max dist: " << max_dist);
+  ROS_INFO_STREAM("Min dist: " << min_dist);
+  ROS_INFO_STREAM("Max dist: " << max_dist);
 
   // Project hull into image with colors projected based on distance
   double max_y = 0.2;
@@ -1752,7 +1753,7 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
     int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
     int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
-    cv::Scalar color = getColorFromDist(K_dists[i], max_dist);
+    cv::Scalar color = getColorFromDist(K_dists[i], max_dist, min_dist);
     cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
     if (i > 0)
     {
