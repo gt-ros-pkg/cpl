@@ -1673,7 +1673,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   for (int j = 0; j < num_ts; ++j)
   {
     T(j) = exp(t_step*(j+1.0));
-    for (int i = 0; i < n; ++i)
+    for (int i = 1; i < n; ++i)
     {
       const float h = std::exp(-Lambda(i)*T(j));
       // ROS_INFO_STREAM("h[" << i << ", " << j << "] = " << h);
@@ -1688,7 +1688,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   {
     for (int j = 0; j < T.size(); ++j)
     {
-      for (int i = 0; i < n; ++i)
+      for (int i = 1; i < n; ++i)
       {
         if (!isinf(hs(i,j)))
         {
@@ -1734,8 +1734,8 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
   double min_dist = 0;
   double max_dist = 0;
   cv::minMaxLoc(K_dists, &min_dist, &max_dist);
-  ROS_INFO_STREAM("Min dist: " << min_dist);
-  ROS_INFO_STREAM("Max dist: " << max_dist);
+  // ROS_INFO_STREAM("Min dist: " << min_dist);
+  // ROS_INFO_STREAM("Max dist: " << max_dist);
 
   // Project hull into image with colors projected based on distance
   double max_y = 0.2;
@@ -1767,5 +1767,19 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
     prev_img_y = img_y;
   }
   return footprint;
+}
+
+cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx)
+{
+  cv::Mat dist_matrix(hull_cloud.size(), hull_cloud.size(), CV_64FC1);
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    for (int j = i; j < hull_cloud.size(); ++j)
+    {
+      dist_matrix.at<double>(i,j) = compareHeatKernelSignatures(K_xx.row(i), K_xx.row(j));
+      dist_matrix.at<double>(j,i) = dist_matrix.at<double>(i,j);
+    }
+  }
+  return dist_matrix;
 }
 };

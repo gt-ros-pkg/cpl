@@ -114,5 +114,8 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud);
 double compareHeatKernelSignatures(cv::Mat a, cv::Mat b);
 cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx,
                           tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state, int target_idx=0);
+cv::Scalar getColorFromDist(const double dist, const double max_dist, const double min_dist=0);
+cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx);
 };
+
 #endif // shape_features_h_DEFINED

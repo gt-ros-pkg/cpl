@@ -160,6 +160,7 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   //   cv::waitKey(100);
   // }
 
+  // Get the Heat Kernel Signature at all locations
   cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
   double min_score, max_score;
   cv::minMaxLoc(K_xx, &min_score, &max_score);
@@ -168,6 +169,16 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   ROS_INFO_STREAM("Min score: " << min_score);
   ROS_INFO_STREAM("Max score: " << max_score);
 
+  // Get the distance matrix between all locations
+  cv::Mat K_dists_all = visualizeHKSDistMatrix(hull_cloud, K_xx);
+  double min_dist, max_dist;
+  cv::minMaxLoc(K_dists_all, &min_dist, &max_dist);
+  ROS_INFO_STREAM("Min dist: " << min_dist);
+  ROS_INFO_STREAM("Max dist: " << max_dist);
+  cv::imshow("K_dists_all", K_dists_all);
+  cv::imshow("K_dists_all_norm", (K_dists_all-min_score)/(max_dist-min_score));
+
+  // Visualize pairwise distances on the object
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     cv::Mat K_dists = visualizeHKSDists(hull_cloud, K_xx, state, i);
