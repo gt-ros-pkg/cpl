@@ -1657,29 +1657,26 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   Eigen::MatrixXd Phi = ges.eigenvectors();
 
   ROS_INFO_STREAM("Eigenvalues: " << Lambda);
-
+  // ROS_INFO_STREAM("Phi[0] = " << Phi.col(0));
+  // ROS_INFO_STREAM("Phi[n-1] = " << Phi.col(n-1));
   const int num_ts = 100;
-  const double min_t = abs(4.0*log(10.0) / Lambda(n-2));
-  const double max_t = abs(4.0*log(10.0) / Lambda(0));
+  const double min_t = abs(4.0*log(10.0) / Lambda(n-1));
+  const double max_t = abs(4.0*log(10.0) / Lambda(1));
+  const double t_step = (log(max_t)-log(min_t))/num_ts;
   ROS_INFO_STREAM("Min_t: "  << min_t);
   ROS_INFO_STREAM("Max_t: "  << max_t);
 
   Eigen::VectorXd T(num_ts);
   Eigen::MatrixXd hs(n, num_ts);
+  // TODO: Ignore eigenvector 0?
   for (int j = 0; j < num_ts; ++j)
   {
-    T(j) = exp((log(max_t)-log(min_t))*(j+1.0)/num_ts);
-    float heat_trace = 0.0;
+    T(j) = exp(t_step*(j+1.0));
     for (int i = 0; i < n; ++i)
     {
-      // TODO: Compute these coefficients only once and store and use
       const float h = std::exp(-Lambda(i)*T(j));
       // ROS_INFO_STREAM("h[" << i << ", " << j << "] = " << h);
       hs(i, j) = h;
-      if (!isinf(h))
-      {
-        heat_trace += h;
-      }
     }
     // ROS_INFO_STREAM("Heat trace[" << j << "] = " << heat_trace);
   }
