@@ -143,8 +143,7 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
 
   // Run laplacian smoothing
   // XYZPointCloud smoothed_hull_cloud = laplacianSmoothBoundary(hull_cloud, m);
-  // XYZPointCloud smoothed_hull_cloud0 = laplacianBoundaryCompression(hull_cloud, m);
-  // cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud0, state);
+  // cv::Mat smoothed_hull_img = visualizeObjectBoundarySamples(smoothed_hull_cloud, state);
   // cv::imshow("smooted_hull", smoothed_hull_img);
   // cv::waitKey();
 
@@ -164,8 +163,12 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
   double min_score, max_score;
   cv::minMaxLoc(K_xx, &min_score, &max_score);
+  cv::Mat K_scaled = (K_xx-min_score)/(max_score-min_score);
+  cv::Mat K_xx_uchar;
+  K_scaled.convertTo(K_xx_uchar, CV_8UC1, 255);
   cv::imshow("K", K_xx);
-  cv::imshow("K_scaled", (K_xx-min_score)/(max_score-min_score));
+  cv::imshow("K_scaled", K_scaled);
+  cv::imwrite("/home/thermans/Desktop/hks_dists/feats.png", K_xx_uchar);
   ROS_INFO_STREAM("Min score: " << min_score);
   ROS_INFO_STREAM("Max score: " << max_score);
 
@@ -173,18 +176,26 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   cv::Mat K_dists_all = visualizeHKSDistMatrix(hull_cloud, K_xx);
   double min_dist, max_dist;
   cv::minMaxLoc(K_dists_all, &min_dist, &max_dist);
+  cv::Mat K_dists_scaled = (K_dists_all-min_dist)/(max_dist-min_dist);
+  cv::Mat K_dists_uchar;
+  K_dists_scaled.convertTo(K_dists_uchar, CV_8UC1, 255);
+  cv::imshow("Dists_all", K_dists_all);
+  cv::imshow("Dists_all_norm", K_dists_scaled);
+  cv::imwrite("/home/thermans/Desktop/hks_dists/dist_matrix.png", K_dists_uchar);
   ROS_INFO_STREAM("Min dist: " << min_dist);
   ROS_INFO_STREAM("Max dist: " << max_dist);
-  cv::imshow("Dists_all", K_dists_all);
-  cv::imshow("Dists_all_norm", (K_dists_all-min_dist)/(max_dist-min_dist));
 
   // Visualize pairwise distances on the object
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     cv::Mat K_dists = visualizeHKSDists(hull_cloud, K_xx, state, i);
     cv::imshow("K_dists", K_dists);
-    cv::waitKey();
+    std::stringstream k_dists_name;
+    k_dists_name << "/home/thermans/Desktop/hks_dists/hks_dists_" << i << ".png";
+    cv::imwrite(k_dists_name.str(), K_dists);
+    cv::waitKey(100);
   }
+  cv::waitKey();
   return 0;
 }
 
