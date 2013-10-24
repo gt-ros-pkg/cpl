@@ -1599,7 +1599,6 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
   Eigen::MatrixXd L(n,n);
-  // TODO: Define an enum type and pass in as a parameter to make a switch here for different Laplacians
   computeInverseDistLaplacian(hull_cloud, L);
 
   // Perform the generalized eigenvalue decomposition with matrix A
@@ -1651,8 +1650,6 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
       }
     }
   }
-  // TODO: Scale by the inverse of A*hks for different eigenvalues
-  // cv::Mat row_sums;
   return K_xx;
 }
 
