@@ -1525,7 +1525,7 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
 XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
 {
   const int n = hull_cloud.size();
-  Eigen::MatrixXf X(n, 3);
+  Eigen::MatrixXd X(n, 3);
   for (int i = 0; i < n; ++i)
   {
     X(i,0) = hull_cloud.at(i).x;
@@ -1533,25 +1533,14 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
     X(i,2) = hull_cloud.at(i).z;
   }
 
-  Eigen::MatrixXf L(n,n);
-  for (int i = 0; i < n; ++i)
-  {
-    // Circular indexes
-    const int i_minus_1 = (n+i-1)%n;
-    const int i_plus_1 = (i+1)%n;
-    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
-    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
-    const float dist_sum = dist_r + dist_f;
-    L(i, i_minus_1) = -dist_r;
-    L(i, i) = dist_sum;
-    L(i, i_plus_1) = -dist_f;
-  }
+  Eigen::MatrixXd L(n,n);
+  computeInverseDistLaplacian(hull_cloud, L);
 
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> es(L);
-  Eigen::VectorXf Lambda = es.eigenvalues();
-  Eigen::MatrixXf E = es.eigenvectors();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(L);
+  Eigen::VectorXd Lambda = es.eigenvalues();
+  Eigen::MatrixXd E = es.eigenvectors();
 
-  Eigen::MatrixXf X_tilde = E.transpose()*X;
+  Eigen::MatrixXd X_tilde = E.transpose()*X;
   if (k > n) k = n;
   for (int i = n-1; i >= k; --i)
   {
@@ -1560,7 +1549,7 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
     X_tilde(i,2) = 0.0;
   }
 
-  Eigen::MatrixXf X_hat = E*X_tilde;
+  Eigen::MatrixXd X_hat = E*X_tilde;
 
   XYZPointCloud compressed_cloud;
   compressed_cloud.header = hull_cloud.header;
@@ -1578,7 +1567,7 @@ XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
-  Eigen::MatrixXf X(n, 3);
+  Eigen::MatrixXd X(n, 3);
   for (int i = 0; i < n; ++i)
   {
     X(i,0) = hull_cloud.at(i).x;
@@ -1586,25 +1575,14 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
     X(i,2) = hull_cloud.at(i).z;
   }
 
-  Eigen::MatrixXf L(n,n);
-  for (int i = 0; i < n; ++i)
-  {
-    // Circular indexes
-    const int i_minus_1 = (n+i-1)%n;
-    const int i_plus_1 = (i+1)%n;
-    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
-    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
-    const float dist_sum = dist_r + dist_f;
-    L(i, i_minus_1) = -dist_r;
-    L(i, i) = dist_sum;
-    L(i, i_plus_1) = -dist_f;
-  }
+  Eigen::MatrixXd L(n,n);
+  computeInverseDistLaplacian(hull_cloud, L);
 
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> es(L);
-  Eigen::VectorXf Lambda = es.eigenvalues();
-  Eigen::MatrixXf E = es.eigenvectors();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(L);
+  Eigen::VectorXd Lambda = es.eigenvalues();
+  Eigen::MatrixXd E = es.eigenvectors();
 
-  Eigen::MatrixXf X_tilde = E.transpose()*X;
+  Eigen::MatrixXd X_tilde = E.transpose()*X;
   std::vector<XYZPointCloud> clouds;
   for (int i = n-1; i > 0; --i)
   {
@@ -1612,7 +1590,7 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
     X_tilde(i,1) = 0.0;
     X_tilde(i,2) = 0.0;
 
-    Eigen::MatrixXf X_hat = E*X_tilde;
+    Eigen::MatrixXd X_hat = E*X_tilde;
 
     XYZPointCloud compressed_cloud;
     compressed_cloud.header = hull_cloud.header;
@@ -1632,30 +1610,15 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
-  // Eigen::MatrixXd A(n,n);
-  // for (int i = 0; i < n; ++i)
-  // {
-  //   A(i,i) = 1.0/dist(hull_cloud.at(i), hull_cloud.at((i+1)%n));
-  // }
-  // TODO: Make the laplacian computation into a separate method for comparisons of different versions
   Eigen::MatrixXd L(n,n);
-  for (int i = 0; i < n; ++i)
-  {
-    // Circular indexes
-    const int i_minus_1 = (n+i-1)%n;
-    const int i_plus_1 = (i+1)%n;
-    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
-    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
-    const float dist_sum = dist_r + dist_f;
-    L(i, i_minus_1) = -dist_r;
-    L(i, i) = dist_sum;
-    L(i, i_plus_1) = -dist_f;
-  }
+  // TODO: Define an enum type and pass in as a parameter to make a switch here for different Laplacians
+  computeNormalizedInverseDistLaplacian(hull_cloud, L);
 
   // Perform the generalized eigenvalue decomposition with matrix A
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
   Eigen::VectorXd Lambda = ges.eigenvalues();
   Eigen::MatrixXd Phi = ges.eigenvectors();
+  // TODO: Examine if we need to normalize the eigenvectors
 
   // ROS_INFO_STREAM("Eigenvalues: " << Lambda);
   // ROS_INFO_STREAM("Phi[0] = " << Phi.col(0));
@@ -1664,8 +1627,8 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   const double min_t = abs(4.0*log(10.0) / Lambda(n-1));
   const double max_t = abs(4.0*log(10.0) / Lambda(1));
   const double t_step = (log(max_t)-log(min_t))/num_ts;
-  ROS_INFO_STREAM("Min_t: "  << min_t);
-  ROS_INFO_STREAM("Max_t: "  << max_t);
+  // ROS_INFO_STREAM("Min_t: "  << min_t);
+  // ROS_INFO_STREAM("Max_t: "  << max_t);
 
   Eigen::VectorXd T(num_ts);
   Eigen::MatrixXd hs(n, num_ts);
@@ -1733,7 +1696,7 @@ cv::Scalar getColorFromDist(const double dist, const double max_dist,const doubl
 
 cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerState& cur_state, int target_idx)
 {
-  ROS_INFO_STREAM("Comparing all points to point: " << target_idx);
+  // ROS_INFO_STREAM("Comparing all points to point: " << target_idx);
   std::vector<double> K_dists;
   for (int x = 0; x < hull_cloud.size(); ++x)
   {
@@ -1766,7 +1729,7 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
     if (i == target_idx) // Circle target index location
     {
       cv::circle(footprint, cv::Point(img_x, img_y), 3, cv::Scalar(0,0,0), 3);
-      ROS_INFO_STREAM("Dist from target to target is: " << K_dists[i]);
+      // ROS_INFO_STREAM("Dist from target to target is: " << K_dists[i]);
     }
     cv::Scalar color = getColorFromDist(K_dists[i], max_dist, min_dist);
 
@@ -1794,4 +1757,39 @@ cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx)
   }
   return dist_matrix;
 }
+
+void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
+  }
+}
+
+void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r/dist_sum;
+    L(i, i) = 1;
+    L(i, i_plus_1) = -dist_f/dist_sum;
+  }
+}
+
 };

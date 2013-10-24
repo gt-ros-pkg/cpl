@@ -117,6 +117,9 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx,
                           tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state, int target_idx=0);
 cv::Scalar getColorFromDist(const double dist, const double max_dist, const double min_dist=0);
 cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx);
+// 2D Laplacian Computation
+void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
+void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
 };
 
 #endif // shape_features_h_DEFINED
