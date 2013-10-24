@@ -1606,7 +1606,11 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
   Eigen::VectorXd Lambda = ges.eigenvalues();
   Eigen::MatrixXd Phi = ges.eigenvectors();
-  // TODO: Examine if we need to normalize the eigenvectors
+  // Normalize the eigenvectors
+  for (int i = 0; i < n; ++i)
+  {
+    Phi.col(i) = Phi.col(i)/Phi.col(i).sum();
+  }
 
   // ROS_INFO_STREAM("Eigenvalues: " << Lambda);
   // ROS_INFO_STREAM("Phi[0] = " << Phi.col(0));
@@ -1746,6 +1750,40 @@ cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx)
   return dist_matrix;
 }
 
+void computeDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
+  }
+}
+
+void computeNormalizedDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r/dist_sum;
+    L(i, i) = 1.0;
+    L(i, i_plus_1) = -dist_f/dist_sum;
+  }
+}
+
 void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 {
   const int n = hull_cloud.size();
@@ -1775,7 +1813,7 @@ void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::Mat
     const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
     const float dist_sum = dist_r + dist_f;
     L(i, i_minus_1) = -dist_r/dist_sum;
-    L(i, i) = 1;
+    L(i, i) = 1.0;
     L(i, i_plus_1) = -dist_f/dist_sum;
   }
 }
