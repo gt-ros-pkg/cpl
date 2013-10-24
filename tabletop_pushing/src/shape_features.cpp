@@ -1476,38 +1476,26 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
 {
   const int n = hull_cloud.size();
 
-  // TODO: modify with the graph distances
-
   // Construct the smoothing matrix
-  cv::Mat S(n, n, CV_64FC1);
+  Eigen::MatrixXd L(n,n);
+  computeTutteLaplacian(hull_cloud, L);
+  Eigen::MatrixXd S = Eigen::MatrixXd::Identity(n,n) - 0.5*L;
+
+  Eigen::MatrixXd X(n, 3);
   for (int i = 0; i < n; ++i)
   {
-    // Circular indexes
-    const int i_minus_1 = (n+i-1)%n;
-    const int i_plus_1 = (i+1)%n;
-    S.at<double>(i, i_minus_1) = 0.25;
-    S.at<double>(i, i) = 0.5;
-    S.at<double>(i, i_plus_1) = 0.25;
-  }
-
-  // cv::Mat L = 2.0*(cv::Mat::eye(n, n, CV_64F)-S);
-
-  cv::Mat X(n, 3, CV_64FC1);
-  for (int i = 0; i < n; ++i)
-  {
-    X.at<double>(i,0) = hull_cloud.at(i).x;
-    X.at<double>(i,1) = hull_cloud.at(i).y;
-    X.at<double>(i,2) = hull_cloud.at(i).z;
+    X(i,0) = hull_cloud.at(i).x;
+    X(i,1) = hull_cloud.at(i).y;
+    X(i,2) = hull_cloud.at(i).z;
   }
 
   // Raise matrix to the m power
-  cv::Mat Sm;
-  S.copyTo(Sm);
+  Eigen::MatrixXd Sm(S);
   for (int i = 1; i < m; ++i)
   {
     Sm *= S;
   }
-  cv::Mat X_hat = S*X;
+  Eigen::MatrixXd X_hat = Sm*X;
 
   XYZPointCloud smoothed_cloud;
   smoothed_cloud.header = hull_cloud.header;
@@ -1517,7 +1505,7 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
   smoothed_cloud.resize(smoothed_cloud.width);
   for (int i = 0; i < n; ++i)
   {
-    smoothed_cloud.at(i) = pcl16::PointXYZ(X_hat.at<double>(i,0), X_hat.at<double>(i,1), X_hat.at<double>(i,2));
+    smoothed_cloud.at(i) = pcl16::PointXYZ(X_hat(i,0), X_hat(i,1), X_hat(i,2));
   }
   return smoothed_cloud;
 }
@@ -1612,7 +1600,7 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   const int n = hull_cloud.size();
   Eigen::MatrixXd L(n,n);
   // TODO: Define an enum type and pass in as a parameter to make a switch here for different Laplacians
-  computeNormalizedInverseDistLaplacian(hull_cloud, L);
+  computeInverseDistLaplacian(hull_cloud, L);
 
   // Perform the generalized eigenvalue decomposition with matrix A
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
@@ -1789,6 +1777,20 @@ void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::Mat
     L(i, i_minus_1) = -dist_r/dist_sum;
     L(i, i) = 1;
     L(i, i_plus_1) = -dist_f/dist_sum;
+  }
+}
+
+void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    L(i, i_minus_1) = -0.5;
+    L(i, i) = 1;
+    L(i, i_plus_1) = -0.5;
   }
 }
 

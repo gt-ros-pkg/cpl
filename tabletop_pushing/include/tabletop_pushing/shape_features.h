@@ -120,6 +120,7 @@ cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx);
 // 2D Laplacian Computation
 void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
 void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
+void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
 };
 
 #endif // shape_features_h_DEFINED
