@@ -1646,15 +1646,16 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     write_example_file(out_file_name, X, Y, normalize, debug)
 
 def extract_shape_features_batch():
-  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
-  class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
-  # class_dirs = ['toothpaste3']
-  # subprocess.Popen(['mkdir', '-p', out_dir], shell=False)
-  base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
-  class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+  use_spin = True
+  if use_spin:
+      base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
+      class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
+  else:
+      base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
+      class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
 
-  out_dir = base_dir+'examples_line_dist/'
-  feat_dir = base_dir+'examples_line_dist/'
+  out_dir = base_dir+'hks_examples_line_dist/'
+  feat_dir = base_dir+'hks_examples_line_dist/'
 
   for c in class_dirs:
       print 'Class:', c
@@ -1668,9 +1669,12 @@ def extract_shape_features_batch():
           print 'ERROR: No data file in directory:', c
           continue
       aff_file = class_dir+data_file
-      score_file = base_dir+'example_files/'+c+'.txt'
-      # file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
-      file_out = base_dir+'analysis/'+c+'_gt_scores.png'
+      if use_spin:
+          score_file = base_dir+'example_files/'+c+'.txt'
+      else:
+          score_file = base_dir+'examples_line_dist/'+c[:-1]+'.txt'
+      file_out = out_dir+c[:-1]+'_new_feats_cpp.txt'
+      # file_out = base_dir+'analysis/'+c+'_gt_scores.png'
       print '/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features', aff_file, \
           class_dir, file_out, score_file
       p = subprocess.Popen(['/home/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/bin/extract_shape_features',
@@ -1820,7 +1824,7 @@ def rank_straw_scores_batch():
       print '\n'
 
 if __name__ == '__main__':
-    analyze_predicted_and_observed_batch()
+    # analyze_predicted_and_observed_batch()
     # read_and_score_raw_files()
-    # extract_shape_features_batch()
+    extract_shape_features_batch()
     # rank_straw_scores_batch()

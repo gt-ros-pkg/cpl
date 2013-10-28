@@ -111,6 +111,9 @@ XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m=1);
 XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k);
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud);
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud);
+cpl_visual_features::ShapeDescriptor extractHKSDescriptor(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                                          pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                                          double sample_spread, double hull_alpha, double hist_res);
 double compareHeatKernelSignatures(cv::Mat a, cv::Mat b);
 double compareHeatKernelSignatures(cv::Mat& K_xx, int a, int b);
 cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx,

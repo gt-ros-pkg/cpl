@@ -1595,6 +1595,20 @@ std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull
   return clouds;
 }
 
+ShapeDescriptor extractHKSDescriptor(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                     pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                     double sample_spread, double hull_alpha, double hist_res)
+{
+  cv::Mat K_xx = extractHeatKernelSignatures(hull);
+  ShapeDescriptor desc;
+  for (int c = 0; c < K_xx.cols; ++c)
+  {
+    desc.push_back(K_xx.at<double>(sample_pt_idx,c));
+  }
+  ROS_INFO_STREAM("Descriptor has size: " << desc.size());
+  return desc;
+}
+
 cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
 {
   const int n = hull_cloud.size();
