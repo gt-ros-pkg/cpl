@@ -120,6 +120,7 @@
 #define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
+// #define VISUALIZE_CONTACT_PT 1
 
 using boost::shared_ptr;
 
@@ -519,46 +520,47 @@ class TabletopPushingPerceptionNode
                                     Timer::NANOSECONDS_PER_SECOND);
       long long copy_tracks_start_time = Timer::nanoTime();
 #endif
+#ifdef VISUALIZE_CONTACT_PT
       ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
       // TODO: Move this into the tracker or somewhere better
-      // XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+      XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
 
-      // // Visualize hull_cloud;
-      // // NOTE: Get this point with tf for offline use
-      // geometry_msgs::PointStamped hand_pt_ros;
-      // geometry_msgs::PointStamped base_point;
-      // base_point.point.x = 0.0;
-      // base_point.point.y = 0.0;
-      // base_point.point.z = 0.0;
-      // // base_point.header.frame_id = (pushing_arm_ == "l") ? "l_gripper_tool_frame" : "r_gripper_tool_frame";
-      // base_point.header.frame_id = "l_gripper_tool_frame";
-      // // base_point.header.stamp = ros::Time::now();
-      // tf_->transformPoint(workspace_frame_, base_point, hand_pt_ros);
-      // pcl16::PointXYZ hand_pt;
-      // hand_pt.x = hand_pt_ros.point.x;
-      // hand_pt.y = hand_pt_ros.point.y;
-      // hand_pt.z = hand_pt_ros.point.z;
-      // geometry_msgs::PointStamped forward_pt_ros;
-      // geometry_msgs::PointStamped base_point_forward;
-      // base_point_forward.point.x = 0.01;
-      // base_point_forward.point.y = 0.0;
-      // base_point_forward.point.z = 0.0;
-      // // base_point_forward.header.frame_id = (pushing_arm_ == "l") ? "l_gripper_tool_frame" : "r_gripper_tool_frame";
-      // base_point_forward.header.frame_id = "l_gripper_tool_frame";
-      // tf_->transformPoint(workspace_frame_, base_point_forward, forward_pt_ros);
-      // pcl16::PointXYZ forward_pt;
-      // forward_pt.x = forward_pt_ros.point.x;
-      // forward_pt.y = forward_pt_ros.point.y;
-      // forward_pt.z = forward_pt_ros.point.z;
-      // cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectContactLocation(hull_cloud, tracker_state,
-      //                                                                           hand_pt, forward_pt);
-      // cv::imshow("obj footprint", hull_cloud_viz);
+      // Visualize hull_cloud;
+      // NOTE: Get this point with tf for offline use
+      geometry_msgs::PointStamped hand_pt_ros;
+      geometry_msgs::PointStamped base_point;
+      base_point.point.x = 0.0;
+      base_point.point.y = 0.0;
+      base_point.point.z = 0.0;
+      base_point.header.frame_id = "l_gripper_tool_frame";
+      tf_->transformPoint(workspace_frame_, base_point, hand_pt_ros);
+      pcl16::PointXYZ hand_pt;
+      hand_pt.x = hand_pt_ros.point.x;
+      hand_pt.y = hand_pt_ros.point.y;
+      hand_pt.z = hand_pt_ros.point.z;
+      geometry_msgs::PointStamped forward_pt_ros;
+      geometry_msgs::PointStamped base_point_forward;
+      base_point_forward.point.x = 0.01;
+      base_point_forward.point.y = 0.0;
+      base_point_forward.point.z = 0.0;
+      base_point_forward.header.frame_id = "l_gripper_tool_frame";
+      tf_->transformPoint(workspace_frame_, base_point_forward, forward_pt_ros);
+      pcl16::PointXYZ forward_pt;
+      forward_pt.x = forward_pt_ros.point.x;
+      forward_pt.y = forward_pt_ros.point.y;
+      forward_pt.z = forward_pt_ros.point.z;
+
+      cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectContactLocation(hull_cloud, tracker_state,
+                                                                                hand_pt, forward_pt);
+      cv::imshow("obj footprint", hull_cloud_viz);
       // std::stringstream input_out_name;
       // input_out_name << base_output_path_ << "input" << footprint_count_ << ".png";
       // cv::imwrite(input_out_name.str(), cur_color_frame_);
       // std::stringstream footprint_out_name;
       // footprint_out_name << base_output_path_ << "footprint" << footprint_count_++ << ".png";
       // cv::imwrite(footprint_out_name.str(), hull_cloud_viz);
+
+#endif // VISUALIZE_CONTACT_PT
 
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;

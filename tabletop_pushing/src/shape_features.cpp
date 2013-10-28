@@ -187,10 +187,10 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
 cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
                                        PushTrackerState& cur_state, cpl_visual_features::Path& path)
 {
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
   double max_displacement = 100;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
@@ -229,30 +229,30 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
 }
 
 cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerState& cur_state,
-                                       pcl16::PointXYZ& contact_pt, pcl16::PointXYZ& forward_pt)
+                                       pcl16::PointXYZ& tool_pt0, pcl16::PointXYZ& tool_pt1)
 {
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
+  pcl16::PointXYZ contact_pt_world = estimateObjectContactLocation(hull_cloud, cur_state,
+                                                                   tool_pt0, tool_pt1);
+  pcl16::PointXYZ contact_pt_obj =  worldPointInObjectFrame(contact_pt_world, cur_state);
+  int img_contact_pt_x = objLocToIdx(contact_pt_obj.x, min_x, max_x);
+  int img_contact_pt_y = objLocToIdx(contact_pt_obj.y, min_y, max_y);
 
   cv::Mat footprint = visualizeObjectBoundarySamples(hull_cloud, cur_state);
-  pcl16::PointXYZ contact_pt_obj =  worldPointInObjectFrame(contact_pt, cur_state);
-  int img_x = objLocToIdx(contact_pt_obj.x, min_x, max_x);
-  int img_y = objLocToIdx(contact_pt_obj.y, min_y, max_y);
-  pcl16::PointXYZ forward_pt_obj =  worldPointInObjectFrame(forward_pt, cur_state);
-  int img_x_1 = objLocToIdx(forward_pt_obj.x, min_x, max_x);
-  int img_y_1 = objLocToIdx(forward_pt_obj.y, min_y, max_y);
+  pcl16::PointXYZ tool_pt_obj0 =  worldPointInObjectFrame(tool_pt0, cur_state);
+  int img_x0 = objLocToIdx(tool_pt_obj0.x, min_x, max_x);
+  int img_y0 = objLocToIdx(tool_pt_obj0.y, min_y, max_y);
+  pcl16::PointXYZ tool_pt_obj1 =  worldPointInObjectFrame(tool_pt1, cur_state);
+  int img_x1 = objLocToIdx(tool_pt_obj1.x, min_x, max_x);
+  int img_y1 = objLocToIdx(tool_pt_obj1.y, min_y, max_y);
   cv::Scalar color(0, 0, 128);
-  cv::line(footprint, cv::Point(img_x, img_y), cv::Point(img_x_1, img_y_1), color, 1);
-  cv::circle(footprint, cv::Point(img_x, img_y), 3, color, 3);
-  cv::circle(footprint, cv::Point(img_x_1, img_y_1), 3, color, 3);
-  // ROS_WARN_STREAM("World point: (" << contact_pt.x << ", " << contact_pt.y << ")");
-  // ROS_WARN_STREAM("Obj point: (" << contact_pt_obj.x << ", " << contact_pt_obj.y << ")");
-  // ROS_WARN_STREAM("Img point: (" << img_x << ", " << img_y << ")");
-  // ROS_WARN_STREAM("World point: (" << forward_pt.x << ", " << forward_pt.y << ")");
-  // ROS_WARN_STREAM("Obj point: (" << forward_pt_obj.x << ", " << forward_pt_obj.y << ")");
-  // ROS_WARN_STREAM("Img point: (" << img_x_1 << ", " << img_y_1 << ")");
+  cv::line(footprint, cv::Point(img_x0, img_y0), cv::Point(img_x1, img_y1), color, 1);
+  cv::circle(footprint, cv::Point(img_x0, img_y0), 3, color, 3);
+  cv::circle(footprint, cv::Point(img_x1, img_y1), 3, color, 3);
+  cv::circle(footprint, cv::Point(img_contact_pt_x, img_contact_pt_y), 3, cv::Scalar(0, 128, 128), 3);
   return footprint;
 }
 
@@ -1471,6 +1471,24 @@ cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int loca
   cv::Mat K = mixture_weight * K_global + (1 - mixture_weight) * K_local;
   return K;
 }
+
+pcl16::PointXYZ estimateObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerState& cur_state,
+                                              pcl16::PointXYZ& tool_pt0, pcl16::PointXYZ& tool_pt1)
+{
+  double min_dist = FLT_MAX;
+  int min_idx = -1;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    double dist_i = dist(hull_cloud.at(i), tool_pt1);
+    if (dist_i < min_dist)
+    {
+      min_dist = dist_i;
+      min_idx = i;
+    }
+  }
+  return hull_cloud.at(min_idx);
+}
+
 
 XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
 {
