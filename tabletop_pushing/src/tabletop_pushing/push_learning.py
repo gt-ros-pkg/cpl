@@ -1654,8 +1654,8 @@ def extract_shape_features_batch():
       base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
       class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
 
-  out_dir = base_dir+'hks_examples_line_dist/'
-  feat_dir = base_dir+'hks_examples_line_dist/'
+  out_dir = base_dir+'hks_shape_context_data/'
+  feat_dir = base_dir+'hks_shape_context_data/'
 
   for c in class_dirs:
       print 'Class:', c

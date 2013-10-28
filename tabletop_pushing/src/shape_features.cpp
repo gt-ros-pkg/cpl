@@ -1226,6 +1226,41 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   return local;
 }
 
+ShapeDescriptor extractHKSAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                                 pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                                 double sample_spread, double hull_alpha, double hist_res)
+{
+  ShapeDescriptor local = extractHKSDescriptor(hull, cur_obj, sample_pt, sample_pt_idx,
+                                               sample_spread, hull_alpha, hist_res);
+
+  // ROS_INFO_STREAM("Global");
+  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+  // Binarize global histogram then L1 normalize
+  double global_sum = 0.0;
+  for (unsigned int i = 0; i < global.size(); ++i)
+  {
+    if (global[i] > 0)
+    {
+      global[i] = 1.0;
+      global_sum += 1.0;
+    }
+    else
+    {
+      global[i] = 0.0;
+    }
+  }
+  // L1 normalize global histogram
+  for (unsigned int i = 0; i < global.size(); ++i)
+  {
+    global[i] /= global_sum;
+  }
+
+  // ROS_INFO_STREAM("local.size() << " << local.size());
+  // ROS_INFO_STREAM("global.size() << " << global.size());
+  local.insert(local.end(), global.begin(), global.end());
+  // ROS_INFO_STREAM("local.size() << " << local.size());
+  return local;
+}
 
 /**
  * Create an affinity matrix for a set of ShapeLocations

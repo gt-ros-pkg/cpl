@@ -200,10 +200,10 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   double gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
 #ifdef USE_HKS_DESCRIPTOR
-  ShapeDescriptor sd = tabletop_pushing::extractHKSDescriptor(hull_cloud, cur_obj,
-                                                              boundary_loc, boundary_loc_idx,
-                                                              gripper_spread, hull_alpha,
-                                                              point_cloud_hist_res_);
+  ShapeDescriptor sd = tabletop_pushing::extractHKSAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                          boundary_loc, boundary_loc_idx,
+                                                                          gripper_spread, hull_alpha,
+                                                                          point_cloud_hist_res_);
 #else // USE_HKS_DESCRIPTOR
   ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                             boundary_loc, boundary_loc_idx,
