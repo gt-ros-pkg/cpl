@@ -165,22 +165,24 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
 
-  int prev_img_x;
-  int prev_img_y;
+  cv::Point prev_img_pt, init_img_pt;
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
-    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
-    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    cv::Point img_pt(objLocToIdx(obj_pt.x, min_x, max_x), objLocToIdx(obj_pt.y, min_y, max_y));
     cv::Scalar color(128, 0, 0);
-    cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+    cv::circle(footprint, img_pt, 1, color, 3);
     if (i > 0)
     {
-      cv::line(footprint, cv::Point(img_x, img_y), cv::Point(prev_img_x, prev_img_y), color, 1);
+      cv::line(footprint, img_pt, prev_img_pt, color, 1);
     }
-    prev_img_x = img_x;
-    prev_img_y = img_y;
+    else
+    {
+      init_img_pt = img_pt;
+    }
+    prev_img_pt = img_pt;
   }
+  cv::line(footprint, prev_img_pt, init_img_pt, cv::Scalar(0,128,0),1);
   return footprint;
 }
 
@@ -1254,11 +1256,10 @@ ShapeDescriptor extractHKSAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObjec
   {
     global[i] /= global_sum;
   }
-
   // ROS_INFO_STREAM("local.size() << " << local.size());
   // ROS_INFO_STREAM("global.size() << " << global.size());
   local.insert(local.end(), global.begin(), global.end());
-  // ROS_INFO_STREAM("local.size() << " << local.size());
+  // ROS_INFO_STREAM("combined.size() << " << local.size());
   return local;
 }
 
@@ -1675,7 +1676,10 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   // Normalize the eigenvectors
   for (int i = 0; i < n; ++i)
   {
-    Phi.col(i) = Phi.col(i)/Phi.col(i).sum();
+    if (Phi.col(i).sum() != 0.0)
+    {
+      Phi.col(i) = Phi.col(i)/Phi.col(i).sum();
+    }
   }
 
   // ROS_INFO_STREAM("Eigenvalues: " << Lambda);

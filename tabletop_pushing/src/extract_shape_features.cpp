@@ -238,10 +238,19 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   }
   double gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[min_dist_idx];
+#ifdef USE_HKS_DESCRIPTOR
+  cv::Mat boundary = visualizeObjectBoundarySamples(hull_cloud, cur_state);
+  cv::imshow("Obj boundary", boundary);
+  ShapeDescriptor sd = tabletop_pushing::extractHKSAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                          boundary_loc, min_dist_idx,
+                                                                          gripper_spread, hull_alpha,
+                                                                          point_cloud_hist_res_);
+#else // USE_HKS_DESCRIPTOR
   ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                             boundary_loc, min_dist_idx,
                                                                             gripper_spread,
                                                                             hull_alpha, point_cloud_hist_res_);
+#endif // USE_HKS_DESCRIPTOR
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
 
@@ -693,7 +702,7 @@ int main(int argc, char** argv)
   }
 
   bool test_straw_man = false;
-  std::ofstream straw_scores_stream("/home/thermans/Desktop/straw_scores.txt");
+  // std::ofstream straw_scores_stream("/home/thermans/Desktop/straw_scores.txt");
   double max_score = -100.0;
   ShapeDescriptors descriptors;
   for (unsigned int i = 0; i < trials.size(); ++i)
