@@ -1659,7 +1659,6 @@ ShapeDescriptor extractHKSDescriptor(XYZPointCloud& hull, ProtoObject& cur_obj,
   {
     desc.push_back(K_xx.at<double>(sample_pt_idx,c));
   }
-  ROS_INFO_STREAM("Descriptor has size: " << desc.size());
   return desc;
 }
 
@@ -1668,7 +1667,6 @@ cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
   const int n = hull_cloud.size();
   Eigen::MatrixXd L(n,n);
   computeInverseDistLaplacian(hull_cloud, L);
-
   // Perform the generalized eigenvalue decomposition with matrix A
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
   Eigen::VectorXd Lambda = ges.eigenvalues();
@@ -1821,6 +1819,13 @@ cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx)
 void computeDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 {
   const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
@@ -1838,6 +1843,13 @@ void computeDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 void computeNormalizedDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 {
   const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
@@ -1855,6 +1867,13 @@ void computeNormalizedDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& 
 void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 {
   const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
@@ -1872,6 +1891,13 @@ void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 {
   const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes
@@ -1889,6 +1915,13 @@ void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::Mat
 void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 {
   const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
   for (int i = 0; i < n; ++i)
   {
     // Circular indexes

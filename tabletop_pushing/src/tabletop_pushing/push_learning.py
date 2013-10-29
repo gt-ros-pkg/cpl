@@ -1646,14 +1646,13 @@ def rewrite_example_file_features(original_file_name, feat_file_name, out_file_n
     write_example_file(out_file_name, X, Y, normalize, debug)
 
 def extract_shape_features_batch():
-  use_spin = True
+  use_spin = False
   if use_spin:
       base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/rotate_to_heading_train_and_validate/'
       class_dirs = ['camcorder0', 'food_box0', 'large_brush0', 'small_brush0','soap_box0', 'toothpaste0']
   else:
       base_dir = '/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/'
       class_dirs = ['camcorder3', 'food_box3', 'large_brush3', 'small_brush3','soap_box3', 'toothpaste3']
-
   out_dir = base_dir+'hks_shape_context_data/'
   feat_dir = base_dir+'hks_shape_context_data/'
 

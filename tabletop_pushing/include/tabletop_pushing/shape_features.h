@@ -30,8 +30,6 @@ class ShapeLocation
 
 typedef std::vector<ShapeLocation> ShapeLocations;
 
-// int getHistBinIdx(int x_idx, int y_idx, int n_x_bins, int n_y_bins);
-
 cv::Mat getObjectFootprint(cv::Mat obj_mask, XYZPointCloud& cloud);
 
 void getPointRangesXY(XYZPointCloud& samples, cpl_visual_features::ShapeDescriptor& sd);
@@ -69,8 +67,8 @@ ShapeLocations extractShapeContextFromSamples(XYZPointCloud& samples_pcl,
 XYZPointCloud transformSamplesIntoSampleLocFrame(XYZPointCloud& samples, ProtoObject& cur_obj,
                                                  pcl16::PointXYZ sample_pt);
 
-cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, double x_res, double y_res, double x_range,
-                                                             double y_range);
+cpl_visual_features::ShapeDescriptor extractPointHistogramXY(XYZPointCloud& samples, double x_res, double y_res,
+                                                             double x_range, double y_range);
 
 
 XYZPointCloud getLocalSamples(XYZPointCloud& samples_pcl, ProtoObject& cur_obj, pcl16::PointXYZ sample_loc,
@@ -97,9 +95,11 @@ cpl_visual_features::ShapeDescriptor extractLocalShapeFeatures(XYZPointCloud& sa
 
 cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center = false);
 
-double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b, double gamma=0.0);
+double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a,
+                                 cpl_visual_features::ShapeDescriptor& b, double gamma=0.0);
 
-double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a, cpl_visual_features::ShapeDescriptor& b);
+double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a,
+                                        cpl_visual_features::ShapeDescriptor& b);
 
 void clusterShapeFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids,
                           cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter,
@@ -113,7 +113,8 @@ cpl_visual_features::ShapeDescriptors loadSVRTrainingFeatures(std::string featur
 cv::Mat computeChi2Kernel(cpl_visual_features::ShapeDescriptors& sds, std::string feat_path, int local_length,
                           int global_length, double gamma_local, double gamma_global, double mixture_weight);
 
-pcl16::PointXYZ estimateObjectContactLocation(XYZPointCloud& hull_cloud, tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,
+pcl16::PointXYZ estimateObjectContactLocation(XYZPointCloud& hull_cloud,
+                                              tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,
                                               pcl16::PointXYZ& tool_pt0, pcl16::PointXYZ& tool_pt1);
 
 XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m=1);
