@@ -451,6 +451,7 @@ class StartLocPerformanceAnalysis:
     def __init__(self):
         self.analyze_straight_line_push = self.analyze_straight_line_push_line_dist
         self.analyze_spin_push = self.analyze_spin_push_net_spin
+        # self.analyze_spin_push = self.analyze_spin_push_net_spin_signed
 
     def compare_predicted_and_observed_push_scores(self, in_file_name, out_file_name=None, use_spin=False):
         # Read in data
@@ -726,6 +727,11 @@ class StartLocPerformanceAnalysis:
         init_theta = push_trial.trial_start.init_orientation
         final_theta = push_trial.trial_end.final_orientation
         return abs(subPIAngle(final_theta - init_theta))
+
+    def analyze_spin_push_net_spin_signed(self, push_trial):
+        init_theta = push_trial.trial_start.init_orientation
+        final_theta = push_trial.trial_end.final_orientation
+        return subPIAngle(final_theta - init_theta)
 
     def angle_between_vectors(self, a, b):
         a_dot_b = sum(a*b)
