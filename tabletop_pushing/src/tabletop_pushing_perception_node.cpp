@@ -207,7 +207,8 @@ class TabletopPushingPerceptionNode
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
       gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false),
-      num_position_failures_(0), footprint_count_(0)
+      num_position_failures_(0), footprint_count_(0),
+      feedback_control_count_(0), feedback_control_instance_count_(0)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -217,6 +218,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_displays", use_displays_, false);
     n_private_.param("write_input_to_disk", write_input_to_disk_, false);
     n_private_.param("write_to_disk", write_to_disk_, false);
+    n_private_.param("write_dyn_learning_to_disk", write_dyn_to_disk_, false);
 
     n_private_.param("min_workspace_x", pcl_segmenter_->min_workspace_x_, 0.0);
     n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
@@ -521,9 +523,9 @@ class TabletopPushingPerceptionNode
       long long copy_tracks_start_time = Timer::nanoTime();
 #endif
 #ifdef VISUALIZE_CONTACT_PT
-      ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+      ProtoObject cur_contact_obj = obj_tracker_->getMostRecentObject();
       // TODO: Move this into the tracker or somewhere better
-      XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+      XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_contact_obj, hull_alpha_);
 
       // Visualize hull_cloud;
       // NOTE: Get this point with tf for offline use
@@ -598,6 +600,22 @@ class TabletopPushingPerceptionNode
 #ifdef PROFILE_CB_TIME
         long long publish_feedback_start_time = Timer::nanoTime();
 #endif
+        // TODO: Examine buffering and writing after a push
+        if (write_dyn_to_disk_)
+        {
+          // Write image and cur obj cloud
+          std::stringstream image_out_name;
+          image_out_name << "feedback_control_input_" << feedback_control_instance_count_ << "_"
+                         << feedback_control_count_ << ".png";
+          cv::imwrite(image_out_name.str(), cur_color_frame_);
+          std::stringstream obj_cloud_out_name;
+          obj_cloud_out_name << "feedback_control_obj_" << feedback_control_instance_count_ << "_"
+                             << feedback_control_count_ << ".pcd";
+          ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+          pcl16::io::savePCDFile(obj_cloud_out_name.str(), cur_obj.cloud);
+        }
+        // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
+        tracker_state.header.seq = feedback_control_count_++;
         as_.publishFeedback(tracker_state);
 #ifdef PROFILE_CB_TIME
         publish_feedback_elapsed_time = (((double)(Timer::nanoTime() - publish_feedback_start_time)) /
@@ -652,9 +670,6 @@ class TabletopPushingPerceptionNode
       {
         std::stringstream cloud_out_name;
         out_name << base_output_path_ << current_file_id_ << "_input_" << record_count_ << ".png";
-        // cloud_out_name << base_output_path_ << current_file_id_ << "_object_" << record_count_ << ".pcd";
-        // ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-        // pcl16::io::savePCDFile(cloud_out_name.str(), cur_obj.cloud);
       }
       else
       {
@@ -1806,6 +1821,8 @@ class TabletopPushingPerceptionNode
     object_not_detected_count_ = 0;
     object_too_far_count_ = 0;
     object_not_between_count_ = 0;
+    feedback_control_count_ = 0;
+    feedback_control_instance_count_++;
     push_start_time_ = ros::Time::now().toSec();
 
     if (obj_tracker_->isInitialized())
@@ -2255,6 +2272,7 @@ class TabletopPushingPerceptionNode
   bool use_displays_;
   bool write_input_to_disk_;
   bool write_to_disk_;
+  bool write_dyn_to_disk_;
   std::string base_output_path_;
   int num_downsamples_;
   std::string workspace_frame_;
@@ -2323,6 +2341,8 @@ class TabletopPushingPerceptionNode
   double hull_alpha_;
   double gripper_spread_;
   int footprint_count_;
+  int feedback_control_count_;
+  int feedback_control_instance_count_;
 #ifdef DEBUG_POSE_ESTIMATION
   std::ofstream pose_est_stream_;
 #endif

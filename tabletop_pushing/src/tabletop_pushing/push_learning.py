@@ -31,7 +31,7 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
-from geometry_msgs.msg import Point, Pose2D, Twist
+from geometry_msgs.msg import Point, Pose2D, Twist, Pose
 import tf.transformations as tr
 from push_primitives import *
 from tabletop_pushing.srv import *
@@ -47,9 +47,9 @@ import random
 import os
 import subprocess
 
-_VERSION_LINE = '# v0.6'
+_VERSION_LINE = '# v0.7'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method score [shape_descriptors]'
-_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z'
+_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z hand.a_x hand.a_y hand.a_z hand.a_w seq'
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
 
@@ -106,13 +106,14 @@ class PushTrial:
                 'push_time: ' + str(self.push_time))
 
 class ControlTimeStep:
-    def __init__(self, x, x_dot, x_desired, theta0, u, t):
+    def __init__(self, x, x_dot, x_desired, theta0, u, t, ee, seq):
         self.x = x
         self.x_dot = x_dot
         self.x_desired = x_desired
         self.theta0 = theta0
         self.u = u
         self.t = t
+        self.seq = seq
 
 class PushCtrlTrial:
     def __init__(self):
@@ -256,7 +257,7 @@ class ControlAnalysisIO:
         self.data_out = None
         self.data_in = None
 
-    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose):
+    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq=0):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -265,8 +266,9 @@ class ControlAnalysisIO:
             str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
             str(theta0)+' '+str(u.linear.x)+' '+str(u.linear.y)+' '+str(u.linear.z)+' '+\
             str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
-            str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+\
-            '\n'
+            str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+' '+\
+            str(hand_pose.orientation.x)+' '+str(hand_pose.orientation.y)+' '+\
+            str(hand_pose.orientation.z)+' '+str(hand_pose.orientation.w)+' '+' '+str(seq) + '\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -295,10 +297,19 @@ class ControlAnalysisIO:
         u.angular.y = data[14]
         u.angular.z = data[15]
         t = data[16]
-        ee_x = data[17]
-        ee_y = data[18]
-        ee_z = data[19]
-        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t)
+        ee = Pose()
+        if len(data) > 16:
+            ee.position.x = data[17]
+            ee.position.y = data[18]
+            ee.position.z = data[19]
+            ee.orientation.x = data[17]
+            ee.orientation.y = data[18]
+            ee.orientation.z = data[19]
+            ee.orientation.w = data[20]
+            seq = data[20]
+        else:
+            seq = 0
+        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t, ee, seq)
         return cts
 
     def read_in_data_file(self, file_name):
