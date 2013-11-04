@@ -55,6 +55,7 @@ import sys
 
 from push_primitives import *
 
+_OFFLINE = False
 _USE_CONTROLLER_IO = False
 _USE_LEARN_IO = True
 
@@ -264,6 +265,19 @@ class PositionFeedbackPushNode:
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.RBF = None
 
+        # Set joint gains
+        self.arm_mode = None
+        # state Info
+        self.l_arm_pose = None
+        self.l_arm_x_err = None
+        self.l_arm_x_d = None
+        self.l_arm_F = None
+
+        self.r_arm_pose = None
+        self.r_arm_x_err = None
+        self.r_arm_x_d = None
+        self.r_arm_F = None
+
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
@@ -273,19 +287,25 @@ class PositionFeedbackPushNode:
             self.controller_state_msg = JTTaskControllerState
         self.base_vel_controller_name = '_cart_jinv_push'
         self.vel_controller_state_msg = JinvTeleopControllerState
-
-        # Set joint gains
-        self.arm_mode = None
-        self.cs = ControllerSwitcher()
-        self.init_joint_controllers()
-        self.init_cart_controllers()
-        self.init_vel_controllers()
-
-        # Setup arms
         self.tf_listener = tf.TransformListener()
-        rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, use_kinematics=False)#, use_projector=False)
 
+        if not _OFFLINE:
+            self.cs = ControllerSwitcher()
+            self.init_joint_controllers()
+            self.init_cart_controllers()
+            self.init_vel_controllers()
+
+            # Setup arms
+            rospy.loginfo('Creating pr2 object')
+            self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, use_kinematics=False)#, use_projector=False)
+        # Arm Inverse Kinematics
+        self.l_arm_ik_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik', GetPositionIK)
+        self.r_arm_ik_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik', GetPositionIK)
+        self.l_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik_solver_info',
+                                                        GetKinematicSolverInfo)
+        self.r_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik_solver_info',
+                                                        GetKinematicSolverInfo)
+        # Cartesian position and velocity controllers
         self.l_arm_cart_pub = rospy.Publisher('/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)
         self.r_arm_cart_pub = rospy.Publisher('/r'+self.base_cart_controller_name+'/command_pose', PoseStamped)
         self.l_arm_cart_posture_pub = rospy.Publisher('/l'+self.base_cart_controller_name+'/command_posture',
@@ -311,25 +331,6 @@ class PositionFeedbackPushNode:
 
         self.l_pressure_listener = pl.PressureListener('/pressure/l_gripper_motor', self.pressure_safety_limit)
         self.r_pressure_listener = pl.PressureListener('/pressure/r_gripper_motor', self.pressure_safety_limit)
-
-        # Arm Inverse Kinematics
-        self.l_arm_ik_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik', GetPositionIK)
-        self.r_arm_ik_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik', GetPositionIK)
-        self.l_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik_solver_info',
-                                                        GetKinematicSolverInfo)
-        self.r_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik_solver_info',
-                                                        GetKinematicSolverInfo)
-
-        # state Info
-        self.l_arm_pose = None
-        self.l_arm_x_err = None
-        self.l_arm_x_d = None
-        self.l_arm_F = None
-
-        self.r_arm_pose = None
-        self.r_arm_x_err = None
-        self.r_arm_x_d = None
-        self.r_arm_F = None
 
         # Open callback services
         self.overhead_feedback_push_srv = rospy.Service(
@@ -493,8 +494,8 @@ class PositionFeedbackPushNode:
         self.feedback_count = 0
 
         # Start pushing forward
-        # self.vel_push_forward(which_arm)
-        self.stop_moving_vel(which_arm)
+        if not _OFFLINE:
+            self.stop_moving_vel(which_arm)
         done_cb = None
         active_cb = None
         goal = VisFeedbackPushTrackingGoal()
@@ -518,7 +519,8 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Waiting for result')
         ac.wait_for_result(rospy.Duration(0))
         rospy.loginfo('Result received')
-        self.stop_moving_vel(which_arm)
+        if not _OFFLINE:
+            self.stop_moving_vel(which_arm)
         result = ac.get_result()
         response.action_aborted = result.aborted
         if self.use_learn_io:
@@ -535,6 +537,20 @@ class PositionFeedbackPushNode:
             cur_pose = self.l_arm_pose
         else:
             cur_pose = self.r_arm_pose
+        if _OFFLINE:
+            cur_pose_tool_frame = PoseStamped()
+            cur_pose_tool_frame.pose.position.x = 0.0
+            cur_pose_tool_frame.pose.position.y = 0.0
+            cur_pose_tool_frame.pose.position.z = 0.0
+            cur_pose_tool_frame.pose.orientation.x = 0.0
+            cur_pose_tool_frame.pose.orientation.y = 0.0
+            cur_pose_tool_frame.pose.orientation.z = 0.0
+            cur_pose_tool_frame.pose.orientation.w = 1.0
+            if which_arm == 'l':
+                cur_pose_tool_frame.header.frame_id = 'l_gripper_tool_frame'
+            else:
+                cur_pose_tool_frame.header.frame_id = 'r_gripper_tool_frame'
+            cur_pose = self.tf_listener.transformPose('torso_lift_link', cur_pose_tool_frame)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
@@ -554,8 +570,7 @@ class PositionFeedbackPushNode:
         if feedback.controller_name == ROTATE_TO_HEADING:
             update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_pose)
         elif feedback.controller_name == CENTROID_CONTROLLER:
-            update_twist = self.centroidAlignmentController(feedback, self.desired_pose,
-                                                            cur_pose)
+            update_twist = self.centroidAlignmentController(feedback, self.desired_pose, cur_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
@@ -586,14 +601,14 @@ class PositionFeedbackPushNode:
                                      update_twist.twist, update_twist.header.stamp.to_sec(),
                                      cur_pose.pose)
 
-        if self.servo_head_during_pushing:
+        if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,
                                    feedback.x.y,
                                    feedback.z])
             head_res = self.robot.head.look_at(look_pt, feedback.header.frame_id,
                                                self.head_pose_cam_frame)
-
-        self.update_vel(update_twist, which_arm)
+        if not _OFFLINE:
+            self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
     #
@@ -2153,10 +2168,11 @@ class PositionFeedbackPushNode:
         #     print 'Right arm: ' + str(self.robot.right.pose())
         #     if code_in.startswith('q'):
         #         getting_joints = False
-        self.init_spine_pose()
-        self.init_head_pose(self.head_pose_cam_frame)
-        self.init_arms()
-        self.switch_to_cart_controllers()
+        if not _OFFLINE:
+            self.init_spine_pose()
+            self.init_head_pose(self.head_pose_cam_frame)
+            self.init_arms()
+            self.switch_to_cart_controllers()
         rospy.loginfo('Done initializing feedback pushing node.')
         rospy.on_shutdown(self.shutdown_hook)
         rospy.spin()
