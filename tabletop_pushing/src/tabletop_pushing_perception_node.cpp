@@ -605,12 +605,12 @@ class TabletopPushingPerceptionNode
         {
           // Write image and cur obj cloud
           std::stringstream image_out_name;
-          image_out_name << "feedback_control_input_" << feedback_control_instance_count_ << "_"
-                         << feedback_control_count_ << ".png";
+          image_out_name << base_output_path_ << "feedback_control_input_" << feedback_control_instance_count_
+                         << "_" << feedback_control_count_ << ".png";
           cv::imwrite(image_out_name.str(), cur_color_frame_);
           std::stringstream obj_cloud_out_name;
-          obj_cloud_out_name << "feedback_control_obj_" << feedback_control_instance_count_ << "_"
-                             << feedback_control_count_ << ".pcd";
+          obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
+                             << "_" << feedback_control_count_ << ".pcd";
           ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
           pcl16::io::savePCDFile(obj_cloud_out_name.str(), cur_obj.cloud);
         }
