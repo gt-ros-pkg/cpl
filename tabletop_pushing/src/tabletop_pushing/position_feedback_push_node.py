@@ -595,11 +595,11 @@ class PositionFeedbackPushNode:
         if _USE_CONTROLLER_IO:
             self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                           update_twist.twist, update_twist.header.stamp.to_sec(),
-                                          cur_pose.pose)
+                                          cur_pose.pose, feedback.header.seq)
         if self.use_learn_io:
             self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                      update_twist.twist, update_twist.header.stamp.to_sec(),
-                                     cur_pose.pose)
+                                     cur_pose.pose, feedback.header.seq)
 
         if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,

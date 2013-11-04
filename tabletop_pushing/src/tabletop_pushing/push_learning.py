@@ -113,6 +113,7 @@ class ControlTimeStep:
         self.theta0 = theta0
         self.u = u
         self.t = t
+        self.ee = ee
         self.seq = seq
 
 class PushCtrlTrial:
@@ -302,11 +303,11 @@ class ControlAnalysisIO:
             ee.position.x = data[17]
             ee.position.y = data[18]
             ee.position.z = data[19]
-            ee.orientation.x = data[17]
-            ee.orientation.y = data[18]
-            ee.orientation.z = data[19]
-            ee.orientation.w = data[20]
-            seq = data[20]
+            ee.orientation.x = data[20]
+            ee.orientation.y = data[21]
+            ee.orientation.z = data[22]
+            ee.orientation.w = data[23]
+            seq = data[24]
         else:
             seq = 0
         cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t, ee, seq)
