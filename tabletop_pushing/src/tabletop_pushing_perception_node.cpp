@@ -96,6 +96,7 @@
 #include <tabletop_pushing/push_primitives.h>
 #include <tabletop_pushing/arm_obj_segmentation.h>
 #include <tabletop_pushing/extern/Timer.hpp>
+#include <tabletop_pushing/io_utils.h>
 
 // libSVM
 #include <libsvm/svm.h>
@@ -121,19 +122,11 @@
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
 // #define VISUALIZE_CONTACT_PT 1
+// #define BUFFER_AND_WRITE 1
 
 using boost::shared_ptr;
 
-using tabletop_pushing::LearnPush;
-using tabletop_pushing::LocateTable;
-using tabletop_pushing::PushVector;
-using tabletop_pushing::PointCloudSegmentation;
-using tabletop_pushing::ProtoObject;
-using tabletop_pushing::ProtoObjects;
-using tabletop_pushing::ShapeLocation;
-using tabletop_pushing::ShapeLocations;
-using tabletop_pushing::ObjectTracker25D;
-using tabletop_pushing::ArmObjSegmentation;
+using namespace tabletop_pushing;
 
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
@@ -604,15 +597,29 @@ class TabletopPushingPerceptionNode
         if (write_dyn_to_disk_)
         {
           // Write image and cur obj cloud
-          std::stringstream image_out_name;
+          std::stringstream image_out_name, obj_cloud_out_name, workspace_to_cam_name, cam_info_name;
           image_out_name << base_output_path_ << "feedback_control_input_" << feedback_control_instance_count_
                          << "_" << feedback_control_count_ << ".png";
-          cv::imwrite(image_out_name.str(), cur_color_frame_);
-          std::stringstream obj_cloud_out_name;
           obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
                              << "_" << feedback_control_count_ << ".pcd";
+          workspace_to_cam_name << base_output_path_ << "workspace_to_cam_" << feedback_control_instance_count_
+                                << "_" << feedback_control_count_ << ".txt";
+          cam_info_name << base_output_path_ << "cam_info_" << feedback_control_instance_count_
+                        << "_" << feedback_control_count_ << ".txt";
           ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+          tf::StampedTransform workspace_to_cam_t;
+          tf_->lookupTransform(workspace_frame_, camera_frame_, ros::Time(0), workspace_to_cam_t);
+#ifdef BUFFER_AND_WRITE
+          color_img_buffer_.push_back(cur_color_frame_);
+          color_img_name_buffer_.push_back(image_out_name.str());
+          obj_cloud_buffer_.push_back(cur_obj.cloud);
+          obj_cloud_name_buffer_.push_back(obj_cloud_out_name.str());
+#else // BUFFER_AND_WRITE
+          cv::imwrite(image_out_name.str(), cur_color_frame_);
           pcl16::io::savePCDFile(obj_cloud_out_name.str(), cur_obj.cloud);
+          writeTFTransform(workspace_to_cam_t, workspace_to_cam_name.str());
+          writeCameraInfo(cam_info_, cam_info_name.str());
+#endif // BUFFER_AND_WRITE
         }
         // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
         tracker_state.header.seq = feedback_control_count_++;
@@ -754,6 +761,9 @@ class TabletopPushingPerceptionNode
         res.aborted = false;
         as_.setSucceeded(res);
         obj_tracker_->pause();
+#ifdef BUFFER_AND_WRITE
+        writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
       }
       return;
     }
@@ -770,6 +780,9 @@ class TabletopPushingPerceptionNode
       res.aborted = false;
       as_.setSucceeded(res);
       obj_tracker_->pause();
+#ifdef BUFFER_AND_WRITE
+      writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
       return;
     }
 
@@ -805,6 +818,9 @@ class TabletopPushingPerceptionNode
     res.aborted = true;
     as_.setAborted(res);
     obj_tracker_->pause();
+#ifdef BUFFER_AND_WRITE
+    writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
   }
 
   /**
@@ -1824,6 +1840,17 @@ class TabletopPushingPerceptionNode
     feedback_control_count_ = 0;
     feedback_control_instance_count_++;
     push_start_time_ = ros::Time::now().toSec();
+#ifdef BUFFER_AND_WRITE
+  // TODO: Clear vectors for buffering
+    color_img_buffer_.clear();
+    color_img_name_buffer_.clear();
+    obj_cloud_buffer_.clear();
+    obj_cloud_name_buffer_.clear();
+    workspace_transform_buffer_.clear();
+    workspace_transform_name_buffer_.clear();
+    cam_info_buffer_.clear();
+    cam_info_name_buffer_.clear();
+#endif
 
     if (obj_tracker_->isInitialized())
     {
@@ -1842,6 +1869,9 @@ class TabletopPushingPerceptionNode
     ROS_INFO_STREAM("Preempted push tracker");
     // set the action state to preempted
     as_.setPreempted();
+#ifdef BUFFER_AND_WRITE
+    writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
   }
 
   bool objectNotMoving(PushTrackerState& tracker_state)
@@ -2227,6 +2257,19 @@ class TabletopPushingPerceptionNode
     svm_file_stream.close();
   }
 
+#ifdef BUFFER_AND_WRITE
+  void writeBuffersToDisk()
+  {
+    for (int i = 0; i < color_img_buffer_.size(); ++i)
+    {
+      cv::imwrite(color_img_name_buffer_[i], color_img_buffer_);
+      pcl16::io::savePCDFile(obj_cloud_name_buffer_[i], obj_cloud_buffer_[i]);
+      writeTFTransform(workspace_transform_buffer_[i], workspace_transform_name_buffer_[i]);
+      writeCameraInfo(cam_info_buffer_[i], cam_info_name_buffer_[i]);
+    }
+  }
+#endif // BUFFER_AND_WRITE
+
 
   /**
    * Executive control function for launching the node.
@@ -2345,6 +2388,16 @@ class TabletopPushingPerceptionNode
   int feedback_control_instance_count_;
 #ifdef DEBUG_POSE_ESTIMATION
   std::ofstream pose_est_stream_;
+#endif
+#ifdef BUFFER_AND_WRITE
+  std::vector<cv::Mat> color_img_buffer_;
+  std::vector<XYZPointCloud> obj_cloud_buffer_;
+  std::vector<tf::StampedTransform> workspace_transform_buffer_;
+  std::vector<sensor_msgs::CameraInfo> cam_info_buffer_;
+  std::vector<std::string> color_img_name_buffer_;
+  std::vector<std::string> obj_cloud_name_buffer_;
+  std::vector<std::string> workspace_transform_name_buffer_;
+  std::vector<std::string> cam_info_name_buffer_;
 #endif
 
 };

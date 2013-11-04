@@ -17,12 +17,17 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <tabletop_pushing/point_cloud_segmentation.h>
+#include <tabletop_pushing/io_utils.h>
 
 using geometry_msgs::Pose2D;
 using geometry_msgs::Pose;
 using geometry_msgs::Twist;
+using namespace tabletop_pushing;
 typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 
+//
+// Simple structs
+//
 class ControlTimeStep
 {
  public:
@@ -58,6 +63,9 @@ class PushTrial
   ControlTrajectory obj_trajectory;
 };
 
+//
+// I/O Functions
+//
 ControlTimeStep parseControlLine(std::stringstream& control_line)
 {
   ControlTimeStep cts;
@@ -175,22 +183,44 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
   return trials;
 }
 
+cv::Mat renderGoalVector(cv::Mat& color_img, ControlTimeStep& cts)
+{
+  cv::Mat goal_img;
+  color_img.copyTo(goal_img);
+  return goal_img;
+}
+
+/**
+ * Read in the data, render the images and save to disk
+ */
 int main(int argc, char** argv)
 {
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
   std::string out_file_path(argv[3]);
 
-  // TODO: Read in aff file grouping each trajectory and number of elements
+  // Read in aff file grouping each trajectory and number of elements
   std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
   for (int i = 0; i < trials.size(); ++i)
   {
-    ROS_INFO_STREAM("Trial " << i << " has " << trials[i].obj_trajectory.size() << " time steps.");
     for (int j = 0; j < trials[i].obj_trajectory.size(); ++j)
     {
-      ROS_INFO_STREAM("seq: " << trials[i].obj_trajectory[j].seq);
-      cv::Mat cur_base_img;
+      std::stringstream cur_img_name, cur_obj_name, cur_transform_name, cur_cam_info_name;
+      cur_img_name << data_directory_path << "feedback_control_input_" << (i+1) << "_" << j << ".png";
+      cur_obj_name << data_directory_path << "feedback_control_obj_" << (i+1) << "_" << j << ".pcd";
+      cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << "_" << j << ".txt";
+      cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << "_" << j << ".txt";
+      cv::Mat cur_base_img = cv::imread(cur_img_name.str());
       XYZPointCloud cur_obj_cloud;
+      if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(cur_obj_name.str(), cur_obj_cloud) == -1) //* load the file
+      {
+        ROS_ERROR_STREAM("Couldn't read file " << cur_obj_name.str());
+      }
+      tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
+      sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
+      cv::imshow("Cur image", cur_base_img);
+      cv::waitKey();
+
       // TODO: Operate on images / clouds and produced desired output
       // TODO: Write output to disk
     }

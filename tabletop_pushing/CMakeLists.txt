@@ -40,7 +40,6 @@ rosbuild_add_library(graphcut include/tabletop_pushing/extern/graphcut/graph.cpp
 
 rosbuild_add_library(gmm include/tabletop_pushing/extern/gmm/gmm.h include/tabletop_pushing/extern/gmm/gmm.cpp)
 target_link_libraries(gmm ${OpenCV_LIBRARIES})
-target_link_libraries(gmm ${OpenCV_LIBRARIES})
 rosbuild_link_boost(gmm filesystem)
 # rosbuild_link_boost(gmm format)
 
