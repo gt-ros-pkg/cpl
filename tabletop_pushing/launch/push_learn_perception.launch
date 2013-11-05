@@ -23,9 +23,9 @@
     <remap from="point_cloud_topic" to="$(arg point_cloud_topic_name)"/>
     <param name="camera_frame" value="$(arg camera_frame_name)" type="string"/>
 
-    <param name="use_displays" value="true" type="bool"/>
+    <param name="use_displays" value="false" type="bool"/>
     <param name="display_wait_ms" value="5" type="int"/>
-    <param name="write_to_disk" value="true" type="bool"/>
+    <param name="write_to_disk" value="false" type="bool"/>
     <param name="write_input_to_disk" value="false" type="bool"/>
     <param name="write_dyn_learning_to_disk" value="true" type="bool"/>
 
@@ -46,7 +46,7 @@
     <param name="max_workspace_z" value="0.6" type="double"/>
     <param name="min_table_z" value="-1.0" type="double"/>
     <param name="max_table_z" value="1.0" type="double"/>
-    <param name="self_mask_dilate_size" value="0" type="int"/>
+    <param name="self_mask_dilate_size" value="15" type="int"/>
     <param name="num_downsamples" value="1" type="int"/>
 
     <param name="pcl_cluster_tolerance" value="0.03" type="double"/>

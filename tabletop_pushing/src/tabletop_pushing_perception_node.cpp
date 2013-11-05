@@ -118,7 +118,7 @@
 // Debugging IFDEFS
 // #define DISPLAY_INPUT_COLOR 1
 // #define DISPLAY_INPUT_DEPTH 1
-#define DISPLAY_WAIT 1
+// #define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
 // #define VISUALIZE_CONTACT_PT 1
@@ -909,12 +909,12 @@ class TabletopPushingPerceptionNode
         recording_input_ = !res.no_objects;
         if (recording_input_)
         {
-          ROS_INFO_STREAM("Starting input recording");
-          ROS_INFO_STREAM("current_file_id: " << current_file_id_);
+          ROS_DEBUG_STREAM("Starting input recording");
+          ROS_DEBUG_STREAM("current_file_id: " << current_file_id_);
         }
         else
         {
-          ROS_INFO_STREAM("Stopping input recording");
+          ROS_DEBUG_STREAM("Stopping input recording");
         }
         res.no_push = res.no_objects;
       }
