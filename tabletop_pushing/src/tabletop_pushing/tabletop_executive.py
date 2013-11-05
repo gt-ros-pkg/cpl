@@ -1093,7 +1093,7 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    learn_start_loc = False
+    learn_start_loc = True
     # Used for training data collection:
     # num_start_loc_sample_locs = 32
     # Used for testing data collection:

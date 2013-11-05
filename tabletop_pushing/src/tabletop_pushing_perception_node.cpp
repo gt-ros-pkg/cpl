@@ -774,7 +774,7 @@ class TabletopPushingPerceptionNode
       {
         abortPushingGoal("Object is too far from gripper.");
       }
-      else if (behavior_primitive_ != "gripper_pull")
+      else if (behavior_primitive_ != "gripper_pull" && objectNotBetweenGoalAndGripper(tracker_state.x))
       {
         abortPushingGoal("Object is not between gripper and goal.");
       }
