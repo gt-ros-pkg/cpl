@@ -132,7 +132,6 @@ using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
 using geometry_msgs::Twist;
-typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::Image,
@@ -1457,7 +1456,7 @@ class TabletopPushingPerceptionNode
     }
 
     // Free SVM struct
-    svm_free_and_destroy_model(&push_model);
+    // svm_free_and_destroy_model(&push_model);
 
     // Write SVM scores & descriptors to disk?
     writePredictedScoreToDisk(hull_cloud, sds, pred_push_scores);

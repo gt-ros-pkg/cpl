@@ -49,10 +49,10 @@ import time
 import random
 from push_primitives import *
 
-_OFFLINE = True
+_OFFLINE = False
 _USE_LEARN_IO = True
 _TEST_START_POSE = False
-_USE_FIXED_GOAL = True
+_USE_FIXED_GOAL = False
 
 class TabletopExecutive:
 
@@ -1099,7 +1099,7 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    learn_start_loc = False
+    learn_start_loc = True
     # Used for training data collection:
     # num_start_loc_sample_locs = 32
     # Used for testing data collection:
@@ -1119,10 +1119,10 @@ if __name__ == '__main__':
         # hold_out_object = 'soap_box'
         rospy.loginfo('Testing with hold out object ' + hold_out_object)
         # rospy.loginfo('Collecting training data for object ' + hold_out_object)
-        # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
-        #     hold_out_object+'.model'
-        start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_rotate/push_svm_no_'+\
+        start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
             hold_out_object+'.model'
+        # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_rotate/push_svm_no_'+\
+        #     hold_out_object+'.model'
         # start_loc_param_path = 'rand'
         # start_loc_param_path = ''
         if use_singulation:

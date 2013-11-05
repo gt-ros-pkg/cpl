@@ -23,7 +23,6 @@ using geometry_msgs::Pose2D;
 using geometry_msgs::Pose;
 using geometry_msgs::Twist;
 using namespace tabletop_pushing;
-typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 
 //
 // Simple structs
