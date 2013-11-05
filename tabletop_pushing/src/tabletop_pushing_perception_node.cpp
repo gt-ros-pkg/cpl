@@ -118,7 +118,7 @@
 // Debugging IFDEFS
 // #define DISPLAY_INPUT_COLOR 1
 // #define DISPLAY_INPUT_DEPTH 1
-// #define DISPLAY_WAIT 1
+#define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
 // #define VISUALIZE_CONTACT_PT 1
@@ -578,8 +578,11 @@ class TabletopPushingPerceptionNode
 
       displayPushVector(cur_color_frame_, start_point, end_point);
       // displayRobotGripperPoses(cur_color_frame_);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+      if (controller_name_ == "rotate_to_heading")
+      {
+        displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                           tracker_goal_pose_.theta);
+      }
 #ifdef PROFILE_CB_TIME
       display_tracks_elapsed_time = (((double)(Timer::nanoTime() - display_tracks_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
@@ -651,8 +654,11 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point, "goal_vector", true);
       // displayRobotGripperPoses(cur_color_frame_);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta, true);
+      if (controller_name_ == "rotate_to_heading")
+      {
+        displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                           tracker_goal_pose_.theta, true);
+      }
     }
 #ifdef PROFILE_CB_TIME
     double tracker_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
@@ -849,7 +855,7 @@ class TabletopPushingPerceptionNode
         record_count_ = 0;
         learn_callback_count_ = 0;
         res.no_push = true;
-        ROS_INFO_STREAM("Stopping input recording");
+        ROS_DEBUG_STREAM("Stopping input recording");
         recording_input_ = false;
         obj_tracker_->stopTracking();
       }
@@ -858,7 +864,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Getting current object pose");
         getObjectPose(res);
         res.no_push = true;
-        ROS_INFO_STREAM("Stopping input recording");
+        ROS_DEBUG_STREAM("Stopping input recording");
         recording_input_ = false;
         ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
         if (cur_obj.cloud.header.frame_id.size() == 0)

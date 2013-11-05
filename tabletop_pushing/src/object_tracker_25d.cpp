@@ -306,8 +306,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       else // (proxy_name == HULL_ICP_PROXY)
       {
         // TODO: Add guess of movement based on previous state estimates
-        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform,
-                                                                aligned);
+        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform, aligned);
         // ROS_INFO_STREAM("Found ICP match with score: " << match_score);
       }
 
@@ -759,11 +758,11 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
     state.x_dot.x = delta_x/delta_t;
     state.x_dot.y = delta_y/delta_t;
     state.x_dot.theta = delta_theta/delta_t;
-
-    ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                     state.x.theta << ")");
-    ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                     << ", " << state.x_dot.theta << ")");
+    ROS_INFO_STREAM("Delta X: (" << delta_x << ", " << delta_y << ", " << delta_theta << ")");
+    ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+                    state.x.theta << ")");
+    ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+                    << ", " << state.x_dot.theta << ")");
     previous_obj_ = cur_obj;
   }
   // We update the header and take care of other bookkeeping before returning
