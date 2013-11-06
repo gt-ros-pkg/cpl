@@ -49,6 +49,7 @@ import time
 import random
 from push_primitives import *
 
+_OFFLINE_WITH_FEEDBACK_CONTROL = False
 _OFFLINE = False
 _USE_LEARN_IO = True
 _TEST_START_POSE = False
@@ -806,6 +807,8 @@ class TabletopExecutive:
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
             push_res = FeedbackPushResponse()
+        elif _OFFLINE and not _OFFLINE_WITH_FEEDBACK_CONTROL:
+            push_res = FeedbackPushResponse()
         elif pre_push_res.failed_pre_position:
             rospy.logwarn('Failed to properly position in pre-push, aborting push')
             push_res = pre_push_res
@@ -872,6 +875,8 @@ class TabletopExecutive:
 
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
+            push_res = FeedbackPushResponse()
+        elif _OFFLINE and not _OFFLINE_WITH_FEEDBACK_CONTROL:
             push_res = FeedbackPushResponse()
         elif pre_push_res.failed_pre_position:
             rospy.logwarn('Failed to properly position in pre-push, aborting push')
@@ -943,6 +948,11 @@ class TabletopExecutive:
         if _TEST_START_POSE:
             raw_input('waiting for input to recall arm: ')
             push_res = FeedbackPushResponse()
+        elif _OFFLINE and not _OFFLINE_WITH_FEEDBACK_CONTROL:
+            push_res = FeedbackPushResponse()
+        elif pre_push_res.failed_pre_position:
+            rospy.logwarn('Failed to properly position in pre-push, aborting push')
+            push_res = pre_push_res
         else:
             push_res = self.gripper_feedback_sweep_proxy(push_req)
 
@@ -1099,7 +1109,7 @@ class TabletopExecutive:
 
 if __name__ == '__main__':
     random.seed()
-    learn_start_loc = True
+    learn_start_loc = False
     # Used for training data collection:
     # num_start_loc_sample_locs = 32
     # Used for testing data collection:
