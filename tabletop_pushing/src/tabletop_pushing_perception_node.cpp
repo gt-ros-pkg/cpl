@@ -599,15 +599,11 @@ class TabletopPushingPerceptionNode
         if (write_dyn_to_disk_)
         {
           // Write image and cur obj cloud
-          std::stringstream image_out_name, obj_cloud_out_name, workspace_to_cam_name, cam_info_name;
+          std::stringstream image_out_name, obj_cloud_out_name;
           image_out_name << base_output_path_ << "feedback_control_input_" << feedback_control_instance_count_
                          << "_" << feedback_control_count_ << ".png";
           obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
                              << "_" << feedback_control_count_ << ".pcd";
-          workspace_to_cam_name << base_output_path_ << "workspace_to_cam_" << feedback_control_instance_count_
-                                << "_" << feedback_control_count_ << ".txt";
-          cam_info_name << base_output_path_ << "cam_info_" << feedback_control_instance_count_
-                        << "_" << feedback_control_count_ << ".txt";
           ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
           tf::StampedTransform workspace_to_cam_t;
           tf_->lookupTransform(workspace_frame_, camera_frame_, ros::Time(0), workspace_to_cam_t);
@@ -619,9 +615,23 @@ class TabletopPushingPerceptionNode
 #else // BUFFER_AND_WRITE
           cv::imwrite(image_out_name.str(), cur_color_frame_);
           pcl16::io::savePCDFile(obj_cloud_out_name.str(), cur_obj.cloud);
-          writeTFTransform(workspace_to_cam_t, workspace_to_cam_name.str());
-          writeCameraInfo(cam_info_, cam_info_name.str());
 #endif // BUFFER_AND_WRITE
+          if (feedback_control_count_ == 0)
+          {
+            std::stringstream workspace_to_cam_name, cam_info_name;
+            workspace_to_cam_name << base_output_path_ << "workspace_to_cam_"
+                                  << feedback_control_instance_count_ << "_" << ".txt";
+            cam_info_name << base_output_path_ << "cam_info_" << feedback_control_instance_count_ << ".txt";
+#ifdef BUFFER_AND_WRITE
+            workspace_transform_buffer_.push_back(workspace_to_cam_t);
+            workspace_transform_name_buffer_.push_back(workspace_to_cam_name.str());
+            cam_info_buffer_.push_back(cam_info_);
+            cam_info_name_buffer_.push_back(cam_info_name.str());
+#else // BUFFER_AND_WRITE
+            writeTFTransform(workspace_to_cam_t, workspace_to_cam_name.str());
+            writeCameraInfo(cam_info_, cam_info_name.str());
+#endif // BUFFER_AND_WRITE
+          }
         }
         // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
         tracker_state.header.seq = feedback_control_count_++;

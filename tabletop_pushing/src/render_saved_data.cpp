@@ -8,22 +8,29 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Pose2D.h>
+
 // PCL
 #include <pcl16/io/io.h>
 #include <pcl16/io/pcd_io.h>
+#include <pcl16/common/centroid.h>
+
 // OpenCV
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+// Ours
 #include <tabletop_pushing/point_cloud_segmentation.h>
 #include <tabletop_pushing/io_utils.h>
+#include <tabletop_pushing/VisFeedbackPushTrackingAction.h>
+#include <tabletop_pushing/shape_features.h>
 
 using geometry_msgs::Pose2D;
 using geometry_msgs::Pose;
 using geometry_msgs::Twist;
 using namespace tabletop_pushing;
 
+typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 //
 // Simple structs
 //
@@ -60,6 +67,7 @@ class PushTrial
   bool new_object;
   pcl16::PointXYZ start_pt;
   ControlTrajectory obj_trajectory;
+  // TODO: Get the proxy, controller, and primitive
 };
 
 //
@@ -182,18 +190,12 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
   return trials;
 }
 
-cv::Mat renderGoalVector(cv::Mat& color_img, ControlTimeStep& cts)
-{
-  cv::Mat goal_img;
-  color_img.copyTo(goal_img);
-  return goal_img;
-}
-
 /**
  * Read in the data, render the images and save to disk
  */
 int main(int argc, char** argv)
 {
+  double boundary_hull_alpha = 0.01;
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
   std::string out_file_path(argv[3]);
@@ -202,13 +204,15 @@ int main(int argc, char** argv)
   std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
   for (int i = 0; i < trials.size(); ++i)
   {
+    std::stringstream cur_transform_name, cur_cam_info_name;
+    cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << ".txt";
+    cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << ".txt";
     for (int j = 0; j < trials[i].obj_trajectory.size(); ++j)
     {
-      std::stringstream cur_img_name, cur_obj_name, cur_transform_name, cur_cam_info_name;
+      ControlTimeStep cts = trials[i].obj_trajectory[j];
+      std::stringstream cur_img_name, cur_obj_name;
       cur_img_name << data_directory_path << "feedback_control_input_" << (i+1) << "_" << j << ".png";
       cur_obj_name << data_directory_path << "feedback_control_obj_" << (i+1) << "_" << j << ".pcd";
-      cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << "_" << j << ".txt";
-      cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << "_" << j << ".txt";
       cv::Mat cur_base_img = cv::imread(cur_img_name.str());
       XYZPointCloud cur_obj_cloud;
       if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(cur_obj_name.str(), cur_obj_cloud) == -1) //* load the file
@@ -217,11 +221,51 @@ int main(int argc, char** argv)
       }
       tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
       sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
+
+      // Create proto object
+      ProtoObject cur_obj;
+      cur_obj.cloud = cur_obj_cloud;
+      pcl16::compute3DCentroid(cur_obj_cloud, cur_obj.centroid);
+
+      // Get current tracker state
+      PushTrackerState cur_state;
+      cur_state.header.frame_id = "/torso_lift_link"; // TODO: get this correctly from disk
+      cur_state.header.stamp = ros::Time(cts.t);
+      cur_state.header.seq = cts.seq;
+      cur_state.x = cts.x;
+      cur_state.x_dot = cts.x_dot;
+      cur_state.z = trials[i].init_loc.z; // TODO: get this correctly from disk
+      cur_state.init_x.x = trials[i].init_loc.x;
+      cur_state.init_x.y = trials[i].init_loc.y;
+      cur_state.init_x.theta = cts.theta0;
+      // TODO: Need these state components still
+      cur_state.no_detection = false;
+      // cur_state.controller_name = "";
+      // cur_state.proxy_name = "";
+      // cur_state.behavior_primitive = "";
+
+      // Get object hull
+      XYZPointCloud hull_cloud = getObjectBoundarySamples(cur_obj, boundary_hull_alpha);
+      cv::Mat boundary_img = visualizeObjectBoundarySamples(hull_cloud, cur_state);
+
+      // Project estimated contact point into image
+      pcl16::PointXYZ hand_pt;
+      hand_pt.x = cts.ee.position.x;
+      hand_pt.y = cts.ee.position.y;
+      hand_pt.z = cts.ee.position.z;
+      // TODO: Add a fixed amount projection forward using the hand pose (or axis)
+      pcl16::PointXYZ forward_pt;
+      forward_pt.x = cts.ee.position.x;
+      forward_pt.y = cts.ee.position.y;
+      forward_pt.z = cts.ee.position.z;
+      cv::Mat hull_cloud_viz = visualizeObjectContactLocation(hull_cloud, cur_state, hand_pt, forward_pt);
+
+      // TODO: Write desired output to disk
+      cv::imshow("Boundary image", boundary_img);
+      cv::imshow("Contact pt  image", hull_cloud_viz);
       cv::imshow("Cur image", cur_base_img);
       cv::waitKey();
 
-      // TODO: Operate on images / clouds and produced desired output
-      // TODO: Write output to disk
     }
   }
   return 0;
