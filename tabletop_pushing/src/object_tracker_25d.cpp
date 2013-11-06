@@ -17,6 +17,7 @@
 // Debugging IFDEFS
 // #define PROFILE_TRACKING_TIME 1
 // #define PROFILE_FIND_TARGET_TIME 1
+// #define USE_TRANSFORM_GUESS 1
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
@@ -278,11 +279,8 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   {
     // Get 2D object boundary
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
-    // Use vertical z centroid from object
-    state.z = cur_obj.centroid[2];
 
     // Get ellipse orientation from the 2D boundary
-    // TODO: Add in switch for different hull proxies
     if (frame_count_ < 1 || proxy_name == HULL_ELLIPSE_PROXY)
     {
       fitHullEllipse(hull_cloud, obj_ellipse);
@@ -290,6 +288,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       // Get (x,y) centroid of boundary
       state.x.x = obj_ellipse.center.x;
       state.x.y = obj_ellipse.center.y;
+      // Use vertical z centroid from object
+      state.z = cur_obj.centroid[2];
+      previous_centroid_state_ = state;
     }
     else
     {
@@ -305,21 +306,50 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       else // (proxy_name == HULL_ICP_PROXY)
       {
-        // TODO: Add guess of movement based on previous state estimates
-        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform, aligned);
-        // ROS_INFO_STREAM("Found ICP match with score: " << match_score);
+        cv::RotatedRect centroid_obj_ellipse;
+        tabletop_pushing::VisFeedbackPushTrackingFeedback centroid_state;
+        fitHullEllipse(hull_cloud, centroid_obj_ellipse);
+        centroid_state.x.theta = getThetaFromEllipse(centroid_obj_ellipse);
+        // Get (x,y) centroid of boundary
+        centroid_state.x.x = centroid_obj_ellipse.center.x;
+        centroid_state.x.y = centroid_obj_ellipse.center.y;
+        // Use vertical z centroid from object
+        centroid_state.z = cur_obj.centroid[2];
+
+        double delta_x_guess = centroid_state.x.x - previous_centroid_state_.x.x;
+        double delta_y_guess = centroid_state.x.y - previous_centroid_state_.x.y;
+        double delta_theta_guess = subPIAngle(centroid_state.x.theta - previous_centroid_state_.x.theta);
+        previous_centroid_state_ = centroid_state;
+        Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+#ifdef USE_TRANSFORM_GUESS
+        guess(0,0) = cos(delta_theta_guess);
+        guess(0,1) = -sin(delta_theta_guess);
+        guess(1,0) = -guess(0,1);
+        guess(1,1) = guess(0,0);
+        guess(2,2) = 1.0;
+        guess(3,3) = 1.0;
+        guess(0,3) = delta_x_guess;
+        guess(1,3) = delta_y_guess;
+        ROS_INFO_STREAM("Initial transform guess of: \n" << guess);
+#endif // USE_TRANSFORM_GUESS
+        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud,
+                                                                guess, transform, aligned);
+
+        ROS_INFO_STREAM("Found ICP match with score: " << match_score);
       }
 
       // Transform previous state using the estimate and update current state
-      // ROS_INFO_STREAM("Found transform of: \n" << transform);
+      ROS_INFO_STREAM("Found transform of: \n" << transform);
       Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
-      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
       state.x.x = x_t_1(0);
       state.x.y = x_t_1(1);
+      state.z = x_t_1(2);
+      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
       const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
       const Eigen::Vector3f x_axis_t = rot*x_axis;
       state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+
       // Visualize the matches
       if (use_displays_ || write_to_disk_)
       {
@@ -669,9 +699,9 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   state.x_dot.y = 0.0;
   state.x_dot.theta = 0.0;
 
-  ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+  ROS_DEBUG_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " << 
                    state.x.theta << ")");
-  ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+  ROS_DEBUG_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y
                    << ", " << state.x_dot.theta << ")\n");
 
   previous_time_ = state.header.stamp.toSec();
@@ -753,15 +783,17 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
     // Estimate dynamics and do some bookkeeping
     double delta_x = state.x.x - previous_state_.x.x;
     double delta_y = state.x.y - previous_state_.x.y;
+    double delta_z = state.z - previous_state_.z;
     double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
     double delta_t = state.header.stamp.toSec() - previous_time_;
     state.x_dot.x = delta_x/delta_t;
     state.x_dot.y = delta_y/delta_t;
     state.x_dot.theta = delta_theta/delta_t;
-    ROS_INFO_STREAM("Delta X: (" << delta_x << ", " << delta_y << ", " << delta_theta << ")");
-    ROS_INFO_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
+    ROS_INFO_STREAM("Delta X: (" << delta_x << ", " << delta_y << ", " << delta_z << ", " << delta_theta << ")");
+    ROS_INFO_STREAM("Delta t: " << delta_t);
+    ROS_INFO_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " <<
                     state.x.theta << ")");
-    ROS_INFO_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+    ROS_INFO_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y
                     << ", " << state.x_dot.theta << ")");
     previous_obj_ = cur_obj;
   }

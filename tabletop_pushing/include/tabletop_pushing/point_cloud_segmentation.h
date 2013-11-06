@@ -164,7 +164,8 @@ class PointCloudSegmentation
    */
   double ICPProtoObjects(ProtoObject& a, ProtoObject& b, Eigen::Matrix4f& transform);
 
-  double ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1, Eigen::Matrix4f& transform,
+  double ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1,
+                            Eigen::Matrix4f& init_transform, Eigen::Matrix4f& transform,
                             XYZPointCloud& aligned);
 
   /**

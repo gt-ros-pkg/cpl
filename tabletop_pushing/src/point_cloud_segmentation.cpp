@@ -477,18 +477,18 @@ double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
  * @return The ICP fitness score of the match
  */
 double PointCloudSegmentation::ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1,
+                                                  Eigen::Matrix4f& init_transform,
                                                   Eigen::Matrix4f& transform, XYZPointCloud& aligned)
 {
   // TODO: Investigate this!
-  pcl16::IterativeClosestPointNonLinear<PointXYZ, PointXYZ> icp;
-  // pcl16::IterativeClosestPoint<PointXYZ, PointXYZ> icp;
-  icp.setMaximumIterations(icp_max_iters_);
-  icp.setTransformationEpsilon(icp_transform_eps_);
-  icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
-  icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
+  pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  // icp.setMaximumIterations(icp_max_iters_);
+  // icp.setTransformationEpsilon(icp_transform_eps_);
+  // icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
+  // icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
   icp.setInputCloud(boost::make_shared<XYZPointCloud>(hull_t_0));
   icp.setInputTarget(boost::make_shared<XYZPointCloud>(hull_t_1));
-  icp.align(aligned);
+  icp.align(aligned, init_transform);
   double score = icp.getFitnessScore();
   transform = icp.getFinalTransformation();
   return score;

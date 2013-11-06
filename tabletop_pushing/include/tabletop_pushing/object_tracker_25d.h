@@ -190,6 +190,7 @@ class ObjectTracker25D
   ProtoObject previous_obj_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback previous_state_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback init_state_;
+  tabletop_pushing::VisFeedbackPushTrackingFeedback previous_centroid_state_;
   cv::RotatedRect previous_obj_ellipse_;
   bool use_displays_;
   bool write_to_disk_;
