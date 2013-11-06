@@ -190,6 +190,61 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
   return trials;
 }
 
+cv::Point projectPointIntoImage(pcl16::PointXYZ pt_in, tf::Transform t, sensor_msgs::CameraInfo cam_info,
+                                int num_downsamples=1)
+{
+  tf::Vector3 pt_in_tf(pt_in.x, pt_in.y, pt_in.z);
+  tf::Vector3 cam_pt = t(pt_in_tf);
+  cv::Point img_loc;
+  img_loc.x = static_cast<int>((cam_info.K[0]*cam_pt.getX() +
+                                cam_info.K[2]*cam_pt.getZ()) /
+                               cam_pt.getZ());
+  img_loc.y = static_cast<int>((cam_info.K[4]*cam_pt.getY() +
+                                cam_info.K[5]*cam_pt.getZ()) /
+                               cam_pt.getZ());
+
+  for (int i = 0; i < num_downsamples; ++i)
+  {
+    img_loc.x /= 2;
+    img_loc.y /= 2;
+  }
+  return img_loc;
+}
+
+
+cv::Mat trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj,
+                       tf::Transform workspace_to_camera, sensor_msgs::CameraInfo cam_info)
+{
+  cv::Mat centroid_frame;
+  in_frame.copyTo(centroid_frame);
+  pcl16::PointXYZ centroid_point(state.x.x, state.x.y, state.z);
+  const cv::Point img_c_idx = projectPointIntoImage(centroid_point, workspace_to_camera, cam_info);
+  double theta = state.x.theta;
+
+  const float x_min_rad = (std::cos(theta+0.5*M_PI)*0.05);
+  const float y_min_rad = (std::sin(theta+0.5*M_PI)*0.05);
+  pcl16::PointXYZ table_min_point(centroid_point.x+x_min_rad, centroid_point.y+y_min_rad,
+                                  centroid_point.z);
+  const float x_maj_rad = (std::cos(theta)*0.15);
+  const float y_maj_rad = (std::sin(theta)*0.15);
+  pcl16::PointXYZ table_maj_point(centroid_point.x+x_maj_rad, centroid_point.y+y_maj_rad,
+                                  centroid_point.z);
+  const cv::Point2f img_min_idx = projectPointIntoImage(table_min_point,
+                                                        workspace_to_camera, cam_info);
+  const cv::Point2f img_maj_idx = projectPointIntoImage(table_maj_point,
+                                                        workspace_to_camera, cam_info);
+  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
+  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
+  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  cv::Size img_size;
+  img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
+                             std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
+  img_size.height = std::sqrt(std::pow(img_min_idx.x-img_c_idx.x,2) +
+                              std::pow(img_min_idx.y-img_c_idx.y,2))*2.0;
+  return centroid_frame;
+}
+
 /**
  * Read in the data, render the images and save to disk
  */
@@ -254,18 +309,25 @@ int main(int argc, char** argv)
       hand_pt.y = cts.ee.position.y;
       hand_pt.z = cts.ee.position.z;
       // TODO: Add a fixed amount projection forward using the hand pose (or axis)
-      pcl16::PointXYZ forward_pt;
-      forward_pt.x = cts.ee.position.x;
-      forward_pt.y = cts.ee.position.y;
+      double roll, pitch, yaw;
+      tf::Quaternion q;
+      tf::quaternionMsgToTF(cts.ee.orientation, q);
+      tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+      pcl16::PointXYZ forward_pt; // TODO: Is this dependent on behavior primitive used?
+      forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
+      forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;
       forward_pt.z = cts.ee.position.z;
       cv::Mat hull_cloud_viz = visualizeObjectContactLocation(hull_cloud, cur_state, hand_pt, forward_pt);
 
+      // Show object state
+      cv::Mat obj_state_img = trackerDisplay(cur_base_img, cur_state, cur_obj, workspace_to_camera, cam_info);
       // TODO: Write desired output to disk
+      cv::imshow("Cur image", cur_base_img);
+      cv::imshow("Cur state", obj_state_img);
       cv::imshow("Boundary image", boundary_img);
       cv::imshow("Contact pt  image", hull_cloud_viz);
-      cv::imshow("Cur image", cur_base_img);
-      cv::waitKey();
 
+      cv::waitKey();
     }
   }
   return 0;
