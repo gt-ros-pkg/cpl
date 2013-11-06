@@ -169,7 +169,7 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
-    cv::Point img_pt(objLocToIdx(obj_pt.x, min_x, max_x), objLocToIdx(obj_pt.y, min_y, max_y));
+    cv::Point img_pt(cols - objLocToIdx(obj_pt.x, min_x, max_x), objLocToIdx(obj_pt.y, min_y, max_y));
     cv::Scalar color(128, 0, 0);
     cv::circle(footprint, img_pt, 1, color, 3);
     if (i > 0)
@@ -209,9 +209,9 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
     // Transform to display frame
     pcl16::PointXYZ start_point_obj = worldPointInObjectFrame(start_point_world, cur_state);
     pcl16::PointXYZ end_point_obj = worldPointInObjectFrame(end_point_world, cur_state);
-    cv::Point start_point(objLocToIdx(start_point_obj.x, min_x, max_x),
+    cv::Point start_point(cols - objLocToIdx(start_point_obj.x, min_x, max_x),
                           objLocToIdx(start_point_obj.y, min_y, max_y));
-    cv::Point end_point(objLocToIdx(end_point_obj.x, min_x, max_x),
+    cv::Point end_point(cols - objLocToIdx(end_point_obj.x, min_x, max_x),
                         objLocToIdx(end_point_obj.y, min_y, max_y));
 
     // Draw green point for previous, blue point for current
@@ -237,18 +237,19 @@ cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerSta
   double min_y = -0.2;
   double max_x = 0.2;
   double min_x = -0.2;
+  cv::Mat footprint = visualizeObjectBoundarySamples(hull_cloud, cur_state);
+
   pcl16::PointXYZ contact_pt_world = estimateObjectContactLocation(hull_cloud, cur_state,
                                                                    tool_pt0, tool_pt1);
   pcl16::PointXYZ contact_pt_obj =  worldPointInObjectFrame(contact_pt_world, cur_state);
-  int img_contact_pt_x = objLocToIdx(contact_pt_obj.x, min_x, max_x);
+  int img_contact_pt_x = footprint.cols - objLocToIdx(contact_pt_obj.x, min_x, max_x);
   int img_contact_pt_y = objLocToIdx(contact_pt_obj.y, min_y, max_y);
 
-  cv::Mat footprint = visualizeObjectBoundarySamples(hull_cloud, cur_state);
   pcl16::PointXYZ tool_pt_obj0 =  worldPointInObjectFrame(tool_pt0, cur_state);
-  int img_x0 = objLocToIdx(tool_pt_obj0.x, min_x, max_x);
+  int img_x0 = footprint.cols - objLocToIdx(tool_pt_obj0.x, min_x, max_x);
   int img_y0 = objLocToIdx(tool_pt_obj0.y, min_y, max_y);
   pcl16::PointXYZ tool_pt_obj1 =  worldPointInObjectFrame(tool_pt1, cur_state);
-  int img_x1 = objLocToIdx(tool_pt_obj1.x, min_x, max_x);
+  int img_x1 = footprint.cols - objLocToIdx(tool_pt_obj1.x, min_x, max_x);
   int img_y1 = objLocToIdx(tool_pt_obj1.y, min_y, max_y);
   cv::Scalar color(0, 0, 128);
   cv::line(footprint, cv::Point(img_x0, img_y0), cv::Point(img_x1, img_y1), color, 1);
@@ -1782,7 +1783,7 @@ cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerSt
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
-    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
+    int img_x = cols - objLocToIdx(obj_pt.x, min_x, max_x);
     int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
     if (i == target_idx) // Circle target index location
     {
