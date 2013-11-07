@@ -362,7 +362,7 @@ int main(int argc, char** argv)
       cur_state.controller_name = trial.controller;
       cur_state.proxy_name = trial.proxy;
       cur_state.behavior_primitive = trial.primitive;
-      ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.z << ")");
+      // ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.z << ")");
 
       // Get object hull
       XYZPointCloud hull_cloud = getObjectBoundarySamples(cur_obj, boundary_hull_alpha);
@@ -378,6 +378,7 @@ int main(int argc, char** argv)
       tf::quaternionMsgToTF(cts.ee.orientation, q);
       tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
       // Add a fixed amount projection forward using the hand pose (or axis)
+      // TODO: Get the hand model into here and render the whole fucking thing
       pcl16::PointXYZ forward_pt; // TODO: Is this dependent on behavior primitive used?
       forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
       forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;
@@ -387,9 +388,7 @@ int main(int argc, char** argv)
       // Show object state
       cv::Mat obj_state_img = trackerDisplay(cur_base_img, cur_state, cur_obj, workspace_to_camera, cam_info);
       // TODO: Write desired output to disk
-      cv::imshow("Cur image", cur_base_img);
       cv::imshow("Cur state", obj_state_img);
-      // cv::imshow("Boundary image", boundary_img);
       cv::imshow("Contact pt  image", hull_cloud_viz);
 
       cv::waitKey();

@@ -122,7 +122,7 @@
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
 // #define VISUALIZE_CONTACT_PT 1
-// #define BUFFER_AND_WRITE 1
+#define BUFFER_AND_WRITE 1
 
 using boost::shared_ptr;
 
@@ -1855,17 +1855,6 @@ class TabletopPushingPerceptionNode
     feedback_control_count_ = 0;
     feedback_control_instance_count_++;
     push_start_time_ = ros::Time::now().toSec();
-#ifdef BUFFER_AND_WRITE
-  // TODO: Clear vectors for buffering
-    color_img_buffer_.clear();
-    color_img_name_buffer_.clear();
-    obj_cloud_buffer_.clear();
-    obj_cloud_name_buffer_.clear();
-    workspace_transform_buffer_.clear();
-    workspace_transform_name_buffer_.clear();
-    cam_info_buffer_.clear();
-    cam_info_name_buffer_.clear();
-#endif
 
     if (obj_tracker_->isInitialized())
     {
@@ -2277,14 +2266,25 @@ class TabletopPushingPerceptionNode
   {
     for (int i = 0; i < color_img_buffer_.size(); ++i)
     {
-      cv::imwrite(color_img_name_buffer_[i], color_img_buffer_);
-      pcl16::io::savePCDFile(obj_cloud_name_buffer_[i], obj_cloud_buffer_[i]);
+      cv::imwrite(color_img_name_buffer_[i], color_img_buffer_[i]);
+      pcl16::io::savePCDFileBinary<pcl16::PointXYZ>(obj_cloud_name_buffer_[i], obj_cloud_buffer_[i]);
+    }
+    for (int i = 0; i < workspace_transform_buffer_.size(); ++i)
+    {
       writeTFTransform(workspace_transform_buffer_[i], workspace_transform_name_buffer_[i]);
       writeCameraInfo(cam_info_buffer_[i], cam_info_name_buffer_[i]);
     }
+    // Clean up
+    color_img_buffer_.clear();
+    color_img_name_buffer_.clear();
+    obj_cloud_buffer_.clear();
+    obj_cloud_name_buffer_.clear();
+    workspace_transform_buffer_.clear();
+    workspace_transform_name_buffer_.clear();
+    cam_info_buffer_.clear();
+    cam_info_name_buffer_.clear();
   }
 #endif // BUFFER_AND_WRITE
-
 
   /**
    * Executive control function for launching the node.

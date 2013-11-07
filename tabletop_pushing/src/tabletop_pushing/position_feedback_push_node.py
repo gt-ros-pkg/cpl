@@ -51,8 +51,6 @@ from math import sin, cos, pi, fabs, sqrt, atan2
 from push_learning import ControlAnalysisIO
 import rbf_control
 import sys
-
-
 from push_primitives import *
 
 _OFFLINE = True
