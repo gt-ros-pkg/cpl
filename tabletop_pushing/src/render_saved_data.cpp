@@ -262,6 +262,10 @@ int main(int argc, char** argv)
     std::stringstream cur_transform_name, cur_cam_info_name;
     cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << ".txt";
     cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << ".txt";
+    tf::Transform camera_to_workspace = readTFTransform(cur_transform_name.str());
+    // NOTE: Remove inverse, when you get new data
+    tf::Transform workspace_to_camera = camera_to_workspace.inverse();
+    sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
     for (int j = 0; j < trials[i].obj_trajectory.size(); ++j)
     {
       ControlTimeStep cts = trials[i].obj_trajectory[j];
@@ -274,8 +278,6 @@ int main(int argc, char** argv)
       {
         ROS_ERROR_STREAM("Couldn't read file " << cur_obj_name.str());
       }
-      tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
-      sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
 
       // Create proto object
       ProtoObject cur_obj;
@@ -324,7 +326,7 @@ int main(int argc, char** argv)
       // TODO: Write desired output to disk
       cv::imshow("Cur image", cur_base_img);
       cv::imshow("Cur state", obj_state_img);
-      cv::imshow("Boundary image", boundary_img);
+      // cv::imshow("Boundary image", boundary_img);
       cv::imshow("Contact pt  image", hull_cloud_viz);
 
       cv::waitKey();
