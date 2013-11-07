@@ -50,6 +50,7 @@ class ControlTimeStep
   float t;
   Pose ee;
   int seq;
+  double z;
 };
 
 typedef std::vector<ControlTimeStep> ControlTrajectory;
@@ -117,6 +118,7 @@ ControlTimeStep parseControlLine(std::stringstream& control_line)
   control_line >> cts.ee.position.x >> cts.ee.position.y >> cts.ee.position.z;
   control_line >> cts.ee.orientation.x >> cts.ee.orientation.y >> cts.ee.orientation.z >> cts.ee.orientation.w;
   control_line >> cts.seq;
+  control_line >> cts.z;
   return cts;
 }
 
@@ -162,30 +164,6 @@ PushTrial parseTrialLine(std::string trial_line_str)
   return trial;
 }
 
-
-PushTrial parseTrialLineOld(std::string trial_line_str)
-{
-  std::stringstream trial_line;
-  trial_line << trial_line_str;
-  char trial_id_c[4096];
-  trial_line.getline(trial_id_c, 4096, ' ');
-  std::stringstream trial_id;
-  trial_id << trial_id_c;
-  double init_x, init_y, init_z, init_theta;
-  trial_line >> init_x >> init_y >> init_z >> init_theta;
-  double final_x, final_y, final_z, final_theta;
-  trial_line >> final_x >> final_y >> final_z >> final_theta;
-  double goal_x, goal_y, goal_theta;
-  trial_line >> goal_x >> goal_y >> goal_theta;
-  double push_start_x, push_start_y, push_start_z, push_start_theta;
-  trial_line >> push_start_x >> push_start_y >> push_start_z;
-  // TODO: Parse behavior_primitive, controller, proxy, which_arm, push_time,
-  // precondition_method, score, shape_descriptors
-  PushTrial trial(init_x, init_y, init_z, init_theta, trial_id.str(),
-                  push_start_x, push_start_y, push_start_z);
-  return trial;
-}
-
 std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
 {
   std::vector<PushTrial> trials;
@@ -215,7 +193,6 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       std::stringstream trial_line;
       trial_line << c_line;
       PushTrial trial = parseTrialLine(trial_line.str());
-      PushTrial old_trial = parseTrialLineOld(trial_line.str());
       trials.push_back(trial);
     }
     if (c_line[0] == '#')
@@ -257,6 +234,7 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       std::stringstream control_line;
       control_line << c_line;
       ControlTimeStep cts = parseControlLine(control_line);
+      ROS_INFO_STREAM("Adding CTS #" << trials.back().obj_trajectory.size()+1);
       trials.back().obj_trajectory.push_back(cts);
     }
   }
@@ -275,8 +253,11 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
 cv::Point projectPointIntoImage(pcl16::PointXYZ pt_in, tf::Transform t, sensor_msgs::CameraInfo cam_info,
                                 int num_downsamples=1)
 {
+  // ROS_INFO_STREAM("Pt in:" << pt_in);
   tf::Vector3 pt_in_tf(pt_in.x, pt_in.y, pt_in.z);
+  // ROS_INFO_STREAM("Pt in tf: " << pt_in_tf.getX() << ", " << pt_in_tf.getY() << ", " << pt_in_tf.getZ() << ")");
   tf::Vector3 cam_pt = t(pt_in_tf);
+  // ROS_INFO_STREAM("Cam_pt: " << cam_pt.getX() << ", " << cam_pt.getY() << ", " << cam_pt.getZ() << ")");
   cv::Point img_loc;
   img_loc.x = static_cast<int>((cam_info.K[0]*cam_pt.getX() +
                                 cam_info.K[2]*cam_pt.getZ()) /
@@ -284,12 +265,13 @@ cv::Point projectPointIntoImage(pcl16::PointXYZ pt_in, tf::Transform t, sensor_m
   img_loc.y = static_cast<int>((cam_info.K[4]*cam_pt.getY() +
                                 cam_info.K[5]*cam_pt.getZ()) /
                                cam_pt.getZ());
-
+  // ROS_INFO_STREAM("Img_loc: " << img_loc);
   for (int i = 0; i < num_downsamples; ++i)
   {
     img_loc.x /= 2;
     img_loc.y /= 2;
   }
+  // ROS_INFO_STREAM("Img_loc down: " << img_loc);
   return img_loc;
 }
 
@@ -344,13 +326,12 @@ int main(int argc, char** argv)
     std::stringstream cur_transform_name, cur_cam_info_name;
     cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << ".txt";
     cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << ".txt";
-    tf::Transform camera_to_workspace = readTFTransform(cur_transform_name.str());
-    // NOTE: Remove inverse, when you get new data
-    tf::Transform workspace_to_camera = camera_to_workspace.inverse();
+    tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
     sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
     for (int j = 0; j < trials[i].obj_trajectory.size(); ++j)
     {
-      ControlTimeStep cts = trials[i].obj_trajectory[j];
+      PushTrial trial = trials[i];
+      ControlTimeStep cts = trial.obj_trajectory[j];
       std::stringstream cur_img_name, cur_obj_name;
       cur_img_name << data_directory_path << "feedback_control_input_" << (i+1) << "_" << j << ".png";
       cur_obj_name << data_directory_path << "feedback_control_obj_" << (i+1) << "_" << j << ".pcd";
@@ -373,15 +354,15 @@ int main(int argc, char** argv)
       cur_state.header.seq = cts.seq;
       cur_state.x = cts.x;
       cur_state.x_dot = cts.x_dot;
-      cur_state.z = trials[i].init_loc.z; // TODO: get this correctly from disk
-      cur_state.init_x.x = trials[i].init_loc.x;
-      cur_state.init_x.y = trials[i].init_loc.y;
-      cur_state.init_x.theta = cts.theta0;
-      // TODO: Need these state components still
+      cur_state.z = cts.z;
+      cur_state.init_x.x = trial.init_loc.x;
+      cur_state.init_x.y = trial.init_loc.y;
+      cur_state.init_x.theta = trial.init_theta;
       cur_state.no_detection = false;
-      // cur_state.controller_name = "";
-      // cur_state.proxy_name = "";
-      // cur_state.behavior_primitive = "";
+      cur_state.controller_name = trial.controller;
+      cur_state.proxy_name = trial.proxy;
+      cur_state.behavior_primitive = trial.primitive;
+      ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.z << ")");
 
       // Get object hull
       XYZPointCloud hull_cloud = getObjectBoundarySamples(cur_obj, boundary_hull_alpha);
@@ -392,11 +373,11 @@ int main(int argc, char** argv)
       hand_pt.x = cts.ee.position.x;
       hand_pt.y = cts.ee.position.y;
       hand_pt.z = cts.ee.position.z;
-      // TODO: Add a fixed amount projection forward using the hand pose (or axis)
       double roll, pitch, yaw;
       tf::Quaternion q;
       tf::quaternionMsgToTF(cts.ee.orientation, q);
       tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+      // Add a fixed amount projection forward using the hand pose (or axis)
       pcl16::PointXYZ forward_pt; // TODO: Is this dependent on behavior primitive used?
       forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
       forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;

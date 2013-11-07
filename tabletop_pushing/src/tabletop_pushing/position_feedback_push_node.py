@@ -55,8 +55,7 @@ import sys
 
 from push_primitives import *
 
-_OFFLINE = False
-_USE_CONTROLLER_IO = False
+_OFFLINE = True
 _USE_LEARN_IO = True
 
 # Setup joints stolen from Kelsey's code.
@@ -200,8 +199,6 @@ class PositionFeedbackPushNode:
         self.use_gripper_place_joint_posture = False
         out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
-        if _USE_CONTROLLER_IO:
-            self.controller_io.open_out_file(out_file_name)
         if _USE_LEARN_IO:
             self.learn_io = None
         # Setup parameters
@@ -592,14 +589,10 @@ class PositionFeedbackPushNode:
                           str(update_twist.twist.angular.y) + ', ' +
                           str(update_twist.twist.angular.z) + ')\n')
 
-        if _USE_CONTROLLER_IO:
-            self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                          update_twist.twist, update_twist.header.stamp.to_sec(),
-                                          cur_pose.pose, feedback.header.seq)
         if self.use_learn_io:
             self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                      update_twist.twist, update_twist.header.stamp.to_sec(),
-                                     cur_pose.pose, feedback.header.seq)
+                                     cur_pose.pose, feedback.header.seq, feedback.z)
 
         if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,
@@ -2147,8 +2140,6 @@ class PositionFeedbackPushNode:
 
     def shutdown_hook(self):
         rospy.loginfo('Cleaning up node on shutdown')
-        if _USE_CONTROLLER_IO:
-            self.controller_io.close_out_file()
         if _USE_LEARN_IO:
             if self.learn_io is not None:
                 self.learn_io.close_out_file()

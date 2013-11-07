@@ -49,7 +49,7 @@ import subprocess
 
 _VERSION_LINE = '# v0.7'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method score [shape_descriptors]'
-_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z hand.a_x hand.a_y hand.a_z hand.a_w seq'
+_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z hand.a_x hand.a_y hand.a_z hand.a_w seq z'
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
 
@@ -106,8 +106,9 @@ class PushTrial:
                 'push_time: ' + str(self.push_time))
 
 class ControlTimeStep:
-    def __init__(self, x, x_dot, x_desired, theta0, u, t, ee, seq):
+    def __init__(self, x, z, x_dot, x_desired, theta0, u, t, ee, seq):
         self.x = x
+        self.z = z
         self.x_dot = x_dot
         self.x_desired = x_desired
         self.theta0 = theta0
@@ -258,7 +259,7 @@ class ControlAnalysisIO:
         self.data_out = None
         self.data_in = None
 
-    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq=0):
+    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
@@ -269,7 +270,7 @@ class ControlAnalysisIO:
             str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
             str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+' '+\
             str(hand_pose.orientation.x)+' '+str(hand_pose.orientation.y)+' '+\
-            str(hand_pose.orientation.z)+' '+str(hand_pose.orientation.w)+' '+' '+str(seq) + '\n'
+            str(hand_pose.orientation.z)+' '+str(hand_pose.orientation.w)+' '+' '+str(seq)+' '+ str(z)+'\n'
         self.data_out.write(data_line)
         self.data_out.flush()
 
@@ -308,9 +309,11 @@ class ControlAnalysisIO:
             ee.orientation.z = data[22]
             ee.orientation.w = data[23]
             seq = data[24]
+            z = data[25]
         else:
             seq = 0
-        cts = ControlTimeStep(x, x_dot, x_desired, theta0, u, t, ee, seq)
+            z = 0
+        cts = ControlTimeStep(x, z, x_dot, x_desired, theta0, u, t, ee, seq)
         return cts
 
     def read_in_data_file(self, file_name):

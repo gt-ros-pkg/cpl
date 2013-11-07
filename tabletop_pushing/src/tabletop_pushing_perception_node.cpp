@@ -620,7 +620,7 @@ class TabletopPushingPerceptionNode
             tf_->lookupTransform(camera_frame_, workspace_frame_, ros::Time(0), workspace_to_cam_t);
             std::stringstream workspace_to_cam_name, cam_info_name;
             workspace_to_cam_name << base_output_path_ << "workspace_to_cam_"
-                                  << feedback_control_instance_count_ << "_" << ".txt";
+                                  << feedback_control_instance_count_ << ".txt";
             cam_info_name << base_output_path_ << "cam_info_" << feedback_control_instance_count_ << ".txt";
 #ifdef BUFFER_AND_WRITE
             workspace_transform_buffer_.push_back(workspace_to_cam_t);
