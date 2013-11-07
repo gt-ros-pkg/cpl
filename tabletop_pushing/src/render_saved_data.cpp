@@ -323,6 +323,53 @@ cv::Mat trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& 
   return centroid_frame;
 }
 
+PushTrackerState generateStateFromData(ControlTimeStep& cts, PushTrial& trial)
+{
+  PushTrackerState state;
+  state.header.frame_id = "/torso_lift_link"; // TODO: get this correctly from disk
+  state.header.stamp = ros::Time(cts.t);
+  state.header.seq = cts.seq;
+  state.x = cts.x;
+  state.x_dot = cts.x_dot;
+  state.z = cts.z;
+  state.init_x.x = trial.init_loc.x;
+  state.init_x.y = trial.init_loc.y;
+  state.init_x.theta = trial.init_theta;
+  state.no_detection = false; // TODO: Get this from disk?
+  state.controller_name = trial.controller;
+  state.proxy_name = trial.proxy;
+  state.behavior_primitive = trial.primitive;
+  return state;
+}
+
+ProtoObject generateObjectFromState(XYZPointCloud& obj_cloud)
+{
+  ProtoObject obj;
+  obj.cloud = obj_cloud;
+  pcl16::compute3DCentroid(obj_cloud, obj.centroid);
+  return obj;
+}
+
+cv::Mat projectHandIntoBoundaryImage(ControlTimeStep& cts, PushTrackerState& cur_state,
+                                     XYZPointCloud& hull_cloud)
+{
+  pcl16::PointXYZ hand_pt;
+  hand_pt.x = cts.ee.position.x;
+  hand_pt.y = cts.ee.position.y;
+  hand_pt.z = cts.ee.position.z;
+  double roll, pitch, yaw;
+  tf::Quaternion q;
+  tf::quaternionMsgToTF(cts.ee.orientation, q);
+  tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+  // Add a fixed amount projection forward using the hand pose (or axis)
+  // TODO: Get the hand model into here and render the whole fucking thing
+  pcl16::PointXYZ forward_pt; // TODO: Is this dependent on behavior primitive used?
+  forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
+  forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;
+  forward_pt.z = cts.ee.position.z;
+  return visualizeObjectContactLocation(hull_cloud, cur_state, hand_pt, forward_pt);
+}
+
 /**
  * Read in the data, render the images and save to disk
  */
@@ -335,17 +382,25 @@ int main(int argc, char** argv)
 
   // Read in aff file grouping each trajectory and number of elements
   std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
+
+  // Go through all trials reading data associated with them
   for (unsigned int i = 0; i < trials.size(); ++i)
   {
+    // Read in workspace transform and camera parameters
     std::stringstream cur_transform_name, cur_cam_info_name;
     cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << ".txt";
     cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << ".txt";
     tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
     sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
-    for (unsigned int j = 0; j < trials[i].obj_trajectory.size(); ++j)
+
+    PushTrial trial = trials[i];
+
+    // Go through each control time step in the current trial
+    for (unsigned int j = 0; j < trial.obj_trajectory.size(); ++j)
     {
-      PushTrial trial = trials[i];
       ControlTimeStep cts = trial.obj_trajectory[j];
+
+      // Get associated image and object point cloud for this time step
       std::stringstream cur_img_name, cur_obj_name;
       cur_img_name << data_directory_path << "feedback_control_input_" << (i+1) << "_" << j << ".png";
       cur_obj_name << data_directory_path << "feedback_control_obj_" << (i+1) << "_" << j << ".pcd";
@@ -356,57 +411,30 @@ int main(int argc, char** argv)
         ROS_ERROR_STREAM("Couldn't read file " << cur_obj_name.str());
       }
 
-      // Create proto object
-      ProtoObject cur_obj;
-      cur_obj.cloud = cur_obj_cloud;
-      pcl16::compute3DCentroid(cur_obj_cloud, cur_obj.centroid);
-
-      // Get current tracker state
-      PushTrackerState cur_state;
-      cur_state.header.frame_id = "/torso_lift_link"; // TODO: get this correctly from disk
-      cur_state.header.stamp = ros::Time(cts.t);
-      cur_state.header.seq = cts.seq;
-      cur_state.x = cts.x;
-      cur_state.x_dot = cts.x_dot;
-      cur_state.z = cts.z;
-      cur_state.init_x.x = trial.init_loc.x;
-      cur_state.init_x.y = trial.init_loc.y;
-      cur_state.init_x.theta = trial.init_theta;
-      cur_state.no_detection = false;
-      cur_state.controller_name = trial.controller;
-      cur_state.proxy_name = trial.proxy;
-      cur_state.behavior_primitive = trial.primitive;
-      // ROS_INFO_STREAM("Cur state: (" << cur_state.x.x << ", " << cur_state.x.y << ", " << cur_state.z << ")");
-
-      // Get object hull
+      // Create objects for use by standard methods
+      ProtoObject cur_obj = generateObjectFromState(cur_obj_cloud);
+      PushTrackerState cur_state = generateStateFromData(cts, trial);
       XYZPointCloud hull_cloud = getObjectBoundarySamples(cur_obj, boundary_hull_alpha);
-      cv::Mat boundary_img = visualizeObjectBoundarySamples(hull_cloud, cur_state);
+
+      // NOTE: Add any desired images to render below here
 
       // Project estimated contact point into image
-      pcl16::PointXYZ hand_pt;
-      hand_pt.x = cts.ee.position.x;
-      hand_pt.y = cts.ee.position.y;
-      hand_pt.z = cts.ee.position.z;
-      double roll, pitch, yaw;
-      tf::Quaternion q;
-      tf::quaternionMsgToTF(cts.ee.orientation, q);
-      tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
-      // Add a fixed amount projection forward using the hand pose (or axis)
-      // TODO: Get the hand model into here and render the whole fucking thing
-      pcl16::PointXYZ forward_pt; // TODO: Is this dependent on behavior primitive used?
-      forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
-      forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;
-      forward_pt.z = cts.ee.position.z;
-      cv::Mat hull_cloud_viz = visualizeObjectContactLocation(hull_cloud, cur_state, hand_pt, forward_pt);
-
+      cv::Mat hull_cloud_viz = projectHandIntoBoundaryImage(cts, cur_state, hull_cloud);
       // Show object state
       cv::Mat obj_state_img = trackerDisplay(cur_base_img, cur_state, cur_obj, workspace_to_camera, cam_info);
-      // TODO: Write desired output to disk
+
+      // Display & write desired output to disk
       cv::imshow("Cur state", obj_state_img);
       cv::imshow("Contact pt  image", hull_cloud_viz);
-
+      std::stringstream state_out_name, contact_pt_name;
+      state_out_name << out_file_path << "state_" << i << "_" << j << ".png";
+      contact_pt_name << out_file_path << "contact_pt_" << i << "_" << j << ".png";
+      cv::imwrite(state_out_name.str(), obj_state_img);
+      cv::imwrite(contact_pt_name.str(), hull_cloud_viz);
       cv::waitKey();
     }
   }
+
+  // TODO: Generate a corpus of training data from the CTS examples
   return 0;
 }
