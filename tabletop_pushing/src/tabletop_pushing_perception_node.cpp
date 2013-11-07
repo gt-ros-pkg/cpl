@@ -605,8 +605,6 @@ class TabletopPushingPerceptionNode
           obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
                              << "_" << feedback_control_count_ << ".pcd";
           ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-          tf::StampedTransform workspace_to_cam_t;
-          tf_->lookupTransform(workspace_frame_, camera_frame_, ros::Time(0), workspace_to_cam_t);
 #ifdef BUFFER_AND_WRITE
           color_img_buffer_.push_back(cur_color_frame_);
           color_img_name_buffer_.push_back(image_out_name.str());
@@ -618,6 +616,8 @@ class TabletopPushingPerceptionNode
 #endif // BUFFER_AND_WRITE
           if (feedback_control_count_ == 0)
           {
+            tf::StampedTransform workspace_to_cam_t;
+            tf_->lookupTransform(camera_frame_, workspace_frame_, ros::Time(0), workspace_to_cam_t);
             std::stringstream workspace_to_cam_name, cam_info_name;
             workspace_to_cam_name << base_output_path_ << "workspace_to_cam_"
                                   << feedback_control_instance_count_ << "_" << ".txt";
