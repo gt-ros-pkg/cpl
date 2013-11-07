@@ -2,6 +2,8 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+// BOOST
+#include <boost/tokenizer.hpp>
 // ROS
 #include <ros/ros.h>
 #include <std_msgs/Header.h>
@@ -55,19 +57,48 @@ typedef std::vector<ControlTimeStep> ControlTrajectory;
 class PushTrial
 {
  public:
+  PushTrial(std::string trial_id_,
+            double init_x_, double init_y_, double init_z_, double init_theta_,
+            double final_x_, double final_y_, double final_z_, double final_theta_,
+            double goal_x, double goal_y, double goal_theta,
+            double push_x_, double push_y_, double push_z_,
+            std::string primitive_, std::string controller_, std::string proxy_,
+            std::string which_arm_, double push_time_, std::string precon,
+            double score_) :
+      trial_id(trial_id_), init_loc(init_x_, init_y_, init_z_), init_theta(init_theta_),
+      final_loc(final_x_, final_y_, final_z_), final_theta(final_theta_),
+      start_pt(push_x_, push_y_, push_z_),
+      primitive(primitive_), controller(controller_),
+      proxy(proxy_), which_arm(which_arm_), push_time(push_time_),
+      precondition_method(precon), score(score_)
+  {
+    goal_pose.x = goal_x;
+    goal_pose.y = goal_y;
+    goal_pose.theta = goal_theta;
+  }
+
   PushTrial(double init_x_, double init_y_, double init_z_, double init_theta_, std::string trial_id_,
-            bool new_object_, double push_x_, double push_y_, double push_z_) :
-      init_loc(init_x_, init_y_, init_z_), init_theta(init_theta_), trial_id(trial_id_), new_object(new_object_),
+            double push_x_, double push_y_, double push_z_) :
+      trial_id(trial_id_), init_loc(init_x_, init_y_, init_z_), init_theta(init_theta_),
       start_pt(push_x_, push_y_, push_z_)
   {
   }
+  // Members
+  std::string trial_id;
   pcl16::PointXYZ init_loc;
   double init_theta;
-  std::string trial_id;
-  bool new_object;
+  pcl16::PointXYZ final_loc;
+  double final_theta;
+  Pose2D goal_pose;
   pcl16::PointXYZ start_pt;
+  std::string primitive;
+  std::string controller;
+  std::string proxy;
+  std::string which_arm;
+  double push_time;
+  std::string precondition_method;
+  double score;
   ControlTrajectory obj_trajectory;
-  // TODO: Get the proxy, controller, and primitive
 };
 
 //
@@ -89,6 +120,72 @@ ControlTimeStep parseControlLine(std::stringstream& control_line)
   return cts;
 }
 
+PushTrial parseTrialLine(std::string trial_line_str)
+{
+  boost::char_separator<char> sep(" ");
+  boost::tokenizer<boost::char_separator<char> > tokens(trial_line_str, sep);
+  boost::tokenizer<boost::char_separator<char> >::iterator it = tokens.begin();
+  std::string trial_id = *it++; // object_id
+  // Init loc
+  double init_x = boost::lexical_cast<double>(*it++);
+  double init_y = boost::lexical_cast<double>(*it++);
+  double init_z = boost::lexical_cast<double>(*it++);
+  double init_theta = boost::lexical_cast<double>(*it++);
+  // Final loc
+  double final_x = boost::lexical_cast<double>(*it++);
+  double final_y = boost::lexical_cast<double>(*it++);
+  double final_z = boost::lexical_cast<double>(*it++);
+  double final_theta = boost::lexical_cast<double>(*it++);
+  // Goal pose
+  double goal_x = boost::lexical_cast<double>(*it++);
+  double goal_y = boost::lexical_cast<double>(*it++);
+  double goal_theta = boost::lexical_cast<double>(*it++);
+  // Push start point
+  double push_start_x = boost::lexical_cast<double>(*it++);
+  double push_start_y = boost::lexical_cast<double>(*it++);
+  double push_start_z = boost::lexical_cast<double>(*it++);
+  std::string primitive = *it++; // Primitive
+  std::string controller = *it++; // Controller
+  std::string proxy = *it++; // Proxy
+  std::string which_arm = *it++; // which_arm
+  // Push time
+  double push_time = boost::lexical_cast<double>(*it++);
+  // Precondition
+  std::string precon = *it++;
+  // score
+  double score = boost::lexical_cast<double>(*it++);
+  PushTrial trial(trial_id, init_x, init_y, init_z, init_theta,
+                  final_x, final_y, final_z, final_theta,
+                  goal_x, goal_y, goal_theta,
+                  push_start_x, push_start_y, push_start_z,
+                  primitive, controller, proxy, which_arm, push_time, precon, score);
+  return trial;
+}
+
+
+PushTrial parseTrialLineOld(std::string trial_line_str)
+{
+  std::stringstream trial_line;
+  trial_line << trial_line_str;
+  char trial_id_c[4096];
+  trial_line.getline(trial_id_c, 4096, ' ');
+  std::stringstream trial_id;
+  trial_id << trial_id_c;
+  double init_x, init_y, init_z, init_theta;
+  trial_line >> init_x >> init_y >> init_z >> init_theta;
+  double final_x, final_y, final_z, final_theta;
+  trial_line >> final_x >> final_y >> final_z >> final_theta;
+  double goal_x, goal_y, goal_theta;
+  trial_line >> goal_x >> goal_y >> goal_theta;
+  double push_start_x, push_start_y, push_start_z, push_start_theta;
+  trial_line >> push_start_x >> push_start_y >> push_start_z;
+  // TODO: Parse behavior_primitive, controller, proxy, which_arm, push_time,
+  // precondition_method, score, shape_descriptors
+  PushTrial trial(init_x, init_y, init_z, init_theta, trial_id.str(),
+                  push_start_x, push_start_y, push_start_z);
+  return trial;
+}
+
 std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
 {
   std::vector<PushTrial> trials;
@@ -102,7 +199,6 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
   int bad_stops = 0;
   int good_stops = 0;
   int control_headers = 0;
-  bool new_object = true;
   bool check_for_control_line = false;
   while(trials_in.good())
   {
@@ -118,22 +214,8 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       // Parse this line!
       std::stringstream trial_line;
       trial_line << c_line;
-      char trial_id_c[4096];
-      trial_line.getline(trial_id_c, 4096, ' ');
-      std::stringstream trial_id;
-      trial_id << trial_id_c;
-      // ROS_INFO_STREAM("Read trial_id: " << trial_id.str());
-      double init_x, init_y, init_z, init_theta;
-      trial_line >> init_x >> init_y >> init_z >> init_theta;
-      double final_x, final_y, final_z, final_theta;
-      trial_line >> final_x >> final_y >> final_z >> final_theta;
-      double goal_x, goal_y, goal_theta;
-      trial_line >> goal_x >> goal_y >> goal_theta;
-      double push_start_x, push_start_y, push_start_z, push_start_theta;
-      trial_line >> push_start_x >> push_start_y >> push_start_z;
-      new_object = !trials.size();
-      PushTrial trial(init_x, init_y, init_z, init_theta, trial_id.str(), new_object,
-                      push_start_x, push_start_y, push_start_z);
+      PushTrial trial = parseTrialLine(trial_line.str());
+      PushTrial old_trial = parseTrialLineOld(trial_line.str());
       trials.push_back(trial);
     }
     if (c_line[0] == '#')
