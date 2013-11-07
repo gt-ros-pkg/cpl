@@ -258,11 +258,21 @@ class ControlAnalysisIO:
     def __init__(self):
         self.data_out = None
         self.data_in = None
+        self.data_buffer = []
 
     def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
+        data_line = self.generate_line(x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z)
+        self.data_out.write(data_line)
+        self.data_out.flush()
+
+    def buffer_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
+        data_line = self.generate_line(x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z)
+        self.data_buffer.append(data_line)
+
+    def generate_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
         data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
             str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
             str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
@@ -271,8 +281,16 @@ class ControlAnalysisIO:
             str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+' '+\
             str(hand_pose.orientation.x)+' '+str(hand_pose.orientation.y)+' '+\
             str(hand_pose.orientation.z)+' '+str(hand_pose.orientation.w)+' '+' '+str(seq)+' '+ str(z)+'\n'
-        self.data_out.write(data_line)
+        return data_line
+
+    def write_buffer_to_disk(self):
+        if self.data_out is None:
+            rospy.logerr('Attempting to write to file that has not been opened.')
+            return
+        for data_line in self.data_buffer:
+            self.data_out.write(data_line)
         self.data_out.flush()
+        self.data_buffer = []
 
     def parse_line(self, line):
         if line.startswith('#'):

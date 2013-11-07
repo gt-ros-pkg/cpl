@@ -57,6 +57,7 @@ from push_primitives import *
 
 _OFFLINE = True
 _USE_LEARN_IO = True
+_BUFFER_DATA = True
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
@@ -521,6 +522,8 @@ class PositionFeedbackPushNode:
         result = ac.get_result()
         response.action_aborted = result.aborted
         if self.use_learn_io:
+            if _BUFFER_DATA:
+                self.learn_io.write_buffer_to_disk()
             self.learn_io.close_out_file()
         return response
 
@@ -590,9 +593,14 @@ class PositionFeedbackPushNode:
                           str(update_twist.twist.angular.z) + ')\n')
 
         if self.use_learn_io:
-            self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                     update_twist.twist, update_twist.header.stamp.to_sec(),
-                                     cur_pose.pose, feedback.header.seq, feedback.z)
+            if _BUFFER_DATA:
+                self.learn_io.buffer_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                          update_twist.twist, update_twist.header.stamp.to_sec(),
+                                          cur_pose.pose, feedback.header.seq, feedback.z)
+            else:
+                self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                         update_twist.twist, update_twist.header.stamp.to_sec(),
+                                         cur_pose.pose, feedback.header.seq, feedback.z)
 
         if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,
