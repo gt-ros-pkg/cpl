@@ -84,6 +84,16 @@ class PushTrial
       start_pt(push_x_, push_y_, push_z_)
   {
   }
+
+  void updateTrialWithFinal(PushTrial& final)
+  {
+    // Didn't know final pose at start
+    final_loc = final.final_loc;
+    final_theta = final.final_theta;
+    // Didn't know push time at start
+    push_time = final.push_time;
+  }
+
   // Members
   std::string trial_id;
   pcl16::PointXYZ init_loc;
@@ -170,7 +180,7 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
   std::ifstream trials_in(aff_file_name.c_str());
 
   bool next_line_trial = false;
-  bool trial_is_start = true;
+  bool next_trial_is_start = true;
   int line_count = 0;
   int object_comment = 0;
   int trial_starts = 0;
@@ -193,7 +203,14 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       std::stringstream trial_line;
       trial_line << c_line;
       PushTrial trial = parseTrialLine(trial_line.str());
-      trials.push_back(trial);
+      if (next_trial_is_start)
+      {
+        trials.back().updateTrialWithFinal(trial);
+      }
+      else
+      {
+        trials.push_back(trial);
+      }
     }
     if (c_line[0] == '#')
     {
@@ -201,19 +218,18 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       {
         check_for_control_line = false;
         object_comment++;
-        if (trial_is_start)
+        if (next_trial_is_start)
         {
           next_line_trial = true;
           trial_starts += 1;
-          // ROS_INFO_STREAM("Read in start line");
         }
         else
         {
-          // ROS_INFO_STREAM("Read in end line");
           good_stops++;
+          next_line_trial = true;
         }
         // Switch state
-        trial_is_start = !trial_is_start;
+        next_trial_is_start = !next_trial_is_start;
       }
       else if (c_line[2] == 'x')
       {
@@ -222,8 +238,7 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       }
       else if (c_line[1] == 'B')
       {
-        // ROS_WARN_STREAM("Read in bad line" << c_line);
-        trial_is_start = true;
+        next_trial_is_start = true;
         trials.pop_back();
         bad_stops += 1;
       }
@@ -234,18 +249,17 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
       std::stringstream control_line;
       control_line << c_line;
       ControlTimeStep cts = parseControlLine(control_line);
-      ROS_INFO_STREAM("Adding CTS #" << trials.back().obj_trajectory.size()+1);
       trials.back().obj_trajectory.push_back(cts);
     }
   }
   trials_in.close();
 
-  ROS_INFO_STREAM("Read in: " << line_count << " lines");
-  ROS_INFO_STREAM("Read in: " << control_headers << " control headers");
-  ROS_INFO_STREAM("Read in: " << object_comment << " trial headers");
-  ROS_INFO_STREAM("Classified: " << trial_starts << " as starts");
-  ROS_INFO_STREAM("Classified: " << bad_stops << " as bad");
-  ROS_INFO_STREAM("Classified: " << good_stops << " as good");
+  // ROS_INFO_STREAM("Read in: " << line_count << " lines");
+  // ROS_INFO_STREAM("Read in: " << control_headers << " control headers");
+  // ROS_INFO_STREAM("Read in: " << object_comment << " trial headers");
+  // ROS_INFO_STREAM("Classified: " << trial_starts << " as starts");
+  // ROS_INFO_STREAM("Classified: " << bad_stops << " as bad");
+  // ROS_INFO_STREAM("Classified: " << good_stops << " as good");
   ROS_INFO_STREAM("Read in: " << trials.size() << " trials");
   return trials;
 }
@@ -321,14 +335,14 @@ int main(int argc, char** argv)
 
   // Read in aff file grouping each trajectory and number of elements
   std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
-  for (int i = 0; i < trials.size(); ++i)
+  for (unsigned int i = 0; i < trials.size(); ++i)
   {
     std::stringstream cur_transform_name, cur_cam_info_name;
     cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << ".txt";
     cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << ".txt";
     tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
     sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
-    for (int j = 0; j < trials[i].obj_trajectory.size(); ++j)
+    for (unsigned int j = 0; j < trials[i].obj_trajectory.size(); ++j)
     {
       PushTrial trial = trials[i];
       ControlTimeStep cts = trial.obj_trajectory[j];
