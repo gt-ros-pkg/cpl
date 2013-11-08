@@ -120,7 +120,7 @@ pcl16::PointXYZ estimateObjectContactLocation(XYZPointCloud& hull_cloud,
 XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m=1);
 XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k);
 std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud);
-cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud);
+cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, int connectivity=1);
 cpl_visual_features::ShapeDescriptor extractHKSDescriptor(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                           pcl16::PointXYZ sample_pt, int sample_pt_idx,
                                                           double sample_spread, double hull_alpha, double hist_res);
@@ -136,6 +136,7 @@ void computeNormalizedDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& 
 void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
 void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
 void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L);
+void computeInverseKDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L, int K=2);
 };
 
 #endif // shape_features_h_DEFINED

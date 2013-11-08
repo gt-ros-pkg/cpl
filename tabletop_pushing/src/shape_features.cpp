@@ -1663,11 +1663,12 @@ ShapeDescriptor extractHKSDescriptor(XYZPointCloud& hull, ProtoObject& cur_obj,
   return desc;
 }
 
-cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud)
+cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, int connectivity)
 {
   const int n = hull_cloud.size();
   Eigen::MatrixXd L(n,n);
-  computeInverseDistLaplacian(hull_cloud, L);
+  // computeInverseDistLaplacian(hull_cloud, L);
+  computeInverseKDistLaplacian(hull_cloud, L, connectivity);
   // Perform the generalized eigenvalue decomposition with matrix A
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
   Eigen::VectorXd Lambda = ges.eigenvalues();
@@ -1931,6 +1932,35 @@ void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
     L(i, i_minus_1) = -0.5;
     L(i, i) = 1;
     L(i, i_plus_1) = -0.5;
+  }
+}
+
+void computeInverseKDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L, int K)
+{
+  ROS_INFO_STREAM("Connected to " << K << " neighbors");
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    float dist_sum = 0.0;
+    // Circular indexes
+    for (int k = 1; k <= K; ++k)
+    {
+      const int i_minus_k = (n+i-k)%n;
+      const int i_plus_k = (i+k)%n;
+      const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_k));
+      const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_k));
+      dist_sum += dist_r + dist_f;
+      L(i, i_minus_k) = -dist_r;
+      L(i, i_plus_k) = -dist_f;
+    }
+    L(i, i) = dist_sum;
   }
 }
 

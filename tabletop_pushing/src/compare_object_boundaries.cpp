@@ -160,7 +160,7 @@ int mainComputeHeatKernelSignature(int argc, char** argv)
   // }
 
   // Get the Heat Kernel Signature at all locations
-  cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud);
+  cv::Mat K_xx = extractHeatKernelSignatures(hull_cloud, m);
   double min_score, max_score;
   cv::minMaxLoc(K_xx, &min_score, &max_score);
   cv::Mat K_scaled = (K_xx-min_score)/(max_score-min_score);
