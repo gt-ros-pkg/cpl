@@ -38,10 +38,8 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import copysign, pi
 import svmutil
-import numpy as np
-import scipy.optimize as opt
-
-def 
+# import numpy as np
+# import scipy.optimize as opt
 
 class ModelPredictiveController:
     def __init__(self, model, H=1, max_u=1.0):
@@ -49,23 +47,13 @@ class ModelPredictiveController:
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
         '''
-        # TODO: setup constrained optimization, most parameters
         self.dyn_model = model
-        # TODO: Specify initial control sequence by parameter
-        u0 = [0.2, 0.2]
-        self.H = H
-        self.bounds = []
-        for k in xrange(self.H):
-            for i in len(u0):
-                self.bound.append((-max_u, max_u))
-        # Setup initial control sequence
-        self.U0 = []
-        for k in xrange(self.H):
-            self.U0.extend(u0)
+        # TODO: Setup CVXGEN fixed paramters
 
     def feedbackControl(self, cur_state, ee_pose):
-        # TODO: Pass in the current information into the optimizer
-        opt.fmin_slsqp()
+        params = self.dyn_model.get_cvxgen_parameters()
+        # TODO: Perform CVXGEN optimization
+
         # TODO: Convert optimization result to twist
         u_star = [0.0, 0.0]
         u = TwistStamped
@@ -126,7 +114,6 @@ class SVMPushModel:
         else:
             self.kernel_type = 'linear'
 
-
     def predict(self, cur_state, ee_pose, u):
         '''
         Predict the next state given current state estimates and control input
@@ -149,6 +136,10 @@ class SVMPushModel:
         next_state.x.y = cur_state.x.y + Y_hat[1]
         next_state.x.theta = cur_state.x.theta + Y_hat[2]
         return next_state
+
+    def get_cvxgen_variables(self):
+        # TODO: Generate correct structures to send to CVXGEN from SVM models
+        return ()
 
     def transform_state_data_to_feat_vector(self, cur_state, ee_pose, u):
         '''
