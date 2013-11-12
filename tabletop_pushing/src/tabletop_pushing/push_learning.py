@@ -106,16 +106,43 @@ class PushTrial:
                 'push_time: ' + str(self.push_time))
 
 class ControlTimeStep:
-    def __init__(self, x, z, x_dot, x_desired, theta0, u, t, ee, seq):
-        self.x = x
-        self.z = z
-        self.x_dot = x_dot
-        self.x_desired = x_desired
-        self.theta0 = theta0
-        self.u = u
-        self.t = t
-        self.ee = ee
-        self.seq = seq
+    def __init__(self, x=None, z=None, x_dot=None, x_desired=None, theta0=None, u=None, t=None, ee=None, seq=None):
+        if x is not None:
+            self.x = x
+        else:
+            self.x = Pose2D()
+        if z is not None:
+            self.z = z
+        else:
+            self.z = 0
+        if x_dot is not None:
+            self.x_dot = x_dot
+        else:
+            self.x_dot = Pose2D()
+        if x_desired is not None:
+            self.x_desired = x_desired
+        else:
+            self.x_desired = Pose2D()
+        if theta0 is not None:
+            self.theta0 = theta0
+        else:
+            self.theta0 = 0.0
+        if u is not None:
+            self.u = u
+        else:
+            self.u = Twist()
+        if t is not None:
+            self.t = t
+        else:
+            self.t = 0
+        if ee is not None:
+            self.ee = ee
+        else:
+            self.ee = Pose()
+        if seq is not None:
+            self.seq = seq
+        else:
+            self.seq = 0
 
 class PushCtrlTrial:
     def __init__(self):
