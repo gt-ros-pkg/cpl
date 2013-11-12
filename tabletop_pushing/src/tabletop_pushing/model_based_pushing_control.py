@@ -57,12 +57,14 @@ class NaiveInputModel:
         next_state.x_dot.theta = cur_state.x_dot.theta
         return next_state
 
-class SVMModel:
-    def __init__(self, svm_file=None):
-        if svm_file is not None:
-            self.svm_model = svm_load_model(svm_file)
+class SVMPushModel:
+    def __init__(self, svm_files=None):
+        if svm_files is not None:
+            for svm_file in svm_files:
+                self.svm_models.append(svm_load_model(svm_file))
         else:
-            self.svm_model = None
+            self.svm_models = []
+        self.epsilon = 1e-6
 
     def predict(self, cur_state, ee_pose, u):
         # TODO: get feats
@@ -77,11 +79,47 @@ class SVMModel:
     def transform_state_data_to_feat_vector(self, cur_state, ee_pose, u, next_state):
         pass
 
+    def transform_trial_data_to_feat_vector(self, trajectory):
+        X = []
+        Y = []
+        for i in xrange(len(trajectory)-1):
+            cts_t0 = trajectory[i]
+            cts_t1 = trajectory[i+1]
+            x_t = [cts_t0.x.x, cts_t0.x.y, cts_t0.x.theta,
+                   cts_t0.ee.position.x, cts_t0.ee.position.y, cts_t0.u.linear.x,
+                   cts_t0.u.linear.y]
+            y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
+            X.append(x_t)
+            Y.append(y_t)
+        return (X, Y)
+
     def learn_model(self, learn_data):
         X = []
         Y = []
-        self.svm_model = svmutil.svm_train()
+        # print 'len(learn_data)',len(learn_data)
+        for trial in learn_data:
+            (x, y) = self.transform_trial_data_to_feat_vector(trial.trial_trajectory)
+            X.extend(x)
+            Y.extend(y)
+        # print 'len(Y)', len(Y)
+        # print 'len(X)', len(X)
+        for i in xrange(len(Y[0])):
+            Y_i = []
+            for y in Y:
+                Y_i.append(y[i])
+            svm_model = svmutil.svm_train(Y_i, X, '-s 3 -p '+str(self.epsilon))
+            self.svm_models.append(svm_model)
 
-    def save_model(self, output_path):
-        if self.svm_model is not None:
-            svmutil.svm_save_model(output_path, self.svm_model)
+    def save_model(self, output_paths):
+        if len(self.svm_models) > 0:
+            for path, model in zip(output_paths, self.svm_models):
+                svmutil.svm_save_model(path, model)
+
+# import sys
+# import push_learning
+# if __name__ == '__main__':
+#     aff_file_name  = sys.argv[1]
+#     plio = push_learning.CombinedPushLearnControlIO()
+#     plio.read_in_data_file(aff_file_name)
+#     svm_dynamics = SVMPushModel()
+#     svm_dynamics.learn_model(plio.push_trials)

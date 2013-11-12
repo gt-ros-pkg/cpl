@@ -49,7 +49,9 @@ import subprocess
 
 _VERSION_LINE = '# v0.7'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method score [shape_descriptors]'
-_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z hand.a_x hand.a_y hand.a_z hand.a_w seq z'
+_CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z hand.a_x hand.a_y hand.a_z hand.a_w seq z_obj'
+_LEARN_TRIAL_HEADER_LINE_START = '# object_id/trial_id'
+_CONTROL_HEADER_LINE_START = '# x.x x.y x.theta'
 _BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
 _DEBUG_IO = False
 
@@ -345,10 +347,11 @@ class ControlAnalysisIO:
         u.angular.z = data[15]
         t = data[16]
         ee = Pose()
-        if len(data) > 16:
+        if len(data) > 17:
             ee.position.x = data[17]
             ee.position.y = data[18]
             ee.position.z = data[19]
+        if len(data) > 20:
             ee.orientation.x = data[20]
             ee.orientation.y = data[21]
             ee.orientation.z = data[22]
@@ -399,7 +402,7 @@ class CombinedPushLearnControlIO:
                 if _DEBUG_IO:
                     print 'Ignoring version line'
                 continue
-            elif line.startswith(_LEARN_TRIAL_HEADER_LINE):
+            elif line.startswith(_LEARN_TRIAL_HEADER_LINE_START):
                 object_comments += 1
 
                 if _DEBUG_IO:
@@ -408,7 +411,7 @@ class CombinedPushLearnControlIO:
                     trial_starts += 1
                 read_pl_trial_line = True
                 read_ctrl_line = False
-            elif line.startswith(_CONTROL_HEADER_LINE):
+            elif line.startswith(_CONTROL_HEADER_LINE_START):
                 if _DEBUG_IO:
                     print 'Read control header'
                 control_headers += 1
