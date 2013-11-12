@@ -58,13 +58,33 @@ class NaiveInputModel:
         return next_state
 
 class SVMPushModel:
-    def __init__(self, svm_files=None):
+    def __init__(self, svm_files=None, epsilons=None, kernel_type=None, m=3):
+        '''
+        svm_files - list of svm model files to read from disk
+        epsilons - list of epislon values for the epislon insensitive loss function (training only)
+        kernel_type - type of kernel to use for traning, can be any of the self.KERNEL_TYPES keys (training only)
+        m - number of output dimensions in the model (training only)
+        '''
         if svm_files is not None:
             for svm_file in svm_files:
                 self.svm_models.append(svm_load_model(svm_file))
+            m = len(svm_files)
         else:
             self.svm_models = []
-        self.epsilon = 1e-6
+
+        if epsilons is not None:
+            self.epsilons = epsilons
+        else:
+            self.epsilons = []
+            for i in xrange(m):
+                self.epsilons.append(1e-6)
+
+        self.KERNEL_TYPES = {'linear': 0, 'polynomial': 1, 'RBF': 2, 'sigmoid': 3, 'precomputed':4}
+        if kernel_type is not None:
+            self.kernel_type = kernel_type
+        else:
+            self.kernel_type = 'linear'
+
 
     def predict(self, cur_state, ee_pose, u):
         # TODO: get feats
@@ -107,7 +127,9 @@ class SVMPushModel:
             Y_i = []
             for y in Y:
                 Y_i.append(y[i])
-            svm_model = svmutil.svm_train(Y_i, X, '-s 3 -p '+str(self.epsilon))
+            param_string = '-s 3 -t ' + str(self.KERNEL_TYPES[self.kernel_type]) + ' -p ' + str(self.epsilons[i])
+            # TODO: Kernel specific options
+            svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
 
     def save_model(self, output_paths):
