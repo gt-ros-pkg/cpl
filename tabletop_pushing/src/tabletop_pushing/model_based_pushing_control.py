@@ -38,16 +38,58 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import copysign, pi
 import svmutil
+import numpy as np
+import scipy.optimize as opt
+
+def 
 
 class ModelPredictiveController:
-    def __init__(self, model):
-        self.f = model
+    def __init__(self, model, H=1, max_u=1.0):
+        '''
+        model - prediction function for use inside the optimizer
+        H - the lookahead horizon for MPC
+        '''
+        # TODO: setup constrained optimization, most parameters
+        self.dyn_model = model
+        # TODO: Specify initial control sequence by parameter
+        u0 = [0.2, 0.2]
+        self.H = H
+        self.bounds = []
+        for k in xrange(self.H):
+            for i in len(u0):
+                self.bound.append((-max_u, max_u))
+        # Setup initial control sequence
+        self.U0 = []
+        for k in xrange(self.H):
+            self.U0.extend(u0)
+
+    def feedbackControl(self, cur_state, ee_pose):
+        # TODO: Pass in the current information into the optimizer
+        opt.fmin_slsqp()
+        # TODO: Convert optimization result to twist
+        u_star = [0.0, 0.0]
+        u = TwistStamped
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        u.twist.linear.x = u_star[0]
+        u.twist.linear.x = u_star[1]
+        return u
 
 class NaiveInputModel:
     def __init__(self, detla_t):
         self.delta_t = delta_t
 
     def predict(self, cur_state, ee_pose, u):
+        '''
+        Predict the next state given current state estimates and control input
+        cur_sate - current state estimate of form VisFeedbackPushTrackingFeedback()
+        ee_pose - current end effector pose estimate of type PoseStamped()
+        u - control to evaluate of type TwistStamped()
+        '''
         next_state = VisFeedbackPushTrackingFeedback()
         next_state.x.x = cur_state.x.x + u.linear.x*self.delta_t
         next_state.x.y = cur_state.x.y + u.linear.y*self.delta_t
