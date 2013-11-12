@@ -1937,7 +1937,7 @@ void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
 
 void computeInverseKDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L, int K)
 {
-  ROS_INFO_STREAM("Connected to " << K << " neighbors");
+  // ROS_INFO_STREAM("Connected to " << K << " neighbors");
   const int n = hull_cloud.size();
   for (int r = 0; r < n; ++r)
   {
