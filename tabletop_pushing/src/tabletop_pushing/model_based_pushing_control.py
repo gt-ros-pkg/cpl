@@ -89,17 +89,17 @@ class SVMPushModel:
     def predict(self, cur_state, ee_pose, u):
         # TODO: get feats
         y = 0.0
-        x = []
+        x = self.transform_state_data_to_feat_vector(cur_state, ee_pose, u)
         # TODO: perform prediction
         svmutil.svm_predict(y, x, self.svm_model)
         # TODO: transform prediction to correct state / class
         next_state = VisFeedbackPushTrackingFeedback()
         return next_state
 
-    def transform_state_data_to_feat_vector(self, cur_state, ee_pose, u, next_state):
+    def transform_state_data_to_feat_vector(self, cur_state, ee_pose, u):
         pass
 
-    def transform_trial_data_to_feat_vector(self, trajectory):
+    def transform_trial_data_to_feat_vectors(self, trajectory):
         X = []
         Y = []
         for i in xrange(len(trajectory)-1):
@@ -118,7 +118,7 @@ class SVMPushModel:
         Y = []
         # print 'len(learn_data)',len(learn_data)
         for trial in learn_data:
-            (x, y) = self.transform_trial_data_to_feat_vector(trial.trial_trajectory)
+            (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory)
             X.extend(x)
             Y.extend(y)
         # print 'len(Y)', len(Y)

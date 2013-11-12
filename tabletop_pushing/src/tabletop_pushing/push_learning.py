@@ -357,6 +357,7 @@ class ControlAnalysisIO:
             ee.orientation.z = data[22]
             ee.orientation.w = data[23]
             seq = data[24]
+        if len(data) > 25:
             z = data[25]
         else:
             seq = 0
