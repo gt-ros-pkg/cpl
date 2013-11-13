@@ -38,24 +38,82 @@ from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import copysign, pi
 import svmutil
-# import numpy as np
-# import scipy.optimize as opt
+import numpy as np
+import scipy.optimize as opt
+
+def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
+    '''
+    q - decision variables of the form (X[1],...,X[H], U[0],...,U[H-1])
+    H - time horizon
+    n - system state dimension
+    m - control dimension
+    x0 - inital state
+    xD - desired trajectory
+    xtra - other features for dynamics prediction
+    lambda_dynamics - weight for penalizing deviation from dynamics model
+    f_dyn - function simulating single timestep system dynamics of the form x_k1 = f_dyn(x_k0, u_k0, xtra)
+    '''
+    # TODO: Pull out x from q (Can remove for speed up later if necessary)
+    x = []
+    # TODO: Pull out u from q (Can remove for speed up later if necessary)
+    u = []
+    # TODO: Prepend x_hat with known x0
+    x_hat = [x0]
+    # TODO: Evaluate f_dyn(x[k], u[k], xtra) for all pairs and append to x_hat
+    for k in xrange(H):
+        x_hat.append(f_dyn.predict_opt(x_hat[k], u[k], xtra))
+    # Dynamics constraints
+    score = 0.0
+    for k in xrange(H):
+        score += sum(abs(x[k+1] - x_hat[k]))
+    # Scale dynamics constraints
+    score *= lambda_dynamicsx
+    # Goal trajectory constraints
+    for k in xrange(H):
+        score += sum(abs(x_desired[k+1] - x_hat[k+1]))
+    return score
+
+def pushMPCObjectiveGradient():
+    return 0.0
 
 class ModelPredictiveController:
-    def __init__(self, model, H=1, max_u=1.0):
+    def __init__(self, model, H=5, u_max=1.0, lambda_dynamics=1.0):
         '''
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
+        u_max - maximum allowed velocity
+        lambda_dynamics - weight for soft dynamics constraints
         '''
         self.dyn_model = model
-        # TODO: Setup CVXGEN fixed paramters
+        self.H = H # Time horizon
+        self.N = 20 # Non control parameter feature space dimension
+        self.n = 3 # Predicted state space dimension
+        self.m = 2 # Control space dimension
+        bounds_k = []
+        for i in xrange(self.n):
+            bounds_k.append((None, None))
+        for i in xrange(self.m):
+            bounds_k.append((-u_max, u_max))
+        self.opt_bounds = []
+        for i in xrange(self.H):
+            self.opt_bounds.extend(bounds_k)
+        self.lambda_dynamics = lambda_dynamics
 
-    def feedbackControl(self, cur_state, ee_pose):
-        params = self.dyn_model.get_cvxgen_parameters()
-        # TODO: Perform CVXGEN optimization
+    def feedbackControl(self, cur_state, ee_pose, x_desired):
+        # TODO: Get initial guess(es)
+        q0 = np.array([0.0])
+        x0 = np.array([0.0]) # TODO: Get inital state
+        # Ensure x_desired[0] == x0
+        # Perform optimization
+        opt_args = (self.H, self.n, self.m, x0, x_desired, lambda_dynamics, self.dyn_model)
+        q_star, opt_val, d_info = opt.fmin_l_bfgs_b(func = pushMPCObjectiveFunction,
+                                                    x0 = q0,
+                                                    fprime = pushMPCObjectiveGradient,
+                                                    args = opt_args,
+                                                    bounds = self.opt_bounds)
 
         # TODO: Convert optimization result to twist
-        u_star = [0.0, 0.0]
+        u_star = q_star[self.m:self.m+self.n]
         u = TwistStamped
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
@@ -114,6 +172,9 @@ class SVMPushModel:
         else:
             self.kernel_type = 'linear'
 
+    def predict_opt(self, x_k, u_k, xtra):
+        pass
+
     def predict(self, cur_state, ee_pose, u):
         '''
         Predict the next state given current state estimates and control input
@@ -136,10 +197,6 @@ class SVMPushModel:
         next_state.x.y = cur_state.x.y + Y_hat[1]
         next_state.x.theta = cur_state.x.theta + Y_hat[2]
         return next_state
-
-    def get_cvxgen_variables(self):
-        # TODO: Generate correct structures to send to CVXGEN from SVM models
-        return ()
 
     def transform_state_data_to_feat_vector(self, cur_state, ee_pose, u):
         '''
