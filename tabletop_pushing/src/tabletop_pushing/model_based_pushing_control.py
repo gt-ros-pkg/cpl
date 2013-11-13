@@ -53,27 +53,35 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
     lambda_dynamics - weight for penalizing deviation from dynamics model
     f_dyn - function simulating single timestep system dynamics of the form x_k1 = f_dyn(x_k0, u_k0, xtra)
     '''
-    # TODO: Pull out x from q (Can remove for speed up later if necessary)
-    x = []
-    # TODO: Pull out u from q (Can remove for speed up later if necessary)
+    # Pull out x and u from q (Can remove for speed up later if necessary)
+    x = [x0]
     u = []
-    # TODO: Prepend x_hat with known x0
-    x_hat = [x0]
-    # TODO: Evaluate f_dyn(x[k], u[k], xtra) for all pairs and append to x_hat
+    step = n+m
+    for k in xrange(H):
+        x_start = k*step
+        x_stop = x_start+n
+        u_start = x_stop
+        u_stop = u_start+m
+        x.append(q[x_start:x_stop])
+        u.append(q[u_start:u_stop])
+
+    # Evaluate f_dyn(x[k], u[k], xtra) for all pairs and append to x_hat
+    x_hat = [x0] # Prepend x_hat with known x0
     for k in xrange(H):
         x_hat.append(f_dyn.predict_opt(x_hat[k], u[k], xtra))
+
     # Dynamics constraints
     score = 0.0
     for k in xrange(H):
-        score += sum(abs(x[k+1] - x_hat[k]))
-    # Scale dynamics constraints
-    score *= lambda_dynamicsx
+        score += sum(abs(x[k+1] - x_hat[k+1]))
+    score *= lambda_dynamics # Scale dynamics constraints
+
     # Goal trajectory constraints
     for k in xrange(H):
         score += sum(abs(x_desired[k+1] - x_hat[k+1]))
     return score
 
-def pushMPCObjectiveGradient():
+def pushMPCObjectiveGradient(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
     return 0.0
 
 class ModelPredictiveController:
