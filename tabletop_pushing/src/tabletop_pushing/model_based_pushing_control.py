@@ -41,7 +41,7 @@ import svmutil
 import numpy as np
 import scipy.optimize as opt
 
-def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
+def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, dyn_model):
     '''
     q - decision variables of the form (X[1],...,X[H], U[0],...,U[H-1])
     H - time horizon
@@ -51,7 +51,7 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
     xD - desired trajectory
     xtra - other features for dynamics prediction
     lambda_dynamics - weight for penalizing deviation from dynamics model
-    f_dyn - function simulating single timestep system dynamics of the form x_k1 = f_dyn(x_k0, u_k0, xtra)
+    dyn_model - model simulating system dynamics of the form x[k+1] = dyn_model.predict(x[k], u[k], xtra)
     '''
     # Pull out x and u from q (Can remove for speed up later if necessary)
     x = [x0]
@@ -68,7 +68,7 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
     # Evaluate f_dyn(x[k], u[k], xtra) for all pairs and append to x_hat
     x_hat = [x0] # Prepend x_hat with known x0
     for k in xrange(H):
-        x_hat.append(f_dyn.predict_opt(x_hat[k], u[k], xtra))
+        x_hat.append(dyn_model.predict(x_hat[k], u[k], xtra))
 
     # Dynamics constraints
     score = 0.0
@@ -137,7 +137,7 @@ class NaiveInputModel:
     def __init__(self, detla_t):
         self.delta_t = delta_t
 
-    def predict(self, cur_state, ee_pose, u):
+    def predict_state(self, cur_state, ee_pose, u):
         '''
         Predict the next state given current state estimates and control input
         cur_sate - current state estimate of form VisFeedbackPushTrackingFeedback()
@@ -180,10 +180,10 @@ class SVMPushModel:
         else:
             self.kernel_type = 'linear'
 
-    def predict_opt(self, x_k, u_k, xtra):
+    def predict(self, x_k, u_k, xtra):
         pass
 
-    def predict(self, cur_state, ee_pose, u):
+    def predict_state(self, cur_state, ee_pose, u):
         '''
         Predict the next state given current state estimates and control input
         cur_sate - current state estimate of form VisFeedbackPushTrackingFeedback()
