@@ -33,7 +33,7 @@
 
 import roslib; roslib.load_manifest('tabletop_pushing')
 import rospy
-from geometry_msgs.msg import PoseStamped, TwistStamped, Twist
+from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Pose2D
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import copysign, pi
@@ -57,6 +57,7 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, dyn_mode
     x = [x0]
     u = []
     step = n+m
+    xD_length = len(xD[0])
     for k in xrange(H):
         x_start = k*step
         x_stop = x_start+n
@@ -78,7 +79,7 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, dyn_mode
 
     # Goal trajectory constraints
     for k in xrange(H):
-        score += sum(abs(x_desired[k+1] - x_hat[k+1]))
+        score += sum(abs(xD[k+1] - x_hat[k+1][0:xD_length]))
     return score
 
 def pushMPCObjectiveGradient(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
@@ -94,8 +95,7 @@ class ModelPredictiveController:
         '''
         self.dyn_model = model
         self.H = H # Time horizon
-        self.N = 20 # Non control parameter feature space dimension
-        self.n = 3 # Predicted state space dimension
+        self.n = 5 # Predicted state space dimension
         self.m = 2 # Control space dimension
         bounds_k = []
         for i in xrange(self.n):
@@ -107,25 +107,34 @@ class ModelPredictiveController:
             self.opt_bounds.extend(bounds_k)
         self.lambda_dynamics = lambda_dynamics
 
-    def feedbackControl(self, cur_state, ee_pose, x_desired):
-        # TODO: Get initial guess(es)
-        q0 = np.array([0.0])
-        x0 = np.array([0.0]) # TODO: Get inital state
-        # Ensure x_desired[0] == x0
+    def feedbackControl(self, cur_state, ee_pose, x_desired, cur_u):
+        q0_0 = self.transform_state_to_vector(cur_state, ee_pose, cur_u)
+        x0 = np.asarray(q0_0[0:self.n])
+        q0 = np.asarray(q0_0*self.H)
+        # TODO: Get initial guess from cur_state and trajectory...
+        print 'x0 = ', x0
+        print 'q0 = ', q0
+        print 'q0_0 = ', q0_0
+        print 'self.opt_bounds = ', self.opt_bounds
+        print 'len(x0): ', len(x0)
+        print 'len(q0_0): ', len(q0_0)
+        print 'len(q0): ', len(q0)
+        print 'len(self.opt_bounds): ', len(self.opt_bounds)
         # Perform optimization
         xtra = []
-        opt_args = (self.H, self.n, self.m, x0, x_desired, xtra, lambda_dynamics, self.dyn_model)
+        opt_args = (self.H, self.n, self.m, x0, x_desired, xtra, self.lambda_dynamics, self.dyn_model)
         q_star, opt_val, d_info = opt.fmin_l_bfgs_b(func = pushMPCObjectiveFunction,
                                                     x0 = q0,
-                                                    fprime = pushMPCObjectiveGradient,
+                                                    approx_grad = True,
+                                                    # fprime = pushMPCObjectiveGradient,
                                                     args = opt_args,
                                                     bounds = self.opt_bounds)
 
-        # TODO: Convert optimization result to twist
+        # TODO: Pull this into a new function, convert q vector to state
         u_star = q_star[self.m:self.m+self.n]
-        u = TwistStamped
+        u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time.now()
+        # u.header.stamp = rospy.Time.now()
         u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
@@ -134,27 +143,56 @@ class ModelPredictiveController:
         u.twist.linear.x = u_star[1]
         return u
 
-class NaiveInputModel:
-    def __init__(self, detla_t):
+    def transform_state_to_vector(self, cur_state, ee_pose, u=None):
+        q = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+             ee_pose.pose.position.x, ee_pose.pose.position.y]
+        if u is not None:
+            q.extend([u.twist.linear.x, u.twist.linear.y])
+        return q
+
+    def transform_vector_to_state(self, q):
+        x = Pose2D()
+        x.x = q[0]
+        x.y = q[1]
+        x.theta = q[2]
+        ee = Pose()
+        u = TwistStamped
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        u.twist.linear.x = q[self.m]
+        u.twist.linear.x = q[self.m + 1]
+        return (x, ee, u)
+
+
+class NaiveInputDynamics:
+    def __init__(self, delta_t):
         self.delta_t = delta_t
 
-    def predict_state(self, cur_state, ee_pose, u):
+    def predict(self, x_k, u_k, xtra=[]):
         '''
         Predict the next state given current state estimates and control input
-        cur_sate - current state estimate of form VisFeedbackPushTrackingFeedback()
-        ee_pose - current end effector pose estimate of type PoseStamped()
-        u - control to evaluate of type TwistStamped()
+        x_k - current state estimate (list)
+        u_k - current control to evaluate
+        xtra - other features for SVM
         '''
-        next_state = VisFeedbackPushTrackingFeedback()
-        next_state.x.x = cur_state.x.x + u.linear.x*self.delta_t
-        next_state.x.y = cur_state.x.y + u.linear.y*self.delta_t
-        next_state.x.theta = cur_state.x.theta
-        next_state.x_dot.x = u.linear.x
-        next_state.x_dot.theta = u.linear.y
-        next_state.x_dot.theta = cur_state.x_dot.theta
-        return next_state
+        delta_x = u_k[0]*self.delta_t
+        delta_y = u_k[1]*self.delta_t
+        y_hat = x_k[:]
+        # Update object pose
+        y_hat[0] = x_k[0] + delta_x
+        y_hat[1] = x_k[1] + delta_y
+        y_hat[2] = x_k[2] # (no rotation)
+        # Update hand pose
+        # TODO: Add transformation into object frame
+        y_hat[3] = x_k[3] + delta_x
+        y_hat[4] = x_k[4] + delta_y
+        return y_hat
 
-class SVMPushModel:
+class SVRPushDynamics:
     def __init__(self, svm_file_names=None, epsilons=None, kernel_type=None, m=3):
         '''
         svm_files - list of svm model files to read from disk
@@ -290,11 +328,12 @@ class SVMPushModel:
 #
 import sys
 import push_learning
-if __name__ == '__main__':
+
+def test_svm_stuff():
     aff_file_name  = sys.argv[1]
     plio = push_learning.CombinedPushLearnControlIO()
     plio.read_in_data_file(aff_file_name)
-    svm_dynamics = SVMPushModel()
+    svm_dynamics = SVRPushDynamics()
     svm_dynamics.learn_model(plio.push_trials)
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
@@ -302,7 +341,7 @@ if __name__ == '__main__':
     output_paths.append(base_path+'delta_y_dyn.model')
     output_paths.append(base_path+'delta_theta_dyn.model')
     svm_dynamics.save_models(output_paths)
-    svm_dynamics2 = SVMPushModel(svm_file_names=output_paths)
+    svm_dynamics2 = SVRPushDynamics(svm_file_names=output_paths)
 
     test_pose = VisFeedbackPushTrackingFeedback()
     test_pose.x.x = 0.2
@@ -319,3 +358,40 @@ if __name__ == '__main__':
 
     print 'test_state.x: ', test_pose.x
     print 'next_state.x: ', next_state.x
+
+import push_trajectory_generator as ptg
+
+def test_mpc():
+    delta_t = 0.01
+    model = NaiveInputDynamics(delta_t)
+    H=5
+    u_max=0.5
+    lambda_dynamics=1.0
+
+    cur_state = VisFeedbackPushTrackingFeedback()
+    cur_state.x.x = 0.2
+    cur_state.x.y = 0.0
+    cur_state.x.theta = pi*0.5
+    ee_pose = PoseStamped()
+    ee_pose.pose.position.x = cur_state.x.x - 0.2
+    ee_pose.pose.position.y = cur_state.x.y - 0.2
+    cur_u = TwistStamped()
+    cur_u.twist.linear.x = 0.0
+    cur_u.twist.linear.y = 0.0
+
+    goal_loc = Pose2D()
+    goal_loc.x = 2.0
+    goal_loc.y = 0.0
+
+    trajectory_generator = ptg.StraightLineTrajectoryGenerator()
+    trajectory = trajectory_generator.generate_trajectory(H, cur_state.x, goal_loc)
+    # TODO: Generate feasible solution using known model
+
+    # Construct and run MPC
+    mpc =  ModelPredictiveController(model, H, u_max, lambda_dynamics)
+    u_star = mpc.feedbackControl(cur_state, ee_pose, trajectory, cur_u)
+    print 'u_star',u_star
+
+if __name__ == '__main__':
+    # test_svm_stuff()
+    test_mpc()
