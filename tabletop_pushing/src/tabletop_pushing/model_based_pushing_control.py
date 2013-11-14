@@ -113,7 +113,8 @@ class ModelPredictiveController:
         x0 = np.array([0.0]) # TODO: Get inital state
         # Ensure x_desired[0] == x0
         # Perform optimization
-        opt_args = (self.H, self.n, self.m, x0, x_desired, lambda_dynamics, self.dyn_model)
+        xtra = []
+        opt_args = (self.H, self.n, self.m, x0, x_desired, xtra, lambda_dynamics, self.dyn_model)
         q_star, opt_val, d_info = opt.fmin_l_bfgs_b(func = pushMPCObjectiveFunction,
                                                     x0 = q0,
                                                     fprime = pushMPCObjectiveGradient,
@@ -180,22 +181,37 @@ class SVMPushModel:
         else:
             self.kernel_type = 'linear'
 
-    def predict(self, x_k, u_k, xtra):
-        pass
+    def predict(self, x_k, u_k, xtra=[]):
+        '''
+        Predict the next state given current state estimates and control input
+        x_k - current state estimate (list)
+        u_k - current control to evaluate
+        xtra - other features for SVM
+        '''
+        x = x_k[:]
+        x.extend(u_k)
+        x.extend(xtra)
+        Y_hat = []
+        y = [0]
+        for svm_model in self.svm_models:
+            [y_hat, _, _] = svmutil.svm_predict(y, x, svm_model)
+            Y_hat.append(y_hat[0])
+        return y_hat
 
-    def predict_state(self, cur_state, ee_pose, u):
+    def predict_state(self, cur_state, ee_pose, u, xtra=[]):
         '''
         Predict the next state given current state estimates and control input
         cur_sate - current state estimate of form VisFeedbackPushTrackingFeedback()
         ee_pose - current end effector pose estimate of type PoseStamped()
         u - control to evaluate of type TwistStamped()
+        xtra - other features for SVM
         '''
         # Get feature vector
         x = [self.transform_state_data_to_feat_vector(cur_state, ee_pose, u)]
         # Perform predictions
         Y_hat = []
+        y = [0]
         for svm_model in self.svm_models:
-            y = [0]
             [y_hat, _, _] = svmutil.svm_predict(y, x, svm_model)
             Y_hat.append(y_hat[0])
         # print 'Y_hat = ', Y_hat
