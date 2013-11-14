@@ -44,7 +44,7 @@ class StraightLineTrajectoryGenerator:
     def generate_trajectory(self, H, start_pose, end_pose):
         start_loc = np.asarray([start_pose.x, start_pose.y, start_pose.theta])
         end_loc = np.asarray([end_pose.x, end_pose.y, end_pose.theta])
-        step = np.asarray([(end_pose.x - start_pose.x)/H, (end_pose.x - start_pose.x)/H, 0.0])
+        step = np.asarray([(end_pose.x - start_pose.x)/H, (end_pose.y - start_pose.y)/H, 0.0])
         trajectory = [start_loc]
         for i in xrange(H):
             next_loc = trajectory[i] + step
