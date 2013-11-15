@@ -40,6 +40,7 @@ from math import copysign, pi
 import svmutil
 import numpy as np
 import scipy.optimize as opt
+from numpy.linalg import norm
 
 def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model):
     '''
@@ -78,21 +79,19 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_mod
     # Dynamics constraints
     score = 0.0
     for k in xrange(H):
-        sub_score = sum(abs(x[k+1] - x_hat[k+1]))
-        # print 'sum(abs(x[k+1] - x_hat[k+1])) = ', sub_score
+        sub_score = norm(x[k+1] - x_hat[k+1], 2)
         score += sub_score
     score *= lambda_dynamics # Scale dynamics constraints
-    # print 'Score constraints = ', score
+    print 'Score constraints = ', score
     # Goal trajectory constraints
     x_d_length = len(x_d[0])
     score_d = 0
     for k in xrange(H):
-        sub_score = sum(abs(x_d[k+1] - x_hat[k+1][0:x_d_length]))
-        # print 'sum(abs(x_d[k+1] - x_hat[k+1])) = ', sub_score
+        sub_score = norm(x_d[k+1] - x_hat[k+1][0:x_d_length], 2)
         score_d += sub_score
     score += score_d
-    # print 'Score desired = ', score_d
-    # print 'Total Score = ', score
+    print 'Score desired = ', score_d
+    print 'Total Score = ', score
     return score
 
 def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model):
@@ -140,8 +139,7 @@ class ModelPredictiveController:
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.lambda_dynamics, self.dyn_model)
         q_star, opt_val, d_info = opt.fmin_l_bfgs_b(func = pushMPCObjectiveFunction,
                                                     x0 = q0,
-                                                    approx_grad = True,
-                                                    # fprime = pushMPCObjectiveGradient,
+                                                    fprime = pushMPCObjectiveGradient,
                                                     args = opt_args,
                                                     bounds = self.opt_bounds)
 
@@ -184,7 +182,6 @@ class ModelPredictiveController:
         u.twist.linear.x = q[self.m + 1]
         return (x, ee, u)
 
-
 class NaiveInputDynamics:
     def __init__(self, delta_t, n, m):
         self.delta_t = delta_t
@@ -192,29 +189,22 @@ class NaiveInputDynamics:
         self.B = np.zeros((n, m))
         self.B[0:m,0:m] = np.eye(m)*delta_t
         self.B[3:3+m,0:m] = np.eye(m)*delta_t
-        print 'A=',self.A
-        print 'B=',self.B
 
     def predict(self, x_k, u_k, xtra=[]):
         '''
         Predict the next state given current state estimates and control input
-        x_k - current state estimate (list)
-        u_k - current control to evaluate
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        # Convert to simple linear format
-        delta_x = u_k[0]*self.delta_t
-        delta_y = u_k[1]*self.delta_t
-        y_hat = x_k[:]
-        # Update object pose
-        y_hat[0] = x_k[0] + delta_x
-        y_hat[1] = x_k[1] + delta_y
-        y_hat[2] = x_k[2] # (no rotation)
-        # Update hand pose
-        # TODO: Add transformation into object frame
-        y_hat[3] = x_k[3] + delta_x
-        y_hat[4] = x_k[4] + delta_y
-        return y_hat
+        x_k_plus_1 = np.array(self.A*np.matrix(x_k).T+self.B*np.matrix(u_k).T).ravel()
+        return x_k_plus_1
+
+    def jacobian(self, x_k, u_k, xtra=[]):
+        '''
+        Compute the Jacobian of the prediciton function
+        '''
+        pass
 
 class SVRPushDynamics:
     def __init__(self, svm_file_names=None, epsilons=None, kernel_type=None, m=3):
@@ -386,7 +376,7 @@ def test_svm_stuff():
 import push_trajectory_generator as ptg
 
 def test_mpc():
-    delta_t = 2.0
+    delta_t = 1.0
     H=5
     n = 5
     m = 2
