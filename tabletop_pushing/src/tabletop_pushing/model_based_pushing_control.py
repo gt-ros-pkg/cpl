@@ -41,14 +41,14 @@ import svmutil
 import numpy as np
 import scipy.optimize as opt
 
-def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, dyn_model):
+def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model):
     '''
     q - decision variable vector of the form (U[0], X[1], U[1],..., U[H-1], X[H])
     H - time horizon
     n - system state dimension
     m - control dimension
     x0 - inital state
-    xD - desired trajectory
+    x_d - desired trajectory
     xtra - other features for dynamics prediction
     lambda_dynamics - weight for penalizing deviation from dynamics model
     dyn_model - model simulating system dynamics of the form x[k+1] = dyn_model.predict(x[k], u[k], xtra)
@@ -57,7 +57,6 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, dyn_mode
     x = [x0]
     u = []
     step = m+n
-    xD_length = len(xD[0])
     for k in xrange(H):
         u_start = k*step
         u_stop = u_start+m
@@ -70,23 +69,33 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, xD, xtra, lambda_dynamics, dyn_mode
     x_hat = [x0] # Prepend x_hat with known x0
     for k in xrange(H):
         # Should this be x_hat or x?
+        # NOTE: This could have serious consequences wrt the solver
         y_hat = dyn_model.predict(x[k], u[k], xtra)
         x_hat.append(y_hat[:])
 
-    # print 'x_hat =', np.asarray(x_hat)
+    print 'x_hat =', np.asarray(x_hat)
+    print 'x =', np.asarray(x)
     # Dynamics constraints
     score = 0.0
     for k in xrange(H):
-        score += sum(abs(x[k+1] - x_hat[k+1]))
+        sub_score = sum(abs(x[k+1] - x_hat[k+1]))
+        # print 'sum(abs(x[k+1] - x_hat[k+1])) = ', sub_score
+        score += sub_score
     score *= lambda_dynamics # Scale dynamics constraints
-
+    # print 'Score constraints = ', score
     # Goal trajectory constraints
+    x_d_length = len(x_d[0])
+    score_d = 0
     for k in xrange(H):
-        score += sum(abs(xD[k+1] - x_hat[k+1][0:xD_length]))
-    # print 'score = ', score
+        sub_score = sum(abs(x_d[k+1] - x_hat[k+1][0:x_d_length]))
+        # print 'sum(abs(x_d[k+1] - x_hat[k+1])) = ', sub_score
+        score_d += sub_score
+    score += score_d
+    # print 'Score desired = ', score_d
+    # print 'Total Score = ', score
     return score
 
-def pushMPCObjectiveGradient(q, H, n, m, x0, xD, xtra, lambda_dynamics, f_dyn):
+def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model):
     return 0.0
 
 class ModelPredictiveController:
@@ -103,7 +112,6 @@ class ModelPredictiveController:
         self.m = 2 # Control space dimension
         self.u_max = u_max
         bounds_k = []
-        # TODO: Fix bounds order after fixing decision vector ordering
         for i in xrange(self.m):
             bounds_k.append((-u_max, u_max))
         for i in xrange(self.n):
@@ -115,8 +123,8 @@ class ModelPredictiveController:
 
     def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
         # TODO: Get initial guess from cur_state and trajectory...
-        x0 = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-              ee_pose.pose.position.x, ee_pose.pose.position.y]
+        x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+                         ee_pose.pose.position.x, ee_pose.pose.position.y])
         q0 = []
         for i in xrange(self.H):
             q0.extend([self.u_max, self.u_max,
@@ -178,8 +186,14 @@ class ModelPredictiveController:
 
 
 class NaiveInputDynamics:
-    def __init__(self, delta_t):
+    def __init__(self, delta_t, n, m):
         self.delta_t = delta_t
+        self.A = np.eye(n)
+        self.B = np.zeros((n, m))
+        self.B[0:m,0:m] = np.eye(m)*delta_t
+        self.B[3:3+m,0:m] = np.eye(m)*delta_t
+        print 'A=',self.A
+        print 'B=',self.B
 
     def predict(self, x_k, u_k, xtra=[]):
         '''
@@ -188,6 +202,7 @@ class NaiveInputDynamics:
         u_k - current control to evaluate
         xtra - other features for SVM
         '''
+        # Convert to simple linear format
         delta_x = u_k[0]*self.delta_t
         delta_y = u_k[1]*self.delta_t
         y_hat = x_k[:]
@@ -371,8 +386,7 @@ def test_svm_stuff():
 import push_trajectory_generator as ptg
 
 def test_mpc():
-    delta_t = 1.0
-    dyn_model = NaiveInputDynamics(delta_t)
+    delta_t = 2.0
     H=5
     n = 5
     m = 2
@@ -396,8 +410,9 @@ def test_mpc():
 
     trajectory_generator = ptg.StraightLineTrajectoryGenerator()
     x_d = trajectory_generator.generate_trajectory(H, cur_state.x, goal_loc)
-    # TODO: Generate feasible solution using known model
+    dyn_model = NaiveInputDynamics(delta_t, n, m)
 
+    # TODO: Generate feasible solution using known model
     print 'H = ', H
     print 'delta_t = ', delta_t
     print 'u_max = ', u_max
@@ -406,20 +421,19 @@ def test_mpc():
     print 'x_d = ', np.asarray(x_d)
     # TODO: Get initial guess from cur_state and trajectory...
     # TODO: Remove inital pose from decision vector
-    x0 = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-          ee_pose.pose.position.x, ee_pose.pose.position.y]
+    x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+                     ee_pose.pose.position.x, ee_pose.pose.position.y])
     q0 = []
     for i in xrange(H):
         q0.extend([u_max, u_max, x_d[i+1][0], x_d[i+1][1], x_d[i+1][2], x_d[i+1][0] - 0.2, x_d[i+1][1] - 0.2])
-    print 'x0 = ', np.asarray(x0)
+    print 'x0 = ', x0
     print 'q0 = ', np.asarray(q0)
     xtra = []
-    lambda_dynamics = 2.0
     pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model)
 
     # Construct and run MPC
-    mpc =  ModelPredictiveController(dyn_model, H, u_max, lambda_dynamics)
-    u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
+    # mpc =  ModelPredictiveController(dyn_model, H, u_max, lambda_dynamics)
+    # u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
 
 if __name__ == '__main__':
     # test_svm_stuff()
