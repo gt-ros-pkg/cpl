@@ -42,7 +42,7 @@ import numpy as np
 import scipy.optimize as opt
 from numpy.linalg import norm
 
-def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model):
+def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, dyn_model):
     '''
     q - decision variable vector of the form (U[0], X[1], U[1],..., U[H-1], X[H])
     H - time horizon
@@ -51,59 +51,36 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_mod
     x0 - inital state
     x_d - desired trajectory
     xtra - other features for dynamics prediction
-    lambda_dynamics - weight for penalizing deviation from dynamics model
     dyn_model - model simulating system dynamics of the form x[k+1] = dyn_model.predict(x[k], u[k], xtra)
     '''
-    # Pull out x and u from q (Can remove for speed up later if necessary)
-    x = [x0]
-    u = []
     step = m+n
-    for k in xrange(H):
-        u_start = k*step
-        u_stop = u_start+m
-        x_start = u_stop
-        x_stop = x_start+n
-        u.append(np.asarray(q[u_start:u_stop]))
-        x.append(np.asarray(q[x_start:x_stop]))
-
-    # Evaluate f_dyn(x[k], u[k], xtra) for all pairs and append to x_hat
-    x_hat = [x0] # Prepend x_hat with known x0
-    for k in xrange(H):
-        # Should this be x_hat or x?
-        # NOTE: This could have serious consequences wrt the solver
-        y_hat = dyn_model.predict(x[k], u[k], xtra)
-        x_hat.append(y_hat[:])
-
-    print 'x_hat =', np.asarray(x_hat)
-    print 'x =', np.asarray(x)
-    # Dynamics constraints
-    score = 0.0
-    for k in xrange(H):
-        sub_score = norm(x[k+1] - x_hat[k+1], 2)
-        score += sub_score
-    score *= lambda_dynamics # Scale dynamics constraints
-    print 'Score constraints = ', score
-    # Goal trajectory constraints
     x_d_length = len(x_d[0])
-    score_d = 0
+    score = 0
     for k in xrange(H):
-        sub_score = norm(x_d[k+1] - x_hat[k+1][0:x_d_length], 2)
-        score_d += sub_score
-    score += score_d
-    print 'Score desired = ', score_d
-    print 'Total Score = ', score
+        x_start = k*step
+        x_stop = x_start+x_d_length
+        # Pull out x from q
+        x_k_plus_1 = np.asarray(q[x_start:x_stop])
+        # Compute squared l2 norm on the goal trajectory
+        score += sum((x_k_plus_1 - x_d[k+1])**2)
+    print 'Score = ', score
     return score
 
-def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model):
+def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
+    return 0.0
+
+def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
+    return 0.0
+
+def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
     return 0.0
 
 class ModelPredictiveController:
-    def __init__(self, model, H=5, u_max=1.0, lambda_dynamics=1.0):
+    def __init__(self, model, H=5, u_max=1.0):
         '''
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
         u_max - maximum allowed velocity
-        lambda_dynamics - weight for soft dynamics constraints
         '''
         self.dyn_model = model
         self.H = H # Time horizon
@@ -118,7 +95,6 @@ class ModelPredictiveController:
         self.opt_bounds = []
         for i in xrange(self.H):
             self.opt_bounds.extend(bounds_k)
-        self.lambda_dynamics = lambda_dynamics
 
     def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
         # TODO: Get initial guess from cur_state and trajectory...
@@ -130,18 +106,17 @@ class ModelPredictiveController:
                        x_d[i+1][0], x_d[i+1][1], x_d[i+1][2], x_d[i+1][0] - 0.2, x_d[i+1][1] - 0.2])
         print 'x0 = ', np.asarray(x0)
         print 'q0 = ', np.asarray(q0)
-        # print 'self.opt_bounds = ', np.asarray(self.opt_bounds)
-        # print 'len(x0): ', len(x0)
-        # print 'len(q0): ', len(q0)
-        # print 'len(self.opt_bounds): ', len(self.opt_bounds)
         # Perform optimization
         xtra = []
-        opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.lambda_dynamics, self.dyn_model)
-        q_star, opt_val, d_info = opt.fmin_l_bfgs_b(func = pushMPCObjectiveFunction,
-                                                    x0 = q0,
-                                                    fprime = pushMPCObjectiveGradient,
-                                                    args = opt_args,
-                                                    bounds = self.opt_bounds)
+        opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
+        q_star, opt_val, d_info = opt.fmin_slsqp(pushMPCObjectiveFunction,
+                                                 q0,
+                                                 fprime = pushMPCObjectiveGradient,
+                                                 f_eqcons = pushMPCConstraints,
+                                                 fprime_eqcons = pushMPCConstraintsGradients,
+                                                 bounds = self.opt_bounds,
+                                                 args = opt_args)
+
 
         # TODO: Pull this into a new function, convert q vector to state
         u_star = q_star[self.m:self.m+self.n]
@@ -381,7 +356,6 @@ def test_mpc():
     n = 5
     m = 2
     u_max=0.5
-    lambda_dynamics=100.0
 
     cur_state = VisFeedbackPushTrackingFeedback()
     cur_state.x.x = 0.2
@@ -419,7 +393,7 @@ def test_mpc():
     print 'x0 = ', x0
     print 'q0 = ', np.asarray(q0)
     xtra = []
-    pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, lambda_dynamics, dyn_model)
+    pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
 
     # Construct and run MPC
     # mpc =  ModelPredictiveController(dyn_model, H, u_max, lambda_dynamics)
