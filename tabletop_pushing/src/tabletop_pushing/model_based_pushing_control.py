@@ -55,16 +55,15 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, dyn_model):
     '''
     step = m+n
     x_d_length = len(x_d[0])
-    score = 0
+    cost = 0
     for k in xrange(H):
         x_start = m+k*step
         x_stop = x_start+x_d_length
         # Pull out x from q
         x_k_plus_1 = np.asarray(q[x_start:x_stop])
         # Compute sum of squared error on current trajectory time step
-        score = sum((x_k_plus_1 - x_d[k+1])**2)
-    print 'Score = ', score
-    return score
+        cost = sum((x_k_plus_1 - x_d[k+1])**2)
+    return cost
 
 def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
     gradient = np.zeros(len(q))
@@ -78,11 +77,27 @@ def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
     return gradient
 
 def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
-    # TODO: Setup constraint functions from predicted dynamics
-    return 0.0
+    x = [x0]
+    u = []
+    step = m+n
+    x_d_length = len(x_d[0])
+    score = 0
+    for k in xrange(H):
+        u_start = k*step
+        u_stop = u_start + m
+        x_start = u_stop
+        x_stop = x_start + n
+        u.append(np.asarray(q[u_start:u_stop]))
+        x.append(np.asarray(q[x_start:x_stop]))
+    G = []
+    for k in xrange(H):
+        resid = x[k+1] - dyn_model.predict(x[k], u[k], xtra)
+        G.extend(resid)
+    return np.array(G)
 
 def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
     # TODO: Get jacobian of the constraints
+    J = np.zeros((len(eqcons), len(q)))
     return 0.0
 
 class ModelPredictiveController:
@@ -110,10 +125,10 @@ class ModelPredictiveController:
         # TODO: Get initial guess from cur_state and trajectory...
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
-        q0 = []
-        for i in xrange(self.H):
-            q0.extend([self.u_max, self.u_max,
-                       x_d[i+1][0], x_d[i+1][1], x_d[i+1][2], x_d[i+1][0] - 0.2, x_d[i+1][1] - 0.2])
+        U_init = []
+        for k in xrange(H):
+            U_init.append(np.array([u_max, u_max]))
+        q0 = self.get_q0(x0, U_init, xtra)
         print 'x0 = ', np.asarray(x0)
         print 'q0 = ', np.asarray(q0)
         # Perform optimization
@@ -142,6 +157,19 @@ class ModelPredictiveController:
         u.twist.linear.x = u_star[0]
         u.twist.linear.x = u_star[1]
         return u
+
+    def get_q0(self, x0, U, xtra):
+        q0 = []
+        x_k = x0
+        for k in xrange(self.H):
+            u_k = U[k]
+            x_k_plus_1 = self.dyn_model.predict(x_k, u_k, xtra)
+            for u_i in u_k:
+                q0.append(u_i)
+            for x_i in x_k_plus_1:
+                q0.append(x_i)
+            x_k = x_k_plus_1
+        return q0
 
     def transform_state_to_vector(self, cur_state, ee_pose, u=None):
         q = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
@@ -386,38 +414,32 @@ def test_mpc():
     x_d = trajectory_generator.generate_trajectory(H, cur_state.x, goal_loc)
     dyn_model = NaiveInputDynamics(delta_t, n, m)
 
-    # TODO: Generate feasible solution using known model
     print 'H = ', H
     print 'delta_t = ', delta_t
     print 'u_max = ', u_max
     print 'max displacement = ', delta_t*u_max
     print 'Total max displacement = ', delta_t*u_max*H
     print 'x_d = ', np.asarray(x_d)
-    # TODO: Get initial guess from cur_state and trajectory...
-    # TODO: Remove inital pose from decision vector
     x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                      ee_pose.pose.position.x, ee_pose.pose.position.y])
-    q0 = []
-    sigma_x = 0.05
-    sigma_y = 0.05
-    sigma_theta = 0.01
-    for i in xrange(H):
-        x_rand = random.random()-0.5
-        y_rand = random.random()-0.5
-        theta_rand = random.random()-0.5
-        x_obj = x_d[i+1][0] + x_rand*sigma_x
-        y_obj = x_d[i+1][1] + y_rand*sigma_y
-        theta_obj = x_d[i+1][2] + theta_rand*sigma_theta
-        x_ee = x_obj - 0.2
-        y_ee = y_obj - 0.2
-        q0.extend([u_max, u_max, x_obj, y_obj, theta_obj, x_ee, y_ee])
+    xtra = []
+    mpc =  ModelPredictiveController(dyn_model, H, u_max)
+    # Get initial guess from cur_state and control trajectory...
+    U_init = []
+    for k in xrange(H):
+        U_init.append(np.array([u_max, u_max]))
+    q0 = mpc.get_q0(x0, U_init, xtra)
     print 'x0 = ', x0
     print 'q0 = ', np.asarray(q0)
-    xtra = []
-    pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    print pushMPCObjectiveGradient(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # Construct and run MPC
-    # mpc =  ModelPredictiveController(dyn_model, H, u_max, lambda_dynamics)
+
+    cost = pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    print 'Cost =', cost
+    cost_grad = pushMPCObjectiveGradient(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    print 'Cost gradient =', cost_grad
+    constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    print 'Constraints =', constraints
+
+    # TODO: Run actual optimization
     # u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
 
 if __name__ == '__main__':
