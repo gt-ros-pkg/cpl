@@ -40,7 +40,7 @@ from math import copysign, pi
 import svmutil
 import numpy as np
 import scipy.optimize as opt
-from numpy.linalg import norm
+import random
 
 def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, dyn_model):
     '''
@@ -57,22 +57,32 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, dyn_model):
     x_d_length = len(x_d[0])
     score = 0
     for k in xrange(H):
-        x_start = k*step
+        x_start = m+k*step
         x_stop = x_start+x_d_length
         # Pull out x from q
         x_k_plus_1 = np.asarray(q[x_start:x_stop])
-        # Compute squared l2 norm on the goal trajectory
-        score += sum((x_k_plus_1 - x_d[k+1])**2)
+        # Compute sum of squared error on current trajectory time step
+        score = sum((x_k_plus_1 - x_d[k+1])**2)
     print 'Score = ', score
     return score
 
 def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
-    return 0.0
+    gradient = np.zeros(len(q))
+    step = m+n
+    x_d_length = len(x_d[0])
+    score = 0
+    for k in xrange(H):
+        x_i_start = m+k*step
+        for j, i in enumerate(range(x_i_start, x_i_start+x_d_length)):
+            gradient[i] = 2.0*(q[i]-x_d[k][j])
+    return gradient
 
 def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
+    # TODO: Setup constraint functions from predicted dynamics
     return 0.0
 
 def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
+    # TODO: Get jacobian of the constraints
     return 0.0
 
 class ModelPredictiveController:
@@ -388,13 +398,24 @@ def test_mpc():
     x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                      ee_pose.pose.position.x, ee_pose.pose.position.y])
     q0 = []
+    sigma_x = 0.05
+    sigma_y = 0.05
+    sigma_theta = 0.01
     for i in xrange(H):
-        q0.extend([u_max, u_max, x_d[i+1][0], x_d[i+1][1], x_d[i+1][2], x_d[i+1][0] - 0.2, x_d[i+1][1] - 0.2])
+        x_rand = random.random()-0.5
+        y_rand = random.random()-0.5
+        theta_rand = random.random()-0.5
+        x_obj = x_d[i+1][0] + x_rand*sigma_x
+        y_obj = x_d[i+1][1] + y_rand*sigma_y
+        theta_obj = x_d[i+1][2] + theta_rand*sigma_theta
+        x_ee = x_obj - 0.2
+        y_ee = y_obj - 0.2
+        q0.extend([u_max, u_max, x_obj, y_obj, theta_obj, x_ee, y_ee])
     print 'x0 = ', x0
     print 'q0 = ', np.asarray(q0)
     xtra = []
     pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
-
+    print pushMPCObjectiveGradient(q0, H, n, m, x0, x_d, xtra, dyn_model)
     # Construct and run MPC
     # mpc =  ModelPredictiveController(dyn_model, H, u_max, lambda_dynamics)
     # u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
