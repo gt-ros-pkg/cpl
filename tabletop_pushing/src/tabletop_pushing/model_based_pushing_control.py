@@ -172,19 +172,15 @@ class ModelPredictiveController:
         print 'q0 = ', np.asarray(q0)
         # Perform optimization
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
-        q_star, opt_val, d_info = opt.fmin_slsqp(pushMPCObjectiveFunction,
-                                                 q0,
-                                                 fprime = pushMPCObjectiveGradient,
-                                                 f_eqcons = pushMPCConstraints,
-                                                 fprime_eqcons = pushMPCConstraintsGradients,
-                                                 bounds = self.opt_bounds,
-                                                 args = opt_args)
-
-
-        # TODO: Pull this into a new function, convert q vector to state
-        u_star = q_star[self.m:self.m+self.n]
+        res = opt.fmin_slsqp(pushMPCObjectiveFunction, q0, fprime = pushMPCObjectiveGradient,
+                             f_eqcons = pushMPCConstraints, fprime_eqcons = pushMPCConstraintsGradients,
+                             bounds = self.opt_bounds, args = opt_args, full_output=True, iprint=2)
+        q_star = res[0]
+        opt_val = res[1]
         print 'q_star =', q_star
         print 'opt_val =', opt_val
+        # TODO: Pull this into a new function, convert q vector to state
+        u_star = q_star[self.m:self.m+self.n]
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         # u.header.stamp = rospy.Time.now()
