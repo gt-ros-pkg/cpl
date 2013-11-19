@@ -164,13 +164,13 @@ class ModelPredictiveController:
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
         U_init = []
-        for k in xrange(H):
-            U_init.append(np.array([u_max, u_max]))
+        for k in xrange(self.H):
+            U_init.append(np.array([self.u_max, self.u_max]))
+        xtra = []
         q0 = self.get_q0(x0, U_init, xtra)
         print 'x0 = ', np.asarray(x0)
         print 'q0 = ', np.asarray(q0)
         # Perform optimization
-        xtra = []
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
         q_star, opt_val, d_info = opt.fmin_slsqp(pushMPCObjectiveFunction,
                                                  q0,
@@ -484,7 +484,7 @@ def test_mpc():
     constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
     print 'Constraint Jacobian =', constraint_jacobian
     # TODO: Run actual optimization
-    # u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
+    u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
     return constraint_jacobian
 
 if __name__ == '__main__':
