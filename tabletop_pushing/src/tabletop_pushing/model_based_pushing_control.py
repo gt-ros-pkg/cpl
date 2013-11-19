@@ -36,7 +36,8 @@ import rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Pose2D
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import copysign, pi
+from math import copysign, pi, sqrt, isnan
+from numpy import finfo
 import svmutil
 import numpy as np
 import scipy.optimize as opt
@@ -150,14 +151,25 @@ class ModelPredictiveController:
         self.n = 5 # Predicted state space dimension
         self.m = 2 # Control space dimension
         self.u_max = u_max
+        self.max_iter = 100 # Max number of iterations
+        self.ftol = 1.0E-5 # Accuracy of answer
+        self.epsilon = sqrt(finfo(float).eps)
         bounds_k = []
         for i in xrange(self.m):
             bounds_k.append((-u_max, u_max))
         for i in xrange(self.n):
-            bounds_k.append((None, None))
+            bounds_k.append((-1.0E12,1.0E12))
         self.opt_bounds = []
         for i in xrange(self.H):
             self.opt_bounds.extend(bounds_k)
+        self.opt_options = {'iter':self.max_iter,
+                            'acc':self.ftol,
+                            'iprint':2,
+                            'disp':True,
+                            'epsilon':self.epsilon,
+                            'bounds':self.opt_bounds,
+                            'full_output':True}
+
 
     def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
         # TODO: Get initial guess from cur_state and trajectory...
@@ -165,16 +177,17 @@ class ModelPredictiveController:
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
         U_init = []
         for k in xrange(self.H):
-            U_init.append(np.array([self.u_max, self.u_max]))
+            U_init.append(np.array([0.9*self.u_max, 0.9*self.u_max]))
         xtra = []
         q0 = self.get_q0(x0, U_init, xtra)
         print 'x0 = ', np.asarray(x0)
         print 'q0 = ', np.asarray(q0)
-        # Perform optimization
+        # TODO: Move as much of this as possible to the constructor, only updated what's needed at each callback
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
+        # Perform optimization
         res = opt.fmin_slsqp(pushMPCObjectiveFunction, q0, fprime = pushMPCObjectiveGradient,
                              f_eqcons = pushMPCConstraints, fprime_eqcons = pushMPCConstraintsGradients,
-                             bounds = self.opt_bounds, args = opt_args, full_output=True, iprint=2)
+                             args = opt_args, **self.opt_options)
         q_star = res[0]
         opt_val = res[1]
         print 'q_star =', q_star
@@ -203,7 +216,7 @@ class ModelPredictiveController:
             for x_i in x_k_plus_1:
                 q0.append(x_i)
             x_k = x_k_plus_1
-        return q0
+        return np.array(q0)
 
     def transform_state_to_vector(self, cur_state, ee_pose, u=None):
         q = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
@@ -458,15 +471,15 @@ def test_mpc():
     print 'u_max = ', u_max
     print 'max displacement = ', delta_t*u_max
     print 'Total max displacement = ', delta_t*u_max*H
-    print 'x_d = ', np.asarray(x_d)
-    x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                     ee_pose.pose.position.x, ee_pose.pose.position.y])
+    print 'x_d = ', np.array(x_d)
+    x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+                   ee_pose.pose.position.x, ee_pose.pose.position.y])
     xtra = []
     mpc =  ModelPredictiveController(dyn_model, H, u_max)
     # Get initial guess from cur_state and control trajectory...
     U_init = []
     for k in xrange(H):
-        U_init.append(np.array([u_max, u_max]))
+        U_init.append(np.array([0.9*u_max, 0.9*u_max]))
     q0 = mpc.get_q0(x0, U_init, xtra)
     print 'x0 = ', x0
     print 'q0 = ', np.asarray(q0)
@@ -478,7 +491,7 @@ def test_mpc():
     constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
     print 'Constraints =', constraints
     constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    print 'Constraint Jacobian =', constraint_jacobian
+    # print 'Constraint Jacobian =', constraint_jacobian
     # TODO: Run actual optimization
     u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
     return constraint_jacobian
