@@ -77,6 +77,7 @@ def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
     return gradient
 
 def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
+    # TODO: Move this in to its own function?
     x = [x0]
     u = []
     step = m+n
@@ -91,14 +92,51 @@ def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
         x.append(np.asarray(q[x_start:x_stop]))
     G = []
     for k in xrange(H):
-        resid = x[k+1] - dyn_model.predict(x[k], u[k], xtra)
+        resid = dyn_model.predict(x[k], u[k], xtra) - x[k+1]
         G.extend(resid)
     return np.array(G)
 
 def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
-    # TODO: Get jacobian of the constraints
-    J = np.zeros((len(eqcons), len(q)))
-    return 0.0
+    # TODO: Move this x u pull out in to its own function?
+    x = [x0]
+    u = []
+    step = m+n
+    x_d_length = len(x_d[0])
+    score = 0
+    for k in xrange(H):
+        u_start = k*step
+        u_stop = u_start + m
+        x_start = u_stop
+        x_stop = x_start + n
+        u.append(np.asarray(q[u_start:u_stop]))
+        x.append(np.asarray(q[x_start:x_stop]))
+
+    # Build Jacobian of the constraints
+    num_constraints = H*n
+    J = np.zeros((num_constraints, len(q)))
+
+    # Ignore partials for x0 on the initial time step, since this is fixed
+    J_f_k0 = dyn_model.jacobian(x[0], u[0])
+    k_plus_1_constraint = np.eye(n)*-1.0
+    J[0:H,0:m] = J_f_k0[:,n:n+m]
+    J[0:H, m:m+n] = k_plus_1_constraint
+
+    # Setup partials for x[1], u[1], ..., x[H-1], u[H-1], x[H]
+    for k in range(1,H):
+        row_start = k*H
+        row_stop = row_start+n
+        col_start = m+(n+m)*(k-1)
+        col_stop = col_start+m+n
+        # Each of the H row blocks have the form f(x[k], u[k]) - x[k+1] (n dimensions)
+        # Get jacobian for f(x[k], u[k])
+        J_f_k = dyn_model.jacobian(x[k], u[k])
+        J[row_start:row_stop, col_start:col_stop] = J_f_k
+        # TODO: Set derivative for x[k+1]
+        col_start = col_stop
+        col_stop = col_start + n
+        J[row_start:row_stop, col_start:col_stop] = k_plus_1_constraint
+
+    return J
 
 class ModelPredictiveController:
     def __init__(self, model, H=5, u_max=1.0):
@@ -202,6 +240,7 @@ class NaiveInputDynamics:
         self.B = np.zeros((n, m))
         self.B[0:m,0:m] = np.eye(m)*delta_t
         self.B[3:3+m,0:m] = np.eye(m)*delta_t
+        self.J = np.concatenate((self.A, self.B), axis=1)
 
     def predict(self, x_k, u_k, xtra=[]):
         '''
@@ -216,8 +255,12 @@ class NaiveInputDynamics:
     def jacobian(self, x_k, u_k, xtra=[]):
         '''
         Compute the Jacobian of the prediciton function
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        returns Jacobian with columns ordered [x, u]
         '''
-        pass
+        return self.J
 
 class SVRPushDynamics:
     def __init__(self, svm_file_names=None, epsilons=None, kernel_type=None, m=3):
@@ -438,9 +481,11 @@ def test_mpc():
     print 'Cost gradient =', cost_grad
     constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
     print 'Constraints =', constraints
-
+    constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    print 'Constraint Jacobian =', constraint_jacobian
     # TODO: Run actual optimization
     # u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
+    return constraint_jacobian
 
 if __name__ == '__main__':
     # test_svm_stuff()
