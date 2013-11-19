@@ -128,8 +128,8 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
 
     return J
 
-
-def plot_desired_vs_controlled(q_star, X_d, x0, H, n, m, show_plot=True, suffix=''):
+def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0):
+    H = len(q_star)/(n+m)
     X,U =  get_x_u_from_q(q_star, x0, H, n, m)
     plotter.figure()
     # Plot desired
@@ -140,16 +140,23 @@ def plot_desired_vs_controlled(q_star, X_d, x0, H, n, m, show_plot=True, suffix=
     plotter.plot(x_d, y_d, 'ro')
 
     # Plot predicted
-    x_hat = [X_k[0] for X_k in X]
-    y_hat = [X_k[1] for X_k in X]
-    theta_hat = [X_k[1] for X_k in X]
+    x_hat = [X_k[0] for X_k in X[t:]]
+    y_hat = [X_k[1] for X_k in X[t:]]
+    theta_hat = [X_k[1] for X_k in X[t:]]
     plotter.plot(x_hat, y_hat,'b')
     plotter.plot(x_hat, y_hat,'b+')
+
+    # Plot observed / GT
+    x_gt = [X_k[0] for X_k in X[:t+1]]
+    y_gt = [X_k[1] for X_k in X[:t+1]]
+    theta_gt = [X_k[1] for X_k in X[:t+1]]
+    plotter.plot(x_gt, y_gt,'g')
+    plotter.plot(x_gt, y_gt,'g+')
 
     ax = plotter.gca()
     ax.set_xlim(0.0, 2.5)
     ax.set_ylim(-2.5, 2.5)
-    plotter.title('Desired (Red) and Predicted (Blue) Trajectories '+suffix)
+    plotter.title('Desired (Red) and Predicted (Blue) Trajectories'+suffix)
     plotter.xlabel('x (meters)')
     plotter.ylabel('y (meters)')
     if show_plot:
@@ -170,21 +177,24 @@ class ModelPredictiveController:
         self.max_iter = 1000 # Max number of iterations
         self.ftol = 1.0E-6 # Accuracy of answer
         self.epsilon = sqrt(finfo(float).eps)
-        bounds_k = []
-        for i in xrange(self.m):
-            bounds_k.append((-u_max, u_max))
-        for i in xrange(self.n):
-            bounds_k.append((-1.0E12,1.0E12))
-        self.opt_bounds = []
-        for i in xrange(self.H):
-            self.opt_bounds.extend(bounds_k)
         self.opt_options = {'iter':self.max_iter,
                             'acc':self.ftol,
                             'iprint':1,
                             'disp':True,
                             'epsilon':self.epsilon,
-                            'bounds':self.opt_bounds,
                             'full_output':True}
+        self.regenerate_bounds()
+
+    def regenerate_bounds(self):
+        bounds_k = []
+        for i in xrange(self.m):
+            bounds_k.append((-self.u_max, self.u_max))
+        for i in xrange(self.n):
+            bounds_k.append((-1.0E12,1.0E12))
+        self.opt_bounds = []
+        for i in xrange(self.H):
+            self.opt_bounds.extend(bounds_k)
+        self.opt_options['bounds'] = self.opt_bounds
 
     def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
@@ -193,8 +203,8 @@ class ModelPredictiveController:
         U_init = self.get_U_init(x0, x_d)
         xtra = []
         q0 = self.get_q0(x0, U_init, xtra)
-        print 'x0 = ', np.asarray(x0)
-        print 'q0 = ', np.asarray(q0)
+        # print 'x0 = ', np.asarray(x0)
+        # print 'q0 = ', np.asarray(q0)
         # TODO: Move as much of this as possible to the constructor, only updated what's needed at each callback
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
         # Perform optimization
@@ -204,12 +214,9 @@ class ModelPredictiveController:
         q_star = res[0]
         opt_val = res[1]
 
-        print 'opt_val =', opt_val,'\n'
-        print 'q_star =', q_star
-
-        plot_desired_vs_controlled(q0, x_d, x0, self.H, self.n, self.m, show_plot=False, suffix='q0')
-        plot_desired_vs_controlled(q_star, x_d, x0, self.H, self.n, self.m, suffix='q*')
-        return self.q_result_to_control_command(q_star)
+        # print 'opt_val =', opt_val,'\n'
+        # print 'q_star =', q_star
+        return self.q_result_to_control_command(q_star), q_star
 
     def q_result_to_control_command(self, q_star):
         u = TwistStamped()
@@ -496,13 +503,56 @@ def test_mpc():
     goal_loc.x = 2.0
     goal_loc.y = 0.0
 
-    trajectory_generator = ptg.StraightLineTrajectoryGenerator()
-    # trajectory_generator = ptg.ArcTrajectoryGenerator()
-    x_d = trajectory_generator.generate_trajectory(H, cur_state.x, goal_loc)
+    x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+                   ee_pose.pose.position.x, ee_pose.pose.position.y])
+    xtra = []
+
+    # trajectory_generator = ptg.StraightLineTrajectoryGenerator()
+    trajectory_generator = ptg.ArcTrajectoryGenerator()
+    x_d = trajectory_generator.generate_trajectory(H*2, cur_state.x, goal_loc)
     dyn_model = NaiveInputDynamics(delta_t, n, m)
+    sim_model = NaiveInputDynamics(delta_t, n, m)
 
     mpc =  ModelPredictiveController(dyn_model, H, u_max)
-    u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
+    q_gt = []
+    q_stars = []
+    for i in xrange(len(x_d)-1):
+        # Update desired trajectory
+        x_d_i = x_d[i:]
+        mpc.H = min(mpc.H, len(x_d_i)-1)
+        mpc.regenerate_bounds()
+
+        # Compute optimal control
+        u_star, q_star = mpc.feedbackControl(cur_state, ee_pose, x_d_i, cur_u)
+
+        # Convert q_star to correct form for prediction
+        x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta, ee_pose.pose.position.x, ee_pose.pose.position.y]
+        u_i = [q_star[0], q_star[1]]
+
+        # Plot performance so far
+        q_cur = q_gt[:]
+        q_cur.extend(q_star)
+        q_cur = np.array(q_cur)
+        plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i)
+
+        # Generate next start point based on simulation model
+        y_i = sim_model.predict(x_i, u_i)
+
+        # Store for evaluation later
+        q_gt.extend(u_i)
+        q_gt.extend(y_i)
+        q_stars.append(q_star)
+
+        # Convert result to form for input at next time step
+        cur_state.x.x = y_i[0]
+        cur_state.x.y = y_i[1]
+        cur_state.x.theta = y_i[2]
+        ee_pose.pose.position.x = y_i[3]
+        ee_pose.pose.position.y = y_i[4]
+
+    q_gt = np.array(q_gt)
+    # Plot final ground truth trajectory
+    plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-GT', t=len(x_d))
 
     # print 'H = ', H
     # print 'delta_t = ', delta_t
@@ -510,9 +560,6 @@ def test_mpc():
     # print 'max displacement = ', delta_t*u_max
     # print 'Total max displacement = ', delta_t*u_max*H
     # print 'x_d = ', np.array(x_d)
-    # x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-    #                ee_pose.pose.position.x, ee_pose.pose.position.y])
-    # xtra = []
 
     # # Get initial guess from cur_state and control trajectory...
     # U_init = []

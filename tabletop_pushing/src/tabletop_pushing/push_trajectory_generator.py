@@ -52,7 +52,7 @@ class StraightLineTrajectoryGenerator:
         return trajectory
 
 class ArcTrajectoryGenerator:
-    def generate_trajectory(self, H, start_pose, end_pose, arc_width=0.25):
+    def generate_trajectory(self, H, start_pose, end_pose, arc_width=0.5):
         start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
         end_loc = np.array([end_pose.x, end_pose.y, end_pose.theta])
         mid_loc = 0.5*(start_loc+end_loc)
