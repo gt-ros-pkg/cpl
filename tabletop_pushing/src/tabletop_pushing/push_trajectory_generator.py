@@ -50,3 +50,29 @@ class StraightLineTrajectoryGenerator:
             next_loc = trajectory[i] + step
             trajectory.append(next_loc)
         return trajectory
+
+class ArcTrajectoryGenerator:
+    def generate_trajectory(self, H, start_pose, end_pose, arc_width=0.25):
+        start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
+        end_loc = np.array([end_pose.x, end_pose.y, end_pose.theta])
+        mid_loc = 0.5*(start_loc+end_loc)
+        mid_loc[1] += arc_width
+
+        print 'start_loc =', start_loc
+        print 'mid_loc =',mid_loc
+        print 'end_loc =',end_loc
+
+        # Generate first half
+        step = (mid_loc-start_loc)/(0.5*H)
+        print 'step =',step
+        trajectory = [start_loc]
+        for i in xrange(H/2):
+            next_loc = trajectory[i] + step
+            trajectory.append(next_loc)
+        # Generate second half
+        step = (end_loc-mid_loc)/(0.5*H)
+        print 'step =',step
+        for i in range(H/2,H):
+            next_loc = trajectory[i] + step
+            trajectory.append(next_loc)
+        return trajectory

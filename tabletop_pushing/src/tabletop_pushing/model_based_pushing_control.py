@@ -227,17 +227,15 @@ class ModelPredictiveController:
         U_init = []
         for k in xrange(self.H):
             if k % 2 == 0:
-                u_x = 0.0
+                u_x = self.u_max*0.01
             else:
-                u_x = self.u_max
+                u_x = self.u_max*0.4
             if k / 3 == 0:
-                u_y = 0.0
+                u_y = self.u_max*0.2
             elif k / 3 == 1:
-                u_y = -self.u_max
+                u_y = -self.u_max*0.6
             else:
-                u_y = self.u_max
-            # u_x = 0.9*self.u_max
-            # u_y = 0.0
+                u_y = self.u_max*0.5
             U_init.append(np.array([u_x, u_y]))
         return U_init
 
@@ -499,6 +497,7 @@ def test_mpc():
     goal_loc.y = 0.0
 
     trajectory_generator = ptg.StraightLineTrajectoryGenerator()
+    # trajectory_generator = ptg.ArcTrajectoryGenerator()
     x_d = trajectory_generator.generate_trajectory(H, cur_state.x, goal_loc)
     dyn_model = NaiveInputDynamics(delta_t, n, m)
 
@@ -515,7 +514,7 @@ def test_mpc():
     #                ee_pose.pose.position.x, ee_pose.pose.position.y])
     # xtra = []
 
-    # Get initial guess from cur_state and control trajectory...
+    # # Get initial guess from cur_state and control trajectory...
     # U_init = []
     # for k in xrange(H):
     #     U_init.append(np.array([0.9*u_max, -0.9*u_max]))
@@ -529,8 +528,9 @@ def test_mpc():
     # print 'Cost gradient =', cost_grad
     # constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
     # print 'Constraints =', constraints
+    # print 'len(Constraints) =', len(constraints)
     # constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # print 'Constraint Jacobian =', constraint_jacobian
+    # # print 'Constraint Jacobian =', constraint_jacobian
     # return constraint_jacobian
 
 if __name__ == '__main__':
