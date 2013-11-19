@@ -312,6 +312,40 @@ class NaiveInputDynamics:
         '''
         return self.J
 
+class StochasticNaiveInputDynamics:
+    def __init__(self, delta_t, n, m, sigma):
+        self.delta_t = delta_t
+        self.A = np.eye(n)
+        self.B = np.zeros((n, m))
+        self.B[0:m,0:m] = np.eye(m)*delta_t
+        self.B[3:3+m,0:m] = np.eye(m)*delta_t
+        self.J = np.concatenate((self.A, self.B), axis=1)
+        self.sigma = sigma
+        self.n = n
+        self.m = m
+
+    def predict(self, x_k, u_k, xtra=[]):
+        '''
+        Predict the next state given current state estimates and control input
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        '''
+        C = np.random.normal(0.0, self.sigma, self.m)
+        u_s = u_k+C
+        x_k_plus_1 = np.array(self.A*np.matrix(x_k).T+self.B*np.matrix(u_s).T).ravel()
+        return x_k_plus_1
+
+    def jacobian(self, x_k, u_k, xtra=[]):
+        '''
+        Compute the Jacobian of the prediciton function
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        returns Jacobian with columns ordered [x, u]
+        '''
+        return self.J
+
 class SVRPushDynamics:
     def __init__(self, svm_file_names=None, epsilons=None, kernel_type=None, m=3):
         '''
@@ -487,6 +521,14 @@ def test_mpc():
     n = 5
     m = 2
     u_max = 0.5
+    sigma = 0.01
+
+    # print 'H = ', H
+    # print 'delta_t = ', delta_t
+    # print 'u_max = ', u_max
+    # print 'max displacement = ', delta_t*u_max
+    # print 'Total max displacement = ', delta_t*u_max*H
+    # print 'x_d = ', np.array(x_d)
 
     cur_state = VisFeedbackPushTrackingFeedback()
     cur_state.x.x = 0.2
@@ -511,11 +553,14 @@ def test_mpc():
     trajectory_generator = ptg.ArcTrajectoryGenerator()
     x_d = trajectory_generator.generate_trajectory(H*2, cur_state.x, goal_loc)
     dyn_model = NaiveInputDynamics(delta_t, n, m)
-    sim_model = NaiveInputDynamics(delta_t, n, m)
+
+    # TODO: Improve the way noise is added to make this better
+    sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
 
     mpc =  ModelPredictiveController(dyn_model, H, u_max)
     q_gt = []
     q_stars = []
+    u_gt = []
     for i in xrange(len(x_d)-1):
         # Update desired trajectory
         x_d_i = x_d[i:]
@@ -542,6 +587,7 @@ def test_mpc():
         q_gt.extend(u_i)
         q_gt.extend(y_i)
         q_stars.append(q_star)
+        u_gt.extend(q_star[:2])
 
         # Convert result to form for input at next time step
         cur_state.x.x = y_i[0]
@@ -551,34 +597,12 @@ def test_mpc():
         ee_pose.pose.position.y = y_i[4]
 
     q_gt = np.array(q_gt)
+    u_gt = np.array(u_gt)
+    u_mean = np.mean(u_gt)
+    print 'Control input SNR = ', u_mean/sigma
+
     # Plot final ground truth trajectory
     plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-GT', t=len(x_d))
-
-    # print 'H = ', H
-    # print 'delta_t = ', delta_t
-    # print 'u_max = ', u_max
-    # print 'max displacement = ', delta_t*u_max
-    # print 'Total max displacement = ', delta_t*u_max*H
-    # print 'x_d = ', np.array(x_d)
-
-    # # Get initial guess from cur_state and control trajectory...
-    # U_init = []
-    # for k in xrange(H):
-    #     U_init.append(np.array([0.9*u_max, -0.9*u_max]))
-    # q0 = mpc.get_q0(x0, U_init, xtra)
-    # print 'x0 = ', x0
-    # print 'q0 = ', np.asarray(q0)
-
-    # cost = pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # print 'Cost =', cost
-    # cost_grad = pushMPCObjectiveGradient(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # print 'Cost gradient =', cost_grad
-    # constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # print 'Constraints =', constraints
-    # print 'len(Constraints) =', len(constraints)
-    # constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # # print 'Constraint Jacobian =', constraint_jacobian
-    # return constraint_jacobian
 
 if __name__ == '__main__':
     # test_svm_stuff()
