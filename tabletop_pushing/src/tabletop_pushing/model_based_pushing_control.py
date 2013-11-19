@@ -88,15 +88,14 @@ def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
     for k in xrange(H):
         x_i_start = m+k*step
         for j, i in enumerate(range(x_i_start, x_i_start+x_d_length)):
-            gradient[i] = 2.0*(q[i]-x_d[k][j])
+            gradient[i] = 2.0*(q[i]-x_d[k+1][j])
     return gradient
 
 def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
     x, u = get_x_u_from_q(q, x0, H, n, m)
     G = []
     for k in xrange(H):
-        resid = dyn_model.predict(x[k], u[k], xtra) - x[k+1]
-        G.extend(resid)
+        G.extend(dyn_model.predict(x[k], u[k], xtra) - x[k+1])
     return np.array(G)
 
 def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
@@ -188,12 +187,10 @@ class ModelPredictiveController:
                             'full_output':True}
 
     def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
-        # TODO: Get initial guess from cur_state and trajectory...
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
-        U_init = []
-        for k in xrange(self.H):
-            U_init.append(np.array([0.9*self.u_max, 0.9*self.u_max]))
+        # TODO: Get initial guess at U from cur_state and trajectory (or at least goal)
+        U_init = self.get_U_init(x0, x_d)
         xtra = []
         q0 = self.get_q0(x0, U_init, xtra)
         print 'x0 = ', np.asarray(x0)
@@ -209,8 +206,12 @@ class ModelPredictiveController:
 
         print 'opt_val =', opt_val,'\n'
         print 'q_star =', q_star
+
+        plot_desired_vs_controlled(q0, x_d, x0, self.H, self.n, self.m, show_plot=False, suffix='q0')
         plot_desired_vs_controlled(q_star, x_d, x0, self.H, self.n, self.m, suffix='q*')
-        # TODO: Pull this into a new function, convert q vector to state
+        return self.q_result_to_control_command(q_star)
+
+    def q_result_to_control_command(self, q_star):
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         # u.header.stamp = rospy.Time.now()
@@ -221,6 +222,24 @@ class ModelPredictiveController:
         u.twist.linear.x = q_star[0]
         u.twist.linear.x = q_star[1]
         return u
+
+    def get_U_init(self, x0, x_d):
+        U_init = []
+        for k in xrange(self.H):
+            if k % 2 == 0:
+                u_x = 0.0
+            else:
+                u_x = self.u_max
+            if k / 3 == 0:
+                u_y = 0.0
+            elif k / 3 == 1:
+                u_y = -self.u_max
+            else:
+                u_y = self.u_max
+            # u_x = 0.9*self.u_max
+            # u_y = 0.0
+            U_init.append(np.array([u_x, u_y]))
+        return U_init
 
     def get_q0(self, x0, U, xtra):
         q0 = []
@@ -483,37 +502,36 @@ def test_mpc():
     x_d = trajectory_generator.generate_trajectory(H, cur_state.x, goal_loc)
     dyn_model = NaiveInputDynamics(delta_t, n, m)
 
-    print 'H = ', H
-    print 'delta_t = ', delta_t
-    print 'u_max = ', u_max
-    print 'max displacement = ', delta_t*u_max
-    print 'Total max displacement = ', delta_t*u_max*H
-    print 'x_d = ', np.array(x_d)
-    x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                   ee_pose.pose.position.x, ee_pose.pose.position.y])
-    xtra = []
     mpc =  ModelPredictiveController(dyn_model, H, u_max)
-    # Get initial guess from cur_state and control trajectory...
-    U_init = []
-    for k in xrange(H):
-        U_init.append(np.array([0.9*u_max, 0.9*u_max]))
-    q0 = mpc.get_q0(x0, U_init, xtra)
-    print 'x0 = ', x0
-    print 'q0 = ', np.asarray(q0)
-
-    cost = pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    print 'Cost =', cost
-    cost_grad = pushMPCObjectiveGradient(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    print 'Cost gradient =', cost_grad
-    constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    print 'Constraints =', constraints
-    constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
-    # print 'Constraint Jacobian =', constraint_jacobian
-
-    plot_desired_vs_controlled(q0, x_d, x0, H, n, m, show_plot=False, suffix='q0')
-
-    # TODO: Run actual optimization
     u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
+
+    # print 'H = ', H
+    # print 'delta_t = ', delta_t
+    # print 'u_max = ', u_max
+    # print 'max displacement = ', delta_t*u_max
+    # print 'Total max displacement = ', delta_t*u_max*H
+    # print 'x_d = ', np.array(x_d)
+    # x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+    #                ee_pose.pose.position.x, ee_pose.pose.position.y])
+    # xtra = []
+
+    # Get initial guess from cur_state and control trajectory...
+    # U_init = []
+    # for k in xrange(H):
+    #     U_init.append(np.array([0.9*u_max, -0.9*u_max]))
+    # q0 = mpc.get_q0(x0, U_init, xtra)
+    # print 'x0 = ', x0
+    # print 'q0 = ', np.asarray(q0)
+
+    # cost = pushMPCObjectiveFunction(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    # print 'Cost =', cost
+    # cost_grad = pushMPCObjectiveGradient(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    # print 'Cost gradient =', cost_grad
+    # constraints = pushMPCConstraints(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    # print 'Constraints =', constraints
+    # constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
+    # print 'Constraint Jacobian =', constraint_jacobian
+    # return constraint_jacobian
 
 if __name__ == '__main__':
     # test_svm_stuff()
