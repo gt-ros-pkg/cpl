@@ -41,7 +41,21 @@ from numpy import finfo
 import svmutil
 import numpy as np
 import scipy.optimize as opt
-import random
+import matplotlib.pyplot as plotter
+
+def get_x_u_from_q(q, x0, H, n, m):
+    x = [x0]
+    u = []
+    step = m+n
+    score = 0
+    for k in xrange(H):
+        u_start = k*step
+        u_stop = u_start + m
+        x_start = u_stop
+        x_stop = x_start + n
+        u.append(np.asarray(q[u_start:u_stop]))
+        x.append(np.asarray(q[x_start:x_stop]))
+    return (x,u)
 
 def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, dyn_model):
     '''
@@ -78,19 +92,7 @@ def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
     return gradient
 
 def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
-    # TODO: Move this in to its own function?
-    x = [x0]
-    u = []
-    step = m+n
-    x_d_length = len(x_d[0])
-    score = 0
-    for k in xrange(H):
-        u_start = k*step
-        u_stop = u_start + m
-        x_start = u_stop
-        x_stop = x_start + n
-        u.append(np.asarray(q[u_start:u_stop]))
-        x.append(np.asarray(q[x_start:x_stop]))
+    x, u = get_x_u_from_q(q, x0, H, n, m)
     G = []
     for k in xrange(H):
         resid = dyn_model.predict(x[k], u[k], xtra) - x[k+1]
@@ -98,19 +100,7 @@ def pushMPCConstraints(q, H, n, m, x0, x_d, xtra, dyn_model):
     return np.array(G)
 
 def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
-    # TODO: Move this x u pull out in to its own function?
-    x = [x0]
-    u = []
-    step = m+n
-    x_d_length = len(x_d[0])
-    score = 0
-    for k in xrange(H):
-        u_start = k*step
-        u_stop = u_start + m
-        x_start = u_stop
-        x_stop = x_start + n
-        u.append(np.asarray(q[u_start:u_stop]))
-        x.append(np.asarray(q[x_start:x_stop]))
+    x, u = get_x_u_from_q(q, x0, H, n, m)
 
     # Build Jacobian of the constraints
     num_constraints = H*n
@@ -139,6 +129,33 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
 
     return J
 
+
+def plot_desired_vs_controlled(q_star, X_d, x0, H, n, m, show_plot=True, suffix=''):
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+    plotter.figure()
+    # Plot desired
+    x_d = [X_d_k[0] for X_d_k in X_d]
+    y_d = [X_d_k[1] for X_d_k in X_d]
+    theta_d = [X_d_k[2] for X_d_k in X_d]
+    plotter.plot(x_d, y_d, 'r')
+    plotter.plot(x_d, y_d, 'ro')
+
+    # Plot predicted
+    x_hat = [X_k[0] for X_k in X]
+    y_hat = [X_k[1] for X_k in X]
+    theta_hat = [X_k[1] for X_k in X]
+    plotter.plot(x_hat, y_hat,'b')
+    plotter.plot(x_hat, y_hat,'b+')
+
+    ax = plotter.gca()
+    ax.set_xlim(0.0, 2.5)
+    ax.set_ylim(-2.5, 2.5)
+    plotter.title('Desired (Red) and Predicted (Blue) Trajectories '+suffix)
+    plotter.xlabel('x (meters)')
+    plotter.ylabel('y (meters)')
+    if show_plot:
+        plotter.show()
+
 class ModelPredictiveController:
     def __init__(self, model, H=5, u_max=1.0):
         '''
@@ -151,8 +168,8 @@ class ModelPredictiveController:
         self.n = 5 # Predicted state space dimension
         self.m = 2 # Control space dimension
         self.u_max = u_max
-        self.max_iter = 100 # Max number of iterations
-        self.ftol = 1.0E-5 # Accuracy of answer
+        self.max_iter = 1000 # Max number of iterations
+        self.ftol = 1.0E-6 # Accuracy of answer
         self.epsilon = sqrt(finfo(float).eps)
         bounds_k = []
         for i in xrange(self.m):
@@ -164,12 +181,11 @@ class ModelPredictiveController:
             self.opt_bounds.extend(bounds_k)
         self.opt_options = {'iter':self.max_iter,
                             'acc':self.ftol,
-                            'iprint':2,
+                            'iprint':1,
                             'disp':True,
                             'epsilon':self.epsilon,
                             'bounds':self.opt_bounds,
                             'full_output':True}
-
 
     def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
         # TODO: Get initial guess from cur_state and trajectory...
@@ -190,10 +206,11 @@ class ModelPredictiveController:
                              args = opt_args, **self.opt_options)
         q_star = res[0]
         opt_val = res[1]
+
+        print 'opt_val =', opt_val,'\n'
         print 'q_star =', q_star
-        print 'opt_val =', opt_val
+        plot_desired_vs_controlled(q_star, x_d, x0, self.H, self.n, self.m, suffix='q*')
         # TODO: Pull this into a new function, convert q vector to state
-        u_star = q_star[self.m:self.m+self.n]
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         # u.header.stamp = rospy.Time.now()
@@ -201,8 +218,8 @@ class ModelPredictiveController:
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
-        u.twist.linear.x = u_star[0]
-        u.twist.linear.x = u_star[1]
+        u.twist.linear.x = q_star[0]
+        u.twist.linear.x = q_star[1]
         return u
 
     def get_q0(self, x0, U, xtra):
@@ -492,9 +509,11 @@ def test_mpc():
     print 'Constraints =', constraints
     constraint_jacobian = pushMPCConstraintsGradients(q0, H, n, m, x0, x_d, xtra, dyn_model)
     # print 'Constraint Jacobian =', constraint_jacobian
+
+    plot_desired_vs_controlled(q0, x_d, x0, H, n, m, show_plot=False, suffix='q0')
+
     # TODO: Run actual optimization
     u_star = mpc.feedbackControl(cur_state, ee_pose, x_d, cur_u)
-    return constraint_jacobian
 
 if __name__ == '__main__':
     # test_svm_stuff()
