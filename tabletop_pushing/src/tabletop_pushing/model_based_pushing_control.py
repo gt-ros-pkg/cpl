@@ -108,12 +108,12 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
     # Ignore partials for x0 on the initial time step, since this is fixed
     J_f_k0 = dyn_model.jacobian(x[0], u[0])
     k_plus_1_constraint = np.eye(n)*-1.0
-    J[0:H,0:m] = J_f_k0[:,n:n+m]
-    J[0:H, m:m+n] = k_plus_1_constraint
+    J[0:n, 0:m] = J_f_k0[:,n:n+m]
+    J[0:n, m:m+n] = k_plus_1_constraint
 
     # Setup partials for x[1], u[1], ..., x[H-1], u[H-1], x[H]
     for k in range(1,H):
-        row_start = k*H
+        row_start = k*n
         row_stop = row_start+n
         col_start = m+(n+m)*(k-1)
         col_stop = col_start+m+n
@@ -477,11 +477,11 @@ def test_svm_stuff():
 import push_trajectory_generator as ptg
 
 def test_mpc():
-    delta_t = 1.0
-    H=5
+    delta_t = 2.0
+    H = 10
     n = 5
     m = 2
-    u_max=0.5
+    u_max = 0.5
 
     cur_state = VisFeedbackPushTrackingFeedback()
     cur_state.x.x = 0.2
