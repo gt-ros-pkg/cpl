@@ -86,6 +86,8 @@ def test_mpc():
     plot_output_path = '/home/thermans/sandbox/mpc_plots/'
     # plot_output_path = ''
     xtra = []
+    plot_all_t = False
+    plot_gt = True
 
     # print 'H = ', H
     # print 'delta_t = ', delta_t
@@ -150,8 +152,12 @@ def test_mpc():
         q_cur = q_gt[:]
         q_cur.extend(q_star)
         q_cur = np.array(q_cur)
-        plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
-                                   out_path=plot_output_path)
+        if plot_all_t:
+            plot_controls(q_cur, x_d, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+                          out_path=plot_output_path)
+
+            plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+                                       out_path=plot_output_path)
 
         # Generate next start point based on simulation model
         y_i = sim_model.predict(x_i, u_i)
@@ -175,8 +181,11 @@ def test_mpc():
     print 'Control input SNR = ', u_mean/sigma
 
     # Plot final ground truth trajectory
-    plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-GT', t=len(x_d),
-                               out_path=plot_output_path)
+    if plot_gt:
+        plot_controls(q_gt, x_d, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(len(x_d)-1)+']', t=len(x_d),
+                      out_path=plot_output_path)
+        plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-q*['+str(len(x_d)-1)+']',
+                                   t=len(x_d), out_path=plot_output_path)
 
     # Plot initial guess trajectory
     # mpc.H = 10

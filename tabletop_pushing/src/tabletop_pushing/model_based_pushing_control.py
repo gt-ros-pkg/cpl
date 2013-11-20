@@ -128,46 +128,6 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
 
     return J
 
-def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0, out_path=''):
-    H = len(q_star)/(n+m)
-    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
-    plotter.figure()
-    # Plot desired
-    x_d = [X_d_k[0] for X_d_k in X_d]
-    y_d = [X_d_k[1] for X_d_k in X_d]
-    theta_d = [X_d_k[2] for X_d_k in X_d]
-    plotter.plot(x_d, y_d, 'r')
-    plotter.plot(x_d, y_d, 'ro')
-
-    # Plot predicted
-    x_hat = [X_k[0] for X_k in X[t:]]
-    y_hat = [X_k[1] for X_k in X[t:]]
-    theta_hat = [X_k[1] for X_k in X[t:]]
-    plotter.plot(x_hat, y_hat,'b')
-    plotter.plot(x_hat, y_hat,'b+')
-
-    # Plot observed / GT
-    x_gt = [X_k[0] for X_k in X[:t+1]]
-    y_gt = [X_k[1] for X_k in X[:t+1]]
-    theta_gt = [X_k[1] for X_k in X[:t+1]]
-    plotter.plot(x_gt, y_gt,'g')
-    plotter.plot(x_gt, y_gt,'g+')
-
-    ax = plotter.gca()
-    ax.set_xlim(0.0, 2.2)
-    ax.set_ylim(-1.1, 1.1)
-    plot_title = 'MPC_Push_Control'+suffix
-    plotter.title(plot_title)
-    plotter.xlabel('x (meters)')
-    plotter.ylabel('y (meters)')
-    if len(out_path) > 0:
-        plotter.savefig(out_path+plot_title)
-    if show_plot:
-        plotter.show()
-
-def plot_controls(q_star):
-    pass
-
 class ModelPredictiveController:
     def __init__(self, model, H=5, u_max=1.0, delta_t=1.0):
         '''
@@ -279,11 +239,12 @@ class ModelPredictiveController:
         # Add the necessary number of more controls and locs to get to H tuples
         if N_to_add > 0:
             for k in xrange(N_to_add):
-                # Initialize next control assuming straight line motion
+                x_k = q0[-self.n:]
+                # Initialize next control assuming straight line motion between via points
                 deltaX = x_d[k0+k+1] - x_d[k0+k]
                 next_u = np.array([deltaX[0]/self.delta_t, deltaX[1]/self.delta_t])
-                x_k = q0[-self.n:]
                 q0 = np.concatenate([q0, next_u])
+                # Use dynamics to add next location
                 q0 = np.concatenate([q0, self.dyn_model.predict(x_k, next_u, xtra)])
         else:
             # Remove the necessary number of more controls and locs to get to H tuples
@@ -507,3 +468,67 @@ class SVRPushDynamics:
         if len(self.svm_models) > 0:
             for file_name, model in zip(output_file_names, self.svm_models):
                 svmutil.svm_save_model(file_name, model)
+
+def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0, out_path=''):
+    H = len(q_star)/(n+m)
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+    plotter.figure()
+    # Plot desired
+    x_d = [X_d_k[0] for X_d_k in X_d]
+    y_d = [X_d_k[1] for X_d_k in X_d]
+    theta_d = [X_d_k[2] for X_d_k in X_d]
+    plotter.plot(x_d, y_d, 'r')
+    plotter.plot(x_d, y_d, 'ro')
+
+    # Plot predicted
+    x_hat = [X_k[0] for X_k in X[t:]]
+    y_hat = [X_k[1] for X_k in X[t:]]
+    theta_hat = [X_k[1] for X_k in X[t:]]
+    plotter.plot(x_hat, y_hat,'b')
+    plotter.plot(x_hat, y_hat,'b+')
+
+    # Plot observed / GT
+    x_gt = [X_k[0] for X_k in X[:t+1]]
+    y_gt = [X_k[1] for X_k in X[:t+1]]
+    theta_gt = [X_k[1] for X_k in X[:t+1]]
+    plotter.plot(x_gt, y_gt,'g')
+    plotter.plot(x_gt, y_gt,'g+')
+
+    ax = plotter.gca()
+    ax.set_xlim(0.0, 2.2)
+    ax.set_ylim(-1.1, 1.1)
+    plot_title = 'MPC_Push_Control_Trajectory'+suffix
+    plotter.title(plot_title)
+    plotter.xlabel('x (meters)')
+    plotter.ylabel('y (meters)')
+    if len(out_path) > 0:
+        plotter.savefig(out_path+plot_title)
+    if show_plot:
+        plotter.show()
+
+def plot_controls(q_star, X_d, x0, n, m, u_max, show_plot=True, suffix='', t=0, out_path=''):
+    H = len(q_star)/(n+m)
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+
+    Ux = [u_k[0] for u_k in U]
+    Uy = [u_k[1] for u_k in U]
+
+    plotter.figure()
+    plotter.plot(Ux, 'r')
+    plotter.plot(Ux, 'ro')
+
+    plotter.plot(Uy, 'b')
+    plotter.plot(Uy, 'b+')
+    plotter.plot(np.ones(H)*u_max, 'g')
+    plotter.plot(np.ones(H)*-u_max, 'g')
+
+    plot_title = 'MPC_Push_Control_Inputs'+suffix
+    plotter.title(plot_title)
+    ax = plotter.gca()
+    ax.set_ylim(-1.1*u_max, 1.1*u_max)
+    plotter.xlabel('Time Step')
+    plotter.ylabel('U (meters/sec)')
+    if len(out_path) > 0:
+        plotter.savefig(out_path+plot_title)
+    if show_plot:
+        plotter.show()
