@@ -171,10 +171,7 @@ class ModelPredictiveController:
         else:
             U_init = self.get_U_init(x0, x_d)
             q0 = self.get_q0(x0, U_init, xtra)
-        # print 'x0 = ', np.asarray(x0)
-        # print 'q0 = ', np.asarray(q0)
 
-        # TODO: Move as much of this as possible to the constructor, only updated what's needed at each callback
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
         # Perform optimization
         res = opt.fmin_slsqp(pushMPCObjectiveFunction, q0, fprime = pushMPCObjectiveGradient,
@@ -184,8 +181,6 @@ class ModelPredictiveController:
         self.q_star_prev = q_star[:]
         opt_val = res[1]
 
-        # print 'opt_val =', opt_val,'\n'
-        # print 'q_star =', q_star
         return self.q_result_to_control_command(q_star), q_star
 
     def q_result_to_control_command(self, q_star):
@@ -250,30 +245,6 @@ class ModelPredictiveController:
             # Remove the necessary number of more controls and locs to get to H tuples
             q0 = q0[:N*self.H]
         return np.array(q0)
-
-    def transform_state_to_vector(self, cur_state, ee_pose, u=None):
-        q = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-             ee_pose.pose.position.x, ee_pose.pose.position.y]
-        if u is not None:
-            q.extend([u.twist.linear.x, u.twist.linear.y])
-        return q
-
-    def transform_vector_to_state(self, q):
-        x = Pose2D()
-        x.x = q[0]
-        x.y = q[1]
-        x.theta = q[2]
-        ee = Pose()
-        u = TwistStamped
-        u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time.now()
-        u.twist.linear.z = 0.0
-        u.twist.angular.x = 0.0
-        u.twist.angular.y = 0.0
-        u.twist.angular.z = 0.0
-        u.twist.linear.x = q[self.m]
-        u.twist.linear.x = q[self.m + 1]
-        return (x, ee, u)
 
 class NaiveInputDynamics:
     def __init__(self, delta_t, n, m):
