@@ -84,6 +84,8 @@ def test_mpc():
     u_max = 0.5
     sigma = 0.01
     plot_output_path = '/home/thermans/sandbox/mpc_plots/'
+    xtra = []
+
     # plot_output_path = ''
     # print 'H = ', H
     # print 'delta_t = ', delta_t
@@ -129,6 +131,7 @@ def test_mpc():
     q_gt = []
     q_stars = []
     u_gt = []
+    init_from_prev = False
     for i in xrange(len(x_d)-1):
         # Update desired trajectory
         x_d_i = x_d[i:]
@@ -136,7 +139,8 @@ def test_mpc():
         mpc.regenerate_bounds()
 
         # Compute optimal control
-        u_star, q_star = mpc.feedbackControl(cur_state, ee_pose, x_d_i, cur_u)
+        u_star, q_star = mpc.feedbackControl(cur_state, ee_pose, x_d_i, cur_u, xtra, init_from_prev)
+        init_from_prev = True
 
         # Convert q_star to correct form for prediction
         x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta, ee_pose.pose.position.x, ee_pose.pose.position.y]

@@ -202,12 +202,13 @@ class ModelPredictiveController:
             self.opt_bounds.extend(bounds_k)
         self.opt_options['bounds'] = self.opt_bounds
 
-    def feedbackControl(self, cur_state, ee_pose, x_d, cur_u, xtra = [], U_init=None, q0=None):
+    def feedbackControl(self, cur_state, ee_pose, x_d, cur_u, xtra = [], init_from_previous=False):
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
-        if q0 is None:
-            if U_init is None:
-                U_init = self.get_U_init(x0, x_d)
+        if init_from_previous:
+            q0 = self.init_q0_from_previous(x_d, xtra)
+        else:
+            U_init = self.get_U_init(x0, x_d)
             q0 = self.get_q0(x0, U_init, xtra)
         # print 'x0 = ', np.asarray(x0)
         # print 'q0 = ', np.asarray(q0)
@@ -219,6 +220,7 @@ class ModelPredictiveController:
                              f_eqcons = pushMPCConstraints, fprime_eqcons = pushMPCConstraintsGradients,
                              args = opt_args, **self.opt_options)
         q_star = res[0]
+        self.q_star_prev = q_star[:]
         opt_val = res[1]
 
         # print 'opt_val =', opt_val,'\n'
@@ -265,6 +267,27 @@ class ModelPredictiveController:
             for x_i in x_k_plus_1:
                 q0.append(x_i)
             x_k = x_k_plus_1
+        return np.array(q0)
+
+    def init_q0_from_previous(self, x_d, xtra):
+        # Remove initial control and loc from previous solution
+        N = self.n+self.m
+        q0 = self.q_star_prev[N:]
+
+        N_to_add = self.H - len(q0)/N
+        # Add the necessary number of more controls and locs to get to H tuples
+        if N_to_add > 0:
+            for k in xrange(N_to_add):
+                # TODO: Smarter about this (just delta_x / delta_t or something)...
+                next_u = np.array([0.5*self.u_max, 0.5*self.u_max])
+                x_k = q0[-self.n:]
+                # print 'q0', q0
+                # print 'x_k', x_k
+                q0 = np.concatenate([q0, next_u])
+                q0 = np.concatenate([q0, self.dyn_model.predict(x_k, next_u, xtra)])
+        else:
+            # Remove thex necessary number of more controls and locs to get to H tuples
+            q0 = q0[:N*self.H]
         return np.array(q0)
 
     def transform_state_to_vector(self, cur_state, ee_pose, u=None):
