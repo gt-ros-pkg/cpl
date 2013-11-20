@@ -128,7 +128,7 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
 
     return J
 
-def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0):
+def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0, out_path=''):
     H = len(q_star)/(n+m)
     X,U =  get_x_u_from_q(q_star, x0, H, n, m)
     plotter.figure()
@@ -154,13 +154,16 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     plotter.plot(x_gt, y_gt,'g+')
 
     ax = plotter.gca()
-    ax.set_xlim(0.0, 2.5)
-    ax.set_ylim(-2.5, 2.5)
-    plotter.title('Desired (Red) and Predicted (Blue) Trajectories'+suffix)
+    # ax.set_xlim(0.0, 2.2)
+    # ax.set_ylim(-1.1, 1.1)
+    plot_title = 'MPC_Push_Control'+suffix
+    plotter.title(plot_title)
     plotter.xlabel('x (meters)')
     plotter.ylabel('y (meters)')
     if show_plot:
         plotter.show()
+    if len(out_path) > 0:
+        plotter.savefig(out_path+plot_title)
 
 class ModelPredictiveController:
     def __init__(self, model, H=5, u_max=1.0):
@@ -522,7 +525,8 @@ def test_mpc():
     m = 2
     u_max = 0.5
     sigma = 0.01
-
+    plot_output_path = '/home/thermans/sandbox/mpc_plots/'
+    # plot_output_path = ''
     # print 'H = ', H
     # print 'delta_t = ', delta_t
     # print 'u_max = ', u_max
@@ -578,7 +582,8 @@ def test_mpc():
         q_cur = q_gt[:]
         q_cur.extend(q_star)
         q_cur = np.array(q_cur)
-        plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i)
+        plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+                                   out_path=plot_output_path)
 
         # Generate next start point based on simulation model
         y_i = sim_model.predict(x_i, u_i)
@@ -602,7 +607,8 @@ def test_mpc():
     print 'Control input SNR = ', u_mean/sigma
 
     # Plot final ground truth trajectory
-    plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-GT', t=len(x_d))
+    plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-GT', t=len(x_d),
+                               out_path=plot_output_path)
 
 if __name__ == '__main__':
     # test_svm_stuff()
