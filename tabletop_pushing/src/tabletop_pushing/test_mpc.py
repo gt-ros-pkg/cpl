@@ -84,9 +84,9 @@ def test_mpc():
     u_max = 0.5
     sigma = 0.01
     plot_output_path = '/home/thermans/sandbox/mpc_plots/'
+    # plot_output_path = ''
     xtra = []
 
-    # plot_output_path = ''
     # print 'H = ', H
     # print 'delta_t = ', delta_t
     # print 'u_max = ', u_max
@@ -126,7 +126,7 @@ def test_mpc():
     # TODO: Improve the way noise is added to make this better
     sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
 
-    mpc =  ModelPredictiveController(dyn_model, H, u_max)
+    mpc =  ModelPredictiveController(dyn_model, H, u_max, delta_t)
 
     q_gt = []
     q_stars = []
@@ -150,8 +150,8 @@ def test_mpc():
         q_cur = q_gt[:]
         q_cur.extend(q_star)
         q_cur = np.array(q_cur)
-        # plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
-        #                            out_path=plot_output_path)
+        plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+                                   out_path=plot_output_path)
 
         # Generate next start point based on simulation model
         y_i = sim_model.predict(x_i, u_i)

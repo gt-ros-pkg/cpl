@@ -169,7 +169,7 @@ def plot_controls(q_star):
     pass
 
 class ModelPredictiveController:
-    def __init__(self, model, H=5, u_max=1.0):
+    def __init__(self, model, H=5, u_max=1.0, delta_t=1.0):
         '''
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
@@ -180,8 +180,9 @@ class ModelPredictiveController:
         self.n = 5 # Predicted state space dimension
         self.m = 2 # Control space dimension
         self.u_max = u_max
+        self.delta_t = delta_t
         self.max_iter = 1000 # Max number of iterations
-        self.ftol = 1.0E-6 # Accuracy of answer
+        self.ftol = 1.0E-5 # Accuracy of answer
         self.epsilon = sqrt(finfo(float).eps)
         self.opt_options = {'iter':self.max_iter,
                             'acc':self.ftol,
@@ -273,20 +274,19 @@ class ModelPredictiveController:
         # Remove initial control and loc from previous solution
         N = self.n+self.m
         q0 = self.q_star_prev[N:]
-
-        N_to_add = self.H - len(q0)/N
+        k0 = len(q0)/N
+        N_to_add = self.H - k0
         # Add the necessary number of more controls and locs to get to H tuples
         if N_to_add > 0:
             for k in xrange(N_to_add):
-                # TODO: Smarter about this (just delta_x / delta_t or something)...
-                next_u = np.array([0.5*self.u_max, 0.5*self.u_max])
+                # Initialize next control assuming straight line motion
+                deltaX = x_d[k0+k+1] - x_d[k0+k]
+                next_u = np.array([deltaX[0]/self.delta_t, deltaX[1]/self.delta_t])
                 x_k = q0[-self.n:]
-                # print 'q0', q0
-                # print 'x_k', x_k
                 q0 = np.concatenate([q0, next_u])
                 q0 = np.concatenate([q0, self.dyn_model.predict(x_k, next_u, xtra)])
         else:
-            # Remove thex necessary number of more controls and locs to get to H tuples
+            # Remove the necessary number of more controls and locs to get to H tuples
             q0 = q0[:N*self.H]
         return np.array(q0)
 
