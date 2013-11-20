@@ -40,39 +40,25 @@ from math import copysign, pi
 import svmutil
 import numpy as np
 
+class PiecewiseLinearTrajectoryGenerator:
+    '''
+    Define a finer time scale trajectory through a list of fixed points
+    '''
+    def generate_trajectory(self, H, start_pose, pose_list):
+        start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
+        trajectory = [start_loc]
+        num_steps = H/len(pose_list)
+        for i in xrange(len(pose_list)):
+            p_i = np.array([pose_list[i].x, pose_list[i].y, pose_list[i].theta])
+            step = (p_i-trajectory[-1])/num_steps
+            # print 'step =',step
+            for j in xrange(num_steps):
+                next_loc = trajectory[-1] + step
+                trajectory.append(next_loc)
+        return trajectory
+
 class StraightLineTrajectoryGenerator:
     def generate_trajectory(self, H, start_pose, end_pose):
-        start_loc = np.asarray([start_pose.x, start_pose.y, start_pose.theta])
-        end_loc = np.asarray([end_pose.x, end_pose.y, end_pose.theta])
-        step = np.asarray([(end_pose.x - start_pose.x)/H, (end_pose.y - start_pose.y)/H, 0.0])
-        trajectory = [start_loc]
-        for i in xrange(H):
-            next_loc = trajectory[i] + step
-            trajectory.append(next_loc)
-        return trajectory
+        pltg = PiecewiseLinearTrajectoryGenerator()
+        return pltg.generate_trajectory(H, start_pose, [end_pose])
 
-class ArcTrajectoryGenerator:
-    def generate_trajectory(self, H, start_pose, end_pose, arc_width=0.5):
-        start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
-        end_loc = np.array([end_pose.x, end_pose.y, end_pose.theta])
-        mid_loc = 0.5*(start_loc+end_loc)
-        mid_loc[1] += arc_width
-
-        print 'start_loc =', start_loc
-        print 'mid_loc =',mid_loc
-        print 'end_loc =',end_loc
-
-        # Generate first half
-        step = (mid_loc-start_loc)/(0.5*H)
-        print 'step =',step
-        trajectory = [start_loc]
-        for i in xrange(H/2):
-            next_loc = trajectory[i] + step
-            trajectory.append(next_loc)
-        # Generate second half
-        step = (end_loc-mid_loc)/(0.5*H)
-        print 'step =',step
-        for i in range(H/2,H):
-            next_loc = trajectory[i] + step
-            trajectory.append(next_loc)
-        return trajectory

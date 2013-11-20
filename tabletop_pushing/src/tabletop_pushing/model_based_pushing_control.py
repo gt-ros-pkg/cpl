@@ -154,16 +154,19 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     plotter.plot(x_gt, y_gt,'g+')
 
     ax = plotter.gca()
-    # ax.set_xlim(0.0, 2.2)
-    # ax.set_ylim(-1.1, 1.1)
+    ax.set_xlim(0.0, 2.2)
+    ax.set_ylim(-1.1, 1.1)
     plot_title = 'MPC_Push_Control'+suffix
     plotter.title(plot_title)
     plotter.xlabel('x (meters)')
     plotter.ylabel('y (meters)')
-    if show_plot:
-        plotter.show()
     if len(out_path) > 0:
         plotter.savefig(out_path+plot_title)
+    if show_plot:
+        plotter.show()
+
+def plot_controls(q_star):
+    pass
 
 class ModelPredictiveController:
     def __init__(self, model, H=5, u_max=1.0):
@@ -199,15 +202,16 @@ class ModelPredictiveController:
             self.opt_bounds.extend(bounds_k)
         self.opt_options['bounds'] = self.opt_bounds
 
-    def feedbackControl(self, cur_state, ee_pose, x_d, cur_u):
+    def feedbackControl(self, cur_state, ee_pose, x_d, cur_u, xtra = [], U_init=None, q0=None):
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
-        # TODO: Get initial guess at U from cur_state and trajectory (or at least goal)
-        U_init = self.get_U_init(x0, x_d)
-        xtra = []
-        q0 = self.get_q0(x0, U_init, xtra)
+        if q0 is None:
+            if U_init is None:
+                U_init = self.get_U_init(x0, x_d)
+            q0 = self.get_q0(x0, U_init, xtra)
         # print 'x0 = ', np.asarray(x0)
         # print 'q0 = ', np.asarray(q0)
+
         # TODO: Move as much of this as possible to the constructor, only updated what's needed at each callback
         opt_args = (self.H, self.n, self.m, x0, x_d, xtra, self.dyn_model)
         # Perform optimization
@@ -234,6 +238,7 @@ class ModelPredictiveController:
         return u
 
     def get_U_init(self, x0, x_d):
+        # TODO: Get initial guess at U from cur_state and trajectory (or at least goal)
         U_init = []
         for k in xrange(self.H):
             if k % 2 == 0:
@@ -479,137 +484,3 @@ class SVRPushDynamics:
         if len(self.svm_models) > 0:
             for file_name, model in zip(output_file_names, self.svm_models):
                 svmutil.svm_save_model(file_name, model)
-
-#
-# Offline Testing
-#
-import sys
-import push_learning
-
-def test_svm_stuff():
-    aff_file_name  = sys.argv[1]
-    plio = push_learning.CombinedPushLearnControlIO()
-    plio.read_in_data_file(aff_file_name)
-    svm_dynamics = SVRPushDynamics()
-    svm_dynamics.learn_model(plio.push_trials)
-    base_path = '/u/thermans/data/svm_dyn/'
-    output_paths = []
-    output_paths.append(base_path+'delta_x_dyn.model')
-    output_paths.append(base_path+'delta_y_dyn.model')
-    output_paths.append(base_path+'delta_theta_dyn.model')
-    svm_dynamics.save_models(output_paths)
-    svm_dynamics2 = SVRPushDynamics(svm_file_names=output_paths)
-
-    test_pose = VisFeedbackPushTrackingFeedback()
-    test_pose.x.x = 0.2
-    test_pose.x.y = 0.0
-    test_pose.x.theta = pi*0.5
-    test_ee = PoseStamped()
-    test_ee.pose.position.x = test_pose.x.x - 0.2
-    test_ee.pose.position.y = test_pose.x.y - 0.2
-    test_u = TwistStamped()
-    test_u.twist.linear.x = 0.3
-    test_u.twist.linear.y = 0.3
-
-    next_state = svm_dynamics2.predict(test_pose, test_ee, test_u)
-
-    print 'test_state.x: ', test_pose.x
-    print 'next_state.x: ', next_state.x
-
-import push_trajectory_generator as ptg
-
-def test_mpc():
-    delta_t = 2.0
-    H = 10
-    n = 5
-    m = 2
-    u_max = 0.5
-    sigma = 0.01
-    plot_output_path = '/home/thermans/sandbox/mpc_plots/'
-    # plot_output_path = ''
-    # print 'H = ', H
-    # print 'delta_t = ', delta_t
-    # print 'u_max = ', u_max
-    # print 'max displacement = ', delta_t*u_max
-    # print 'Total max displacement = ', delta_t*u_max*H
-    # print 'x_d = ', np.array(x_d)
-
-    cur_state = VisFeedbackPushTrackingFeedback()
-    cur_state.x.x = 0.2
-    cur_state.x.y = 0.0
-    cur_state.x.theta = pi*0.5
-    ee_pose = PoseStamped()
-    ee_pose.pose.position.x = cur_state.x.x - 0.2
-    ee_pose.pose.position.y = cur_state.x.y - 0.2
-    cur_u = TwistStamped()
-    cur_u.twist.linear.x = u_max
-    cur_u.twist.linear.y = 0.0
-
-    goal_loc = Pose2D()
-    goal_loc.x = 2.0
-    goal_loc.y = 0.0
-
-    x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                   ee_pose.pose.position.x, ee_pose.pose.position.y])
-    xtra = []
-
-    # trajectory_generator = ptg.StraightLineTrajectoryGenerator()
-    trajectory_generator = ptg.ArcTrajectoryGenerator()
-    x_d = trajectory_generator.generate_trajectory(H*2, cur_state.x, goal_loc)
-    dyn_model = NaiveInputDynamics(delta_t, n, m)
-
-    # TODO: Improve the way noise is added to make this better
-    sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
-
-    mpc =  ModelPredictiveController(dyn_model, H, u_max)
-    q_gt = []
-    q_stars = []
-    u_gt = []
-    for i in xrange(len(x_d)-1):
-        # Update desired trajectory
-        x_d_i = x_d[i:]
-        mpc.H = min(mpc.H, len(x_d_i)-1)
-        mpc.regenerate_bounds()
-
-        # Compute optimal control
-        u_star, q_star = mpc.feedbackControl(cur_state, ee_pose, x_d_i, cur_u)
-
-        # Convert q_star to correct form for prediction
-        x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta, ee_pose.pose.position.x, ee_pose.pose.position.y]
-        u_i = [q_star[0], q_star[1]]
-
-        # Plot performance so far
-        q_cur = q_gt[:]
-        q_cur.extend(q_star)
-        q_cur = np.array(q_cur)
-        plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
-                                   out_path=plot_output_path)
-
-        # Generate next start point based on simulation model
-        y_i = sim_model.predict(x_i, u_i)
-
-        # Store for evaluation later
-        q_gt.extend(u_i)
-        q_gt.extend(y_i)
-        q_stars.append(q_star)
-        u_gt.extend(q_star[:2])
-
-        # Convert result to form for input at next time step
-        cur_state.x.x = y_i[0]
-        cur_state.x.y = y_i[1]
-        cur_state.x.theta = y_i[2]
-        ee_pose.pose.position.x = y_i[3]
-        ee_pose.pose.position.y = y_i[4]
-
-    q_gt = np.array(q_gt)
-    u_gt = np.array(u_gt)
-    u_mean = np.mean(u_gt)
-    print 'Control input SNR = ', u_mean/sigma
-
-    # Plot final ground truth trajectory
-    plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-GT', t=len(x_d),
-                               out_path=plot_output_path)
-
-if __name__ == '__main__':
-    # test_svm_stuff()
-    test_mpc()
