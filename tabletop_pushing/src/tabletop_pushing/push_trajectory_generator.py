@@ -45,6 +45,11 @@ class PiecewiseLinearTrajectoryGenerator:
     Define a finer time scale trajectory through a list of fixed points
     '''
     def generate_trajectory(self, H, start_pose, pose_list):
+        '''
+        H - Number of time steps to get from start_pose to the final pose in pose_list
+        start_pose - Pose2D() location of start pose for trajectory
+        pose_list - list of Pose2D() locations for the rest of the trajectory
+        '''
         start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
         trajectory = [start_loc]
         num_steps = H/len(pose_list)
@@ -59,6 +64,10 @@ class PiecewiseLinearTrajectoryGenerator:
 
 class StraightLineTrajectoryGenerator:
     def generate_trajectory(self, H, start_pose, end_pose):
+        '''
+        H - Number of time steps to get from start_pose to end_pose
+        start_pose - Pose2D() location of start pose for trajectory
+        end_pose - Pose2D() location for the final point of the trajectory
+        '''
         pltg = PiecewiseLinearTrajectoryGenerator()
         return pltg.generate_trajectory(H, start_pose, [end_pose])
-
