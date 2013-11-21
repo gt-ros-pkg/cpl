@@ -148,7 +148,6 @@ class ModelPredictiveController:
         self.opt_options = {'iter':self.max_iter,
                             'acc':self.ftol,
                             'iprint':1,
-                            'disp':True,
                             'epsilon':self.epsilon,
                             'full_output':True}
         self.regenerate_bounds()
