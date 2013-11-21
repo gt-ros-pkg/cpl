@@ -89,9 +89,10 @@ class ViaPointTrajectoryGenerator:
         num_line_steps = H/len(pose_list)
         delta_t = 1.0/num_line_steps
 
-
         start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
         trajectory = [start_loc]
+
+        # TODO: Add smooth rotational transitions
 
         for i in xrange(len(pose_list)):
             p0 = trajectory[-1]

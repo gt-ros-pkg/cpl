@@ -130,7 +130,7 @@ def test_mpc():
     pose_list = [p1, p2, goal_loc, p4]
     # trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator()
     trajectory_generator = ptg.ViaPointTrajectoryGenerator()
-    x_d = trajectory_generator.generate_trajectory(H*4, cur_state.x, pose_list)
+    x_d = trajectory_generator.generate_trajectory(H*2, cur_state.x, pose_list)
 
     if test_trajectory:
         for i in xrange(len(x_d)):
@@ -151,7 +151,6 @@ def test_mpc():
     q_gt = []
     q_stars = []
     u_gt = []
-    init_from_prev = False
     for i in xrange(len(x_d)-1):
         # Update desired trajectory
         x_d_i = x_d[i:]
@@ -159,11 +158,11 @@ def test_mpc():
         mpc.regenerate_bounds()
 
         # Compute optimal control
-        u_star, q_star = mpc.feedbackControl(cur_state, ee_pose, x_d_i, cur_u, xtra, init_from_prev)
-        init_from_prev = True
+        x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta, ee_pose.pose.position.x, ee_pose.pose.position.y]
+        q_star = mpc.feedbackControl(x_i, x_d_i, xtra)
+        mpc.init_from_previous = True
 
         # Convert q_star to correct form for prediction
-        x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta, ee_pose.pose.position.x, ee_pose.pose.position.y]
         u_i = [q_star[0], q_star[1]]
 
         # Plot performance so far

@@ -135,6 +135,7 @@ class ModelPredictiveController:
         H - the lookahead horizon for MPC
         u_max - maximum allowed velocity
         '''
+        self.init_from_previous = False
         self.dyn_model = model
         self.H = H # Time horizon
         self.n = 5 # Predicted state space dimension
@@ -163,10 +164,8 @@ class ModelPredictiveController:
             self.opt_bounds.extend(bounds_k)
         self.opt_options['bounds'] = self.opt_bounds
 
-    def feedbackControl(self, cur_state, ee_pose, x_d, cur_u, xtra = [], init_from_previous=False):
-        x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                         ee_pose.pose.position.x, ee_pose.pose.position.y])
-        if init_from_previous:
+    def feedbackControl(self, x0, x_d, xtra = []):
+        if self.init_from_previous:
             q0 = self.init_q0_from_previous(x_d, xtra)
         else:
             U_init = self.get_U_init(x0, x_d)
@@ -181,19 +180,7 @@ class ModelPredictiveController:
         self.q_star_prev = q_star[:]
         opt_val = res[1]
 
-        return self.q_result_to_control_command(q_star), q_star
-
-    def q_result_to_control_command(self, q_star):
-        u = TwistStamped()
-        u.header.frame_id = 'torso_lift_link'
-        # u.header.stamp = rospy.Time.now()
-        u.twist.linear.z = 0.0
-        u.twist.angular.x = 0.0
-        u.twist.angular.y = 0.0
-        u.twist.angular.z = 0.0
-        u.twist.linear.x = q_star[0]
-        u.twist.linear.x = q_star[1]
-        return u
+        return q_star
 
     def get_U_init(self, x0, x_d):
         # TODO: Get initial guess at U from cur_state and trajectory (or at least goal)
