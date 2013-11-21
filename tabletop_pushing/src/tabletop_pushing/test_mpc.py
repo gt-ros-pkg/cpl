@@ -83,11 +83,12 @@ def test_mpc():
     m = 2
     u_max = 0.5
     sigma = 0.01
-    plot_output_path = '/home/thermans/sandbox/mpc_plots/'
-    # plot_output_path = ''
+    # plot_output_path = '/home/thermans/sandbox/mpc_plots/'
+    plot_output_path = ''
     xtra = []
     plot_all_t = False
     plot_gt = True
+    test_trajectory = False
 
     # print 'H = ', H
     # print 'delta_t = ', delta_t
@@ -97,7 +98,7 @@ def test_mpc():
     # print 'x_d = ', np.array(x_d)
 
     cur_state = VisFeedbackPushTrackingFeedback()
-    cur_state.x.x = 0.2
+    cur_state.x.x = 0.0
     cur_state.x.y = 0.0
     cur_state.x.theta = pi*0.5
     ee_pose = PoseStamped()
@@ -114,13 +115,30 @@ def test_mpc():
     goal_loc.x = 2.0
     goal_loc.y = 0.0
 
-    mid_loc = Pose2D()
-    mid_loc.x = (goal_loc.x + cur_state.x.x)*0.5
-    mid_loc.y = (goal_loc.y + cur_state.x.y)*0.5+0.5
+    p1 = Pose2D()
+    p1.x = 0.5
+    p1.y = 0.5
 
-    pose_list = [mid_loc, goal_loc]
-    trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator()
-    x_d = trajectory_generator.generate_trajectory(H*2, cur_state.x, pose_list)
+    p2 = Pose2D()
+    p2.x = 1.0
+    p2.y = -0.25
+
+    p4 = Pose2D()
+    p4.x = 2.5
+    p4.y = 0.0
+
+    pose_list = [p1, p2, goal_loc, p4]
+    # trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator()
+    trajectory_generator = ptg.ViaPointTrajectoryGenerator()
+    x_d = trajectory_generator.generate_trajectory(H*4, cur_state.x, pose_list)
+
+    if test_trajectory:
+        for i in xrange(len(x_d)):
+            print 'x_d[',i,'] =', x_d[i]
+        q_fake = np.zeros((n+m)*H)
+
+        plot_desired_vs_controlled(q_fake, x_d, x0, n, m, show_plot=True, suffix='-piecewise-linear',
+                                   out_path=plot_output_path)
 
     # TODO: Test with a more complicated dynamics model
     dyn_model = NaiveInputDynamics(delta_t, n, m)

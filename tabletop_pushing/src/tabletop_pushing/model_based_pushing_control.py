@@ -465,9 +465,10 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     plotter.plot(x_gt, y_gt,'g')
     plotter.plot(x_gt, y_gt,'g+')
 
+    # TODO: Fix this for better stuff
     ax = plotter.gca()
-    ax.set_xlim(0.0, 2.2)
-    ax.set_ylim(-1.1, 1.1)
+    ax.set_xlim(-0.2, 3.0)
+    ax.set_ylim(-1.2, 1.2)
     plot_title = 'MPC_Push_Control_Trajectory'+suffix
     plotter.title(plot_title)
     plotter.xlabel('x (meters)')
