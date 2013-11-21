@@ -52,6 +52,8 @@ from push_learning import ControlAnalysisIO
 import rbf_control
 import sys
 from push_primitives import *
+from model_based_pushing_control import ModelPredictiveController, NaiveInputDynamics
+from push_trajectory_generator import *
 
 _OFFLINE = False
 _USE_LEARN_IO = True
@@ -268,7 +270,8 @@ class PositionFeedbackPushNode:
         self.mpc_state_space_dim = rospy.get_param('~mpc_n', 5)
         self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
         self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
-        self.mpc_max_u = rospy.get_param('~mpc_max_u', 0.5)
+        self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.5)
+        self.num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 30) # At 10 Hz implies 3 seconds
 
         # Set joint gains
         self.arm_mode = None
@@ -523,10 +526,10 @@ class PositionFeedbackPushNode:
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
                                                   self.mpc_u_max, self.mpc_delta_t)
             # Create target trajectory to goal pose
-            self.trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator()
+            self.trajectory_generator = PiecewiseLinearTrajectoryGenerator()
             pose_list = [goal.desired_pose]
-            self.mpc_desired_trjajectory = trajectory_generator.generate_trajectory(
-                self.num_mpc_trajectory_steps, cur_state.x, pose_list)
+            self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(
+                self.num_mpc_trajectory_steps, request.obj_start_pose, pose_list)
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -894,8 +897,10 @@ class PositionFeedbackPushNode:
         return u
 
     def MPCFeedbackController(self, cur_state, ee_pose):
+        # TODO: Check that self.MPC exists?
         # Get updated list for forward trajectory
-        x_d_i = self.mpc_desired_trajectory[cur_state.seq:]
+        rospy.logwarn('Pushing with x_d['+str(cur_state.header.seq))
+        x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
 

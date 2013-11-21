@@ -600,15 +600,15 @@ class TabletopExecutive:
 
         if behavior_primitive == OVERHEAD_PUSH or behavior_primitive == OPEN_OVERHEAD_PUSH:
             result = self.overhead_feedback_push_object(which_arm,
-                                                        push_vector_res.push, goal_pose,
+                                                        push_vector_res, goal_pose,
                                                         controller_name, proxy_name, behavior_primitive)
         elif behavior_primitive == GRIPPER_SWEEP:
-            result = self.feedback_sweep_object(which_arm, push_vector_res.push,
+            result = self.feedback_sweep_object(which_arm, push_vector_res,
                                                 goal_pose, controller_name, proxy_name, behavior_primitive)
         elif (behavior_primitive == GRIPPER_PUSH or behavior_primitive == PINCHER_PUSH or
               behavior_primitive == GRIPPER_PULL):
             result = self.gripper_feedback_push_object(which_arm,
-                                                       push_vector_res.push, goal_pose,
+                                                       push_vector_res, goal_pose,
                                                        controller_name, proxy_name, behavior_primitive)
         else:
             rospy.logwarn('Unknown behavior_primitive: ' + str(behavior_primitive))
@@ -763,14 +763,19 @@ class TabletopExecutive:
         raise_req.init_arms = init_arms
         raise_res = self.raise_and_look_proxy(raise_req)
 
-    def overhead_feedback_push_object(self, which_arm, push_vector, goal_pose, controller_name,
+    def overhead_feedback_push_object(self, which_arm, learn_push_res, goal_pose, controller_name,
                                       proxy_name, behavior_primitive, high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
+        push_vector = learn_push_res.push
+        push_req.obj_start_pose.x = learn_push_res.centroid.x
+        push_req.obj_start_pose.y = learn_push_res.centroid.y
+        push_req.obj_start_pose.theta = learn_push_res.theta
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+
         if behavior_primitive == OPEN_OVERHEAD_PUSH:
             push_req.open_gripper = True
         if _USE_LEARN_IO:
@@ -820,10 +825,14 @@ class TabletopExecutive:
             post_push_res = self.overhead_feedback_post_push_proxy(push_req)
         return push_res
 
-    def gripper_feedback_push_object(self, which_arm, push_vector, goal_pose, controller_name,
+    def gripper_feedback_push_object(self, which_arm, learn_push_res, goal_pose, controller_name,
                                      proxy_name, behavior_primitive, high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
+        push_vector = learn_push_res.push
+        push_req.obj_start_pose.x = learn_push_res.centroid.x
+        push_req.obj_start_pose.y = learn_push_res.centroid.y
+        push_req.obj_start_pose.theta = learn_push_res.theta
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
@@ -890,10 +899,14 @@ class TabletopExecutive:
             post_push_res = self.gripper_feedback_post_push_proxy(push_req)
         return push_res
 
-    def feedback_sweep_object(self, which_arm, push_vector, goal_pose, controller_name,
+    def feedback_sweep_object(self, which_arm, learn_push_res, goal_pose, controller_name,
                               proxy_name, behavior_primitive, high_init=True, open_gripper=False):
         # Convert pose response to correct push request format
         push_req = FeedbackPushRequest()
+        push_vector = learn_push_res.push
+        push_req.obj_start_pose.x = learn_push_res.centroid.x
+        push_req.obj_start_pose.y = learn_push_res.centroid.y
+        push_req.obj_start_pose.theta = learn_push_res.theta
         push_req.start_point.header = push_vector.header
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
@@ -1070,7 +1083,7 @@ class TabletopExecutive:
         if _USE_FIXED_GOAL or self.start_loc_use_fixed_goal:
             goal_pose = Pose2D()
             goal_pose.x = 0.95
-            goal_pose.y = -0.1
+            goal_pose.y = 0.1
             goal_pose.theta = 0
             if self.start_loc_use_fixed_goal:
                 goal_pose.y += self.start_loc_goal_y_delta

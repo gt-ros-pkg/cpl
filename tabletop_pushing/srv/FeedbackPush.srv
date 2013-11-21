@@ -1,6 +1,7 @@
 geometry_msgs/PointStamped start_point
 float64 wrist_yaw
 geometry_msgs/Pose2D goal_pose
+geometry_msgs/Pose2D obj_start_pose
 string controller_name
 string proxy_name
 string behavior_primitive
