@@ -53,7 +53,7 @@ import rbf_control
 import sys
 from push_primitives import *
 
-_OFFLINE = True
+_OFFLINE = False
 _USE_LEARN_IO = True
 _BUFFER_DATA = True
 
@@ -260,6 +260,15 @@ class PositionFeedbackPushNode:
 
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.RBF = None
+
+        # MPC Parameters
+        self.MPC = None
+        self.trajectory_generator = None
+        self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/9.)
+        self.mpc_state_space_dim = rospy.get_param('~mpc_n', 5)
+        self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
+        self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
+        self.mpc_max_u = rospy.get_param('~mpc_max_u', 0.5)
 
         # Set joint gains
         self.arm_mode = None
@@ -508,6 +517,16 @@ class PositionFeedbackPushNode:
             self.setupRBFController(goal.controller_name)
         elif goal.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             self.AFFINE_A, self.AFFINE_B = self.loadAffineController(goal.controller_name)
+        elif goal.controller_name.startswith(MPC_CONTROLLER_PREFIX):
+            # TODO: Create more flexibility in dynamics models being used here
+            dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim, self.mpc_input_space_dim)
+            self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
+                                                  self.mpc_u_max, self.mpc_delta_t)
+            # Create target trajectory to goal pose
+            self.trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator()
+            pose_list = [goal.desired_pose]
+            self.mpc_desired_trjajectory = trajectory_generator.generate_trajectory(
+                self.num_mpc_trajectory_steps, cur_state.x, pose_list)
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -532,9 +551,9 @@ class PositionFeedbackPushNode:
             self.y0 = feedback.x.y
         which_arm = self.active_arm
         if which_arm == 'l':
-            cur_pose = self.l_arm_pose
+            cur_ee_pose = self.l_arm_pose
         else:
-            cur_pose = self.r_arm_pose
+            cur_ee_pose = self.r_arm_pose
         if _OFFLINE:
             cur_pose_tool_frame = PoseStamped()
             cur_pose_tool_frame.pose.position.x = 0.0
@@ -548,7 +567,7 @@ class PositionFeedbackPushNode:
                 cur_pose_tool_frame.header.frame_id = 'l_gripper_tool_frame'
             else:
                 cur_pose_tool_frame.header.frame_id = 'r_gripper_tool_frame'
-            cur_pose = self.tf_listener.transformPose('torso_lift_link', cur_pose_tool_frame)
+            cur_ee_pose = self.tf_listener.transformPose('torso_lift_link', cur_pose_tool_frame)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
@@ -566,13 +585,13 @@ class PositionFeedbackPushNode:
         # TODO: Create options for non-velocity control updates, separate things more
         # NOTE: Add new pushing visual feedback controllers here
         if feedback.controller_name == ROTATE_TO_HEADING:
-            update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_pose)
+            update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_ee_pose)
         elif feedback.controller_name == CENTROID_CONTROLLER:
-            update_twist = self.centroidAlignmentController(feedback, self.desired_pose, cur_pose)
+            update_twist = self.centroidAlignmentController(feedback, self.desired_pose, cur_ee_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
-            update_twist = self.directGoalGripperController(feedback, self.desired_pose, cur_pose)
+            update_twist = self.directGoalGripperController(feedback, self.desired_pose, cur_ee_pose)
         elif feedback.controller_name == STRAIGHT_LINE_CONTROLLER:
             update_twist = self.straightLineController(feedback, self.desired_pose)
         elif feedback.controller_name == SPIN_COMPENSATION:
@@ -581,6 +600,8 @@ class PositionFeedbackPushNode:
             update_twist = self.RBFFeedbackController(feedback)
         elif feedback.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             update_twist = self.affineFeedbackController(feedback, self.AFFINE_A, self.AFFINE_B)
+        elif feedback.controller_name.startswith(MPC_CONTROLLER_PREFIX):
+            update_twist = self.MPCFeedbackController(feedback, cur_ee_pose)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
@@ -594,11 +615,11 @@ class PositionFeedbackPushNode:
             if _BUFFER_DATA:
                 self.learn_io.buffer_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                           update_twist.twist, update_twist.header.stamp.to_sec(),
-                                          cur_pose.pose, feedback.header.seq, feedback.z)
+                                          cur_ee_pose.pose, feedback.header.seq, feedback.z)
             else:
                 self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
                                          update_twist.twist, update_twist.header.stamp.to_sec(),
-                                         cur_pose.pose, feedback.header.seq, feedback.z)
+                                         cur_ee_pose.pose, feedback.header.seq, feedback.z)
 
         if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,
@@ -872,6 +893,30 @@ class PositionFeedbackPushNode:
         u.twist.linear.y = u_t[1]
         return u
 
+    def MPCFeedbackController(self, cur_state, ee_pose):
+        # Get updated list for forward trajectory
+        x_d_i = self.mpc_desired_trajectory[cur_state.seq:]
+        self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
+        self.MPC.regenerate_bounds()
+
+        # Feature vector for the dynamics model
+        xtra = []
+        x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+                         ee_pose.pose.position.x, ee_pose.pose.position.y])
+        q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)
+        # TODO: Save q_star, x_d_i, and other diagnostics to disk
+        self.MPC.init_from_previous = True
+
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.x = q_star[0]
+        u.twist.linear.y = q_star[1]
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        return u
     #
     # Post behavior functions
     #
