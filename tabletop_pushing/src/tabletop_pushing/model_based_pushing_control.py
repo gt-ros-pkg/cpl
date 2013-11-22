@@ -460,7 +460,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     plotter.xlabel('x (meters)')
     plotter.ylabel('y (meters)')
     if len(out_path) > 0:
-        plotter.savefig(out_path+plot_title)
+        plotter.savefig(out_path+plot_title+'.png')
     if show_plot:
         plotter.show()
 
@@ -487,6 +487,6 @@ def plot_controls(q_star, X_d, x0, n, m, u_max, show_plot=True, suffix='', t=0, 
     plotter.xlabel('Time Step')
     plotter.ylabel('U (meters/sec)')
     if len(out_path) > 0:
-        plotter.savefig(out_path+plot_title)
+        plotter.savefig(out_path+plot_title+'.png')
     if show_plot:
         plotter.show()

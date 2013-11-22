@@ -275,6 +275,7 @@ class PushLearningIO:
         return trials
 
     def open_out_file(self, file_name):
+        self.file_name = file_name
         self.data_out = file(file_name, 'a')
         self.data_out.write(_VERSION_LINE+'\n')
         # self.data_out.write(_LEARN_TRIAL_HEADER_LINE+'\n')
@@ -372,6 +373,7 @@ class ControlAnalysisIO:
         return filter(None, x)
 
     def open_out_file(self, file_name):
+        self.file_name = file_name
         self.data_out = file(file_name, 'a')
         self.data_out.write(_CONTROL_HEADER_LINE+'\n')
         self.data_out.flush()

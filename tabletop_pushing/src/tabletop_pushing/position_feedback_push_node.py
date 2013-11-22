@@ -52,12 +52,13 @@ from push_learning import ControlAnalysisIO
 import rbf_control
 import sys
 from push_primitives import *
-from model_based_pushing_control import ModelPredictiveController, NaiveInputDynamics
+from model_based_pushing_control import ModelPredictiveController, NaiveInputDynamics, plot_controls, plot_desired_vs_controlled
 from push_trajectory_generator import *
 
 _OFFLINE = False
 _USE_LEARN_IO = True
 _BUFFER_DATA = True
+_PLOT_MPC_STUFF = True
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
@@ -270,7 +271,7 @@ class PositionFeedbackPushNode:
         self.mpc_state_space_dim = rospy.get_param('~mpc_n', 5)
         self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
         self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
-        self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.5)
+        self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.03)
         self.num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 30) # At 10 Hz implies 3 seconds
 
         # Set joint gains
@@ -530,6 +531,8 @@ class PositionFeedbackPushNode:
             pose_list = [goal.desired_pose]
             self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(
                 self.num_mpc_trajectory_steps, request.obj_start_pose, pose_list)
+            # Clear q memory for plotting
+            self.mpc_q_gt = []
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -899,16 +902,34 @@ class PositionFeedbackPushNode:
     def MPCFeedbackController(self, cur_state, ee_pose):
         # TODO: Check that self.MPC exists?
         # Get updated list for forward trajectory
-        rospy.logwarn('Pushing with x_d['+str(cur_state.header.seq))
         x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
+        rospy.logwarn('Pushing with x_d['+str(cur_state.header.seq)+'] ='+str(x_d_i))
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
 
+        # TODO: get this passed in from vis feedback
         # Feature vector for the dynamics model
         xtra = []
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
+        if len(self.mpc_q_gt) > 0:
+            self.mpc_q_gt.extend(x0)
         q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)
+
+        if _PLOT_MPC_STUFF:
+            q_cur = self.mpc_q_gt[:]
+            q_cur.extend(q_star)
+            q_cur = np.array(q_cur)
+            plot_output_path = self.learn_io.file_name[:-4] + '_'
+            plot_controls(q_cur, self.mpc_desired_trajectory, x0, self.MPC.n, self.MPC.m, self.MPC.u_max,
+                          show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
+                          out_path=plot_output_path)
+            plot_desired_vs_controlled(q_cur, self.mpc_desired_trajectory, x0, self.MPC.n, self.MPC.m,
+                          show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
+                          out_path=plot_output_path)
+        # Update ground truth with most recent command
+        self.mpc_q_gt.extend([q_star[0], q_star[1]])
+
         # TODO: Save q_star, x_d_i, and other diagnostics to disk
         self.MPC.init_from_previous = True
 

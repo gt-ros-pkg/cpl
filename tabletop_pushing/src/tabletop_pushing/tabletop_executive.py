@@ -1082,7 +1082,7 @@ class TabletopExecutive:
     def generate_random_table_pose(self, init_pose=None):
         if _USE_FIXED_GOAL or self.start_loc_use_fixed_goal:
             goal_pose = Pose2D()
-            goal_pose.x = 0.95
+            goal_pose.x = 0.8
             goal_pose.y = 0.1
             goal_pose.theta = 0
             if self.start_loc_use_fixed_goal:
