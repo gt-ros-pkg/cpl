@@ -930,7 +930,8 @@ class PositionFeedbackPushNode:
             plot_controls(q_cur, self.mpc_desired_trajectory, x0, self.MPC.n, self.MPC.m, self.MPC.u_max,
                           show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
                           out_path=plot_output_path)
-            plot_desired_vs_controlled(q_cur, self.mpc_desired_trajectory, x0, self.MPC.n, self.MPC.m,
+            # TODO: Plot the correct forward trajectory/ history?
+            plot_desired_vs_controlled(q_cur, x_d_i, x0, self.MPC.n, self.MPC.m,
                           show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
                           out_path=plot_output_path)
         # Update ground truth with most recent command
