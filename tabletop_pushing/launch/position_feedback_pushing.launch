@@ -37,5 +37,8 @@
       <param name="gripper_raise_dist" type="double" value="0.05"/>
       <param name="head_pose_cam_frame" type="string" value="head_mount_kinect_rgb_link"/>
 
+      <param name="mpc_max_u" type="double" value="0.03"/>
+      <param name="mpc_H" type="int" value="10"/>
+      <param name="num_mpc_trajectory_steps" type="int" value="20"/>
     </node>
 </launch>

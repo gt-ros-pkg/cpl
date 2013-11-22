@@ -287,6 +287,8 @@ class PositionFeedbackPushNode:
         self.r_arm_x_d = None
         self.r_arm_F = None
 
+        self.goal_cb_count = 0
+
         # Setup cartesian controller parameters
         if self.use_jinv:
             self.base_cart_controller_name = '_cart_jinv_push'
@@ -501,6 +503,7 @@ class PositionFeedbackPushNode:
             return response
         ac.cancel_all_goals()
         self.feedback_count = 0
+        self.goal_cb_count += 1
 
         # Start pushing forward
         if not _OFFLINE:
@@ -903,7 +906,6 @@ class PositionFeedbackPushNode:
         # TODO: Check that self.MPC exists?
         # Get updated list for forward trajectory
         x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
-        rospy.logwarn('Pushing with x_d['+str(cur_state.header.seq)+'] ='+str(x_d_i))
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
 
@@ -920,7 +922,7 @@ class PositionFeedbackPushNode:
             q_cur = self.mpc_q_gt[:]
             q_cur.extend(q_star)
             q_cur = np.array(q_cur)
-            plot_output_path = self.learn_io.file_name[:-4] + '_'
+            plot_output_path = self.learn_io.file_name[:-4] + '_'+str(self.goal_cb_count)+'_'
             plot_controls(q_cur, self.mpc_desired_trajectory, x0, self.MPC.n, self.MPC.m, self.MPC.u_max,
                           show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
                           out_path=plot_output_path)
