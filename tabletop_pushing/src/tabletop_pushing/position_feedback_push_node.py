@@ -610,7 +610,7 @@ class PositionFeedbackPushNode:
         elif feedback.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             update_twist = self.affineFeedbackController(feedback, self.AFFINE_A, self.AFFINE_B)
         elif feedback.controller_name.startswith(MPC_CONTROLLER_PREFIX):
-            update_twist = self.MPCFeedbackController(feedback, cur_ee_pose)
+            update_twist = self.MPCFeedbackController(feedback, cur_ee_pose, self.desired_pose)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
@@ -902,10 +902,14 @@ class PositionFeedbackPushNode:
         u.twist.linear.y = u_t[1]
         return u
 
-    def MPCFeedbackController(self, cur_state, ee_pose):
+    def MPCFeedbackController(self, cur_state, ee_pose, desired_pose):
         # TODO: Check that self.MPC exists?
         # Get updated list for forward trajectory
-        x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
+        # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
+        pose_list = [desired_pose]
+        x_d_i = self.trajectory_generator.generate_trajectory(
+            self.num_mpc_trajectory_steps, cur_state.x, pose_list)
+
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
 
