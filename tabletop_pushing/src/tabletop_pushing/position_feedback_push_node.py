@@ -52,7 +52,7 @@ from push_learning import ControlAnalysisIO
 import rbf_control
 import sys
 from push_primitives import *
-from model_based_pushing_control import ModelPredictiveController, NaiveInputDynamics, plot_controls, plot_desired_vs_controlled
+from model_based_pushing_control import *
 from push_trajectory_generator import *
 
 _OFFLINE = False
@@ -561,7 +561,7 @@ class PositionFeedbackPushNode:
         if self.use_learn_io:
             if _BUFFER_DATA:
                 self.learn_io.write_buffer_to_disk()
-                self.target_trajectory_io.write_bufer_to_disk()
+                self.target_trajectory_io.write_buffer_to_disk()
                 self.mpc_q_star_io.write_buffer_to_disk()
             self.learn_io.close_out_file()
         return response

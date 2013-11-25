@@ -500,7 +500,7 @@ class MPCSolutionIO:
             self.out_file.close()
 
     def buffer_line(self, k0, q):
-        out_line = self.generate_line(q)
+        out_line = self.generate_line(k0, q)
         self.out_lines.append(out_line)
 
     def write_line(self, k0, q):
@@ -514,6 +514,6 @@ class MPCSolutionIO:
         self.out_lines = []
 
     def generate_line(self, k0, q):
-        out_line = str(k0) + str(q)
-        out_line+'\n'
+        out_line = str(k0) + ' ' + str(q)
+        out_line += '\n'
         return out_line

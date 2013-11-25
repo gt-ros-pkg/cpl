@@ -150,5 +150,5 @@ class PushTrajectoryIO:
         out_line = str(k0)
         for p in trajectory:
             out_line += ' ' + str(p)
-        out_line+'\n'
+        out_line += '\n'
         return out_line
