@@ -923,7 +923,7 @@ class PositionFeedbackPushNode:
         # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
         pose_list = [desired_pose]
         x_d_i = self.trajectory_generator.generate_trajectory(
-            self.num_mpc_trajectory_steps-k0, cur_state.x, pose_list)
+            max(self.num_mpc_trajectory_steps-k0,1), cur_state.x, pose_list)
 
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
