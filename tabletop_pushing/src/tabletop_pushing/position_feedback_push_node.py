@@ -58,7 +58,7 @@ from push_trajectory_generator import *
 _OFFLINE = False
 _USE_LEARN_IO = True
 _BUFFER_DATA = True
-_PLOT_MPC_STUFF = True
+_SAVE_MPC_DATA = True
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
@@ -203,6 +203,10 @@ class PositionFeedbackPushNode:
         rospy.loginfo('Opening controller output file: '+out_file_name)
         if _USE_LEARN_IO:
             self.learn_io = None
+        if _SAVE_MPC_DATA:
+            self.mpc_q_star_io = None
+            self.target_trajectory_io = None
+
         # Setup parameters
         self.learned_controller_base_path = rospy.get_param('~learned_controller_base_path',
                                                             '/u/thermans/cfg/controllers/')
@@ -485,6 +489,13 @@ class PositionFeedbackPushNode:
         if self.use_learn_io:
             self.learn_io = ControlAnalysisIO()
             self.learn_io.open_out_file(request.learn_out_file_name)
+        if _SAVE_MPC_DATA:
+            trajectory_file_name = request.learn_out_file_name[:-4]+'-trajectory.txt'
+            mpc_file_name = request.learn_out_file_name[:-4]+'-q_star.txt'
+            self.target_trajectory_io = PushTrajectoryIO()
+            self.target_trajectory_io.open_out_file(trajectory_file_name)
+            self.mpc_q_star_io = MPCSolutionIO()
+            self.mpc_q_star_io.open_out_file(mpc_file_name)
 
         if request.left_arm:
             which_arm = 'l'
@@ -500,6 +511,8 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Failed to connect to push tracker server')
             if self.use_learn_io:
                 self.learn_io.close_out_file()
+                self.target_trajectory_io.close_out_file()
+                self.mpc_q_star_io.close_out_file()
             return response
         ac.cancel_all_goals()
         self.feedback_count = 0
@@ -534,8 +547,6 @@ class PositionFeedbackPushNode:
             pose_list = [goal.desired_pose]
             self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(
                 self.num_mpc_trajectory_steps, request.obj_start_pose, pose_list)
-            # Clear q memory for plotting
-            self.mpc_q_gt = []
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -550,6 +561,8 @@ class PositionFeedbackPushNode:
         if self.use_learn_io:
             if _BUFFER_DATA:
                 self.learn_io.write_buffer_to_disk()
+                self.target_trajectory_io.write_bufer_to_disk()
+                self.mpc_q_star_io.write_buffer_to_disk()
             self.learn_io.close_out_file()
         return response
 
@@ -903,12 +916,13 @@ class PositionFeedbackPushNode:
         return u
 
     def MPCFeedbackController(self, cur_state, ee_pose, desired_pose):
+        k0 = cur_state.header.seq
         # TODO: Check that self.MPC exists?
         # Get updated list for forward trajectory
         # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
         pose_list = [desired_pose]
         x_d_i = self.trajectory_generator.generate_trajectory(
-            self.num_mpc_trajectory_steps, cur_state.x, pose_list)
+            self.num_mpc_trajectory_steps-k0, cur_state.x, pose_list)
 
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
@@ -918,26 +932,18 @@ class PositionFeedbackPushNode:
         xtra = []
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
-        if len(self.mpc_q_gt) > 0:
-            self.mpc_q_gt.extend(x0)
         q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)
 
-        if _PLOT_MPC_STUFF:
-            q_cur = self.mpc_q_gt[:]
-            q_cur.extend(q_star)
-            q_cur = np.array(q_cur)
-            plot_output_path = self.learn_io.file_name[:-4] + '_'+str(self.goal_cb_count)+'_'
-            plot_controls(q_cur, self.mpc_desired_trajectory, x0, self.MPC.n, self.MPC.m, self.MPC.u_max,
-                          show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
-                          out_path=plot_output_path)
-            # TODO: Plot the correct forward trajectory/ history?
-            plot_desired_vs_controlled(q_cur, x_d_i, x0, self.MPC.n, self.MPC.m,
-                          show_plot=False, suffix='-q*['+str(cur_state.header.seq)+']', t=cur_state.header.seq,
-                          out_path=plot_output_path)
-        # Update ground truth with most recent command
-        self.mpc_q_gt.extend([q_star[0], q_star[1]])
-
-        # TODO: Save q_star, x_d_i, and other diagnostics to disk
+        if _SAVE_MPC_DATA:
+            # TODO: Save q_star, x_d_i, and other diagnostics to disk
+            # TODO: Write q_star to disk
+            if _BUFFER_DATA:
+                self.target_trajectory_io.buffer_line(k0, x_d_i)
+                self.mpc_q_star_io.buffer_line(k0, q_star)
+            else:
+                self.target_trajectory_io.write_line(k0, x_d_i)
+                self.mpc_q_star_io.write_line(k0, q_star)
+        # Use previous to initialize at next time step
         self.MPC.init_from_previous = True
 
         u = TwistStamped()
@@ -2227,6 +2233,11 @@ class PositionFeedbackPushNode:
         if _USE_LEARN_IO:
             if self.learn_io is not None:
                 self.learn_io.close_out_file()
+        if _SAVE_MPC_DATA:
+            if self.mpc_q_star_io is not None:
+                self.mpc_q_star_io.close_out_file()
+            if self.target_trajectory_io is not None:
+                self.target_trajectory_io.close_out_file()
         # TODO: stop moving the arms on shutdown
 
     #

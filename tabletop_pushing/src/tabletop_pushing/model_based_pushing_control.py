@@ -486,3 +486,34 @@ def plot_controls(q_star, X_d, x0, n, m, u_max, show_plot=True, suffix='', t=0, 
         plotter.savefig(out_path+plot_title+'.png')
     if show_plot:
         plotter.show()
+
+class MPCSolutionIO:
+    def __init__(self):
+        self.out_file = None
+        self.out_lines = []
+
+    def open_out_file(self, file_name):
+        self.out_file = file(file_name, 'a')
+
+    def close_out_file(self):
+        if self.out_file is not None:
+            self.out_file.close()
+
+    def buffer_line(self, k0, q):
+        out_line = self.generate_line(q)
+        self.out_lines.append(out_line)
+
+    def write_line(self, k0, q):
+        out_line = self.generate_line(k0, q)
+        self.out_file.write(out_line)
+
+    def write_buffer_to_disk(self):
+        for line in self.out_lines:
+            self.out_file.write(line)
+        self.out_file.flush()
+        self.out_lines = []
+
+    def generate_line(self, k0, q):
+        out_line = str(k0) + str(q)
+        out_line+'\n'
+        return out_line
