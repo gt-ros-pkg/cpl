@@ -154,7 +154,19 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
     return empty;
   }
   no_objects = false;
+#ifdef PROFILE_FIND_TARGET_TIME
+  double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
+                                       Timer::NANOSECONDS_PER_SECOND);
+  double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("\t\t find_target_elapsed_time " << find_target_elapsed_time);
+  ROS_INFO_STREAM("\t\t\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
+  ROS_INFO_STREAM("\t\t\t choose_object_elapsed_time " << choose_object_elapsed_time);
+  ProtoObject chosen = matchToTargetObject(objs, in_frame, init);
+  return chosen;
+#else // PROFILE_FIND_TARGET_TIME
   return matchToTargetObject(objs, in_frame, init);
+#endif // PROFILE_FIND_TARGET_TIME
 }
 
 ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& in_frame, bool init)
@@ -207,12 +219,6 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     }
   }
 
-#ifdef PROFILE_FIND_TARGET_TIME
-  double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
-                                       Timer::NANOSECONDS_PER_SECOND);
-  long long display_object_start_time = Timer::nanoTime();
-#endif
-
   if (use_displays_)
   {
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
@@ -221,16 +227,6 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     // ROS_INFO_STREAM("Updating display");
   }
   // ROS_INFO_STREAM("Returning matched object\n");
-#ifdef PROFILE_FIND_TARGET_TIME
-  double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
-                                  Timer::NANOSECONDS_PER_SECOND);
-  double display_object_elapsed_time = (((double)(Timer::nanoTime() - display_object_start_time)) /
-                                        Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
-  ROS_INFO_STREAM("\t\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
-  ROS_INFO_STREAM("\t\t choose_object_elapsed_time " << choose_object_elapsed_time);
-  ROS_INFO_STREAM("\t\t display_objects_elapsed_time " << display_object_elapsed_time);
-#endif
 
   return objs[chosen_idx];
 }
@@ -290,7 +286,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       state.x.y = obj_ellipse.center.y;
       // Use vertical z centroid from object
       state.z = cur_obj.centroid[2];
+#ifdef USE_TRANSFORM_GUESS
       previous_centroid_state_ = state;
+#endif // USE_TRANSFORM_GUESS
     }
     else
     {
@@ -316,12 +314,13 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         // Use vertical z centroid from object
         centroid_state.z = cur_obj.centroid[2];
 
+        Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+#ifdef USE_TRANSFORM_GUESS
         double delta_x_guess = centroid_state.x.x - previous_centroid_state_.x.x;
         double delta_y_guess = centroid_state.x.y - previous_centroid_state_.x.y;
         double delta_theta_guess = subPIAngle(centroid_state.x.theta - previous_centroid_state_.x.theta);
         previous_centroid_state_ = centroid_state;
-        Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
-#ifdef USE_TRANSFORM_GUESS
+
         guess(0,0) = cos(delta_theta_guess);
         guess(0,1) = -sin(delta_theta_guess);
         guess(1,0) = -guess(0,1);
@@ -335,11 +334,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud,
                                                                 guess, transform, aligned);
 
-        ROS_INFO_STREAM("Found ICP match with score: " << match_score);
+        // ROS_INFO_STREAM("Found ICP match with score: " << match_score);
       }
 
       // Transform previous state using the estimate and update current state
-      ROS_INFO_STREAM("Found transform of: \n" << transform);
+      // ROS_INFO_STREAM("Found transform of: \n" << transform);
       Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
       state.x.x = x_t_1(0);
@@ -752,6 +751,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
 #ifdef PROFILE_TRACKING_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long update_model_start_time = Timer::nanoTime();
+  double compute_state_elapsed_time = 0.0;
 #endif
 
   // Update model
@@ -776,7 +776,13 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
   else
   {
     obj_saved_ = true;
+#ifdef PROFILE_TRACKING_TIME
+    double compute_state_start_time = Timer::nanoTime();
+#endif // PROFILE_TRACKING_TIME
     computeState(cur_obj, cloud, proxy_name, in_frame, state);
+#ifdef PROFILE_TRACKING_TIME
+    compute_state_elapsed_time = (((double)(Timer::nanoTime() - compute_state_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_TRACKING_TIME
     state.header.seq = frame_count_;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -789,12 +795,12 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
     state.x_dot.x = delta_x/delta_t;
     state.x_dot.y = delta_y/delta_t;
     state.x_dot.theta = delta_theta/delta_t;
-    ROS_INFO_STREAM("Delta X: (" << delta_x << ", " << delta_y << ", " << delta_z << ", " << delta_theta << ")");
-    ROS_INFO_STREAM("Delta t: " << delta_t);
-    ROS_INFO_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " <<
-                    state.x.theta << ")");
-    ROS_INFO_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                    << ", " << state.x_dot.theta << ")");
+    // ROS_INFO_STREAM("Delta X: (" << delta_x << ", " << delta_y << ", " << delta_z << ", " << delta_theta << ")");
+    // ROS_INFO_STREAM("Delta t: " << delta_t);
+    // ROS_INFO_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " <<
+    //                 state.x.theta << ")");
+    // ROS_INFO_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+    //                 << ", " << state.x_dot.theta << ")");
     previous_obj_ = cur_obj;
   }
   // We update the header and take care of other bookkeeping before returning
@@ -813,6 +819,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
   ROS_INFO_STREAM("update_elapsed_time " << update_elapsed_time);
   ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
   ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time);
+  ROS_INFO_STREAM("\t\t compute_state_elapsed_time " << compute_state_elapsed_time);
 #endif
 
 }

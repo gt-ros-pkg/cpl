@@ -560,6 +560,7 @@ class TabletopPushingPerceptionNode
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
 
+#ifdef DISPLAY_WAIT
       PointStamped start_point;
       PointStamped end_point;
       start_point.header.frame_id = workspace_frame_;
@@ -586,6 +587,9 @@ class TabletopPushingPerceptionNode
 #ifdef PROFILE_CB_TIME
       display_tracks_elapsed_time = (((double)(Timer::nanoTime() - display_tracks_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_CB_TIME
+#endif // DISPLAY_WAIT
+#ifdef PROFILE_CB_TIME
       long long evaluate_goals_start_time = Timer::nanoTime();
 #endif
 
@@ -595,7 +599,6 @@ class TabletopPushingPerceptionNode
 #ifdef PROFILE_CB_TIME
         long long publish_feedback_start_time = Timer::nanoTime();
 #endif
-        // TODO: Examine buffering and writing after a push
         if (write_dyn_to_disk_)
         {
           // Write image and cur obj cloud
