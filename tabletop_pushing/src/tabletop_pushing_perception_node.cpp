@@ -118,7 +118,7 @@
 // Debugging IFDEFS
 // #define DISPLAY_INPUT_COLOR 1
 // #define DISPLAY_INPUT_DEPTH 1
-#define DISPLAY_WAIT 1
+// #define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
 // #define VISUALIZE_CONTACT_PT 1

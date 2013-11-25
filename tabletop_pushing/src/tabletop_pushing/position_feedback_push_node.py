@@ -271,7 +271,7 @@ class PositionFeedbackPushNode:
         # MPC Parameters
         self.MPC = None
         self.trajectory_generator = None
-        self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/9.)
+        self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/5.)
         self.mpc_state_space_dim = rospy.get_param('~mpc_n', 5)
         self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
         self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
@@ -538,7 +538,8 @@ class PositionFeedbackPushNode:
         elif goal.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             self.AFFINE_A, self.AFFINE_B = self.loadAffineController(goal.controller_name)
         elif goal.controller_name.startswith(MPC_CONTROLLER_PREFIX):
-            # TODO: Create more flexibility in dynamics models being used here
+            # TODO: Load dynamics model being used here based on the controller name
+            # TODO: Add ability to switch at each feedback call (using model predictive error, etc)
             dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim, self.mpc_input_space_dim)
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
                                                   self.mpc_u_max, self.mpc_delta_t)
