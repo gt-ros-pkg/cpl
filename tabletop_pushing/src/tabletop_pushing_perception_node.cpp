@@ -134,8 +134,8 @@ using geometry_msgs::Twist;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
-using cpl_visual_features::upSample;
-using cpl_visual_features::downSample;
+// using cpl_visual_features::upSample;
+// using cpl_visual_features::downSample;
 using cpl_visual_features::subPIAngle;
 using cpl_visual_features::lineSegmentIntersection2D;
 using cpl_visual_features::ShapeDescriptors;
@@ -371,7 +371,6 @@ class TabletopPushingPerceptionNode
       ROS_DEBUG_STREAM("Cam info: " << cam_info_);
     }
     // Convert images to OpenCV format
-    // TODO: Speed this up a bit?
     cv::Mat color_frame;
     cv::Mat self_mask;
     cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
@@ -388,22 +387,23 @@ class TabletopPushingPerceptionNode
       cv::erode(self_mask, self_mask, morph_element_);
     }
 #ifdef PROFILE_CB_TIME
-    double grow_mask_elapsed_time = (((double)(Timer::nanoTime() - grow_mask_start_time)) /
-                                     Timer::NANOSECONDS_PER_SECOND);
     long long transform_start_time = Timer::nanoTime();
+    double grow_mask_elapsed_time = (((double)(transform_start_time - grow_mask_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
 #endif
 
     // Transform point cloud into the correct frame and convert to PCL struct
     pcl16::fromROSMsg(*cloud_msg, cur_point_cloud_);
-    // TODO: Speed this up by not waiting... (i.e. get new transform, use for whole time, assuming head is not moving)
+    // TODO: Speed this up by not waiting...
+    // (i.e. get new transform, use for whole time, assuming head is not moving)
     tf_->waitForTransform(workspace_frame_, cloud_msg->header.frame_id, cloud_msg->header.stamp,
                           ros::Duration(0.5));
     pcl16_ros::transformPointCloud(workspace_frame_, cur_point_cloud_, cur_point_cloud_, *tf_);
 
 #ifdef PROFILE_CB_TIME
-    double transform_elapsed_time = (((double)(Timer::nanoTime() - transform_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
     long long filter_start_time = Timer::nanoTime();
+    double transform_elapsed_time = (((double)(filter_start_time - transform_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
 #endif
 
     XYZPointCloud cloud_self_filtered(cur_point_cloud_);
@@ -418,36 +418,40 @@ class TabletopPushingPerceptionNode
       }
     }
 #ifdef PROFILE_CB_TIME
-    double filter_elapsed_time = (((double)(Timer::nanoTime() - filter_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
     long long downsample_start_time = Timer::nanoTime();
+    double filter_elapsed_time = (((double)(downsample_start_time - filter_start_time)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
 #endif
 
     // Downsample everything first
-    cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
-    cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
+    // HACK: We have this fixed to 1, so let's not do extra memcopys
+    // cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
+    // cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
+    cv::pyrDown(color_frame, cur_color_frame_);
+    cv::pyrDown(self_mask, cur_self_mask_);
 
 #ifdef PROFILE_CB_TIME
-    double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
     long long copy_start_time = Timer::nanoTime();
+    double downsample_elapsed_time = (((double)(copy_start_time - downsample_start_time)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
 #endif
 
     // Update the current versions
-    color_frame_down.copyTo(cur_color_frame_);
-    self_mask_down.copyTo(cur_self_mask_);
+    // color_frame_down.copyTo(cur_color_frame_);
+    // self_mask_down.copyTo(cur_self_mask_);
     // cur_point_cloud_ = cloud;
     cur_self_filtered_cloud_ = cloud_self_filtered;
 
 #ifdef PROFILE_CB_TIME
-    double copy_elapsed_time = (((double)(Timer::nanoTime() - copy_start_time)) /
-                              Timer::NANOSECONDS_PER_SECOND);
+    long long tracker_start_time = Timer::nanoTime();
+    double copy_elapsed_time = (((double)(tracker_start_time - copy_start_time)) /
+                                Timer::NANOSECONDS_PER_SECOND);
     double update_tracks_elapsed_time = 0.0;
     double copy_tracks_elapsed_time = 0.0;
     double display_tracks_elapsed_time = 0.0;
+    double write_dyn_elapsed_time = 0.0;
     double publish_feedback_elapsed_time = 0.0;
     double evaluate_goal_elapsed_time = 0.0;
-    long long tracker_start_time = Timer::nanoTime();
 #endif
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
@@ -475,9 +479,9 @@ class TabletopPushingPerceptionNode
 #endif // DEBUG_POSE_ESTIMATION
 
 #ifdef PROFILE_CB_TIME
-      update_tracks_elapsed_time = (((double)(Timer::nanoTime() - update_tracks_start_time)) /
-                                    Timer::NANOSECONDS_PER_SECOND);
       long long copy_tracks_start_time = Timer::nanoTime();
+      update_tracks_elapsed_time = (((double)(copy_tracks_start_time - update_tracks_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
 #endif
 #ifdef VISUALIZE_CONTACT_PT
       ProtoObject cur_contact_obj = obj_tracker_->getMostRecentObject();
@@ -555,16 +559,14 @@ class TabletopPushingPerceptionNode
                                   Timer::NANOSECONDS_PER_SECOND);
 #endif // PROFILE_CB_TIME
 #endif // DISPLAY_WAIT
-#ifdef PROFILE_CB_TIME
-      long long evaluate_goals_start_time = Timer::nanoTime();
-#endif
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
 #ifdef PROFILE_CB_TIME
-        long long publish_feedback_start_time = Timer::nanoTime();
+        long long write_dyn_start_time = Timer::nanoTime();
 #endif
+
         if (write_dyn_to_disk_)
         {
           // Write image and cur obj cloud
@@ -574,6 +576,7 @@ class TabletopPushingPerceptionNode
           obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
                              << "_" << feedback_control_count_ << ".pcd";
           ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+
 #ifdef BUFFER_AND_WRITE
           color_img_buffer_.push_back(cur_color_frame_);
           color_img_name_buffer_.push_back(image_out_name.str());
@@ -583,6 +586,7 @@ class TabletopPushingPerceptionNode
           cv::imwrite(image_out_name.str(), cur_color_frame_);
           pcl16::io::savePCDFile(obj_cloud_out_name.str(), cur_obj.cloud);
 #endif // BUFFER_AND_WRITE
+
           if (feedback_control_count_ == 0)
           {
             // TODO: Look this up once and only save once...
@@ -592,6 +596,7 @@ class TabletopPushingPerceptionNode
             workspace_to_cam_name << base_output_path_ << "workspace_to_cam_"
                                   << feedback_control_instance_count_ << ".txt";
             cam_info_name << base_output_path_ << "cam_info_" << feedback_control_instance_count_ << ".txt";
+
 #ifdef BUFFER_AND_WRITE
             workspace_transform_buffer_.push_back(workspace_to_cam_t);
             workspace_transform_name_buffer_.push_back(workspace_to_cam_name.str());
@@ -603,15 +608,24 @@ class TabletopPushingPerceptionNode
 #endif // BUFFER_AND_WRITE
           }
         }
+#ifdef PROFILE_CB_TIME
+        long long publish_feedback_start_time = Timer::nanoTime();
+        write_dyn_elapsed_time = (((double)(publish_feedback_start_time - write_dyn_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+#endif
+
         // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
         tracker_state.header.seq = feedback_control_count_++;
         as_.publishFeedback(tracker_state);
+
 #ifdef PROFILE_CB_TIME
-        publish_feedback_elapsed_time = (((double)(Timer::nanoTime() - publish_feedback_start_time)) /
-                                      Timer::NANOSECONDS_PER_SECOND);
         long long evaluate_goal_start_time = Timer::nanoTime();
+        publish_feedback_elapsed_time = (((double)(evaluate_goal_start_time - publish_feedback_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
 #endif
+
         evaluateGoalAndAbortConditions(tracker_state);
+
 #ifdef PROFILE_CB_TIME
         evaluate_goal_elapsed_time = (((double)(Timer::nanoTime() - evaluate_goal_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
@@ -621,6 +635,8 @@ class TabletopPushingPerceptionNode
     else if (obj_tracker_->isInitialized() && obj_tracker_->isPaused())
     {
       obj_tracker_->pausedUpdate(cur_color_frame_);
+
+#ifdef DISPLAY_WAIT
       PointStamped start_point;
       PointStamped end_point;
       PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
@@ -639,14 +655,16 @@ class TabletopPushingPerceptionNode
         displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
                            tracker_goal_pose_.theta, true);
       }
+#endif // DISPLAY_WAIT
     }
+
 #ifdef PROFILE_CB_TIME
     double tracker_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
                                  Timer::NANOSECONDS_PER_SECOND);
 #endif
 
-
     // Display junk
+#ifdef DISPLAY_WAIT
 #ifdef DISPLAY_INPUT_COLOR
     if (use_displays_)
     {
@@ -673,13 +691,14 @@ class TabletopPushingPerceptionNode
       record_count_++;
     }
 #endif // DISPLAY_INPUT_COLOR
-#ifdef DISPLAY_WAIT
     if (use_displays_)
     {
       cv::waitKey(display_wait_ms_);
     }
 #endif // DISPLAY_WAIT
+
     ++frame_callback_count_;
+
 #ifdef PROFILE_CB_TIME
     double cb_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
                             Timer::NANOSECONDS_PER_SECOND);
@@ -695,6 +714,7 @@ class TabletopPushingPerceptionNode
       ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time);
       ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time);
       ROS_INFO_STREAM("\t\t display_tracks_elapsed_time " << display_tracks_elapsed_time);
+      ROS_INFO_STREAM("\t\t write_dyn_elapsed_time " << publish_feedback_elapsed_time);
       ROS_INFO_STREAM("\t\t publish_feedback_elapsed_time " << publish_feedback_elapsed_time);
       ROS_INFO_STREAM("\t\t evaluate_goal_elapsed_time " << evaluate_goal_elapsed_time);
     }
