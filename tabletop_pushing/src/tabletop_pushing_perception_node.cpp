@@ -188,7 +188,7 @@ class TabletopPushingPerceptionNode
       cloud_sub_(n, "point_cloud_topic", 1),
       sync_(MySyncPolicy(15), image_sub_, mask_sub_, cloud_sub_),
       as_(n, "push_tracker", false),
-      have_depth_data_(false),
+      have_sensor_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0),
       frame_callback_count_(0), frame_set_count_(0),
@@ -284,8 +284,14 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
     n_private_.param("self_mask_dilate_size", mask_dilate_size_, 5);
 
+    // Setup morphological element for arm segmentation mask
     cv::Mat tmp_morph(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
     tmp_morph.copyTo(morph_element_);
+
+    // Setup nan point for self filtering of point cloud
+    nan_point_.x = numeric_limits<float>::quiet_NaN();
+    nan_point_.y = numeric_limits<float>::quiet_NaN();
+    nan_point_.z = numeric_limits<float>::quiet_NaN();
 
     n_private_.param("point_cloud_hist_res", point_cloud_hist_res_, 0.005);
     n_private_.param("boundary_hull_alpha", hull_alpha_, 0.01);
@@ -359,6 +365,7 @@ class TabletopPushingPerceptionNode
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
+      have_sensor_data_ = true;
       pcl_segmenter_->cam_info_ = cam_info_;
       pcl_segmenter_->cur_camera_header_ = img_msg->header;
       ROS_DEBUG_STREAM("Cam info: " << cam_info_);
@@ -371,8 +378,6 @@ class TabletopPushingPerceptionNode
     cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
     color_frame = color_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
-
-    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
 #ifdef PROFILE_CB_TIME
     long long grow_mask_start_time = Timer::nanoTime();
@@ -387,30 +392,28 @@ class TabletopPushingPerceptionNode
                                      Timer::NANOSECONDS_PER_SECOND);
     long long transform_start_time = Timer::nanoTime();
 #endif
+
     // Transform point cloud into the correct frame and convert to PCL struct
-    XYZPointCloud cloud;
-    pcl16::fromROSMsg(*cloud_msg, cloud);
+    pcl16::fromROSMsg(*cloud_msg, cur_point_cloud_);
     // TODO: Speed this up by not waiting... (i.e. get new transform, use for whole time, assuming head is not moving)
-    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id, cloud.header.stamp, ros::Duration(0.5));
-    pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+    tf_->waitForTransform(workspace_frame_, cloud_msg->header.frame_id, cloud_msg->header.stamp,
+                          ros::Duration(0.5));
+    pcl16_ros::transformPointCloud(workspace_frame_, cur_point_cloud_, cur_point_cloud_, *tf_);
+
 #ifdef PROFILE_CB_TIME
     double transform_elapsed_time = (((double)(Timer::nanoTime() - transform_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
     long long filter_start_time = Timer::nanoTime();
 #endif
 
-    XYZPointCloud cloud_self_filtered(cloud);
-    pcl16::PointXYZ nan_point;
-    nan_point.x = numeric_limits<float>::quiet_NaN();
-    nan_point.y = numeric_limits<float>::quiet_NaN();
-    nan_point.z = numeric_limits<float>::quiet_NaN();
+    XYZPointCloud cloud_self_filtered(cur_point_cloud_);
     for (unsigned int r = 0; r < self_mask.rows; ++r)
     {
       for (unsigned int c = 0; c < self_mask.cols; ++c)
       {
         if (self_mask.at<uchar>(r, c) == 0)
         {
-          cloud_self_filtered.at(c, r) = nan_point;
+          cloud_self_filtered.at(c, r) = nan_point_;
         }
       }
     }
@@ -433,9 +436,8 @@ class TabletopPushingPerceptionNode
     // Update the current versions
     color_frame_down.copyTo(cur_color_frame_);
     self_mask_down.copyTo(cur_self_mask_);
-    cur_point_cloud_ = cloud;
+    // cur_point_cloud_ = cloud;
     cur_self_filtered_cloud_ = cloud_self_filtered;
-    have_depth_data_ = true;
 
 #ifdef PROFILE_CB_TIME
     double copy_elapsed_time = (((double)(Timer::nanoTime() - copy_start_time)) /
@@ -583,6 +585,7 @@ class TabletopPushingPerceptionNode
 #endif // BUFFER_AND_WRITE
           if (feedback_control_count_ == 0)
           {
+            // TODO: Look this up once and only save once...
             tf::StampedTransform workspace_to_cam_t;
             tf_->lookupTransform(camera_frame_, workspace_frame_, ros::Time(0), workspace_to_cam_t);
             std::stringstream workspace_to_cam_name, cam_info_name;
@@ -805,7 +808,7 @@ class TabletopPushingPerceptionNode
    */
   bool learnPushCallback(LearnPush::Request& req, LearnPush::Response& res)
   {
-    if ( have_depth_data_ )
+    if ( have_sensor_data_ )
     {
       if (!req.analyze_previous)
       {
@@ -1965,7 +1968,7 @@ class TabletopPushingPerceptionNode
    */
   bool getTableLocation(LocateTable::Request& req, LocateTable::Response& res)
   {
-    if ( have_depth_data_ )
+    if ( have_sensor_data_ )
     {
       getTablePlane(cur_point_cloud_, res.table_centroid);
       if ((res.table_centroid.pose.position.x == 0.0 &&
@@ -2262,7 +2265,7 @@ class TabletopPushingPerceptionNode
   XYZPointCloud cur_point_cloud_;
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
-  bool have_depth_data_;
+  bool have_sensor_data_;
   int display_wait_ms_;
   bool use_displays_;
   bool write_input_to_disk_;
@@ -2338,6 +2341,7 @@ class TabletopPushingPerceptionNode
   int footprint_count_;
   int feedback_control_count_;
   int feedback_control_instance_count_;
+  pcl16::PointXYZ nan_point_;
 #ifdef DEBUG_POSE_ESTIMATION
   std::ofstream pose_est_stream_;
 #endif
