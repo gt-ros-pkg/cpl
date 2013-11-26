@@ -923,12 +923,12 @@ class PositionFeedbackPushNode:
         # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
         pose_list = [desired_pose]
         traj_len = max(self.num_mpc_trajectory_steps-k0, 2)
-        rospy.loginfo('Trajectory length is ' + str(traj_len) + ' at seq#' + str(k0) + ' of '+ str(self.num_mpc_trajectory_steps))
+        rospy.loginfo('Trajectory length is ' + str(traj_len) + ' at seq #' + str(k0) + ' of '+ str(self.num_mpc_trajectory_steps))
         x_d_i = self.trajectory_generator.generate_trajectory(traj_len, cur_state.x, pose_list)
 
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
-        rospy.loginfo('MPC.H =' + str(self.MPC.H))
+        rospy.loginfo('MPC.H = ' + str(self.MPC.H))
 
         # TODO: get this passed in from vis feedback
         # Feature vector for the dynamics model

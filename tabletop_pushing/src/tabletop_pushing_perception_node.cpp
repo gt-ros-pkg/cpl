@@ -1805,7 +1805,6 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
-    ROS_INFO_STREAM("Accepting goal");
     shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
