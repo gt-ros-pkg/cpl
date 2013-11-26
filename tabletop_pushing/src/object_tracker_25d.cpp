@@ -17,7 +17,9 @@
 // Debugging IFDEFS
 // #define PROFILE_TRACKING_TIME 1
 // #define PROFILE_FIND_TARGET_TIME 1
+// #define PROFILE_COMPUTE_STATE_TIME 1
 // #define USE_TRANSFORM_GUESS 1
+// #define USE_DISPLAY 1
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
