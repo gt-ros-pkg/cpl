@@ -111,7 +111,7 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   }
 #ifdef PROFILE_TABLE_SEGMENTATION_TIME
   double downsample_elapsed_time = (((double)(Timer::nanoTime() - get_table_plane_start_time)) /
-                                  Timer::NANOSECONDS_PER_SECOND);
+                                    Timer::NANOSECONDS_PER_SECOND);
   long long filter_cloud_z_start_time = Timer::nanoTime();
 #endif
   // Filter Cloud to not look for table planes on the ground

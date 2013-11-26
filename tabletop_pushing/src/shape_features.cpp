@@ -14,9 +14,12 @@
 
 #include <Eigen/Eigenvalues>
 
+#include <tabletop_pushing/extern/Timer.hpp>
+
 #define XY_RES 0.00075
 #define DRAW_LR_LIMITS 1
 // #define USE_RANGE_AND_VAR_FEATS 1
+// #define PROFILE_BOUNDARY_SAMPLE_TIME 1
 
 using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
@@ -78,17 +81,24 @@ std::vector<int> getJumpIndices(XYZPointCloud& concave_hull, double alpha)
   return jump_indices;
 }
 
-// TODO: Profile this function!!!!
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
 {
   // Get 2D projection of object
   // TODO: Remove the z, then add it back after finding the hull... how do we do this?
+#ifdef PROFILE_BOUNDARY_SAMPLE_TIME
+  long long get_obj_boundary_start_time = Timer::nanoTime();
+#endif // PROFILE_BOUNDARY_SAMPLE_TIME
   XYZPointCloud footprint_cloud(cur_obj.cloud);
   for (int i = 0; i < footprint_cloud.size(); ++i)
   {
     // HACK: This is a complete hack, based on the current table height used in pushing.
     footprint_cloud.at(i).z = -0.3;
   }
+#ifdef PROFILE_BOUNDARY_SAMPLE_TIME
+  long long hull_extract_start_time = Timer::nanoTime();
+  double footprint_cloud_elapsed_time = (((double)(hull_extract_start_time - get_obj_boundary_start_time)) /
+                                         Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_BOUNDARY_SAMPLE_TIME
 
   // TODO: Examine sensitivity of hull_alpha...
   XYZPointCloud hull_cloud;
@@ -97,6 +107,18 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
   hull.setInputCloud(footprint_cloud.makeShared());
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
+#ifdef PROFILE_BOUNDARY_SAMPLE_TIME
+  long long hull_extract_end_time = Timer::nanoTime();
+  double hull_extract_elapsed_time = (((double)(hull_extract_end_time - hull_extract_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+  double get_obj_boundary_elapsed_time = (((double)(hull_extract_end_time - get_obj_boundary_start_time)) /
+                                          Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("get_obj_boundary_elapsed_time " << get_obj_boundary_elapsed_time);
+  ROS_INFO_STREAM("\t footprint_cloud_elapsed_time " << footprint_cloud_elapsed_time <<
+                  "\t\t " << (100.*footprint_cloud_elapsed_time/get_obj_boundary_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t hull_extract_elapsed_time " << hull_extract_elapsed_time <<
+                  "\t\t " << (100.*hull_extract_elapsed_time/get_obj_boundary_elapsed_time) << "\%");
+#endif // PROFILE_BOUNDARY_SAMPLE_TIME
   return hull_cloud;
 }
 
