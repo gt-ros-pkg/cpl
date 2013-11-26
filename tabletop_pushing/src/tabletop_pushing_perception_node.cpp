@@ -432,7 +432,7 @@ class TabletopPushingPerceptionNode
 
 #ifdef PROFILE_CB_TIME
     long long tracker_start_time = Timer::nanoTime();
-    double downsample_elapsed_time = (((double)(tracker_start_time - tracker_start_time)) /
+    double downsample_elapsed_time = (((double)(tracker_start_time - downsample_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
     double update_tracks_elapsed_time = 0.0;
     double copy_tracks_elapsed_time = 0.0;
