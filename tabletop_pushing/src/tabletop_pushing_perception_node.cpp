@@ -283,6 +283,10 @@ class TabletopPushingPerceptionNode
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
     n_private_.param("self_mask_dilate_size", mask_dilate_size_, 5);
+
+    cv::Mat tmp_morph(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
+    tmp_morph.copyTo(morph_element_);
+
     n_private_.param("point_cloud_hist_res", point_cloud_hist_res_, 0.005);
     n_private_.param("boundary_hull_alpha", hull_alpha_, 0.01);
     n_private_.param("hull_gripper_spread", gripper_spread_, 0.05);
@@ -360,6 +364,7 @@ class TabletopPushingPerceptionNode
       ROS_DEBUG_STREAM("Cam info: " << cam_info_);
     }
     // Convert images to OpenCV format
+    // TODO: Speed this up a bit?
     cv::Mat color_frame;
     cv::Mat self_mask;
     cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
@@ -375,8 +380,7 @@ class TabletopPushingPerceptionNode
     // Grow arm mask if requested
     if (mask_dilate_size_ > 0)
     {
-      cv::Mat morph_element(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
-      cv::erode(self_mask, self_mask, morph_element);
+      cv::erode(self_mask, self_mask, morph_element_);
     }
 #ifdef PROFILE_CB_TIME
     double grow_mask_elapsed_time = (((double)(Timer::nanoTime() - grow_mask_start_time)) /
@@ -386,6 +390,7 @@ class TabletopPushingPerceptionNode
     // Transform point cloud into the correct frame and convert to PCL struct
     XYZPointCloud cloud;
     pcl16::fromROSMsg(*cloud_msg, cloud);
+    // TODO: Speed this up by not waiting... (i.e. get new transform, use for whole time, assuming head is not moving)
     tf_->waitForTransform(workspace_frame_, cloud.header.frame_id, cloud.header.stamp, ros::Duration(0.5));
     pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
 #ifdef PROFILE_CB_TIME
@@ -424,7 +429,6 @@ class TabletopPushingPerceptionNode
                                    Timer::NANOSECONDS_PER_SECOND);
     long long copy_start_time = Timer::nanoTime();
 #endif
-
 
     // Update the current versions
     color_frame_down.copyTo(cur_color_frame_);
@@ -519,7 +523,14 @@ class TabletopPushingPerceptionNode
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
 
+#ifdef PROFILE_CB_TIME
+      copy_tracks_elapsed_time = (((double)(Timer::nanoTime() - copy_tracks_start_time)) /
+                                        Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_CB_TIME
 #ifdef DISPLAY_WAIT
+#ifdef PROFILE_CB_TIME
+      long long display_tracks_start_time = Timer::nanoTime();
+#endif
       PointStamped start_point;
       PointStamped end_point;
       start_point.header.frame_id = workspace_frame_;
@@ -530,12 +541,6 @@ class TabletopPushingPerceptionNode
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
-#ifdef PROFILE_CB_TIME
-      copy_tracks_elapsed_time = (((double)(Timer::nanoTime() - copy_tracks_start_time)) /
-                                        Timer::NANOSECONDS_PER_SECOND);
-      long long display_tracks_start_time = Timer::nanoTime();
-#endif
-
       displayPushVector(cur_color_frame_, start_point, end_point);
       // displayRobotGripperPoses(cur_color_frame_);
       if (controller_name_ == "rotate_to_heading")
@@ -2253,6 +2258,7 @@ class TabletopPushingPerceptionNode
   actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
   cv::Mat cur_self_mask_;
+  cv::Mat morph_element_;
   XYZPointCloud cur_point_cloud_;
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
