@@ -219,6 +219,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     }
   }
 
+#ifdef USE_DISPLAY
   if (use_displays_)
   {
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
@@ -226,6 +227,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     // ROS_INFO_STREAM("Updating display");
   }
+#endif // USE_DISPLAY
   // ROS_INFO_STREAM("Returning matched object\n");
 
   return objs[chosen_idx];
@@ -263,7 +265,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY)
   {
     fitObjectEllipse(cur_obj, obj_ellipse);
-    previous_obj_ellipse_ = obj_ellipse;
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
     state.x.y = cur_obj.centroid[1];
@@ -286,9 +287,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       state.x.y = obj_ellipse.center.y;
       // Use vertical z centroid from object
       state.z = cur_obj.centroid[2];
+
 #ifdef USE_TRANSFORM_GUESS
       previous_centroid_state_ = state;
 #endif // USE_TRANSFORM_GUESS
+
     }
     else
     {
@@ -315,6 +318,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         centroid_state.z = cur_obj.centroid[2];
 
         Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+
 #ifdef USE_TRANSFORM_GUESS
         double delta_x_guess = centroid_state.x.x - previous_centroid_state_.x.x;
         double delta_y_guess = centroid_state.x.y - previous_centroid_state_.x.y;
@@ -331,6 +335,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         guess(1,3) = delta_y_guess;
         ROS_INFO_STREAM("Initial transform guess of: \n" << guess);
 #endif // USE_TRANSFORM_GUESS
+
         double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud,
                                                                 guess, transform, aligned);
 
@@ -349,6 +354,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       const Eigen::Vector3f x_axis_t = rot*x_axis;
       state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
 
+#ifdef USE_DISPLAY
       // Visualize the matches
       if (use_displays_ || write_to_disk_)
       {
@@ -377,9 +383,10 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
           cv::imwrite(out_name.str(), match_img);
         }
       }
+#endif // USE_DISPLAY
     }
+
     // Update stuff
-    previous_obj_ellipse_ = obj_ellipse;
     previous_hull_cloud_ = hull_cloud;
     updateHeading(state, init_state);
   }
@@ -399,7 +406,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         max_z = cur_obj.cloud.at(i).z;
       }
     }
-    previous_obj_ellipse_ = obj_ellipse;
     state.x.x = obj_ellipse.center.x;
     state.x.y = obj_ellipse.center.y;
     state.z = (min_z+max_z)*0.5;
@@ -472,7 +478,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
-
+#ifdef USE_DISPLAY
   if (use_displays_ || write_to_disk_)
   {
     if (proxy_name == ELLIPSE_PROXY)
@@ -488,6 +494,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       trackerDisplay(in_frame, state, cur_obj);
     }
   }
+#endif // USE_DISPLAY
 }
 
 void ObjectTracker25D::fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse)
@@ -691,14 +698,13 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   state.x_dot.y = 0.0;
   state.x_dot.theta = 0.0;
 
-  ROS_DEBUG_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " << 
-                   state.x.theta << ")");
-  ROS_DEBUG_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                   << ", " << state.x_dot.theta << ")\n");
+  ROS_DEBUG_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " << state.x.theta << ")");
+  ROS_DEBUG_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y << ", " << state.x_dot.theta << ")\n");
 
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;
   init_state_ = state;
+  // TODO: Can we remove the need to copy here?
   previous_obj_ = cur_obj;
   obj_saved_ = true;
   frame_count_ = 1;
@@ -738,6 +744,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long update_model_start_time = Timer::nanoTime();
   double compute_state_elapsed_time = 0.0;
+  long long copy_state_start_time = 0;
 #endif
 
   // Update model
@@ -765,10 +772,14 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
 #ifdef PROFILE_TRACKING_TIME
     double compute_state_start_time = Timer::nanoTime();
 #endif // PROFILE_TRACKING_TIME
+
     computeState(cur_obj, cloud, proxy_name, in_frame, state);
+
 #ifdef PROFILE_TRACKING_TIME
-    compute_state_elapsed_time = (((double)(Timer::nanoTime() - compute_state_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+    copy_state_start_time = Timer::nanoTime();
+    compute_state_elapsed_time = (((double)(copy_state_start_time - compute_state_start_time)) / Timer::NANOSECONDS_PER_SECOND);
 #endif // PROFILE_TRACKING_TIME
+
     state.header.seq = frame_count_;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -798,14 +809,24 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
   previous_state_ = state;
   frame_count_++;
   record_count_++;
+
 #ifdef PROFILE_TRACKING_TIME
-  double update_model_elapsed_time = (((double)(Timer::nanoTime() - update_model_start_time)) /
+  long long update_model_end_time = Timer::nanoTime();
+  double update_model_elapsed_time = (((double)(update_model_end_time - update_model_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
-  double update_elapsed_time = (((double)(Timer::nanoTime() - update_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+  double update_elapsed_time = (((double)(update_model_end_time - update_start_time)) /
+                                Timer::NANOSECONDS_PER_SECOND);
+  double copy_state_elapsed_time = (((double)(update_model_end_time - copy_state_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
   ROS_INFO_STREAM("update_elapsed_time " << update_elapsed_time);
-  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
-  ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time);
-  ROS_INFO_STREAM("\t\t compute_state_elapsed_time " << compute_state_elapsed_time);
+  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time <<
+                  "\t\t " << (100.0*find_target_elapsed_time/update_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time <<
+                  "\t\t " << (100.0*update_model_elapsed_time/update_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t compute_state_elapsed_time " << compute_state_elapsed_time <<
+                  "\t " << (100.0*compute_state_elapsed_time/update_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t copy_state_elapsed_time " << copy_state_elapsed_time <<
+                  "\t " << (100.0*copy_state_elapsed_time/update_elapsed_time) << "\%\n");
 #endif
 
 }

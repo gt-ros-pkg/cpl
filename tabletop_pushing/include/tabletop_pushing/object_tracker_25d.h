@@ -131,11 +131,6 @@ class ObjectTracker25D
     return previous_obj_;
   }
 
-  cv::RotatedRect getMostRecentEllipse() const
-  {
-    return previous_obj_ellipse_;
-  }
-
   void pause()
   {
     paused_ = true;
@@ -189,7 +184,6 @@ class ObjectTracker25D
   tabletop_pushing::VisFeedbackPushTrackingFeedback previous_state_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback init_state_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback previous_centroid_state_;
-  cv::RotatedRect previous_obj_ellipse_;
   bool use_displays_;
   bool write_to_disk_;
   std::string base_output_path_;

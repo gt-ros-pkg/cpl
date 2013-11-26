@@ -693,17 +693,28 @@ class TabletopPushingPerceptionNode
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
       ROS_INFO_STREAM("cb_elapsed_time " << cb_elapsed_time);
-      ROS_INFO_STREAM("\t grow_mask_elapsed_time " << grow_mask_elapsed_time);
-      ROS_INFO_STREAM("\t transform_elapsed_time " << transform_elapsed_time);
-      ROS_INFO_STREAM("\t filter_elapsed_time " << filter_elapsed_time);
-      ROS_INFO_STREAM("\t downsample_elapsed_time " << downsample_elapsed_time);
-      ROS_INFO_STREAM("\t tracker_elapsed_time " << tracker_elapsed_time);
-      ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time);
-      ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time);
-      ROS_INFO_STREAM("\t\t display_tracks_elapsed_time " << display_tracks_elapsed_time);
-      ROS_INFO_STREAM("\t\t write_dyn_elapsed_time " << publish_feedback_elapsed_time);
-      ROS_INFO_STREAM("\t\t publish_feedback_elapsed_time " << publish_feedback_elapsed_time);
-      ROS_INFO_STREAM("\t\t evaluate_goal_elapsed_time " << evaluate_goal_elapsed_time);
+      ROS_INFO_STREAM("\t grow_mask_elapsed_time " << grow_mask_elapsed_time <<
+                      "\t\t " << (100.0*grow_mask_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t transform_elapsed_time " << transform_elapsed_time <<
+                      "\t\t " << (100.0*transform_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t filter_elapsed_time " << filter_elapsed_time <<
+                      "\t\t " << (100.0*filter_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t downsample_elapsed_time " << downsample_elapsed_time <<
+                      "\t\t " << (100.0*downsample_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t tracker_elapsed_time " << tracker_elapsed_time <<
+                      "\t\t " << (100.0*tracker_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time <<
+                      "\t " << (100.0*update_tracks_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time <<
+                      "\t " << (100.0*copy_tracks_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t display_tracks_elapsed_time " << display_tracks_elapsed_time <<
+                      "\t " << (100.0*display_tracks_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t write_dyn_elapsed_time " << publish_feedback_elapsed_time <<
+                      "\t " << (100.0*write_dyn_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t publish_feedback_elapsed_time " << publish_feedback_elapsed_time <<
+                      "\t " << (100.0*publish_feedback_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t evaluate_goal_elapsed_time " << evaluate_goal_elapsed_time <<
+                      "\t " << (100.0*evaluate_goal_elapsed_time/cb_elapsed_time) << "\%\n");
     }
 #endif
   }
@@ -2074,15 +2085,15 @@ class TabletopPushingPerceptionNode
     img.copyTo(disp_img);
 
     cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(centroid);
-    cv::RotatedRect obj_ellipse = obj_tracker_->getMostRecentEllipse();
-    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
-    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
+    float circ_size = 1.0;
+    const float x_maj_rad = (std::cos(theta)*circ_size*0.5);
+    const float y_maj_rad = (std::sin(theta)*circ_size*0.5);
     pcl16::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
                                       centroid.point.z);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
         table_heading_point, centroid.header.frame_id, camera_frame_);
-    const float goal_x_rad = (std::cos(goal_theta)*obj_ellipse.size.height*0.5);
-    const float goal_y_rad = (std::sin(goal_theta)*obj_ellipse.size.height*0.5);
+    const float goal_x_rad = (std::cos(goal_theta)*circ_size*0.5);
+    const float goal_y_rad = (std::sin(goal_theta)*circ_size*0.5);
     pcl16::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
                                      centroid.point.z);
     cv::Point2f img_goal_idx = pcl_segmenter_->projectPointIntoImage(
