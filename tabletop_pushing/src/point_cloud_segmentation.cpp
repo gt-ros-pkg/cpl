@@ -205,11 +205,16 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   double find_centroid_elapsed_time = (((double)(Timer::nanoTime() - find_centroid_start_time)) /
                                        Timer::NANOSECONDS_PER_SECOND);
   ROS_INFO_STREAM("\t get Table Plane Elapsed Time " << get_table_plane_elapsed_time);
-  ROS_INFO_STREAM("\t\t downsample Elapsed Time " << downsample_elapsed_time);
-  ROS_INFO_STREAM("\t\t filter Z Elapsed Time " << filter_cloud_z_elapsed_time);
-  ROS_INFO_STREAM("\t\t filter X Elapsed Time " << filter_cloud_x_elapsed_time);
-  ROS_INFO_STREAM("\t\t RANSAC Elapsed Time " << RANSAC_elapsed_time);
-  ROS_INFO_STREAM("\t\t find Centroid Elapsed Time " << find_centroid_elapsed_time);
+  ROS_INFO_STREAM("\t\t downsample Elapsed Time " << downsample_elapsed_time <<
+                  "\t\t\t " << (100.*downsample_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t filter Z Elapsed Time " << filter_cloud_z_elapsed_time <<
+                  "\t\t\t " << (100.*filter_cloud_z_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t filter X Elapsed Time " << filter_cloud_x_elapsed_time <<
+                  "\t\t\t " << (100.*filter_cloud_x_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t RANSAC Elapsed Time " << RANSAC_elapsed_time <<
+                  "\t\t\t\t " << (100.*RANSAC_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t find Centroid Elapsed Time " << find_centroid_elapsed_time <<
+                  "\t\t\t " << (100.*find_centroid_elapsed_time/get_table_plane_elapsed_time) << "\%");
 #endif
 
 }
@@ -377,9 +382,11 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   }
   else
   {
-    ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time);
+    ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time <<
+                    "\t\t\t\t " << (100.*segment_table_elapsed_time/find_tabletop_objects_elapsed_time) << "\%");
   }
-  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time << "\n");
+  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time  <<
+                  "\t\t\t\t " << (100.*cluster_objects_elapsed_time/find_tabletop_objects_elapsed_time) << "\%\n");
 #endif
 
 }
@@ -434,8 +441,10 @@ void PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud, P
   double proto_object_elapsed_time = (((double)(Timer::nanoTime() - proto_object_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
   ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time);
-  ROS_INFO_STREAM("\t\t pcl_cluster_elapsed_time " << pcl_cluster_elapsed_time);
-  ROS_INFO_STREAM("\t\t proto_object_elapsed_time " << proto_object_elapsed_time);
+  ROS_INFO_STREAM("\t\t pcl_cluster_elapsed_time " << pcl_cluster_elapsed_time <<
+                  "\t\t\t " << (100.*pcl_cluster_elapsed_time/cluster_objects_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t proto_object_elapsed_time " << proto_object_elapsed_time <<
+                  "\t\t\t " << (100.*proto_object_elapsed_time/cluster_objects_elapsed_time) << "\%");
 #endif
 
 }
@@ -480,6 +489,8 @@ double PointCloudSegmentation::ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPo
                                                   Eigen::Matrix4f& init_transform,
                                                   Eigen::Matrix4f& transform, XYZPointCloud& aligned)
 {
+  // TODO: Profile this funciton!!!!!!!!!!!
+  // TODO: Profile diff from nonlinear to standard...
   // TODO: Investigate this!
   pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> icp;
   // icp.setMaximumIterations(icp_max_iters_);

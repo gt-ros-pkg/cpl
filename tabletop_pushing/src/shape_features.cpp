@@ -78,6 +78,7 @@ std::vector<int> getJumpIndices(XYZPointCloud& concave_hull, double alpha)
   return jump_indices;
 }
 
+// TODO: Profile this function!!!!
 XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
 {
   // Get 2D projection of object
