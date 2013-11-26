@@ -761,7 +761,7 @@ class TabletopPushingPerceptionNode
       }
       return;
     }
-
+    // TODO: Switch to radius?
     if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
     {
       ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
