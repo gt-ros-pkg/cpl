@@ -155,14 +155,18 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   }
   no_objects = false;
 #ifdef PROFILE_FIND_TARGET_TIME
+  // Have to do an extra copy here...
+  ProtoObject chosen = matchToTargetObject(objs, in_frame, init);
+
   double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
                                        Timer::NANOSECONDS_PER_SECOND);
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                      Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("\t\t find_target_elapsed_time " << find_target_elapsed_time);
-  ROS_INFO_STREAM("\t\t\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
-  ROS_INFO_STREAM("\t\t\t choose_object_elapsed_time " << choose_object_elapsed_time);
-  ProtoObject chosen = matchToTargetObject(objs, in_frame, init);
+  ROS_INFO_STREAM("find_target_elapsed_time " << find_target_elapsed_time);
+  ROS_INFO_STREAM("\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time <<
+                  "\t " << (100.0*find_tabletop_objects_elapsed_time/find_target_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t choose_object_elapsed_time " << choose_object_elapsed_time <<
+                  "\t\t " << (100.0*choose_object_elapsed_time/find_target_elapsed_time) << "\%\n");
   return chosen;
 #else // PROFILE_FIND_TARGET_TIME
   return matchToTargetObject(objs, in_frame, init);
@@ -258,6 +262,15 @@ void ObjectTracker25D::updateHeading(PushTrackerState& state, bool init_state)
 void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, std::string proxy_name,
                                     cv::Mat& in_frame, PushTrackerState& state, bool init_state)
 {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+  long long compute_state_start_time = Timer::nanoTime();
+  double boundary_samples_elapsed_time = 0.0;
+  double fit_ellipse_elapsed_time = 0.0;
+  double copy_state_elapsed_time = 0.0;
+  double icp_elapsed_time = 0.0;
+  double update_stuff_elapsed_time = 0.0;
+#endif // PROFILE_COMPUTE_STATE_TIME
+
   // TODO: Have each proxy create an image, and send that image to the trackerDisplay
   // function to deal with saving and display.
   cv::RotatedRect obj_ellipse;
@@ -274,12 +287,24 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   else if (proxy_name == HULL_ELLIPSE_PROXY || proxy_name == HULL_ICP_PROXY ||
            proxy_name == HULL_SHAPE_CONTEXT_PROXY)
   {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long boundary_samples_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     // Get 2D object boundary
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    boundary_samples_elapsed_time = (((double)(Timer::nanoTime() - boundary_samples_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
 
     // Get ellipse orientation from the 2D boundary
     if (frame_count_ < 1 || proxy_name == HULL_ELLIPSE_PROXY)
     {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long fit_ellipse_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
       fitHullEllipse(hull_cloud, obj_ellipse);
       state.x.theta = getThetaFromEllipse(obj_ellipse);
       // Get (x,y) centroid of boundary
@@ -292,12 +317,21 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       previous_centroid_state_ = state;
 #endif // USE_TRANSFORM_GUESS
 
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      fit_ellipse_elapsed_time = (((double)(Timer::nanoTime() - fit_ellipse_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     }
     else
     {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long icp_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
       cpl_visual_features::Path matches;
       XYZPointCloud aligned;
       Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
+
       if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
       {
         double match_cost;
@@ -307,6 +341,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       else // (proxy_name == HULL_ICP_PROXY)
       {
+        Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+
+#ifdef USE_TRANSFORM_GUESS
         cv::RotatedRect centroid_obj_ellipse;
         tabletop_pushing::VisFeedbackPushTrackingFeedback centroid_state;
         fitHullEllipse(hull_cloud, centroid_obj_ellipse);
@@ -317,9 +354,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         // Use vertical z centroid from object
         centroid_state.z = cur_obj.centroid[2];
 
-        Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
-
-#ifdef USE_TRANSFORM_GUESS
         double delta_x_guess = centroid_state.x.x - previous_centroid_state_.x.x;
         double delta_y_guess = centroid_state.x.y - previous_centroid_state_.x.y;
         double delta_theta_guess = subPIAngle(centroid_state.x.theta - previous_centroid_state_.x.theta);
@@ -340,7 +374,16 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
                                                                 guess, transform, aligned);
 
         // ROS_INFO_STREAM("Found ICP match with score: " << match_score);
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+        icp_elapsed_time = (((double)(Timer::nanoTime() - icp_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
       }
+#ifdef PROFILE_COMPUTE_STATE_TIME
+        long long copy_state_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
 
       // Transform previous state using the estimate and update current state
       // ROS_INFO_STREAM("Found transform of: \n" << transform);
@@ -353,6 +396,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
       const Eigen::Vector3f x_axis_t = rot*x_axis;
       state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      copy_state_elapsed_time = (((double)(Timer::nanoTime() - copy_state_start_time)) /
+                                 Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
 
 #ifdef USE_DISPLAY
       // Visualize the matches
@@ -386,9 +434,19 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 #endif // USE_DISPLAY
     }
 
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    long long update_state_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     // Update stuff
     previous_hull_cloud_ = hull_cloud;
     updateHeading(state, init_state);
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    double compute_state_elapsed_time = (((double)(Timer::nanoTime() - update_state_start_time)) /
+                                         Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
   }
   else if (proxy_name == BOUNDING_BOX_XY_PROXY)
   {
@@ -478,6 +536,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
+
 #ifdef USE_DISPLAY
   if (use_displays_ || write_to_disk_)
   {
@@ -495,6 +554,23 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     }
   }
 #endif // USE_DISPLAY
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+  double compute_state_elapsed_time = (((double)(Timer::nanoTime() - compute_state_start_time)) /
+                                          Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("compute_state_elapsed_time " << compute_state_elapsed_time);
+  ROS_INFO_STREAM("\t fit_ellipse_elapsed_time " << fit_ellipse_elapsed_time << "\t\t\t" <<
+                  (100.0*fit_ellipse_elapsed_time/compute_state_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t boundary_samples_elapsed_time " << boundary_samples_elapsed_time << "\t" <<
+                  (100.0*boundary_samples_elapsed_time/compute_state_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t copy_state_elapsed_time " << copy_state_elapsed_time << "\t\t" <<
+                  (100.0*copy_state_elapsed_time/compute_state_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t icp_elapsed_time " << icp_elapsed_time << "\t\t\t" <<
+                  (100.0*icp_elapsed_time/compute_state_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t update_stuff_elapsed_time " << update_stuff_elapsed_time << "\t\t\t" <<
+                  (100.0*update_stuff_elapsed_time/compute_state_elapsed_time) << "\%\n");
+#endif // PROFILE_COMPUTE_STATE_TIME
+
 }
 
 void ObjectTracker25D::fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse)
@@ -672,8 +748,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   frame_count_ = 0;
   record_count_ = 0;
   frame_set_count_++;
-  ProtoObject cur_obj;
-  cur_obj = findTargetObject(in_frame, cloud, no_objects, true);
+  previous_obj_ = findTargetObject(in_frame, cloud, no_objects, true);
   initialized_ = true;
   if (no_objects)
   {
@@ -685,7 +760,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   }
   else
   {
-    computeState(cur_obj, cloud, proxy_name, in_frame, state, true);
+    computeState(previous_obj_, cloud, proxy_name, in_frame, state, true);
     state.header.seq = 0;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -704,8 +779,6 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;
   init_state_ = state;
-  // TODO: Can we remove the need to copy here?
-  previous_obj_ = cur_obj;
   obj_saved_ = true;
   frame_count_ = 1;
   record_count_ = 1;
@@ -818,7 +891,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
                                 Timer::NANOSECONDS_PER_SECOND);
   double copy_state_elapsed_time = (((double)(update_model_end_time - copy_state_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("update_elapsed_time " << update_elapsed_time);
+  ROS_INFO_STREAM("update_tracks_elapsed_time " << update_elapsed_time);
   ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time <<
                   "\t\t " << (100.0*find_target_elapsed_time/update_elapsed_time) << "\%");
   ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time <<
