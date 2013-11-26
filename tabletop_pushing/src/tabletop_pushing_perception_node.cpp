@@ -700,7 +700,7 @@ class TabletopPushingPerceptionNode
     ++frame_callback_count_;
 
 #ifdef PROFILE_CB_TIME
-    double cb_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
+    double cb_elapsed_time = (((double)(Timer::nanoTime() - cb_start_time)) /
                             Timer::NANOSECONDS_PER_SECOND);
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
