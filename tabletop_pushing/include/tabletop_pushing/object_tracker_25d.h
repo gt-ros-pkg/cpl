@@ -91,15 +91,13 @@ class ObjectTracker25D
 
   void fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  void initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                  pcl16::PointCloud<pcl16::PointXYZ>& cloud, std::string proxy_name,
-                  tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap=false);
+  void initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                  std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap=false);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
 
-  void updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                    pcl16::PointCloud<pcl16::PointXYZ>& cloud, std::string proxy_name,
-                    tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
+  void updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                    std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
 
   void pausedUpdate(cv::Mat in_frame);
 

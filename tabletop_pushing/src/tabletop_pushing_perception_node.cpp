@@ -117,7 +117,6 @@
 
 // Debugging IFDEFS
 // #define DISPLAY_INPUT_COLOR 1
-// #define DISPLAY_INPUT_DEPTH 1
 // #define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
@@ -133,7 +132,6 @@ using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
 using geometry_msgs::Twist;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
-                                                        sensor_msgs::Image,
                                                         sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
 using cpl_visual_features::upSample;
@@ -186,10 +184,9 @@ class TabletopPushingPerceptionNode
   TabletopPushingPerceptionNode(ros::NodeHandle &n) :
       n_(n), n_private_("~"),
       image_sub_(n, "color_image_topic", 1),
-      depth_sub_(n, "depth_image_topic", 1),
       mask_sub_(n, "mask_image_topic", 1),
       cloud_sub_(n, "point_cloud_topic", 1),
-      sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
+      sync_(MySyncPolicy(15), image_sub_, mask_sub_, cloud_sub_),
       as_(n, "push_tracker", false),
       have_depth_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
@@ -346,7 +343,6 @@ class TabletopPushingPerceptionNode
   }
 
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
-                      const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::ImageConstPtr& mask_msg,
                       const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
@@ -360,17 +356,15 @@ class TabletopPushingPerceptionNode
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
       pcl_segmenter_->cam_info_ = cam_info_;
+      pcl_segmenter_->cur_camera_header_ = img_msg->header;
       ROS_DEBUG_STREAM("Cam info: " << cam_info_);
     }
     // Convert images to OpenCV format
     cv::Mat color_frame;
-    cv::Mat depth_frame;
     cv::Mat self_mask;
     cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
-    cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
     cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
     color_frame = color_cv_ptr->image;
-    depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
 
     // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
@@ -400,34 +394,18 @@ class TabletopPushingPerceptionNode
     long long filter_start_time = Timer::nanoTime();
 #endif
 
-    // TODO: Add a switch
-    // TODO: Smooth / fill in depth map instead of zeroing (mode filter)
-    // Convert nans to zeros
-    for (int r = 0; r < depth_frame.rows; ++r)
-    {
-      float* depth_row = depth_frame.ptr<float>(r);
-      for (int c = 0; c < depth_frame.cols; ++c)
-      {
-        float cur_d = depth_row[c];
-        if (isnan(cur_d))
-        {
-          depth_row[c] = 0.0;
-        }
-      }
-    }
-
     XYZPointCloud cloud_self_filtered(cloud);
     pcl16::PointXYZ nan_point;
     nan_point.x = numeric_limits<float>::quiet_NaN();
     nan_point.y = numeric_limits<float>::quiet_NaN();
     nan_point.z = numeric_limits<float>::quiet_NaN();
-    for (unsigned int x = 0; x < cloud.width; ++x)
+    for (unsigned int r = 0; r < self_mask.rows; ++r)
     {
-      for (unsigned int y = 0; y < cloud.height; ++y)
+      for (unsigned int c = 0; c < self_mask.cols; ++c)
       {
-        if (self_mask.at<uchar>(y,x) == 0)
+        if (self_mask.at<uchar>(r, c) == 0)
         {
-          cloud_self_filtered.at(x,y) = nan_point;
+          cloud_self_filtered.at(c, r) = nan_point;
         }
       }
     }
@@ -439,10 +417,7 @@ class TabletopPushingPerceptionNode
 
     // Downsample everything first
     cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
-    cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
     cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
-    cv::Mat arm_mask_crop;
-    color_frame_down.copyTo(arm_mask_crop, self_mask_down);
 
 #ifdef PROFILE_CB_TIME
     double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
@@ -450,21 +425,13 @@ class TabletopPushingPerceptionNode
     long long copy_start_time = Timer::nanoTime();
 #endif
 
-    // Save internally for use in the service callback
-    // prev_color_frame_ = cur_color_frame_.clone();
-    // prev_depth_frame_ = cur_depth_frame_.clone();
-    // prev_self_mask_ = cur_self_mask_.clone();
-    // prev_camera_header_ = cur_camera_header_;
 
     // Update the current versions
-    cur_color_frame_ = color_frame_down.clone();
-    cur_depth_frame_ = depth_frame_down.clone();
-    cur_self_mask_ = self_mask_down.clone();
+    color_frame_down.copyTo(cur_color_frame_);
+    self_mask_down.copyTo(cur_self_mask_);
     cur_point_cloud_ = cloud;
     cur_self_filtered_cloud_ = cloud_self_filtered;
     have_depth_data_ = true;
-    cur_camera_header_ = img_msg->header;
-    pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
 
 #ifdef PROFILE_CB_TIME
     double copy_elapsed_time = (((double)(Timer::nanoTime() - copy_start_time)) /
@@ -493,16 +460,8 @@ class TabletopPushingPerceptionNode
 #endif
 
       PushTrackerState tracker_state;
-      if (use_graphcut_arm_seg_)
-      {
-        obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
-                                   proxy_name_, tracker_state);
-      }
-      else
-      {
-        obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                                   proxy_name_, tracker_state);
-      }
+      obj_tracker_->updateTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_,
+                                 tracker_state);
 
 #ifdef DEBUG_POSE_ESTIMATION
       pose_est_stream_ << tracker_state.x.x << " " << tracker_state.x.y << " " << tracker_state.z << " "
@@ -685,7 +644,6 @@ class TabletopPushingPerceptionNode
     {
       cv::imshow("color", cur_color_frame_);
       // cv::imshow("self_mask", cur_self_mask_);
-      cv::imshow("arm_mask_crop", arm_mask_crop);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
@@ -707,16 +665,6 @@ class TabletopPushingPerceptionNode
       record_count_++;
     }
 #endif // DISPLAY_INPUT_COLOR
-#ifdef DISPLAY_INPUT_DEPTH
-    if (use_displays_)
-    {
-      double depth_max = 1.0;
-      cv::minMaxLoc(cur_depth_frame_, NULL, &depth_max);
-      cv::Mat depth_display = cur_depth_frame_.clone();
-      depth_display /= depth_max;
-      cv::imshow("input_depth", depth_display);
-    }
-#endif // DISPLAY_INPUT_DEPTH
 #ifdef DISPLAY_WAIT
     if (use_displays_)
     {
@@ -1768,10 +1716,6 @@ class TabletopPushingPerceptionNode
   void getObjectPose(LearnPush::Response& res)
   {
     bool no_objects = false;
-    // TODO: Switch to findTargetObjectGC?
-    // ProtoObject cur_obj = obj_tracker_->findTargetObjectGC(cur_color_frame_,
-    //                                                        cur_point_cloud_, cur_depth_frame_,
-    //                                                        cur_self_mask_, no_objects, true);
     ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_, cur_point_cloud_, no_objects, true);
     if (no_objects)
     {
@@ -1806,17 +1750,8 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    if (use_graphcut_arm_seg_)
-    {
-      obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
-                               proxy_name_, state, start_swap);
-    }
-    else
-    {
-      obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                               proxy_name_, state, start_swap);
-    }
-
+    obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_, state,
+                             start_swap);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -2304,7 +2239,6 @@ class TabletopPushingPerceptionNode
   ros::NodeHandle n_;
   ros::NodeHandle n_private_;
   message_filters::Subscriber<sensor_msgs::Image> image_sub_;
-  message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
   message_filters::Subscriber<sensor_msgs::Image> mask_sub_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
@@ -2318,13 +2252,7 @@ class TabletopPushingPerceptionNode
   ros::Subscriber jtteleop_r_arm_subscriber_;
   actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
-  cv::Mat cur_depth_frame_;
   cv::Mat cur_self_mask_;
-  // cv::Mat prev_color_frame_;
-  // cv::Mat prev_depth_frame_;
-  // cv::Mat prev_self_mask_;
-  std_msgs::Header cur_camera_header_;
-  // std_msgs::Header prev_camera_header_;
   XYZPointCloud cur_point_cloud_;
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;

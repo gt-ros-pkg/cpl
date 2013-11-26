@@ -653,8 +653,8 @@ void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_e
   obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
 }
 
-void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                                  XYZPointCloud& cloud, std::string proxy_name,
+
+void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud, std::string proxy_name,
                                   tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
 {
   paused_ = false;
@@ -666,14 +666,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   record_count_ = 0;
   frame_set_count_++;
   ProtoObject cur_obj;
-  if (use_graphcut_arm_seg_)
-  {
-    cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects, true);
-  }
-  else
-  {
-    cur_obj = findTargetObject(in_frame, cloud, no_objects, true);
-  }
+  cur_obj = findTargetObject(in_frame, cloud, no_objects, true);
   initialized_ = true;
   if (no_objects)
   {
@@ -717,7 +710,7 @@ double ObjectTracker25D::getThetaFromEllipse(cv::RotatedRect& obj_ellipse)
   return subPIAngle(DEG2RAD(obj_ellipse.angle)+0.5*M_PI);
 }
 
-void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
+void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
                                     XYZPointCloud& cloud, std::string proxy_name, PushTrackerState& state)
 {
 #ifdef PROFILE_TRACKING_TIME
@@ -728,7 +721,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
 #ifdef PROFILE_TRACKING_TIME
     long long init_start_time = Timer::nanoTime();
 #endif
-    initTracks(in_frame, depth_frame, self_mask, cloud, proxy_name, state);
+    initTracks(in_frame, self_mask, cloud, proxy_name, state);
 #ifdef PROFILE_TRACKING_TIME
     double init_elapsed_time = (((double)(Timer::nanoTime() - init_start_time)) / Timer::NANOSECONDS_PER_SECOND);
     ROS_INFO_STREAM("init_elapsed_time " << init_elapsed_time);
@@ -740,14 +733,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
   long long find_target_start_time = Timer::nanoTime();
 #endif
   ProtoObject cur_obj;
-  if (use_graphcut_arm_seg_)
-  {
-    cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects);
-  }
-  else
-  {
-    cur_obj = findTargetObject(in_frame, cloud, no_objects);
-  }
+  cur_obj = findTargetObject(in_frame, cloud, no_objects);
 #ifdef PROFILE_TRACKING_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long update_model_start_time = Timer::nanoTime();
