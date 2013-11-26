@@ -406,14 +406,14 @@ class TabletopPushingPerceptionNode
                                      Timer::NANOSECONDS_PER_SECOND);
 #endif
 
-    XYZPointCloud cloud_self_filtered(cur_point_cloud_);
+    pcl16::copyPointCloud(cur_point_cloud_, cur_self_filtered_cloud_);
     for (unsigned int r = 0; r < self_mask.rows; ++r)
     {
       for (unsigned int c = 0; c < self_mask.cols; ++c)
       {
         if (self_mask.at<uchar>(r, c) == 0)
         {
-          cloud_self_filtered.at(c, r) = nan_point_;
+          cur_self_filtered_cloud_.at(c, r) = nan_point_;
         }
       }
     }
@@ -431,21 +431,9 @@ class TabletopPushingPerceptionNode
     cv::pyrDown(self_mask, cur_self_mask_);
 
 #ifdef PROFILE_CB_TIME
-    long long copy_start_time = Timer::nanoTime();
-    double downsample_elapsed_time = (((double)(copy_start_time - downsample_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
-#endif
-
-    // Update the current versions
-    // color_frame_down.copyTo(cur_color_frame_);
-    // self_mask_down.copyTo(cur_self_mask_);
-    // cur_point_cloud_ = cloud;
-    cur_self_filtered_cloud_ = cloud_self_filtered;
-
-#ifdef PROFILE_CB_TIME
     long long tracker_start_time = Timer::nanoTime();
-    double copy_elapsed_time = (((double)(tracker_start_time - copy_start_time)) /
-                                Timer::NANOSECONDS_PER_SECOND);
+    double downsample_elapsed_time = (((double)(tracker_start_time - tracker_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
     double update_tracks_elapsed_time = 0.0;
     double copy_tracks_elapsed_time = 0.0;
     double display_tracks_elapsed_time = 0.0;
@@ -709,7 +697,6 @@ class TabletopPushingPerceptionNode
       ROS_INFO_STREAM("\t transform_elapsed_time " << transform_elapsed_time);
       ROS_INFO_STREAM("\t filter_elapsed_time " << filter_elapsed_time);
       ROS_INFO_STREAM("\t downsample_elapsed_time " << downsample_elapsed_time);
-      ROS_INFO_STREAM("\t copy_elapsed_time " << copy_elapsed_time);
       ROS_INFO_STREAM("\t tracker_elapsed_time " << tracker_elapsed_time);
       ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time);
       ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time);
