@@ -505,7 +505,8 @@ double PointCloudSegmentation::ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPo
   // TODO: Profile this funciton!!!!!!!!!!!
   // TODO: Profile diff from nonlinear to standard...
   // TODO: Investigate this!
-  pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  // pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> icp;
   // icp.setMaximumIterations(icp_max_iters_);
   // icp.setTransformationEpsilon(icp_transform_eps_);
   // icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);

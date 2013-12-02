@@ -349,6 +349,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         cv::RotatedRect centroid_obj_ellipse;
         tabletop_pushing::VisFeedbackPushTrackingFeedback centroid_state;
         fitHullEllipse(hull_cloud, centroid_obj_ellipse);
+        // TODO: Make sure not a 180 swap of the heading between frames...
         centroid_state.x.theta = getThetaFromEllipse(centroid_obj_ellipse);
         // Get (x,y) centroid of boundary
         centroid_state.x.x = centroid_obj_ellipse.center.x;
