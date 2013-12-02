@@ -40,10 +40,10 @@
     <param name="icp_ransac_thresh" value="0.015" type="double"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
-    <param name="min_workspace_x" value="-1.0" type="double"/>
-    <param name="max_workspace_x" value="1.5" type="double"/>
-    <param name="min_workspace_z" value="-0.8" type="double"/>
-    <param name="max_workspace_z" value="0.6" type="double"/>
+    <param name="min_workspace_x" value="0.0" type="double"/>
+    <param name="max_workspace_x" value="1.0" type="double"/>
+    <param name="min_workspace_z" value="-0.3" type="double"/>
+    <param name="max_workspace_z" value="0.5" type="double"/>
     <param name="min_table_z" value="-1.0" type="double"/>
     <param name="max_table_z" value="1.0" type="double"/>
     <param name="self_mask_dilate_size" value="15" type="int"/>

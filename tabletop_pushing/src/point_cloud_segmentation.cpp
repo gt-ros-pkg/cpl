@@ -72,6 +72,7 @@
 // #define PROFILE_OBJECT_SEGMENTATION_TIME 1
 // #define PROFILE_TABLE_SEGMENTATION_TIME 1
 // #define PROFILE_OBJECT_CLUSTER_TIME 1
+// #define DOWNSAMPLE_OBJS_CLOUD 1
 
 #define randf() static_cast<float>(rand())/RAND_MAX
 
@@ -183,24 +184,25 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   long long find_centroid_start_time = Timer::nanoTime();
 #endif
   // Estimate hull from the inlier points
-  if (find_hull)
-  {
-    ROS_INFO_STREAM("finding concave hull. Plane size: " <<
-                    plane_cloud.size());
-    XYZPointCloud hull_cloud;
-    pcl16::ConcaveHull<PointXYZ> hull;
-    hull.setInputCloud(plane_cloud.makeShared());
-    hull.setAlpha(hull_alpha_);
-    hull.reconstruct(hull_cloud);
-    ROS_INFO_STREAM("hull_cloud.size() " << hull_cloud.size());
-    // TODO: Return the hull_cloud
-    // TODO: Figure out if stuff is inside the hull
-  }
+  // if (find_hull)
+  // {
+  //   ROS_INFO_STREAM("finding concave hull. Plane size: " <<
+  //                   plane_cloud.size());
+  //   XYZPointCloud hull_cloud;
+  //   pcl16::ConcaveHull<PointXYZ> hull;
+  //   hull.setInputCloud(plane_cloud.makeShared());
+  //   hull.setAlpha(hull_alpha_);
+  //   hull.reconstruct(hull_cloud);
+  //   ROS_INFO_STREAM("hull_cloud.size() " << hull_cloud.size());
+  //   // TODO: Return the hull_cloud
+  //   // TODO: Figure out if stuff is inside the hull
+  // }
 
   // Extract the plane members into their own point cloud
   if (find_centroid)
   {
     pcl16::compute3DCentroid(plane_cloud, table_centroid);
+    ROS_WARN_STREAM("Updating min workspace z to: " << table_centroid[2]);
     // min_workspace_z_ = table_centroid[2];
   }
   // cv::Size img_size(320, 240);
