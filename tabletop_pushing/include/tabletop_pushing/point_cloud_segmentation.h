@@ -90,14 +90,17 @@ class PointCloudSegmentation
   /**
    * Function to find the table plane in the image by plane RANSAC
    *
-   * @param cloud       The input cloud
-   * @param objs_cloud  [Returned] the cloud not containing the table plane
-   * @param plane_cloud [Returned the cloud containing the plane
-   * @param center      [Returned] the center of the table plane
-   * @param find_hull   set true to estimate the extent of the plane
+   * @param cloud           The input cloud
+   * @param objs_cloud      [Returned] the cloud not containing the table plane
+   * @param plane_cloud     [Returned] the cloud containing the plane
+   * @param center          [Returned] the center of the table plane
+   * @param init_table_find set true to have a greater search space for finding table plane
+   * @param find_hull       set true to estimate the extent of the plane
+   * @param find_centroid   set true to estimate the extent of the plane
    */
   void getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
                      XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
+                     bool init_table_find=false,
                      bool find_hull=false, bool find_centroid=false);
 
   /**
@@ -105,7 +108,7 @@ class PointCloudSegmentation
    *
    * @param cloud       The input cloud
    * @param objs_cloud  [Returned] the cloud not containing the table plane
-   * @param plane_cloud [Returned the cloud containing the plane
+   * @param plane_cloud [Returned] the cloud containing the plane
    * @param center      [Returned] the center of the table plane
    * @param find_hull   set true to estimate the extent of the plane
    */
@@ -118,7 +121,7 @@ class PointCloudSegmentation
    *
    * @param input_cloud   The point cloud to operate on.
    * @param objs          [Returned] The object clusters.
-   * @param extract_table True if the table plane should be extracted
+   * @param use_mps       If true then mps is used instead of RANSAC to get the table plane
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs, bool use_mps=false);
 
@@ -128,7 +131,7 @@ class PointCloudSegmentation
    * @param input_cloud   The point cloud to operate on.
    * @param objs          [Returned] The object clusters.
    * @param objs_cloud    The point cloud containing the object points.
-   * @param extract_table True if the table plane should be extracted
+   * @param use_mps       If true then mps is used instead of RANSAC to get the table plane
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
                            XYZPointCloud& objs_cloud, bool use_mps=false);
@@ -140,11 +143,11 @@ class PointCloudSegmentation
    * @param objs          [Returned] The object clusters.
    * @param objs_cloud    The point cloud containing the object points.
    * @param plane_cloud   The point cloud containing the table plane points.
-   * @param extract_table True if the table plane should be extracted
+   * @param use_mps       If true then mps is used instead of RANSAC to get the table plane
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
-                                   XYZPointCloud& objs_cloud,
-                                   XYZPointCloud& plane_cloud, bool use_mps=false);
+                           XYZPointCloud& objs_cloud,
+                           XYZPointCloud& plane_cloud, bool use_mps=false);
 
   /**
    * Function to segment point cloud regions using euclidean clustering

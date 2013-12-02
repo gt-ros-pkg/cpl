@@ -2019,9 +2019,10 @@ class TabletopPushingPerceptionNode
   void getTablePlane(XYZPointCloud& cloud, PoseStamped& p)
   {
     XYZPointCloud obj_cloud, table_cloud;
-    // TODO: Comptue the hull on the first call
+    // TODO: Comptue the hull on the first call and update segmentation bounds based on extent
     Eigen::Vector4f table_centroid;
-    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid, false, true);
+    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid, true /*init_table_find*/,
+                                  false /*find_hull*/, true/*find_centroid*/);
     p.pose.position.x = table_centroid[0];
     p.pose.position.y = table_centroid[1];
     p.pose.position.z = table_centroid[2];
