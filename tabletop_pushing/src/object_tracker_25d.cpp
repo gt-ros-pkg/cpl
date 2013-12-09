@@ -314,6 +314,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       state.x.y = obj_ellipse.center.y;
       // Use vertical z centroid from object
       state.z = cur_obj.centroid[2];
+      updateHeading(state, init_state);
 
 #ifdef USE_TRANSFORM_GUESS
       previous_centroid_state_ = state;
@@ -349,7 +350,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         cv::RotatedRect centroid_obj_ellipse;
         tabletop_pushing::VisFeedbackPushTrackingFeedback centroid_state;
         fitHullEllipse(hull_cloud, centroid_obj_ellipse);
-        // TODO: Make sure not a 180 swap of the heading between frames...
         centroid_state.x.theta = getThetaFromEllipse(centroid_obj_ellipse);
         // Get (x,y) centroid of boundary
         centroid_state.x.x = centroid_obj_ellipse.center.x;
@@ -359,7 +359,21 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 
         double delta_x_guess = centroid_state.x.x - previous_centroid_state_.x.x;
         double delta_y_guess = centroid_state.x.y - previous_centroid_state_.x.y;
-        double delta_theta_guess = subPIAngle(centroid_state.x.theta - previous_centroid_state_.x.theta);
+
+        // Make sure not a +/-pi swap of the heading between frames...
+        if ( (centroid_state.x.theta > 0) != (previous_state_.x.theta > 0) )
+        {
+          // Test if swapping makes a shorter distance than changing
+          float augmented_theta = state.x.theta + (state.x.theta > 0.0) ? - M_PI : M_PI;
+          float augmented_diff = fabs(subPIAngle(augmented_theta - previous_state_.x.theta));
+          float current_diff = fabs(subPIAngle(state.x.theta - previous_state_.x.theta));
+          if (augmented_diff < current_diff)
+          {
+            centroid_state.x.theta = augmented_theta;
+          }
+        }
+
+        double delta_theta_guess = subPIAngle(centroid_state.x.theta - previous_state_.x.theta);
         previous_centroid_state_ = centroid_state;
 
         guess(0,0) = cos(delta_theta_guess);
@@ -370,6 +384,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         guess(3,3) = 1.0;
         guess(0,3) = delta_x_guess;
         guess(1,3) = delta_y_guess;
+        ROS_INFO_STREAM("Delta X Guess: " << delta_x_guess);
+        ROS_INFO_STREAM("Delta Y Guess: " << delta_y_guess);
+        ROS_INFO_STREAM("Delta Theta Guess: " << delta_theta_guess);
         ROS_INFO_STREAM("Initial transform guess of: \n" << guess);
 #endif // USE_TRANSFORM_GUESS
 
@@ -438,16 +455,15 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     }
 
 #ifdef PROFILE_COMPUTE_STATE_TIME
-    long long update_state_start_time = Timer::nanoTime();
+    long long update_stuff_start_time = Timer::nanoTime();
 #endif // PROFILE_COMPUTE_STATE_TIME
 
     // Update stuff
     previous_hull_cloud_ = hull_cloud;
-    updateHeading(state, init_state);
 
 #ifdef PROFILE_COMPUTE_STATE_TIME
-    double compute_state_elapsed_time = (((double)(Timer::nanoTime() - update_state_start_time)) /
-                                         Timer::NANOSECONDS_PER_SECOND);
+    update_stuff_elapsed_time = (((double)(Timer::nanoTime() - update_stuff_start_time)) /
+                                 Timer::NANOSECONDS_PER_SECOND);
 #endif // PROFILE_COMPUTE_STATE_TIME
 
   }
