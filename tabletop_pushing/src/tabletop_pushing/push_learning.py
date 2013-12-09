@@ -36,6 +36,7 @@ import tf.transformations as tr
 from push_primitives import *
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
+from push_trajectory_generator import PushTrajectoryIO
 import rospy
 import cv2
 import numpy as np
@@ -1893,6 +1894,15 @@ def rank_straw_scores_batch():
       print 'Ranks for: ', c
       rank_straw_scores(file_path)
       print '\n'
+
+
+def plot_saved_mpc_data(q_star_file_name, traj_file_name):
+    # Read in neccessary files
+    q_star_io = MPCSolutionIO()
+    q_stars = q_star_io.read_file(q_star_file_name)
+    traj_io = PushTrajectoryIO()
+    trajs = traj_io.read_file(traj_file_name)
+    # TODO: Read in push_learning_file too...
 
 if __name__ == '__main__':
     # analyze_predicted_and_observed_batch()

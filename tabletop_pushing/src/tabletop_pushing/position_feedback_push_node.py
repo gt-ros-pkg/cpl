@@ -918,7 +918,6 @@ class PositionFeedbackPushNode:
 
     def MPCFeedbackController(self, cur_state, ee_pose, desired_pose):
         k0 = cur_state.header.seq
-        # TODO: Check that self.MPC exists?
         # Get updated list for forward trajectory
         # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
         pose_list = [desired_pose]

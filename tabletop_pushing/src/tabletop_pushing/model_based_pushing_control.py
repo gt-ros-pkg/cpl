@@ -121,7 +121,7 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
         # Get jacobian for f(x[k], u[k])
         J_f_k = dyn_model.jacobian(x[k], u[k])
         J[row_start:row_stop, col_start:col_stop] = J_f_k
-        # TODO: Set derivative for x[k+1]
+        # Set derivative for x[k+1]
         col_start = col_stop
         col_stop = col_start + n
         J[row_start:row_stop, col_start:col_stop] = k_plus_1_constraint
@@ -517,3 +517,15 @@ class MPCSolutionIO:
         out_line = str(k0) + ' ' + str(q)
         out_line += '\n'
         return out_line
+
+    def parse_line(self, line):
+        elems = line.split()
+        k0 = int(elems[0])
+        q = [float(x) for x in elems[1:]]
+        return (k0, q)
+
+    def read_file(self, file_name):
+        in_file = file(file_name, 'r')
+        data = [self.parse_line(l) for l in in_file.readlines()]
+        in_file.close()
+        return data

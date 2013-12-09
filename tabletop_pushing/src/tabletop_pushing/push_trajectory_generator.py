@@ -152,3 +152,19 @@ class PushTrajectoryIO:
             out_line += ' ' + str(p)
         out_line += '\n'
         return out_line
+
+    def parse_line(self, line):
+        l0 = line.split()[0]
+        k0 = int(l0)
+        line = line[len(l0)+1:]
+        elems = line.split('[')
+        traj = []
+        for e in elems:
+            traj.append(np.array([float(g) for g in e.rstrip().rstrip(']').split()]))
+        return (k0, traj)
+
+    def read_file(self, file_name):
+        in_file = file(file_name, 'r')
+        data = [self.parse_line(l) for l in in_file.readlines()]
+        in_file.close()
+        return data
