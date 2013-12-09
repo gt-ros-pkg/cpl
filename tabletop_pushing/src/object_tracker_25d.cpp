@@ -401,12 +401,21 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 
       }
 #ifdef PROFILE_COMPUTE_STATE_TIME
-        long long copy_state_start_time = Timer::nanoTime();
+      long long copy_state_start_time = Timer::nanoTime();
 #endif // PROFILE_COMPUTE_STATE_TIME
 
 
       // Transform previous state using the estimate and update current state
       // ROS_INFO_STREAM("Found transform of: \n" << transform);
+      // // HACK: Remove z change components to keep in plane
+      // // Remove any z rotation
+      // transform(0,2) = 0.0;
+      // transform(1,2) = 0.0;
+      // transform(2,0) = 0.0;
+      // transform(2,1) = 0.0;
+      // // Remove any delta z
+      // transform(2,3) = 0.0;
+      // ROS_INFO_STREAM("Cleaned transform of: \n" << transform);
       Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
       state.x.x = x_t_1(0);
