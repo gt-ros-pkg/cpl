@@ -586,7 +586,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
                   (100.0*copy_state_elapsed_time/compute_state_elapsed_time) << "\%");
   ROS_INFO_STREAM("\t icp_elapsed_time " << icp_elapsed_time << "\t\t\t" <<
                   (100.0*icp_elapsed_time/compute_state_elapsed_time) << "\%");
-  ROS_INFO_STREAM("\t update_stuff_elapsed_time " << update_stuff_elapsed_time << "\t\t\t" <<
+  ROS_INFO_STREAM("\t update_stuff_elapsed_time " << update_stuff_elapsed_time << "\t\t" <<
                   (100.0*update_stuff_elapsed_time/compute_state_elapsed_time) << "\%\n");
 #endif // PROFILE_COMPUTE_STATE_TIME
 
