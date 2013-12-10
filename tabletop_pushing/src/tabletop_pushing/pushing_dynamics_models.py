@@ -33,6 +33,9 @@
 
 import svmutil
 import numpy as np
+from math import sin, cos
+
+# TODO: Put dict here to easily get state name to index
 
 class NaiveInputDynamics:
     def __init__(self, delta_t, n, m):
@@ -111,7 +114,8 @@ class StochasticNaiveInputDynamics:
         return self.J
 
 class SVRPushDynamics:
-    def __init__(self, delta_t, n, m, svm_file_names=None, epsilons=None, kernel_type=None, o=3):
+    def __init__(self, delta_t, n, m, svm_file_names=None, epsilons=None, kernel_type=None, learned_out_dims=3,
+                 obj_frame_feats=False):
         '''
         delta_t - the (average) time between time steps
         n - number of state space dimensions
@@ -129,7 +133,7 @@ class SVRPushDynamics:
             self.epsilons = epsilons
         else:
             self.epsilons = []
-            for i in xrange(o):
+            for i in xrange(learned_out_dims):
                 self.epsilons.append(1e-6)
 
         self.KERNEL_TYPES = {'linear': 0, 'polynomial': 1, 'RBF': 2, 'sigmoid': 3, 'precomputed':4}
@@ -142,8 +146,12 @@ class SVRPushDynamics:
         self.predict = self.predict_linear_hand
         self.jacobian = self.jacobian_linear_hand
         self.build_jacobian = self.build_jacobian_linear_hand
-        self.transform_trial_data_to_feat_vectors = self.trial_data_to_feats_state_control
         self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_state_control
+
+        if obj_frame_feats:
+            self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_obj_frame
+            self.jacobian = self.jacobian_linear_hand_obj_frame
+            self.build_jacobian = self.build_jacobian_linear_hand_obj_frame
 
         self.svm_models = []
         if svm_file_names is not None:
@@ -183,6 +191,31 @@ class SVRPushDynamics:
             for file_name, model in zip(output_file_names, self.svm_models):
                 svmutil.svm_save_model(file_name, model)
 
+    def transform_trial_data_to_feat_vectors(self, trajectory):
+        '''
+        Get SVM feature vector from push trial trajectory state information.
+        Needs to be updated whenever transform_state_data_to_feat_vector() is updated
+        trajectory - list of ControlTimeStep() defined in push_learning.py
+        '''
+        Z = []
+        Y = []
+        # TODO: Have ability to extract xtra from the data
+        xtra = []
+        for i in xrange(len(trajectory)-1):
+            cts_t0 = trajectory[i]
+            cts_t1 = trajectory[i+1]
+            x_t = [cts_t0.x.x, cts_t0.x.y, cts_t0.x.theta,
+                   cts_t0.ee.position.x, cts_t0.ee.position.y]
+            u_t = [cts_t0.u.linear.x, cts_t0.u.linear.y]
+            z_t = self.transform_opt_vector_to_feat_vector(x_t, u_t, xtra)
+            y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
+            Z.extend(z_t)
+            Y.append(y_t)
+        return (Z, Y)
+
+    #
+    # Prediction and jacobian methods
+    #
     def predict_linear_hand(self, x_k, u_k, xtra=[]):
         '''
         Predict the next state given current state estimates and control input
@@ -230,27 +263,37 @@ class SVRPushDynamics:
                 for j in xrange(self.m+self.n):
                     self.J[i, j] += alpha[0]*sv[j+1]
 
-    def trial_data_to_feats_state_control(self, trajectory):
-        '''
-        Get SVM feature vector from push trial trajectory state information.
-        Needs to be updated whenever transform_state_data_to_feat_vector() is updated
-        trajectory - list of ControlTimeStep() defined in push_learning.py
-        '''
-        X = []
-        Y = []
-        for i in xrange(len(trajectory)-1):
-            cts_t0 = trajectory[i]
-            cts_t1 = trajectory[i+1]
-            x_t = [cts_t0.x.x, cts_t0.x.y, cts_t0.x.theta,
-                   cts_t0.ee.position.x, cts_t0.ee.position.y, cts_t0.u.linear.x,
-                   cts_t0.u.linear.y]
-            y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
-            X.append(x_t)
-            Y.append(y_t)
-        return (X, Y)
-
+    #
+    # Features transforms
+    #
     def opt_vector_to_feats_state_control(self, x_k, u_k, xtra):
+        '''
+        Does the simplest form of features, just passing on the decision variables
+        '''
         z = np.concatenate([x_k, u_k, xtra])
+        # SVM expects a list of lists, but we're only doing one instance at a time
+        z = [z.tolist()]
+        return z
+
+    def opt_vector_to_feats_object_frame(self, x_k, u_k, xtra):
+        '''
+        Projects features into hand frame, ignores absolute coordinates
+        '''
+        np.concatenate([x_t_obj, u_t_obj, xtra])
+        # Remove mean
+        x_ee_demeaned = np.matrix([[x_k[3]-x_k[0]],
+                                   [x_k[4]-x_k[1]]])
+        # Rotate into frame
+        st = sin(x_k[2])
+        ct = cos(x_k[2])
+        R = np.matrix([[ct, st],
+                       [-st, ct]])
+        x_ee_obj = np.array(R*x_ee_demened).T
+
+        # Rotate u_k into frame
+        u_k_obj = np.array(R*np.matrix(u_k).T).ravel()
+
+        z = np.concatenate([x_ee_obj, u_k_obj, xtra])
         # SVM expects a list of lists, but we're only doing one instance at a time
         z = [z.tolist()]
         return z
