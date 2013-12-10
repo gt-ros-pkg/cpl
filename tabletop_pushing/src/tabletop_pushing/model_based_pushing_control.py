@@ -32,7 +32,6 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 
 from math import sqrt
-from numpy import finfo
 import numpy as np
 import scipy.optimize as opt
 import matplotlib.pyplot as plotter
@@ -138,7 +137,7 @@ class ModelPredictiveController:
         self.delta_t = delta_t
         self.max_iter = 1000 # Max number of iterations
         self.ftol = 1.0E-5 # Accuracy of answer
-        self.epsilon = sqrt(finfo(float).eps)
+        self.epsilon = sqrt(np.finfo(float).eps)
         self.opt_options = {'iter':self.max_iter,
                             'acc':self.ftol,
                             'iprint':1,

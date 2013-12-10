@@ -124,12 +124,6 @@ class SVRPushDynamics:
         self.delta_t = delta_t
         self.n = n
         self.m = m
-        self.svm_models = []
-        if svm_file_names is not None:
-            for svm_file_name in svm_file_names:
-                # print 'Loading file', svm_file_name
-                self.svm_models.append(svmutil.svm_load_model(svm_file_name))
-            self.build_jacobian()
 
         if epsilons is not None:
             self.epsilons = epsilons
@@ -144,73 +138,19 @@ class SVRPushDynamics:
         else:
             self.kernel_type = 'linear'
 
-    def predict(self, x_k, u_k, xtra=[]):
-        '''
-        Predict the next state given current state estimates and control input
-        x_k - current state estimate (ndarray)
-        u_k - current control to evaluate (ndarray)
-        xtra - other features for SVM
-        '''
-        z = np.concatenate([x_k, u_k, xtra])
-        # SVM expects a list of lists, but we're only doing one instance at a time
-        z = [z.tolist()]
-        x_k_plus_1 = []
-        y = [0]
-        for i, svm_model in enumerate(self.svm_models):
-            [delta_i, _, _] = svmutil.svm_predict(y, z, svm_model, '-q')
-            x_k_plus_1.append(x_k[i]+delta_i[0])
+        # TODO: Make switches to change based on preferences here
+        self.predict = self.predict_linear_hand
+        self.jacobian = self.jacobian_linear_hand
+        self.build_jacobian = self.build_jacobian_linear_hand
+        self.transform_trial_data_to_feat_vectors = self.trial_data_to_feats_state_control
+        self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_state_control
 
-        # X ee
-        x_k_plus_1.append(x_k[3] + self.delta_t*u_k[0])
-        # Y ee
-        x_k_plus_1.append(x_k[4] + self.delta_t*u_k[1])
-
-        return np.array(x_k_plus_1)
-
-    def jacobian(self, x_k, u_k, xtra=[]):
-        '''
-        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
-        x_k - current state estimate (ndarray)
-        u_k - current control to evaluate (ndarray)
-        xtra - other features for SVM
-        '''
-        return self.J
-
-    def build_jacobian(self):
-        self.J = np.zeros((self.n, self.n+self.m))
-        self.J[0:self.n, 0:self.n] = np.eye(self.n)
-
-        # Setup partials for hand position change, currently using linear model of applied velocity
-        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
-
-        # Setup partials w.r.t. SVM model parameters
-        for i, svm_model in enumerate(self.svm_models):
-            alphas = svm_model.get_sv_coef()
-            svs = svm_model.get_SV()
-            # Partial derivative is the sum of the product of the SV elements and coefficients
-            # \sum_{i=1}^{l} alpha_i*z_i^j
-            for alpha, sv in zip(alphas, svs):
-                for j in xrange(self.m+self.n):
-                    self.J[i, j] += alpha[0]*sv[j+1]
-
-    def transform_trial_data_to_feat_vectors(self, trajectory):
-        '''
-        Get SVM feature vector from push trial trajectory state information.
-        Needs to be updated whenever transform_state_data_to_feat_vector() is updated
-        trajectory - list of ControlTimeStep() defined in push_learning.py
-        '''
-        X = []
-        Y = []
-        for i in xrange(len(trajectory)-1):
-            cts_t0 = trajectory[i]
-            cts_t1 = trajectory[i+1]
-            x_t = [cts_t0.x.x, cts_t0.x.y, cts_t0.x.theta,
-                   cts_t0.ee.position.x, cts_t0.ee.position.y, cts_t0.u.linear.x,
-                   cts_t0.u.linear.y]
-            y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
-            X.append(x_t)
-            Y.append(y_t)
-        return (X, Y)
+        self.svm_models = []
+        if svm_file_names is not None:
+            for svm_file_name in svm_file_names:
+                # print 'Loading file', svm_file_name
+                self.svm_models.append(svmutil.svm_load_model(svm_file_name))
+            self.build_jacobian()
 
     def learn_model(self, learn_data):
         '''
@@ -219,13 +159,11 @@ class SVRPushDynamics:
         '''
         X = []
         Y = []
-        # print 'len(learn_data)',len(learn_data)
         for trial in learn_data:
             (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory)
             X.extend(x)
             Y.extend(y)
-        # print 'len(Y)', len(Y)
-        # print 'len(X)', len(X)
+
         for i in xrange(len(Y[0])):
             Y_i = []
             for y in Y:
@@ -244,3 +182,75 @@ class SVRPushDynamics:
         if len(self.svm_models) > 0:
             for file_name, model in zip(output_file_names, self.svm_models):
                 svmutil.svm_save_model(file_name, model)
+
+    def predict_linear_hand(self, x_k, u_k, xtra=[]):
+        '''
+        Predict the next state given current state estimates and control input
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        '''
+        z = self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)
+        x_k_plus_1 = []
+        y = [0]
+        for i, svm_model in enumerate(self.svm_models):
+            [delta_i, _, _] = svmutil.svm_predict(y, z, svm_model, '-q')
+            x_k_plus_1.append(x_k[i]+delta_i[0])
+
+        # X ee
+        x_k_plus_1.append(x_k[3] + self.delta_t*u_k[0])
+        # Y ee
+        x_k_plus_1.append(x_k[4] + self.delta_t*u_k[1])
+
+        return np.array(x_k_plus_1)
+
+    def jacobian_linear_hand(self, x_k, u_k, xtra=[]):
+        '''
+        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        '''
+        return self.J
+
+    def build_jacobian_linear_hand(self):
+        self.J = np.zeros((self.n, self.n+self.m))
+        self.J[0:self.n, 0:self.n] = np.eye(self.n)
+
+        # Setup partials for hand position change, currently using linear model of applied velocity
+        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
+
+        # Setup partials w.r.t. SVM model parameters
+        for i, svm_model in enumerate(self.svm_models):
+            alphas = svm_model.get_sv_coef()
+            svs = svm_model.get_SV()
+            # Partial derivative is the sum of the product of the SV elements and coefficients
+            # \sum_{i=1}^{l} alpha_i*z_i^j
+            for alpha, sv in zip(alphas, svs):
+                for j in xrange(self.m+self.n):
+                    self.J[i, j] += alpha[0]*sv[j+1]
+
+    def trial_data_to_feats_state_control(self, trajectory):
+        '''
+        Get SVM feature vector from push trial trajectory state information.
+        Needs to be updated whenever transform_state_data_to_feat_vector() is updated
+        trajectory - list of ControlTimeStep() defined in push_learning.py
+        '''
+        X = []
+        Y = []
+        for i in xrange(len(trajectory)-1):
+            cts_t0 = trajectory[i]
+            cts_t1 = trajectory[i+1]
+            x_t = [cts_t0.x.x, cts_t0.x.y, cts_t0.x.theta,
+                   cts_t0.ee.position.x, cts_t0.ee.position.y, cts_t0.u.linear.x,
+                   cts_t0.u.linear.y]
+            y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
+            X.append(x_t)
+            Y.append(y_t)
+        return (X, Y)
+
+    def opt_vector_to_feats_state_control(self, x_k, u_k, xtra):
+        z = np.concatenate([x_k, u_k, xtra])
+        # SVM expects a list of lists, but we're only doing one instance at a time
+        z = [z.tolist()]
+        return z
