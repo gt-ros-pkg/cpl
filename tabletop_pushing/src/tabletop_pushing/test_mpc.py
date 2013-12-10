@@ -48,9 +48,14 @@ from model_based_pushing_control import *
 
 def test_svm_stuff():
     aff_file_name  = sys.argv[1]
+    delta_t = 1./9.
+    n = 5
+    m = 2
+
     plio = push_learning.CombinedPushLearnControlIO()
     plio.read_in_data_file(aff_file_name)
-    svm_dynamics = SVRPushDynamics()
+
+    svm_dynamics = SVRPushDynamics(delta_t, n, m)
     svm_dynamics.learn_model(plio.push_trials)
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
@@ -58,7 +63,8 @@ def test_svm_stuff():
     output_paths.append(base_path+'delta_y_dyn.model')
     output_paths.append(base_path+'delta_theta_dyn.model')
     svm_dynamics.save_models(output_paths)
-    svm_dynamics2 = SVRPushDynamics(svm_file_names=output_paths)
+
+    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths)
 
     test_pose = VisFeedbackPushTrackingFeedback()
     test_pose.x.x = 0.2

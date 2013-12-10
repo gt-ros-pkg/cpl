@@ -234,6 +234,11 @@ class ModelPredictiveController:
 
 class NaiveInputDynamics:
     def __init__(self, delta_t, n, m):
+        '''
+        delta_t - the (average) time between time steps
+        n - number of state space dimensions
+        m - number of control space dimensions
+        '''
         self.delta_t = delta_t
         self.A = np.eye(n)
         self.B = np.zeros((n, m))
@@ -263,6 +268,12 @@ class NaiveInputDynamics:
 
 class StochasticNaiveInputDynamics:
     def __init__(self, delta_t, n, m, sigma):
+        '''
+        delta_t - the (average) time between time steps
+        n - number of state space dimensions
+        m - number of control space dimensions
+        sigma - Gaussian noise standard dev to be added on control inputs
+        '''
         self.delta_t = delta_t
         self.A = np.eye(n)
         self.B = np.zeros((n, m))
@@ -296,24 +307,31 @@ class StochasticNaiveInputDynamics:
         return self.J
 
 class SVRPushDynamics:
-    def __init__(self, svm_file_names=None, epsilons=None, kernel_type=None, m=3):
+    def __init__(self, delta_t, n, m, svm_file_names=None, epsilons=None, kernel_type=None, o=3):
         '''
+        delta_t - the (average) time between time steps
         svm_files - list of svm model files to read from disk
+        n - number of state space dimensions
+        m - number of control space dimensions
         epsilons - list of epislon values for the epislon insensitive loss function (training only)
         kernel_type - type of kernel to use for traning, can be any of the self.KERNEL_TYPES keys (training only)
-        m - number of output dimensions in the model (training only)
+        o - number of output dimensions in the model (training only)
         '''
+        self.delta_t = delta_t
+        self.n = n
+        self.m = m
         self.svm_models = []
         if svm_file_names is not None:
             for svm_file_name in svm_file_names:
                 # print 'Loading file', svm_file_name
                 self.svm_models.append(svmutil.svm_load_model(svm_file_name))
+            self.build_jacobian()
 
         if epsilons is not None:
             self.epsilons = epsilons
         else:
             self.epsilons = []
-            for i in xrange(m):
+            for i in xrange(o):
                 self.epsilons.append(1e-6)
 
         self.KERNEL_TYPES = {'linear': 0, 'polynomial': 1, 'RBF': 2, 'sigmoid': 3, 'precomputed':4}
@@ -329,22 +347,35 @@ class SVRPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        print 'x_k =', x_k
-        print 'u_k =', u_k
-        x = np.concatenate([x_k, u_k, xtra])
-        x = x.tolist()
-        print 'type(x) is', type(x)
-        print 'x =',x
-        Y_hat = []
+        z = np.concatenate([x_k, u_k, xtra])
+        # SVM expects a list of lists, but we're only doing one instance at a time
+        z = [z.tolist()]
+        x_k_plus_1 = []
         y = [0]
-        for svm_model in self.svm_models:
-            [y_hat, _, _] = svmutil.svm_predict(y, x, svm_model)
-            Y_hat.append(y_hat[0])
-        return y_hat
+        for i, svm_model in enumerate(self.svm_models):
+            [delta_i, _, _] = svmutil.svm_predict(y, z, svm_model, '-q')
+            x_k_plus_1.append(x_k[i]+delta_i[0])
+
+        # X ee
+        x_k_plus_1.append(x_k[3] + self.delta_t*u_k[0])
+        # Y ee
+        x_k_plus_1.append(x_k[4] + self.delta_t*u_k[1])
+
+        return np.array(x_k_plus_1)
 
     def jacobian(self, x_k, u_k, xtra=[]):
-        # TODO: Implement this method!
-        return []
+        '''
+        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        '''
+        return self.J
+
+    def build_jacobian(self):
+        self.J = np.zeros((self.n, self.n+self.m))
+        for svm_model in self.svm_models:
+            pass
 
     def predict_state(self, cur_state, ee_pose, u, xtra=[]):
         '''
@@ -355,32 +386,29 @@ class SVRPushDynamics:
         xtra - other features for SVM
         '''
         # Get feature vector
-        x = [self.transform_state_data_to_feat_vector(cur_state, ee_pose, u)]
-        # Perform predictions
-        Y_hat = []
-        y = [0]
-        for svm_model in self.svm_models:
-            [y_hat, _, _] = svmutil.svm_predict(y, x, svm_model)
-            Y_hat.append(y_hat[0])
-        # print 'Y_hat = ', Y_hat
-        # Transform predictions to correct state / class
+        x_k, u_k = self.transform_state_data_to_feat_vector(cur_state, ee_pose, u)
+
+        x_k_plus_1 = self.predict(x_k, u_k, xtra)
+
         next_state = VisFeedbackPushTrackingFeedback()
-        next_state.x.x = cur_state.x.x + Y_hat[0]
-        next_state.x.y = cur_state.x.y + Y_hat[1]
-        next_state.x.theta = cur_state.x.theta + Y_hat[2]
+        next_state.x.x = x_k_plus_1[0]
+        next_state.x.y = x_k_plus_1[1]
+        next_state.x.theta = x_k_plus_1[2]
+        next_state.x.theta = x_k_plus_1[2]
         return next_state
 
     def transform_state_data_to_feat_vector(self, cur_state, ee_pose, u):
         '''
-        Get SVM feature vector from current state information.
-        Needs to be updated whenever transform_trial-data_to_feat_vectors() is updated
+        Get x_k and u_k vectors from current state information.
+        Needs to be updated whenever transform_trial_data_to_feat_vectors() is updated
         cur_sate - current state estimate of form VisFeedbackPushTrackingFeedback()
         ee_pose - current end effector pose estimate of type PoseStamped()
         u - control to evaluate of type TwistStamped()
         '''
-        return [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                ee_pose.pose.position.x, ee_pose.pose.position.y,
-                u.twist.linear.x, u.twist.linear.y]
+        x_k = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+                        ee_pose.pose.position.x, ee_pose.pose.position.y])
+        u_k = np.array([u.twist.linear.x, u.twist.linear.y])
+        return (x_k, u_k)
 
     def transform_trial_data_to_feat_vectors(self, trajectory):
         '''
@@ -423,6 +451,7 @@ class SVRPushDynamics:
             # TODO: Kernel specific options
             svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
+        self.build_jacobian()
 
     def save_models(self, output_file_names):
         '''

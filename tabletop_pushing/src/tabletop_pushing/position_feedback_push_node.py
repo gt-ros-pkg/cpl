@@ -545,14 +545,15 @@ class PositionFeedbackPushNode:
             else:
                 # TODO: Parse the suffix for different dynamics models and paths
                 mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
-                if request.controller_name == MPC_CONTROLLER_SVR:
+                if request.controller_name == MPC_SVR_DYN:
                     # TODO: Parse mpc_suffix for paths
                     base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
                     model_paths = []
                     model_paths.append(base_path+'delta_x_dyn.model')
                     model_paths.append(base_path+'delta_y_dyn.model')
                     model_paths.append(base_path+'delta_theta_dyn.model')
-                    dyn_model = SVRPushDynamics(svm_file_names=model_paths)
+                    dyn_model = SVRPushDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
+                                               self.mpc_input_space_dim, svm_file_names=model_paths)
 
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
                                                   self.mpc_u_max, self.mpc_delta_t)
