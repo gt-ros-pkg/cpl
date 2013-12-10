@@ -46,23 +46,23 @@ import push_learning
 import push_trajectory_generator as ptg
 from model_based_pushing_control import *
 
-def test_svm_stuff():
-    aff_file_name  = sys.argv[1]
+def test_svm_stuff(aff_file_name=None):
     delta_t = 1./9.
     n = 5
     m = 2
-
-    plio = push_learning.CombinedPushLearnControlIO()
-    plio.read_in_data_file(aff_file_name)
-
-    svm_dynamics = SVRPushDynamics(delta_t, n, m)
-    svm_dynamics.learn_model(plio.push_trials)
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
     output_paths.append(base_path+'delta_x_dyn.model')
     output_paths.append(base_path+'delta_y_dyn.model')
     output_paths.append(base_path+'delta_theta_dyn.model')
-    svm_dynamics.save_models(output_paths)
+
+    if aff_file_name is not None:
+        plio = push_learning.CombinedPushLearnControlIO()
+        plio.read_in_data_file(aff_file_name)
+
+        svm_dynamics = SVRPushDynamics(delta_t, n, m)
+        svm_dynamics.learn_model(plio.push_trials)
+        svm_dynamics.save_models(output_paths)
 
     svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths)
 
@@ -81,6 +81,9 @@ def test_svm_stuff():
 
     print 'test_state.x: ', test_pose.x
     print 'next_state.x: ', next_state.x
+
+    print 'Jacobian', svm_dynamics2.J
+    return svm_dynamics2
 
 def test_mpc():
     delta_t = 2.0
@@ -217,5 +220,5 @@ def test_mpc():
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
 
 if __name__ == '__main__':
-    test_svm_stuff()
+    test_svm_stuff(sys.argv[1])
     # test_mpc()

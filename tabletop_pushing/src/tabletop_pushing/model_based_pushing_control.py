@@ -245,6 +245,8 @@ class NaiveInputDynamics:
         self.B[0:m,0:m] = np.eye(m)*delta_t
         self.B[3:3+m,0:m] = np.eye(m)*delta_t
         self.J = np.concatenate((self.A, self.B), axis=1)
+        self.n = n
+        self.m = m
 
     def predict(self, x_k, u_k, xtra=[]):
         '''
@@ -310,9 +312,9 @@ class SVRPushDynamics:
     def __init__(self, delta_t, n, m, svm_file_names=None, epsilons=None, kernel_type=None, o=3):
         '''
         delta_t - the (average) time between time steps
-        svm_files - list of svm model files to read from disk
         n - number of state space dimensions
         m - number of control space dimensions
+        svm_file_names - list of svm model file names to read from disk
         epsilons - list of epislon values for the epislon insensitive loss function (training only)
         kernel_type - type of kernel to use for traning, can be any of the self.KERNEL_TYPES keys (training only)
         o - number of output dimensions in the model (training only)
@@ -374,8 +376,19 @@ class SVRPushDynamics:
 
     def build_jacobian(self):
         self.J = np.zeros((self.n, self.n+self.m))
-        for svm_model in self.svm_models:
-            pass
+        # Setup partials w.r.t. SVM model parameters
+        for i, svm_model in enumerate(self.svm_models):
+            alphas = svm_model.get_sv_coef()
+            svs = svm_model.get_SV()
+            # Partial derivative is the sum of the product of the SV elements and coefficients
+            # \sum_{i=1}^{l} alpha_i*z_i^j
+            for alpha, sv in zip(alphas, svs):
+                for j in xrange(self.m+self.n):
+                    self.J[i, j] += alpha[0]*sv[j+1]
+
+        # Setup partials for the hand change
+        self.J[3:5, 3:5] = np.eye(self.m)
+        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
 
     def predict_state(self, cur_state, ee_pose, u, xtra=[]):
         '''
