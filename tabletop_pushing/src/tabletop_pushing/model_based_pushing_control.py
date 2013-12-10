@@ -376,6 +376,11 @@ class SVRPushDynamics:
 
     def build_jacobian(self):
         self.J = np.zeros((self.n, self.n+self.m))
+        self.J[0:self.n, 0:self.n] = np.eye(self.n)
+
+        # Setup partials for hand position change, currently using linear model of applied velocity
+        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
+
         # Setup partials w.r.t. SVM model parameters
         for i, svm_model in enumerate(self.svm_models):
             alphas = svm_model.get_sv_coef()
@@ -385,10 +390,6 @@ class SVRPushDynamics:
             for alpha, sv in zip(alphas, svs):
                 for j in xrange(self.m+self.n):
                     self.J[i, j] += alpha[0]*sv[j+1]
-
-        # Setup partials for the hand change
-        self.J[3:5, 3:5] = np.eye(self.m)
-        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
 
     def predict_state(self, cur_state, ee_pose, u, xtra=[]):
         '''
