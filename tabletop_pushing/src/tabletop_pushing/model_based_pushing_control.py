@@ -325,19 +325,26 @@ class SVRPushDynamics:
     def predict(self, x_k, u_k, xtra=[]):
         '''
         Predict the next state given current state estimates and control input
-        x_k - current state estimate (list)
-        u_k - current control to evaluate
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        x = x_k[:]
-        x.extend(u_k)
-        x.extend(xtra)
+        print 'x_k =', x_k
+        print 'u_k =', u_k
+        x = np.concatenate([x_k, u_k, xtra])
+        x = x.tolist()
+        print 'type(x) is', type(x)
+        print 'x =',x
         Y_hat = []
         y = [0]
         for svm_model in self.svm_models:
             [y_hat, _, _] = svmutil.svm_predict(y, x, svm_model)
             Y_hat.append(y_hat[0])
         return y_hat
+
+    def jacobian(self, x_k, u_k, xtra=[]):
+        # TODO: Implement this method!
+        return []
 
     def predict_state(self, cur_state, ee_pose, u, xtra=[]):
         '''

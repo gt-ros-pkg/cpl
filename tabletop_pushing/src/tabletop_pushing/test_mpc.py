@@ -71,7 +71,7 @@ def test_svm_stuff():
     test_u.twist.linear.x = 0.3
     test_u.twist.linear.y = 0.3
 
-    next_state = svm_dynamics2.predict(test_pose, test_ee, test_u)
+    next_state = svm_dynamics2.predict_state(test_pose, test_ee, test_u)
 
     print 'test_state.x: ', test_pose.x
     print 'next_state.x: ', next_state.x
@@ -211,5 +211,5 @@ def test_mpc():
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
 
 if __name__ == '__main__':
-    # test_svm_stuff()
-    test_mpc()
+    test_svm_stuff()
+    # test_mpc()

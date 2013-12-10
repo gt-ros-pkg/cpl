@@ -511,14 +511,14 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Failed to connect to push tracker server')
             if self.use_learn_io:
                 self.learn_io.close_out_file()
-                self.target_trajectory_io.close_out_file()
+            if _SAVE_MPC_DATA:
                 self.mpc_q_star_io.close_out_file()
+                self.target_trajectory_io.close_out_file()
             return response
         ac.cancel_all_goals()
         self.feedback_count = 0
         self.goal_cb_count += 1
 
-        # Start pushing forward
         if not _OFFLINE:
             self.stop_moving_vel(which_arm)
         done_cb = None
@@ -533,16 +533,30 @@ class PositionFeedbackPushNode:
         goal.behavior_primitive = request.behavior_primitive
 
         # Load learned controller information if necessary
-        if goal.controller_name.startswith(RBF_CONTROLLER_PREFIX):
+        if request.controller_name.startswith(RBF_CONTROLLER_PREFIX):
             self.setupRBFController(goal.controller_name)
-        elif goal.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
+        elif request.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             self.AFFINE_A, self.AFFINE_B = self.loadAffineController(goal.controller_name)
-        elif goal.controller_name.startswith(MPC_CONTROLLER_PREFIX):
-            # TODO: Load dynamics model being used here based on the controller name
-            # TODO: Add ability to switch at each feedback call (using model predictive error, etc)
-            dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim, self.mpc_input_space_dim)
+        elif request.controller_name.startswith(MPC_CONTROLLER_PREFIX):
+            # Load dynamics model being used here based on the controller name
+            if request.controller_name == MPC_NAIVE_LINEAR_DYN:
+                dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
+                                               self.mpc_input_space_dim)
+            else:
+                # TODO: Parse the suffix for different dynamics models and paths
+                mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
+                if request.controller_name == MPC_CONTROLLER_SVR:
+                    # TODO: Parse mpc_suffix for paths
+                    base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
+                    model_paths = []
+                    model_paths.append(base_path+'delta_x_dyn.model')
+                    model_paths.append(base_path+'delta_y_dyn.model')
+                    model_paths.append(base_path+'delta_theta_dyn.model')
+                    dyn_model = SVRPushDynamics(svm_file_names=model_paths)
+
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
                                                   self.mpc_u_max, self.mpc_delta_t)
+
             # Create target trajectory to goal pose
             self.trajectory_generator = PiecewiseLinearTrajectoryGenerator()
             pose_list = [goal.desired_pose]
@@ -562,9 +576,14 @@ class PositionFeedbackPushNode:
         if self.use_learn_io:
             if _BUFFER_DATA:
                 self.learn_io.write_buffer_to_disk()
-                self.target_trajectory_io.write_buffer_to_disk()
-                self.mpc_q_star_io.write_buffer_to_disk()
+                if _SAVE_MPC_DATA:
+                    self.mpc_q_star_io.write_buffer_to_disk()
+                    self.target_trajectory_io.write_buffer_to_disk()
             self.learn_io.close_out_file()
+            if _SAVE_MPC_DATA:
+                self.mpc_q_star_io.close_out_file()
+                self.target_trajectory_io.close_out_file()
+
         return response
 
     def tracker_feedback_push(self, feedback):
@@ -917,6 +936,7 @@ class PositionFeedbackPushNode:
         return u
 
     def MPCFeedbackController(self, cur_state, ee_pose, desired_pose):
+        # TODO: Add ability to switch model at each feedback call (using model predictive error, etc)
         k0 = cur_state.header.seq
         # Get updated list for forward trajectory
         # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
