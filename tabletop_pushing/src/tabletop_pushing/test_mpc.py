@@ -32,12 +32,11 @@
 #  POSSIBILITY OF SUCH DAMAGE.
 import roslib; roslib.load_manifest('tabletop_pushing')
 import rospy
-from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Pose2D
+from geometry_msgs.msg import PoseStamped, TwistStamped, Pose2D
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
 from math import copysign, pi, sqrt, isnan
 from numpy import finfo
-import svmutil
 import numpy as np
 import scipy.optimize as opt
 import matplotlib.pyplot as plotter
@@ -45,6 +44,7 @@ import sys
 import push_learning
 import push_trajectory_generator as ptg
 from model_based_pushing_control import *
+from pushing_dynamics_models import *
 
 def test_svm_stuff(aff_file_name=None):
     delta_t = 1./9.
@@ -77,12 +77,16 @@ def test_svm_stuff(aff_file_name=None):
     test_u.twist.linear.x = 0.3
     test_u.twist.linear.y = 0.3
 
-    next_state = svm_dynamics2.predict_state(test_pose, test_ee, test_u)
+    test_x_k = np.array([test_pose.x.x, test_pose.x.y, test_pose.x.theta,
+                         test_ee.pose.position.x, test_ee.pose.position.y])
+    test_u_k = np.array([test_u.twist.linear.x, test_u.twist.linear.y])
 
-    print 'test_state.x: ', test_pose.x
-    print 'next_state.x: ', next_state.x
+    next_state = svm_dynamics2.predict(test_x_k, test_u_k)
 
-    print 'Jacobian', svm_dynamics2.J
+    print 'test_state.x: ', test_x_k, test_u_k
+    print 'next_state.x: ', next_state
+
+    # print 'Jacobian', svm_dynamics2.J
     return svm_dynamics2
 
 def test_mpc():
