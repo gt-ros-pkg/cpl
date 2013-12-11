@@ -52,19 +52,19 @@ def test_svm_stuff(aff_file_name=None):
     m = 2
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
-    output_paths.append(base_path+'delta_x_dyn.model')
-    output_paths.append(base_path+'delta_y_dyn.model')
-    output_paths.append(base_path+'delta_theta_dyn.model')
+    output_paths.append(base_path+'delta_x_dyn_obj_frame.model')
+    output_paths.append(base_path+'delta_y_dyn_obj_frame.model')
+    output_paths.append(base_path+'delta_theta_dyn_obj_frame.model')
 
     if aff_file_name is not None:
         plio = push_learning.CombinedPushLearnControlIO()
         plio.read_in_data_file(aff_file_name)
 
-        svm_dynamics = SVRPushDynamics(delta_t, n, m)
+        svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=True)
         svm_dynamics.learn_model(plio.push_trials)
         svm_dynamics.save_models(output_paths)
 
-    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths)
+    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths, object_frame_feats=True)
 
     test_pose = VisFeedbackPushTrackingFeedback()
     test_pose.x.x = 0.2

@@ -115,7 +115,7 @@ class StochasticNaiveInputDynamics:
 
 class SVRPushDynamics:
     def __init__(self, delta_t, n, m, svm_file_names=None, epsilons=None, kernel_type=None, learned_out_dims=3,
-                 obj_frame_feats=False):
+                 object_frame_feats=False):
         '''
         delta_t - the (average) time between time steps
         n - number of state space dimensions
@@ -148,10 +148,10 @@ class SVRPushDynamics:
         self.build_jacobian = self.build_jacobian_linear_hand
         self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_state_control
 
-        if obj_frame_feats:
-            self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_obj_frame
-            self.jacobian = self.jacobian_linear_hand_obj_frame
-            self.build_jacobian = self.build_jacobian_linear_hand_obj_frame
+        if object_frame_feats:
+            self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_object_frame
+            self.jacobian = self.jacobian_linear_hand_object_frame
+            self.build_jacobian = self.build_jacobian_linear_hand_object_frame
 
         self.svm_models = []
         if svm_file_names is not None:
@@ -247,6 +247,32 @@ class SVRPushDynamics:
         return self.J
 
     def build_jacobian_linear_hand(self):
+        self.J = np.zeros((self.n, self.n+self.m))
+        self.J[0:self.n, 0:self.n] = np.eye(self.n)
+
+        # Setup partials for hand position change, currently using linear model of applied velocity
+        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
+
+        # Setup partials w.r.t. SVM model parameters
+        for i, svm_model in enumerate(self.svm_models):
+            alphas = svm_model.get_sv_coef()
+            svs = svm_model.get_SV()
+            # Partial derivative is the sum of the product of the SV elements and coefficients
+            # \sum_{i=1}^{l} alpha_i*z_i^j
+            for alpha, sv in zip(alphas, svs):
+                for j in xrange(self.m+self.n):
+                    self.J[i, j] += alpha[0]*sv[j+1]
+
+    def jacobian_linear_hand_object_frame(self, x_k, u_k, xtra=[]):
+        '''
+        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        '''
+        return self.J
+
+    def build_jacobian_linear_hand_object_frame(self):
         self.J = np.zeros((self.n, self.n+self.m))
         self.J[0:self.n, 0:self.n] = np.eye(self.n)
 
