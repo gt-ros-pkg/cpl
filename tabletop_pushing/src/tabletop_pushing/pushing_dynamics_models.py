@@ -152,6 +152,7 @@ class SVRPushDynamics:
             self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_object_frame
             self.jacobian = self.jacobian_linear_hand_object_frame
             self.build_jacobian = self.build_jacobian_linear_hand_object_frame
+            self.p = 4 # Num feature vector elements
 
         self.svm_models = []
         if svm_file_names is not None:
@@ -247,8 +248,7 @@ class SVRPushDynamics:
         return self.J
 
     def build_jacobian_linear_hand(self):
-        self.J = np.zeros((self.n, self.n+self.m))
-        self.J[0:self.n, 0:self.n] = np.eye(self.n)
+        self.J = np.eye(self.n, self.n+self.m)
 
         # Setup partials for hand position change, currently using linear model of applied velocity
         self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
@@ -270,14 +270,46 @@ class SVRPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        return self.J
+        x_ee_demeaned = x_k[3] - x_k[0]
+        y_ee_demeaned = x_k[4] - x_k[1]
+        st = sin(x_k[2])
+        ct = cos(x_k[2])
+        # Partial derivatives of the transformed features
+        J_feats = np.matrix(np.zeros((self.p, self.n+self.m)))
+
+        J_feats[0, 0] = -ct # d/dx[x_ee]
+        J_feats[0, 1] = -st # d/dy[x_ee]
+        J_feats[0, 2] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[x_ee]
+        J_feats[0, 3] =  ct # d/dx_ee[x_ee]
+        J_feats[0, 4] =  st # d/dy_ee[x_ee]
+
+        J_feats[1, 0] =  st # d/dx[y_ee]
+        J_feats[1, 1] = -ct # d/dy[y_ee]
+        J_feats[1, 2] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[y_ee]
+        J_feats[1, 3] = -st # d/dx_ee[y_ee]
+        J_feats[1, 4] =  ct # d/dy_ee[y_ee]
+
+        J_feats[2, 2] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
+        J_feats[2, 5] = ct # d/du_x[u_x]
+        J_feats[2, 6] = st # d/du_y[u_x]
+
+        J_feats[3, 2] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
+        J_feats[3, 5] = -st # d/du_x[u_y]
+        J_feats[3, 6] =  ct # d/du_y[u_y]
+
+        # Do chain rule here
+        J_update = np.zeros(self.J_base.shape)
+        J_update[:len(self.svm_models),:] = self.sv_coeffs*J_feats
+        J = self.J_base + J_update
+        return J
 
     def build_jacobian_linear_hand_object_frame(self):
-        self.J = np.zeros((self.n, self.n+self.m))
-        self.J[0:self.n, 0:self.n] = np.eye(self.n)
+        self.J_base = np.eye(self.n, self.n+self.m)
 
         # Setup partials for hand position change, currently using linear model of applied velocity
-        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
+        self.J_base[3:5, 5: ] = np.eye(self.m)*self.delta_t
+
+        self.sv_coeffs = np.matrix(np.zeros((len(self.svm_models), self.p)))
 
         # Setup partials w.r.t. SVM model parameters
         for i, svm_model in enumerate(self.svm_models):
@@ -286,8 +318,8 @@ class SVRPushDynamics:
             # Partial derivative is the sum of the product of the SV elements and coefficients
             # \sum_{i=1}^{l} alpha_i*z_i^j
             for alpha, sv in zip(alphas, svs):
-                for j in xrange(self.m+self.n):
-                    self.J[i, j] += alpha[0]*sv[j+1]
+                for j in xrange(self.p):
+                    self.sv_coeffs[i, j] += alpha[0]*sv[j+1]
 
     #
     # Features transforms

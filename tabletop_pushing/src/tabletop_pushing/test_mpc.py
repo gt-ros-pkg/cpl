@@ -50,29 +50,35 @@ def test_svm_stuff(aff_file_name=None):
     delta_t = 1./9.
     n = 5
     m = 2
+    use_obj_frame = True
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
-    output_paths.append(base_path+'delta_x_dyn_obj_frame.model')
-    output_paths.append(base_path+'delta_y_dyn_obj_frame.model')
-    output_paths.append(base_path+'delta_theta_dyn_obj_frame.model')
+    if use_obj_frame:
+        output_paths.append(base_path+'delta_x_dyn_obj_frame.model')
+        output_paths.append(base_path+'delta_y_dyn_obj_frame.model')
+        output_paths.append(base_path+'delta_theta_dyn_obj_frame.model')
+    else:
+        output_paths.append(base_path+'delta_x_dyn.model')
+        output_paths.append(base_path+'delta_y_dyn.model')
+        output_paths.append(base_path+'delta_theta_dyn.model')
 
     if aff_file_name is not None:
         plio = push_learning.CombinedPushLearnControlIO()
         plio.read_in_data_file(aff_file_name)
 
-        svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=True)
+        svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=use_obj_frame)
         svm_dynamics.learn_model(plio.push_trials)
         svm_dynamics.save_models(output_paths)
 
-    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths, object_frame_feats=True)
+    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths, object_frame_feats=use_obj_frame)
 
     test_pose = VisFeedbackPushTrackingFeedback()
     test_pose.x.x = 0.2
     test_pose.x.y = 0.0
-    test_pose.x.theta = pi*0.5
+    test_pose.x.theta = 0#pi*0.5
     test_ee = PoseStamped()
     test_ee.pose.position.x = test_pose.x.x - 0.2
-    test_ee.pose.position.y = test_pose.x.y - 0.2
+    test_ee.pose.position.y = test_pose.x.y - 0.4
     test_u = TwistStamped()
     test_u.twist.linear.x = 0.3
     test_u.twist.linear.y = 0.3
@@ -82,9 +88,11 @@ def test_svm_stuff(aff_file_name=None):
     test_u_k = np.array([test_u.twist.linear.x, test_u.twist.linear.y])
 
     next_state = svm_dynamics2.predict(test_x_k, test_u_k)
+    gradient = svm_dynamics2.jacobian(test_x_k, test_u_k)
 
-    print 'test_state.x: ', test_x_k, test_u_k
-    print 'next_state.x: ', next_state
+    print 'test_state.x:\n', test_x_k, test_u_k
+    print 'next_state.x:\n', next_state
+    print 'Jacobian:\n', gradient
 
     # print 'Jacobian', svm_dynamics2.J
     return svm_dynamics2
