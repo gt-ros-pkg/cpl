@@ -279,7 +279,6 @@ class SVRPushDynamics:
         '''
         Projects features into hand frame, ignores absolute coordinates
         '''
-        np.concatenate([x_t_obj, u_t_obj, xtra])
         # Remove mean
         x_ee_demeaned = np.matrix([[x_k[3]-x_k[0]],
                                    [x_k[4]-x_k[1]]])
@@ -288,7 +287,7 @@ class SVRPushDynamics:
         ct = cos(x_k[2])
         R = np.matrix([[ct, st],
                        [-st, ct]])
-        x_ee_obj = np.array(R*x_ee_demened).T
+        x_ee_obj = np.array(R*x_ee_demeaned).T.ravel()
 
         # Rotate u_k into frame
         u_k_obj = np.array(R*np.matrix(u_k).T).ravel()
