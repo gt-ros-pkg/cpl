@@ -550,7 +550,7 @@ class PositionFeedbackPushNode:
                     # TODO: Parse mpc_suffix for paths
                     base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
                     model_paths = []
-                    use_transformed_feats = True
+                    use_transformed_feats = False
                     if use_transformed_feats:
                         model_paths.append(base_path+'delta_x_dyn_obj_frame.model')
                         model_paths.append(base_path+'delta_y_dyn_obj_frame.model')
