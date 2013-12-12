@@ -53,6 +53,7 @@ def test_svm_stuff(aff_file_name=None):
     use_obj_frame = True
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
+    epsilons = [1e-4, 1e-4, 1e-5]
     if use_obj_frame:
         output_paths.append(base_path+'delta_x_dyn_obj_frame.model')
         output_paths.append(base_path+'delta_y_dyn_obj_frame.model')
@@ -66,7 +67,7 @@ def test_svm_stuff(aff_file_name=None):
         plio = push_learning.CombinedPushLearnControlIO()
         plio.read_in_data_file(aff_file_name)
 
-        svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=use_obj_frame)
+        svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=use_obj_frame, epsilons=epsilons)
         svm_dynamics.learn_model(plio.push_trials)
         svm_dynamics.save_models(output_paths)
 
@@ -230,6 +231,13 @@ def test_mpc():
     # U_init = mpc.get_U_init(x0, x_d)
     # q0 = mpc.get_q0(x0, U_init, xtra)
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
+
+def analyze_mpc_trial_data():
+    # TODO: Read aff file
+    # TODO: Read trajectory file
+    # TODO: Read q_star file
+    # TODO: Read tracking images
+    # TODO: Display all trajectories for each time step (Separate and together (stacked / faded))
 
 if __name__ == '__main__':
     test_svm_stuff(sys.argv[1])

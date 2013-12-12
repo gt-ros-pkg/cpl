@@ -375,6 +375,13 @@ cv::Mat projectHandIntoBoundaryImage(ControlTimeStep& cts, PushTrackerState& cur
  */
 int main(int argc, char** argv)
 {
+
+  if (argc != 4)
+  {
+    std::cout << "usage: " << argv[0] << " aff_file_path data_directory_path out_file_path" << std::endl;
+    return -1;
+  }
+
   double boundary_hull_alpha = 0.01;
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
