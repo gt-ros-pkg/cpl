@@ -391,6 +391,7 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
     # Fixed parameters
     n = 5
     m = 2
+    u_max = 0.03
 
     # Get derived names from aff file name
     q_star_file_name = aff_file_name[:-4]+'-q_star.txt'
@@ -407,10 +408,10 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
     q_stars = q_star_io.read_file(q_star_file_name)
     print 'Read in ', len(q_stars), ' control plans\n'
 
-
-    print 'Plotting trials'
+    print 'Plotting planned trajectories'
     trial_idx = -1
-    for traj, q_star in zip(trajs, q_stars):
+    for i, (traj, q_star) in enumerate(zip(trajs, q_stars)):
+        print i
 
         if q_star[0] == 0:
             trial_idx += 1
@@ -418,12 +419,15 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
             x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
                            x0_state.ee.position.x, x0_state.ee.position.y])
             print 'Updated x0 to:', x0
+            if i > 0:
+                # TODO: Display all trajectories from a single trial on one graph
+                pass
         print 'Plotting trial', trial_idx, ':', q_star[0]
         # TODO: Setup saving / naming path here
         # TODO: Plot commanded history too
-        plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False)
+        plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False)# , suffix='', t=0, out_path='')
+        plot_controls(q_star[1], traj[1], x0, n, m, u_max, show_plot=False) #, suffix='', t=0, out_path='')
         # TODO: Plot controls as well
-        # TODO: Display all trajectories from a single trial on one graph
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
