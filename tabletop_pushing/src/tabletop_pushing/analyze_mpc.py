@@ -46,6 +46,160 @@ import push_trajectory_generator as ptg
 from model_based_pushing_control import *
 from pushing_dynamics_models import *
 
+class MPCSolutionIO:
+    def __init__(self):
+        self.out_file = None
+        self.out_lines = []
+
+    def open_out_file(self, file_name):
+        self.out_file = file(file_name, 'a')
+
+    def close_out_file(self):
+        if self.out_file is not None:
+            self.out_file.close()
+
+    def buffer_line(self, k0, q):
+        out_line = self.generate_line(k0, q)
+        self.out_lines.append(out_line)
+
+    def write_line(self, k0, q):
+        out_line = self.generate_line(k0, q)
+        self.out_file.write(out_line)
+
+    def write_buffer_to_disk(self):
+        for line in self.out_lines:
+            self.out_file.write(line)
+        self.out_file.flush()
+        self.out_lines = []
+
+    def generate_line(self, k0, q):
+        out_line = str(k0) + ' ' + str(q)
+        out_line += '\n'
+        return out_line
+
+    def parse_line(self, line):
+        elems = line.split()
+        k0 = int(elems[0])
+        q = [float(x) for x in elems[1:]]
+        return (k0, q)
+
+    def read_file(self, file_name):
+        in_file = file(file_name, 'r')
+        data = [self.parse_line(l) for l in in_file.readlines()]
+        in_file.close()
+        return data
+
+class PushTrajectoryIO:
+    def __init__(self):
+        self.out_file = None
+        self.out_lines = []
+
+    def open_out_file(self, file_name):
+        self.out_file = file(file_name, 'a')
+
+    def close_out_file(self):
+        if self.out_file is not None:
+            self.out_file.close()
+
+    def buffer_line(self, k0, trajectory):
+        out_line = self.generate_line(k0, trajectory)
+        self.out_lines.append(out_line)
+
+    def write_line(self, k0, trajectory):
+        out_line = self.generate_line(k0, trajectory)
+        self.out_file.write(out_line)
+
+    def write_buffer_to_disk(self):
+        for line in self.out_lines:
+            self.out_file.write(line)
+        self.out_file.flush()
+        self.out_lines = []
+
+    def generate_line(self, k0, trajectory):
+        out_line = str(k0)
+        for p in trajectory:
+            out_line += ' ' + str(p)
+        out_line += '\n'
+        return out_line
+
+    def parse_line(self, line):
+        l0 = line.split()[0]
+        k0 = int(l0)
+        line = line[len(l0)+1:]
+        elems = line.split('[')
+        traj = []
+        for e in elems:
+            traj.append(np.array([float(g) for g in e.rstrip().rstrip(']').split()]))
+        return (k0, traj)
+
+    def read_file(self, file_name):
+        in_file = file(file_name, 'r')
+        data = [self.parse_line(l) for l in in_file.readlines()]
+        in_file.close()
+        return data
+
+def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0, out_path=''):
+    H = len(q_star)/(n+m)
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+    plotter.figure()
+    # Plot desired
+    x_d = [X_d_k[0] for X_d_k in X_d]
+    y_d = [X_d_k[1] for X_d_k in X_d]
+    theta_d = [X_d_k[2] for X_d_k in X_d]
+    plotter.plot(x_d, y_d, 'r')
+    plotter.plot(x_d, y_d, 'ro')
+
+    # Plot predicted
+    x_hat = [X_k[0] for X_k in X[t:]]
+    y_hat = [X_k[1] for X_k in X[t:]]
+    theta_hat = [X_k[1] for X_k in X[t:]]
+    plotter.plot(x_hat, y_hat,'b')
+    plotter.plot(x_hat, y_hat,'b+')
+
+    # Plot observed / GT
+    x_gt = [X_k[0] for X_k in X[:t+1]]
+    y_gt = [X_k[1] for X_k in X[:t+1]]
+    theta_gt = [X_k[1] for X_k in X[:t+1]]
+    plotter.plot(x_gt, y_gt,'g')
+    plotter.plot(x_gt, y_gt,'g+')
+
+    plot_title = 'MPC_Push_Control_Trajectory'+suffix
+    plotter.title(plot_title)
+    plotter.xlabel('x (meters)')
+    plotter.ylabel('y (meters)')
+    if len(out_path) > 0:
+        plotter.savefig(out_path+plot_title+'.png')
+    if show_plot:
+        plotter.show()
+
+def plot_controls(q_star, X_d, x0, n, m, u_max, show_plot=True, suffix='', t=0, out_path=''):
+    H = len(q_star)/(n+m)
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+
+    Ux = [u_k[0] for u_k in U]
+    Uy = [u_k[1] for u_k in U]
+
+    plotter.figure()
+    plotter.plot(Ux, 'r')
+    plotter.plot(Ux, 'ro')
+
+    plotter.plot(Uy, 'b')
+    plotter.plot(Uy, 'b+')
+    plotter.plot(np.ones(H)*u_max, 'g')
+    plotter.plot(np.ones(H)*-u_max, 'g')
+
+    plot_title = 'MPC_Push_Control_Inputs'+suffix
+    plotter.title(plot_title)
+    ax = plotter.gca()
+    ax.set_ylim(-1.1*u_max, 1.1*u_max)
+    plotter.xlabel('Time Step')
+    plotter.ylabel('U (meters/sec)')
+    if len(out_path) > 0:
+        plotter.savefig(out_path+plot_title+'.png')
+    if show_plot:
+        plotter.show()
+
+
 def test_svm_stuff(aff_file_name=None):
     delta_t = 1./9.
     n = 5

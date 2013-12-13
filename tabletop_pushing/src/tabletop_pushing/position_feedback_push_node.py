@@ -53,6 +53,7 @@ import rbf_control
 import sys
 from push_primitives import *
 from model_based_pushing_control import *
+from analyze_mpc import MPCSolutionIO, PushTrajectoryIO
 from pushing_dynamics_models import *
 from push_trajectory_generator import *
 
