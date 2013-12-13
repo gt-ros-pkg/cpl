@@ -981,8 +981,8 @@ class PositionFeedbackPushNode:
         u = TwistStamped()
         u.header.frame_id = 'torso_lift_link'
         u.header.stamp = rospy.Time.now()
-        u.twist.linear.x = q_star[0]
-        u.twist.linear.y = q_star[1]
+        u.twist.linear.x = max( min(q_star[0], self.mpc_u_max), -self.mpc_u_max)
+        u.twist.linear.y = max( min(q_star[1], self.mpc_u_max), -self.mpc_u_max)
         u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
