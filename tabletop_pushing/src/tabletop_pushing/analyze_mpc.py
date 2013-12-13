@@ -46,6 +46,7 @@ import push_trajectory_generator as ptg
 from model_based_pushing_control import *
 from pushing_dynamics_models import *
 import subprocess
+import os
 
 class MPCSolutionIO:
     def __init__(self):
@@ -387,7 +388,7 @@ def test_mpc():
     # q0 = mpc.get_q0(x0, U_init, xtra)
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
 
-def analyze_mpc_trial_data(aff_file_name, out_dir_path):
+def analyze_mpc_trial_data(aff_file_name):
     # Fixed parameters
     n = 5
     m = 2
@@ -397,6 +398,18 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
     q_star_file_name = aff_file_name[:-4]+'-q_star.txt'
     traj_file_name = aff_file_name[:-4]+'-trajectory.txt'
     aff_dir_path = aff_file_name[:-len(aff_file_name.split('/')[-1])]
+    print aff_dir_path
+    # TODO: Create analysis out_dir in aff_dir_path
+    analysis_dir = aff_dir_path+'analysis/'
+    render_out_dir = aff_dir_path+'analysis/tracking/'
+    traj_out_dir = aff_dir_path+'analysis/planning/'
+    # TODO: Make directories if they don't exist
+    if not os.path.exists(analysis_dir):
+        os.mkdir(analysis_dir)
+    if not os.path.exists(render_out_dir):
+        os.mkdir(render_out_dir)
+    if not os.path.exists(traj_out_dir):
+        os.mkdir(traj_out_dir)
 
     # Read in all files
     plio = push_learning.CombinedPushLearnControlIO()
@@ -411,8 +424,6 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
     print 'Plotting planned trajectories'
     trial_idx = -1
     for i, (traj, q_star) in enumerate(zip(trajs, q_stars)):
-        print i
-
         if q_star[0] == 0:
             trial_idx += 1
             x0_state = plio.push_trials[trial_idx].trial_trajectory[trial_idx]
@@ -425,19 +436,21 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
         print 'Plotting trial', trial_idx, ':', q_star[0]
         # TODO: Setup saving / naming path here
         # TODO: Plot commanded history too
-        plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False)# , suffix='', t=0, out_path='')
-        plot_controls(q_star[1], traj[1], x0, n, m, u_max, show_plot=False) #, suffix='', t=0, out_path='')
+        plot_suffix = '-'+str(trial_idx)+'-q_star['+str(q_star[0])+']'
+        plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False,
+                                   suffix=plot_suffix, out_path=traj_out_dir)
+        plot_controls(q_star[1], traj[1], x0, n, m, u_max, show_plot=False,
+                      suffix=plot_suffix, out_path=traj_out_dir)
         # TODO: Plot controls as well
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
-    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, out_dir_path, '1'], shell=False)
+    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, '1'], shell=False)
     p.wait()
 
     # TODO: Do analysis of dynamics learning too
 
 if __name__ == '__main__':
-    out_dir_path = '/home/thermans/sandbox/mpc_test_out/'
-    analyze_mpc_trial_data(sys.argv[1], out_dir_path)
+    analyze_mpc_trial_data(sys.argv[1])
     # test_svm_stuff(sys.argv[1])
     # test_mpc()
