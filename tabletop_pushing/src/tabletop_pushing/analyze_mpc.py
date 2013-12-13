@@ -174,6 +174,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     plotter.title(plot_title)
     plotter.xlabel('x (meters)')
     plotter.ylabel('y (meters)')
+
     if len(out_path) > 0:
         plotter.savefig(out_path+plot_title+'.png')
     if show_plot:
@@ -243,12 +244,30 @@ def plot_controls(q_star, x0, n, m, u_max, show_plot=True, suffix='', out_path='
     Uy = [u_k[1] for u_k in U]
     plot_controls_base(Ux, Uy, u_max, show_plot, suffix, out_path)
 
-def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path=''):
+def plot_controls_with_history(trial_traj, q_star, x0, n, m, u_max, show_plot=True, suffix='', out_path=''):
+    Ux = [state.u.linear.x for state in trial_traj]
+    Uy = [state.u.linear.y for state in trial_traj]
+
+    H = len(q_star)/(n+m)
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+
+    Ux.extend([u_k[0] for u_k in U])
+    Uy.extend([u_k[1] for u_k in U])
+    plot_controls_base(Ux, Uy, u_max, show_plot, suffix, out_path, history_start=len(trial_traj)-0.5)
+
+def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', history_start=None):
     x_color = (0.5, 0.0, 0.0)
     y_color = (0.0, 0.0, 0.5)
     lim_color = (0.0, 0.5, 0.0)
-
+    history_mark_color = (0.0, 0.0, 0.0)
+    custom_ylim = (-1.1*u_max, 1.1*u_max)
     plotter.figure()
+    # Plot a vertical dashed line showing where the history ends and prediction starts
+    if history_start is not None:
+        history_x = [history_start, history_start]
+        history_y = custom_ylim
+        plotter.plot(history_x, history_y, ls='--', color = history_mark_color)
+
     plotter.plot(np.ones(len(Ux))*u_max, color = lim_color)
     plotter.plot(np.ones(len(Ux))*-u_max, color = lim_color)
 
@@ -261,7 +280,7 @@ def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path=''):
     plot_title = 'MPC_Push_Control_Inputs'+suffix
     plotter.title(plot_title)
     ax = plotter.gca()
-    ax.set_ylim(-1.1*u_max, 1.1*u_max)
+    ax.set_ylim(custom_ylim)
     plotter.xlabel('Time Step')
     plotter.ylabel('U (meters/sec)')
     if len(out_path) > 0:
@@ -386,7 +405,8 @@ def test_mpc():
                                    out_path=plot_output_path)
 
     # TODO: Test with a more complicated dynamics model
-    dyn_model = NaiveInputDynamics(delta_t, n, m)
+    # dyn_model = NaiveInputDynamics(delta_t, n, m)
+    dyn_model = test_svm_stuff()
 
     # TODO: Improve the way noise is added to make this better
     sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
@@ -496,7 +516,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
 
     # TODO: Plot actual controls
-    plot_all_controls(plio.push_trials, u_max, out_path = analysis_dir)
+    plot_all_controls(plio.push_trials, u_max, out_path = analysis_dir, show_plot = False)
 
     print 'Plotting individual trajectories'
     trial_idx = -1
@@ -512,7 +532,13 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
         plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False,
                                    suffix=plot_suffix, out_path=traj_out_dir)
         plot_controls(q_star[1], x0, n, m, u_max, show_plot=False, suffix=plot_suffix, out_path=traj_out_dir)
+
         # TODO: Plot with history too
+        plot_suffix += '-history'
+        plot_controls_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]],
+                                   q_star[1], x0, n, m, u_max, show_plot=False,
+                                   suffix=plot_suffix, out_path=traj_out_dir)
+
 
     return
 
