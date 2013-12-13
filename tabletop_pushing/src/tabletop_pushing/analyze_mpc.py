@@ -144,26 +144,31 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     H = len(q_star)/(n+m)
     X,U =  get_x_u_from_q(q_star, x0, H, n, m)
     plotter.figure()
+
+    plan_color = (0.5, 0, 0)
+    gt_color = (0, 0.5, 0.5)
+    predicted_color = (0.0, 0.0, 0.5)
+
     # Plot desired
     x_d = [X_d_k[0] for X_d_k in X_d]
     y_d = [X_d_k[1] for X_d_k in X_d]
     theta_d = [X_d_k[2] for X_d_k in X_d]
-    plotter.plot(x_d, y_d, 'r')
-    plotter.plot(x_d, y_d, 'ro')
+    plotter.plot(x_d, y_d, color = plan_color)
+    plotter.plot(x_d, y_d, color = plan_color, marker = 'o')
 
     # Plot predicted
     x_hat = [X_k[0] for X_k in X[t:]]
     y_hat = [X_k[1] for X_k in X[t:]]
     theta_hat = [X_k[1] for X_k in X[t:]]
-    plotter.plot(x_hat, y_hat,'b')
-    plotter.plot(x_hat, y_hat,'b+')
+    plotter.plot(x_hat, y_hat, color = predicted_color)
+    plotter.plot(x_hat, y_hat, color = predicted_color, marker = '+')
 
     # Plot observed / GT
     x_gt = [X_k[0] for X_k in X[:t+1]]
     y_gt = [X_k[1] for X_k in X[:t+1]]
     theta_gt = [X_k[1] for X_k in X[:t+1]]
-    plotter.plot(x_gt, y_gt,'g')
-    plotter.plot(x_gt, y_gt,'g+')
+    plotter.plot(x_gt, y_gt, color = gt_color)
+    plotter.plot(x_gt, y_gt, color = gt_color, marker = '+')
 
     plot_title = 'MPC_Push_Control_Trajectory'+suffix
     plotter.title(plot_title)
@@ -174,21 +179,84 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='',
     if show_plot:
         plotter.show()
 
-def plot_controls(q_star, X_d, x0, n, m, u_max, show_plot=True, suffix='', t=0, out_path=''):
+def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_path='', show_headings=False):
+    trajectories_segmented = []
+    for i, traj in enumerate(trajs):
+        if traj[0] == 0:
+            if i > 0:
+                trajectories_segmented.append(segment)
+            segment = []
+        segment.append(traj[1])
+    trajectories_segmented.append(segment)
+
+    plan_color = (0.5, 0, 0)
+    gt_color = (0, 0.5, 0.5)
+
+    for i, (trial, plans) in enumerate(zip(trials, trajectories_segmented)):
+        plotter.figure()
+        plot_title = 'Planned_Trajectories_'+str(i)+suffix
+        plotter.title(plot_title)
+        plotter.xlabel('x (meters)')
+        plotter.ylabel('y (meters)')
+        # plotter.xlim((0.5, 1.0))
+        # plotter.ylim((-0.5, 0.0))
+
+        for X_d in plans:
+            # Plot desired
+            x_d = [X_d_k[0] for X_d_k in X_d]
+            y_d = [X_d_k[1] for X_d_k in X_d]
+            theta_d = [X_d_k[2] for X_d_k in X_d]
+            plotter.plot(x_d, y_d, color=plan_color, ls='--')
+
+        x_gt = [state.x.x for state in trial.trial_trajectory]
+        y_gt = [state.x.y for state in trial.trial_trajectory]
+        theta_gt = [state.x.theta for state in trial.trial_trajectory]
+        plotter.plot(x_gt, y_gt, c=gt_color, ls='-')
+        if show_headings:
+            ax = plotter.gca()
+            headings = [plotter.Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.005,
+                                      sin(c.x.theta)*0.005, 0.005, axes=ax,
+                                      color=gt_color) for c in trial.trial_trajectory]
+            arrows = [ax.add_patch(h) for h in headings]
+        else:
+            plotter.plot(x_gt, y_gt, c=gt_color, marker='o')
+        if len(out_path) > 0:
+            plotter.savefig(out_path+plot_title+'.png')
+
+    if show_plot:
+        plotter.show()
+
+def plot_all_controls(trials, u_max, show_plot=True, suffix='', out_path=''):
+    for i, trial in enumerate(trials):
+        Ux = [state.u.linear.x for state in trial.trial_trajectory]
+        Uy = [state.u.linear.y for state in trial.trial_trajectory]
+        suffix_i = '_' + str(i) + suffix
+        plot_controls_base(Ux, Uy, u_max, show_plot=False, suffix=suffix, out_path=out_path)
+    if show_plot:
+        plotter.show()
+
+def plot_controls(q_star, x0, n, m, u_max, show_plot=True, suffix='', out_path=''):
     H = len(q_star)/(n+m)
     X,U =  get_x_u_from_q(q_star, x0, H, n, m)
 
     Ux = [u_k[0] for u_k in U]
     Uy = [u_k[1] for u_k in U]
+    plot_controls_base(Ux, Uy, u_max, show_plot, suffix, out_path)
+
+def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path=''):
+    x_color = (0.5, 0.0, 0.0)
+    y_color = (0.0, 0.0, 0.5)
+    lim_color = (0.0, 0.5, 0.0)
 
     plotter.figure()
-    plotter.plot(Ux, 'r')
-    plotter.plot(Ux, 'ro')
+    plotter.plot(np.ones(len(Ux))*u_max, color = lim_color)
+    plotter.plot(np.ones(len(Ux))*-u_max, color = lim_color)
 
-    plotter.plot(Uy, 'b')
-    plotter.plot(Uy, 'b+')
-    plotter.plot(np.ones(H)*u_max, 'g')
-    plotter.plot(np.ones(H)*-u_max, 'g')
+    plotter.plot(Ux, color = x_color)
+    plotter.plot(Ux, color = x_color, marker = 'o')
+
+    plotter.plot(Uy, color = y_color)
+    plotter.plot(Uy, color = y_color, marker = '+')
 
     plot_title = 'MPC_Push_Control_Inputs'+suffix
     plotter.title(plot_title)
@@ -200,7 +268,6 @@ def plot_controls(q_star, X_d, x0, n, m, u_max, show_plot=True, suffix='', t=0, 
         plotter.savefig(out_path+plot_title+'.png')
     if show_plot:
         plotter.show()
-
 
 def test_svm_stuff(aff_file_name=None):
     delta_t = 1./9.
@@ -348,7 +415,7 @@ def test_mpc():
         q_cur.extend(q_star)
         q_cur = np.array(q_cur)
         if plot_all_t:
-            plot_controls(q_cur, x_d, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+            plot_controls(q_cur, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(i)+']',
                           out_path=plot_output_path)
 
             plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
@@ -377,7 +444,7 @@ def test_mpc():
 
     # Plot final ground truth trajectory
     if plot_gt:
-        plot_controls(q_gt, x_d, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(len(x_d)-1)+']', t=len(x_d),
+        plot_controls(q_gt, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(len(x_d)-1)+']',
                       out_path=plot_output_path)
         plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=True, suffix='-q*['+str(len(x_d)-1)+']',
                                    t=len(x_d), out_path=plot_output_path)
@@ -388,7 +455,7 @@ def test_mpc():
     # q0 = mpc.get_q0(x0, U_init, xtra)
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
 
-def analyze_mpc_trial_data(aff_file_name):
+def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Fixed parameters
     n = 5
     m = 2
@@ -421,7 +488,17 @@ def analyze_mpc_trial_data(aff_file_name):
     q_stars = q_star_io.read_file(q_star_file_name)
     print 'Read in ', len(q_stars), ' control plans\n'
 
-    print 'Plotting planned trajectories'
+    # Plot all desired trajectories on a single plot
+    # Plot actual trajectory (over desired path(s)?)
+    print 'Plotting batch trajectories'
+    plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
+                                  suffix = '-headings', show_headings = True)
+    plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
+
+    # TODO: Plot actual controls
+    plot_all_controls(plio.push_trials, u_max, out_path = analysis_dir)
+
+    print 'Plotting individual trajectories'
     trial_idx = -1
     for traj, q_star in zip(trajs, q_stars):
         if q_star[0] == 0:
@@ -434,16 +511,18 @@ def analyze_mpc_trial_data(aff_file_name):
         plot_suffix = '-'+str(trial_idx)+'-q_star['+str(q_star[0])+']'
         plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False,
                                    suffix=plot_suffix, out_path=traj_out_dir)
-        plot_controls(q_star[1], traj[1], x0, n, m, u_max, show_plot=False,
-                      suffix=plot_suffix, out_path=traj_out_dir)
+        plot_controls(q_star[1], x0, n, m, u_max, show_plot=False, suffix=plot_suffix, out_path=traj_out_dir)
+        # TODO: Plot with history too
 
-    # TODO: Plot all desired trajectories on a single plot
-    # TODO: Plot actual trajectory (over desired path(s)?)
-    # TODO: Plot actual controls
+    return
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
-    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, '1'], shell=False)
+    if wait_for_renders:
+        wait_time = '0'
+    else:
+        wait_time = '1'
+    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, wait_time], shell=False)
     p.wait()
 
     # TODO: Do analysis of dynamics learning too
