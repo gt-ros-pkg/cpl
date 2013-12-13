@@ -129,8 +129,8 @@ class PushTrajectoryIO:
         line = line[len(l0)+1:]
         elems = line.split('[')
         traj = []
-        for e in elems:
-            traj.append(np.array([float(g) for g in e.rstrip().rstrip(']').split()]))
+        for e in elems[1:]:
+            traj.append(np.array([float(g) for g in e.rstrip().rstrip(']').split() ]))
         return (k0, traj)
 
     def read_file(self, file_name):
@@ -388,10 +388,13 @@ def test_mpc():
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
 
 def analyze_mpc_trial_data(aff_file_name, out_dir_path):
+    # Fixed parameters
+    n = 5
+    m = 2
+
     # Get derived names from aff file name
     q_star_file_name = aff_file_name[:-4]+'-q_star.txt'
     traj_file_name = aff_file_name[:-4]+'-trajectory.txt'
-
     aff_dir_path = aff_file_name[:-len(aff_file_name.split('/')[-1])]
 
     # Read in all files
@@ -402,13 +405,29 @@ def analyze_mpc_trial_data(aff_file_name, out_dir_path):
     print 'Read in ', len(trajs), ' planned trajectories\n'
     q_star_io = MPCSolutionIO()
     q_stars = q_star_io.read_file(q_star_file_name)
+    print 'Read in ', len(q_stars), ' control plans\n'
 
-    # TODO: Display all trajectories for each time step (Separate and together (stacked / faded))
 
-    # TODO: Run render data script
+    print 'Plotting trials'
+    trial_idx = -1
+    for traj, q_star in zip(trajs, q_stars):
+
+        if q_star[0] == 0:
+            trial_idx += 1
+            x0_state = plio.push_trials[trial_idx].trial_trajectory[trial_idx]
+            x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
+                           x0_state.ee.position.x, x0_state.ee.position.y])
+            print 'Updated x0 to:', x0
+        print 'Plotting trial', trial_idx, ':', q_star[0]
+        # TODO: Setup saving / naming path here
+        # TODO: Plot commanded history too
+        plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False)
+        # TODO: Plot controls as well
+        # TODO: Display all trajectories from a single trial on one graph
+
+    # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
-    print 'aff_dir_path = ',aff_dir_path
-    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, out_dir_path], shell=False)
+    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, out_dir_path, '1'], shell=False)
     p.wait()
 
     # TODO: Do analysis of dynamics learning too

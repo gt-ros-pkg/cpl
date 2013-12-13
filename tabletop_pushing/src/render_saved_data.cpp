@@ -376,9 +376,9 @@ cv::Mat projectHandIntoBoundaryImage(ControlTimeStep& cts, PushTrackerState& cur
 int main(int argc, char** argv)
 {
 
-  if (argc != 4)
+  if (argc < 4 || argc > 5)
   {
-    std::cout << "usage: " << argv[0] << " aff_file_path data_directory_path out_file_path" << std::endl;
+    std::cout << "usage: " << argv[0] << " aff_file_path data_directory_path out_file_path [wait_time]" << std::endl;
     return -1;
   }
 
@@ -386,6 +386,11 @@ int main(int argc, char** argv)
   std::string aff_file_path(argv[1]);
   std::string data_directory_path(argv[2]);
   std::string out_file_path(argv[3]);
+  double wait_time = 0;
+  if (argc > 4)
+  {
+    wait_time = atoi(argv[4]);
+  }
 
   // Read in aff file grouping each trajectory and number of elements
   std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
@@ -438,7 +443,7 @@ int main(int argc, char** argv)
       contact_pt_name << out_file_path << "contact_pt_" << i << "_" << j << ".png";
       cv::imwrite(state_out_name.str(), obj_state_img);
       cv::imwrite(contact_pt_name.str(), hull_cloud_viz);
-      cv::waitKey();
+      cv::waitKey(wait_time);
     }
   }
 
