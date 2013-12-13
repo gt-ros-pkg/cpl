@@ -45,6 +45,7 @@ import push_learning
 import push_trajectory_generator as ptg
 from model_based_pushing_control import *
 from pushing_dynamics_models import *
+import subprocess
 
 class MPCSolutionIO:
     def __init__(self):
@@ -80,7 +81,7 @@ class MPCSolutionIO:
     def parse_line(self, line):
         elems = line.split()
         k0 = int(elems[0])
-        q = [float(x) for x in elems[1:]]
+        q = [float(x.lstrip('[').rstrip(',').rstrip(']')) for x in elems[1:]]
         return (k0, q)
 
     def read_file(self, file_name):
@@ -386,13 +387,34 @@ def test_mpc():
     # q0 = mpc.get_q0(x0, U_init, xtra)
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
 
-def analyze_mpc_trial_data():
-    # TODO: Read aff file
-    # TODO: Read trajectory file
-    # TODO: Read q_star file
-    # TODO: Read tracking images
+def analyze_mpc_trial_data(aff_file_name, out_dir_path):
+    # Get derived names from aff file name
+    q_star_file_name = aff_file_name[:-4]+'-q_star.txt'
+    traj_file_name = aff_file_name[:-4]+'-trajectory.txt'
+
+    aff_dir_path = aff_file_name[:-len(aff_file_name.split('/')[-1])]
+
+    # Read in all files
+    plio = push_learning.CombinedPushLearnControlIO()
+    plio.read_in_data_file(aff_file_name)
+    traj_io = PushTrajectoryIO()
+    trajs = traj_io.read_file(traj_file_name)
+    print 'Read in ', len(trajs), ' planned trajectories\n'
+    q_star_io = MPCSolutionIO()
+    q_stars = q_star_io.read_file(q_star_file_name)
+
     # TODO: Display all trajectories for each time step (Separate and together (stacked / faded))
 
+    # TODO: Run render data script
+    render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
+    print 'aff_dir_path = ',aff_dir_path
+    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, out_dir_path], shell=False)
+    p.wait()
+
+    # TODO: Do analysis of dynamics learning too
+
 if __name__ == '__main__':
-    test_svm_stuff(sys.argv[1])
+    out_dir_path = '/home/thermans/sandbox/mpc_test_out/'
+    analyze_mpc_trial_data(sys.argv[1], out_dir_path)
+    # test_svm_stuff(sys.argv[1])
     # test_mpc()
