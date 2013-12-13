@@ -231,7 +231,7 @@ def plot_all_controls(trials, u_max, show_plot=True, suffix='', out_path=''):
         Ux = [state.u.linear.x for state in trial.trial_trajectory]
         Uy = [state.u.linear.y for state in trial.trial_trajectory]
         suffix_i = '_' + str(i) + suffix
-        plot_controls_base(Ux, Uy, u_max, show_plot=False, suffix=suffix, out_path=out_path)
+        plot_controls_base(Ux, Uy, u_max, show_plot = False, suffix = suffix_i, out_path = out_path)
     if show_plot:
         plotter.show()
 
