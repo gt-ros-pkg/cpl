@@ -140,14 +140,34 @@ class PushTrajectoryIO:
         in_file.close()
         return data
 
-def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix='', t=0, out_path=''):
+def plot_desired_vs_controlled_with_history(trial_traj, q_planned, X_d, n, m,
+                                            show_plot = True, suffix = '', out_path = ''):
+    # Convert trials into decision vector for use with the base function
+    x0_state = trial_traj[0]
+    x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
+                   x0_state.ee.position.x, x0_state.ee.position.y])
+
+    q_star = []
+    for i, state in enumerate(trial_traj):
+        if i > 0:
+            q_star.extend([state.u.linear.x, state.u.linear.y])
+            q_star.extend([state.x.x, state.x.y, state.x.theta,
+                           state.ee.position.x, state.ee.position.y])
+    q_star.extend(q_planned)
+
+    # Where to start past vs future
+    t = len(trial_traj)-1
+    plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot, suffix, t, out_path)
+
+def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '', t = 0, out_path = ''):
     H = len(q_star)/(n+m)
     X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+
     plotter.figure()
 
     plan_color = (0.5, 0, 0)
     gt_color = (0, 0.5, 0.5)
-    predicted_color = (0.0, 0.0, 0.5)
+    predicted_color = (0.0, 0.75, 0.0)
 
     # Plot desired
     x_d = [X_d_k[0] for X_d_k in X_d]
@@ -533,13 +553,15 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
                                    suffix=plot_suffix, out_path=traj_out_dir)
         plot_controls(q_star[1], x0, n, m, u_max, show_plot=False, suffix=plot_suffix, out_path=traj_out_dir)
 
-        # TODO: Plot with history too
+        # Plot with history
         plot_suffix += '-history'
+        plot_desired_vs_controlled_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]+1],
+                                                q_star[1], traj[1], n, m, show_plot = False,
+                                                suffix = plot_suffix, out_path = traj_out_dir)
+
         plot_controls_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]],
                                    q_star[1], x0, n, m, u_max, show_plot=False,
                                    suffix=plot_suffix, out_path=traj_out_dir)
-
-
     return
 
     # Run render data script
