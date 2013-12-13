@@ -398,12 +398,12 @@ def analyze_mpc_trial_data(aff_file_name):
     q_star_file_name = aff_file_name[:-4]+'-q_star.txt'
     traj_file_name = aff_file_name[:-4]+'-trajectory.txt'
     aff_dir_path = aff_file_name[:-len(aff_file_name.split('/')[-1])]
-    print aff_dir_path
-    # TODO: Create analysis out_dir in aff_dir_path
-    analysis_dir = aff_dir_path+'analysis/'
-    render_out_dir = aff_dir_path+'analysis/tracking/'
-    traj_out_dir = aff_dir_path+'analysis/planning/'
-    # TODO: Make directories if they don't exist
+
+    # Create output directories to store analysis
+    analysis_dir = aff_file_name[:-4]+'-analysis/'
+    render_out_dir = analysis_dir + 'tracking/'
+    traj_out_dir = analysis_dir + 'planning/'
+
     if not os.path.exists(analysis_dir):
         os.mkdir(analysis_dir)
     if not os.path.exists(render_out_dir):
@@ -423,25 +423,23 @@ def analyze_mpc_trial_data(aff_file_name):
 
     print 'Plotting planned trajectories'
     trial_idx = -1
-    for i, (traj, q_star) in enumerate(zip(trajs, q_stars)):
+    for traj, q_star in zip(trajs, q_stars):
         if q_star[0] == 0:
             trial_idx += 1
-            x0_state = plio.push_trials[trial_idx].trial_trajectory[trial_idx]
-            x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
-                           x0_state.ee.position.x, x0_state.ee.position.y])
-            print 'Updated x0 to:', x0
-            if i > 0:
-                # TODO: Display all trajectories from a single trial on one graph
-                pass
+        x0_state = plio.push_trials[trial_idx].trial_trajectory[q_star[0]]
+        x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
+                       x0_state.ee.position.x, x0_state.ee.position.y])
+
         print 'Plotting trial', trial_idx, ':', q_star[0]
-        # TODO: Setup saving / naming path here
-        # TODO: Plot commanded history too
         plot_suffix = '-'+str(trial_idx)+'-q_star['+str(q_star[0])+']'
         plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False,
                                    suffix=plot_suffix, out_path=traj_out_dir)
         plot_controls(q_star[1], traj[1], x0, n, m, u_max, show_plot=False,
                       suffix=plot_suffix, out_path=traj_out_dir)
-        # TODO: Plot controls as well
+
+    # TODO: Plot all desired trajectories on a single plot
+    # TODO: Plot actual trajectory (over desired path(s)?)
+    # TODO: Plot actual controls
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
