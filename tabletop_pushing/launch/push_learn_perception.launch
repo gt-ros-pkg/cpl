@@ -84,9 +84,9 @@
     <param name="gripper_not_moving_count_limit" value="50" type="int"/>
     <param name="object_not_moving_count_limit" value="50" type="int"/>
     <param name="object_not_detected_count_limit" value="5" type="int"/>
-    <param name="object_too_far_count_limit" value="2" type="int"/>
-    <param name="object_not_between_count_limit" value="2" type="int"/>
-    <param name="object_not_between_epsilon" value="0.02" type="double"/>
+    <param name="object_too_far_count_limit" value="5" type="int"/>
+    <param name="object_not_between_count_limit" value="5" type="int"/>
+    <param name="object_not_between_epsilon" value="0.05" type="double"/>
     <param name="point_cloud_hist_res" value="0.0051" type="double"/>
 
     <param name="boundary_hull_alpha" value="0.01" type="double"/>
