@@ -273,12 +273,13 @@ class PositionFeedbackPushNode:
         # MPC Parameters
         self.MPC = None
         self.trajectory_generator = None
-        self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/5.)
+        self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/9.)
         self.mpc_state_space_dim = rospy.get_param('~mpc_n', 5)
         self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
         self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
         self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.03)
-        self.num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 30) # At 10 Hz implies 3 seconds
+        self.min_num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 2)
+        self.mpc_max_step_size = rospy.get_param('~mpc_max_step_size', 0.01)
 
         # Set joint gains
         self.arm_mode = None
@@ -568,10 +569,11 @@ class PositionFeedbackPushNode:
                                                   self.mpc_u_max, self.mpc_delta_t)
 
             # Create target trajectory to goal pose
-            self.trajectory_generator = PiecewiseLinearTrajectoryGenerator()
+            self.trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
+                                                                           self.min_num_mpc_trajectory_steps)
             pose_list = [goal.desired_pose]
-            self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(
-                self.num_mpc_trajectory_steps, request.obj_start_pose, pose_list)
+            self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(request.obj_start_pose,
+                                                                                        pose_list)
 
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
         ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -947,19 +949,17 @@ class PositionFeedbackPushNode:
 
     def MPCFeedbackController(self, cur_state, ee_pose, desired_pose):
         # TODO: Add ability to switch model at each feedback call (using model predictive error, etc)
+
         k0 = cur_state.header.seq
         # Get updated list for forward trajectory
-        # x_d_i = self.mpc_desired_trajectory[cur_state.header.seq:]
         pose_list = [desired_pose]
-        traj_len = max(self.num_mpc_trajectory_steps-k0, 2)
-        rospy.loginfo('Trajectory length is ' + str(traj_len) + ' at seq #' + str(k0) + ' of '+ str(self.num_mpc_trajectory_steps))
-        x_d_i = self.trajectory_generator.generate_trajectory(traj_len, cur_state.x, pose_list)
+        x_d_i = self.trajectory_generator.generate_trajectory(cur_state.x, pose_list)
 
         self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
         rospy.loginfo('MPC.H = ' + str(self.MPC.H))
 
-        # TODO: get this passed in from vis feedback
+        # TODO: get 'xtra' passed in from vis feedback
         # Feature vector for the dynamics model
         xtra = []
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
@@ -967,8 +967,6 @@ class PositionFeedbackPushNode:
         q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)
 
         if _SAVE_MPC_DATA:
-            # TODO: Save q_star, x_d_i, and other diagnostics to disk
-            # TODO: Write q_star to disk
             if _BUFFER_DATA:
                 self.target_trajectory_io.buffer_line(k0, x_d_i)
                 self.mpc_q_star_io.buffer_line(k0, q_star)

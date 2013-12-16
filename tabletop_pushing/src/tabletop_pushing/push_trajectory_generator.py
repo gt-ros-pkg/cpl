@@ -36,7 +36,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Pose2D
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import copysign, pi
+from math import copysign, pi, ceil
 import svmutil
 import numpy as np
 
@@ -44,18 +44,25 @@ class PiecewiseLinearTrajectoryGenerator:
     '''
     Define a finer time scale trajectory through a list of fixed points
     '''
-    def generate_trajectory(self, H, start_pose, pose_list):
+    def __init__(self, max_step_size, min_num_segment_steps=1):
+        self.max_step_size = max_step_size
+        self.min_num_segment_steps = min_num_segment_steps
+
+    def generate_trajectory(self, start_pose, pose_list):
         '''
-        H - Number of time steps to get from start_pose to the final pose in pose_list
         start_pose - Pose2D() location of start pose for trajectory
         pose_list - list of Pose2D() locations for the rest of the trajectory
         '''
         start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
         trajectory = [start_loc]
-        num_steps = H/len(pose_list)
         for i in xrange(len(pose_list)):
             p_i = np.array([pose_list[i].x, pose_list[i].y, pose_list[i].theta])
-            step = (p_i-trajectory[-1])/num_steps
+
+            num_steps = int(ceil(np.linalg.norm(p_i[:2] - trajectory[-1][:2])/self.max_step_size))
+            num_steps = max(num_steps, self.min_num_segment_steps)
+
+            step = (p_i - trajectory[-1]) / num_steps
+
             # print 'step =',step
             for j in xrange(num_steps):
                 next_loc = trajectory[-1] + step
@@ -63,16 +70,15 @@ class PiecewiseLinearTrajectoryGenerator:
         return trajectory
 
 class StraightLineTrajectoryGenerator:
-    def __init__(self):
-        self.pltg = PiecewiseLinearTrajectoryGenerator()
+    def __init__(self, max_step_size, min_num_steps=1):
+        self.pltg = PiecewiseLinearTrajectoryGenerator(max_step_size, min_num_steps)
 
-    def generate_trajectory(self, H, start_pose, end_pose):
+    def generate_trajectory(self, start_pose, end_pose):
         '''
-        H - Number of time steps to get from start_pose to end_pose
         start_pose - Pose2D() location of start pose for trajectory
         end_pose - Pose2D() location for the final point of the trajectory
         '''
-        return self.pltg.generate_trajectory(H, start_pose, [end_pose])
+        return self.pltg.generate_trajectory(start_pose, [end_pose])
 
 class ViaPointTrajectoryGenerator:
     '''
@@ -86,6 +92,7 @@ class ViaPointTrajectoryGenerator:
         pose_list - list of Pose2D() locations for the rest of the trajectory
         tau - time before via time at which the curve starts, defaults to 0.25
         '''
+        # TODO: Add in max step size
         num_line_steps = H/len(pose_list)
         delta_t = 1.0/num_line_steps
 

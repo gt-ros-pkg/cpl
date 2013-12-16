@@ -39,6 +39,7 @@
 
       <param name="mpc_max_u" type="double" value="0.03"/>
       <param name="mpc_H" type="int" value="10"/>
-      <param name="num_mpc_trajectory_steps" type="int" value="40"/>
+      <param name="min_num_mpc_trajectory_steps" type="int" value="2"/>
+      <param name="mpc_max_step_size" type="double" value="0.0025"/>
     </node>
 </launch>
