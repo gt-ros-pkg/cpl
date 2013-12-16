@@ -552,7 +552,12 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     for traj, q_star in zip(trajs, q_stars):
         if q_star[0] == 0:
             trial_idx += 1
-        x0_state = plio.push_trials[trial_idx].trial_trajectory[q_star[0]]
+        try:
+            x0_state = plio.push_trials[trial_idx].trial_trajectory[q_star[0]]
+        except IndexError:
+            print 'Error trying to read trial', trial_idx, 'trajectory step', q_star[0]
+            continue
+
         x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
                        x0_state.ee.position.x, x0_state.ee.position.y])
 
@@ -571,7 +576,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
         plot_controls_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]],
                                    q_star[1], x0, n, m, u_max, show_plot=False,
                                    suffix=plot_suffix, out_path=traj_out_dir)
-    return
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
