@@ -574,17 +574,23 @@ class PositionFeedbackPushNode:
             pose_list = [goal.desired_pose]
             self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(request.obj_start_pose,
                                                                                         pose_list)
+        # HACK: to run the open loop stuff here
+        if request.controller_name == OPEN_LOOP_SQP_CONTROLLER:
+            response.action_aborted = not self.open_loop_sqp_control(goal, request)
+        else:
+            rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+            ac.send_goal(goal, done_cb, active_cb, feedback_cb)
+            # Block until done
+            rospy.loginfo('Waiting for result')
+            ac.wait_for_result(rospy.Duration(0))
+            rospy.loginfo('Result received')
+            result = ac.get_result()
+            response.action_aborted = result.aborted
 
-        rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
-        ac.send_goal(goal, done_cb, active_cb, feedback_cb)
-        # Block until done
-        rospy.loginfo('Waiting for result')
-        ac.wait_for_result(rospy.Duration(0))
-        rospy.loginfo('Result received')
+        # Cleanup and save data
         if not _OFFLINE:
             self.stop_moving_vel(which_arm)
-        result = ac.get_result()
-        response.action_aborted = result.aborted
+
         if self.use_learn_io:
             if _BUFFER_DATA:
                 self.learn_io.write_buffer_to_disk()
@@ -684,6 +690,17 @@ class PositionFeedbackPushNode:
         if not _OFFLINE:
             self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
+
+
+    def open_loop_sqp_controller(self, goal, push_request):
+        '''
+        Returns True if the open loop control was correctly applied, False if fails or aborted
+        '''
+        # TODO: Get push plan using SQP
+
+        # TODO: Loop through the plan waiting each step and applying each control on the tape
+        # TODO: Return
+        return True
 
     #
     # Controller functions
