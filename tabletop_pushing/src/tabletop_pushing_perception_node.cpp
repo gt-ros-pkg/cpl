@@ -566,7 +566,9 @@ class TabletopPushingPerceptionNode
           ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
 
 #ifdef BUFFER_AND_WRITE
-          color_img_buffer_.push_back(cur_color_frame_);
+          cv::Mat color_frame_to_buffer;
+          cur_color_frame_.copyTo(color_frame_to_buffer);
+          color_img_buffer_.push_back(color_frame_to_buffer);
           color_img_name_buffer_.push_back(image_out_name.str());
           obj_cloud_buffer_.push_back(cur_obj.cloud);
           obj_cloud_name_buffer_.push_back(obj_cloud_out_name.str());
