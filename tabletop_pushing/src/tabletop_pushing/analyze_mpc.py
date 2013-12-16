@@ -48,6 +48,14 @@ from pushing_dynamics_models import *
 import subprocess
 import os
 
+_KULER_RED = (178./255, 18./255, 18./255)
+_KULER_YELLOW = (1., 252./255, 25./255)
+_KULER_GREEN = (0., 178./255, 51./255)
+_KULER_BLUE = (20./255, 133./255, 204./255)
+_KULER_RED1 = (1., 0., 0.)
+_KULER_BLUE1 = (9./255, 113./255, 178./255)
+_KULER_GREEN1 = (0., 255./255, 72./255)
+
 class MPCSolutionIO:
     def __init__(self):
         self.out_file = None
@@ -165,9 +173,9 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
 
     plotter.figure()
 
-    plan_color = (0.5, 0, 0)
-    gt_color = (0, 0.5, 0.5)
-    predicted_color = (0.0, 0.75, 0.0)
+    plan_color = _KULER_RED
+    gt_color = _KULER_GREEN
+    predicted_color = _KULER_BLUE
 
     # Plot desired
     x_d = [X_d_k[0] for X_d_k in X_d]
@@ -210,8 +218,8 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
         segment.append(traj[1])
     trajectories_segmented.append(segment)
 
-    plan_color = (0.5, 0, 0)
-    gt_color = (0, 0.5, 0.5)
+    plan_color = _KULER_RED
+    gt_color = _KULER_GREEN
 
     for i, (trial, plans) in enumerate(zip(trials, trajectories_segmented)):
         plotter.figure()
@@ -276,10 +284,11 @@ def plot_controls_with_history(trial_traj, q_star, x0, n, m, u_max, show_plot=Tr
     plot_controls_base(Ux, Uy, u_max, show_plot, suffix, out_path, history_start=len(trial_traj)-0.5)
 
 def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', history_start=None):
-    x_color = (0.5, 0.0, 0.0)
-    y_color = (0.0, 0.0, 0.5)
-    lim_color = (0.0, 0.5, 0.0)
+    x_color = _KULER_RED
+    y_color = _KULER_BLUE
+    lim_color = _KULER_GREEN
     history_mark_color = (0.0, 0.0, 0.0)
+
     custom_ylim = (-1.1*u_max, 1.1*u_max)
     plotter.figure()
     # Plot a vertical dashed line showing where the history ends and prediction starts
@@ -535,7 +544,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
                                   suffix = '-headings', show_headings = True)
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
 
-    # TODO: Plot actual controls
+    # Plot actual controls
     plot_all_controls(plio.push_trials, u_max, out_path = analysis_dir, show_plot = False)
 
     print 'Plotting individual trajectories'
