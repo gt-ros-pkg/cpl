@@ -255,6 +255,41 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
     if show_plot:
         plotter.show()
 
+def plot_tracks(trials, show_plot = False, suffix='', out_path=''):
+    for i, trial in enumerate(trials):
+        suffix_i = '_'+str(i)+suffix
+        plot_track(trial, show_plot = False, suffix=suffix_i, out_path=out_path)
+    if show_plot:
+        plotter.show()
+
+def plot_track(trial, show_plot = False, suffix='', out_path=''):
+    X = [state.x.x for state in trial.trial_trajectory]
+    Y = [state.x.y for state in trial.trial_trajectory]
+    Theta = [state.x.theta for state in trial.trial_trajectory]
+
+    x_color = _KULER_RED
+    y_color = _KULER_BLUE
+    theta_color = _KULER_GREEN
+
+    plot_title = 'Object Pose vs Time' + suffix
+    plotter.figure()
+    plotter.xlabel('Time Step')
+    plotter.ylabel('Location (m) & Orientation (rad)')
+    plotter.title(plot_title)
+    plotter.plot(X, color = x_color)
+    plotter.plot(Y, color = y_color)
+    plotter.plot(Theta, color = theta_color)
+    plotter.legend(['x', 'y', 'theta'], loc=0)
+    plotter.plot(X, color = x_color, marker='o')
+    plotter.plot(Y, color = y_color, marker='+')
+    plotter.plot(Theta, color = theta_color, marker='x')
+    plotter.xlim((0, len(X)-1))
+
+    if len(out_path) > 0:
+        plotter.savefig(out_path+plot_title+'.png')
+    if show_plot:
+        plotter.show()
+
 def plot_all_controls(trials, u_max, show_plot=True, suffix='', out_path=''):
     for i, trial in enumerate(trials):
         Ux = [state.u.linear.x for state in trial.trial_trajectory]
@@ -540,6 +575,8 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
     print 'Plotting batch trajectories'
+    plot_tracks(plio.push_trials, out_path = analysis_dir, show_plot = True)
+
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
                                   suffix = '-headings', show_headings = True)
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
