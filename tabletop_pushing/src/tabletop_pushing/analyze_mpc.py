@@ -276,6 +276,7 @@ def plot_track(trial, show_plot = False, suffix='', out_path=''):
     plotter.xlabel('Time Step')
     plotter.ylabel('Location (m) & Orientation (rad)')
     plotter.title(plot_title)
+    plotter.xlim((0, len(X)-1))
     plotter.plot(X, color = x_color)
     plotter.plot(Y, color = y_color)
     plotter.plot(Theta, color = theta_color)
@@ -283,10 +284,46 @@ def plot_track(trial, show_plot = False, suffix='', out_path=''):
     plotter.plot(X, color = x_color, marker='o')
     plotter.plot(Y, color = y_color, marker='+')
     plotter.plot(Theta, color = theta_color, marker='x')
-    plotter.xlim((0, len(X)-1))
 
     if len(out_path) > 0:
-        plotter.savefig(out_path+plot_title+'.png')
+        plotter.savefig(out_path + plot_title + '.png')
+
+    plotter.figure()
+    x_plot_title = 'Object x-Position vs Time' + suffix
+    plotter.title(x_plot_title)
+    plotter.xlabel('Time Step')
+    plotter.ylabel('Location (m)')
+    plotter.xlim((0, len(X)-1))
+    plotter.ylim((0, 1.0))
+    plotter.plot(X, color = x_color)
+    plotter.plot(X, color = x_color, marker='o')
+    if len(out_path) > 0:
+        plotter.savefig(out_path + x_plot_title + '.png')
+
+    plotter.figure()
+    y_plot_title = 'Object y-Position vs Time' + suffix
+    plotter.title(y_plot_title)
+    plotter.xlabel('Time Step')
+    plotter.ylabel('Location (m)')
+    plotter.xlim((0, len(X)-1))
+    plotter.ylim((-0.5, 0.5))
+    plotter.plot(Y, color = y_color)
+    plotter.plot(Y, color = y_color, marker='o')
+    if len(out_path) > 0:
+        plotter.savefig(out_path + y_plot_title + '.png')
+
+    plotter.figure()
+    theta_plot_title = 'Object Orientation vs Time' + suffix
+    plotter.title(theta_plot_title)
+    plotter.xlabel('Time Step')
+    plotter.ylabel('Orientation (rad)')
+    plotter.xlim((0, len(X)-1))
+    plotter.ylim((-pi, pi))
+    plotter.plot(Theta, color = theta_color)
+    plotter.plot(Theta, color = theta_color, marker='o')
+    if len(out_path) > 0:
+        plotter.savefig(out_path + theta_plot_title + '.png')
+
     if show_plot:
         plotter.show()
 
@@ -325,6 +362,7 @@ def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', hi
     history_mark_color = (0.0, 0.0, 0.0)
 
     custom_ylim = (-1.1*u_max, 1.1*u_max)
+
     plotter.figure()
     # Plot a vertical dashed line showing where the history ends and prediction starts
     if history_start is not None:
@@ -343,8 +381,8 @@ def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', hi
 
     plot_title = 'MPC_Push_Control_Inputs'+suffix
     plotter.title(plot_title)
-    ax = plotter.gca()
-    ax.set_ylim(custom_ylim)
+    plotter.ylim(custom_ylim)
+    plotter.xlim([0, len(Ux)-1])
     plotter.xlabel('Time Step')
     plotter.ylabel('U (meters/sec)')
     if len(out_path) > 0:
@@ -575,7 +613,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
     print 'Plotting batch trajectories'
-    plot_tracks(plio.push_trials, out_path = analysis_dir, show_plot = True)
+    plot_tracks(plio.push_trials, out_path = analysis_dir, show_plot = False)
 
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
                                   suffix = '-headings', show_headings = True)
