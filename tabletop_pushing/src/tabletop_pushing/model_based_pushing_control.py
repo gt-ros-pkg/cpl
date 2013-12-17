@@ -39,7 +39,6 @@ def get_x_u_from_q(q, x0, H, n, m):
     x = [x0]
     u = []
     step = m+n
-    score = 0
     for k in xrange(H):
         u_start = k*step
         u_stop = u_start + m
