@@ -272,60 +272,54 @@ def plot_track(trial, show_plot = False, suffix='', out_path=''):
     theta_color = _KULER_GREEN
 
     plot_title = 'Object Pose vs Time' + suffix
-    plotter.figure()
-    plotter.xlabel('Time Step')
-    plotter.ylabel('Location (m) & Orientation (rad)')
-    plotter.title(plot_title)
-    plotter.xlim((0, len(X)-1))
-    plotter.plot(X, color = x_color)
-    plotter.plot(Y, color = y_color)
-    plotter.plot(Theta, color = theta_color)
-    plotter.legend(['x', 'y', 'theta'], loc=0)
-    plotter.plot(X, color = x_color, marker='o')
-    plotter.plot(Y, color = y_color, marker='+')
-    plotter.plot(Theta, color = theta_color, marker='x')
-
-    if len(out_path) > 0:
-        plotter.savefig(out_path + plot_title + '.png')
-
-    plotter.figure()
     x_plot_title = 'Object x-Position vs Time' + suffix
-    plotter.title(x_plot_title)
-    plotter.xlabel('Time Step')
-    plotter.ylabel('Location (m)')
-    plotter.xlim((0, len(X)-1))
-    plotter.ylim((0, 1.0))
-    plotter.plot(X, color = x_color)
-    plotter.plot(X, color = x_color, marker='o')
-    if len(out_path) > 0:
-        plotter.savefig(out_path + x_plot_title + '.png')
-
-    plotter.figure()
     y_plot_title = 'Object y-Position vs Time' + suffix
-    plotter.title(y_plot_title)
-    plotter.xlabel('Time Step')
-    plotter.ylabel('Location (m)')
-    plotter.xlim((0, len(X)-1))
-    plotter.ylim((-0.5, 0.5))
-    plotter.plot(Y, color = y_color)
-    plotter.plot(Y, color = y_color, marker='o')
-    if len(out_path) > 0:
-        plotter.savefig(out_path + y_plot_title + '.png')
-
-    plotter.figure()
     theta_plot_title = 'Object Orientation vs Time' + suffix
-    plotter.title(theta_plot_title)
-    plotter.xlabel('Time Step')
-    plotter.ylabel('Orientation (rad)')
-    plotter.xlim((0, len(X)-1))
-    plotter.ylim((-pi, pi))
-    plotter.plot(Theta, color = theta_color)
-    plotter.plot(Theta, color = theta_color, marker='o')
-    if len(out_path) > 0:
-        plotter.savefig(out_path + theta_plot_title + '.png')
+
+    xlabel = 'Time_step'
+    loc_ylabel = 'Location (m)'
+    theta_ylabel = 'Orientation (rad)'
+
+    xloc_ylim = (0, 1.0)
+    yloc_ylim = (-0.5, 0.5)
+    theta_ylim = (-pi, pi)
+
+    series_ylabel = 'Location (m) & Orientation (rad)'
+    legend = ['x', 'y', 'theta']
+    plot_time_series(X, x_color, xlabel = xlabel, ylabel = series_ylabel)
+    plot_time_series(Y, y_color, new_fig=False, marker = '+')
+    plot_time_series(Theta, theta_color, out_path = out_path, ylim = theta_ylim, new_fig=False,
+                     legend = legend, marker='x', plot_title = plot_title)
+
+    plot_time_series(X, x_color, x_plot_title, xlabel, loc_ylabel, out_path, xloc_ylim)
+    plot_time_series(Y, y_color, y_plot_title, xlabel, loc_ylabel, out_path, yloc_ylim)
+    plot_time_series(Theta, theta_color, theta_plot_title, xlabel, theta_ylabel, out_path, theta_ylim)
 
     if show_plot:
         plotter.show()
+
+def plot_time_series(data, color, plot_title=None, xlabel=None, ylabel=None, out_path='', ylim=None,
+                     new_fig=True, legend=None, marker='o'):
+    if new_fig:
+        plotter.figure()
+
+    plotter.plot(data, color = color, label='_nolegend_')
+    plotter.plot(data, color = color, marker = marker)
+    plotter.xlim((0, len(data)-1))
+
+    if plot_title is not None:
+        plotter.title(plot_title)
+    if xlabel is not None:
+        plotter.xlabel(xlabel)
+    if ylabel is not None:
+        plotter.ylabel(ylabel)
+    if ylim is not None:
+        plotter.ylim(ylim)
+    if legend is not None:
+        plotter.legend(legend, loc = 0)
+
+    if len(out_path) > 0:
+        plotter.savefig(out_path + plot_title + '.png')
 
 def plot_all_controls(trials, u_max, show_plot=True, suffix='', out_path=''):
     for i, trial in enumerate(trials):
@@ -387,6 +381,59 @@ def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', hi
     plotter.ylabel('U (meters/sec)')
     if len(out_path) > 0:
         plotter.savefig(out_path+plot_title+'.png')
+    if show_plot:
+        plotter.show()
+
+def plot_predicted_vs_observed_tracks(suffix = '', out_path = '', show_plot = False):
+    # TODO: Parse data from that sent in
+    X_gt = [0, 1, 0.6]
+    Y_gt = []
+    Theta_gt = []
+    Xee_gt = []
+    Yee_gt = []
+    X_pred = [0.2, 0.75, 0.3]
+    Y_pred = []
+    Theta_pred = []
+    Xee_pred = []
+    Yee_pred = []
+
+    # Display parameters
+    gt_color = _KULER_GREEN
+    pred_color = _KULER_BLUE
+    xlabel = 'Time_step'
+    loc_ylabel = 'Location (m)'
+    orientation_ylabel = 'Orientation (rad)'
+    X_plot_title = 'Object X Location Predicted vs Observed' + suffix
+    Y_plot_title = 'Object Y Location Predicted vs Observed' + suffix
+    Theta_plot_title = 'Object Orientation Predicted vs Observed' + suffix
+    Xee_plot_title = 'End Effector X Location Predicted vs Observed' + suffix
+    Yee_plot_title = 'End Effector Y Location Predicted vs Observed' + suffix
+
+    # Plot observed vs predicted for all outputs individually
+    legend = ['Ground Truth', 'Predicted']
+    pred_marker = 'x'
+    plot_time_series(X_gt, gt_color, X_plot_title, xlabel, loc_ylabel, new_fig = True)
+    plot_time_series(X_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
+                     marker=pred_marker)
+
+    plot_time_series(Y_gt, gt_color, Y_plot_title, xlabel, loc_ylabel, new_fig = True)
+    plot_time_series(Y_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
+                     marker=pred_marker)
+
+    plot_time_series(Theta_gt, gt_color, Theta_plot_title, xlabel, orientation_ylabel, new_fig = True)
+    plot_time_series(Theta_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
+                     marker=pred_marker)
+
+    plot_time_series(Xee_gt, gt_color, Xee_plot_title, xlabel, loc_ylabel, new_fig = True)
+    plot_time_series(Xee_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
+                     marker=pred_marker)
+
+    plot_time_series(Yee_gt, gt_color, Yee_plot_title, xlabel, loc_ylabel, new_fig = True)
+    plot_time_series(Yee_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
+                     marker=pred_marker)
+
+    # TODO: Plot observed vs predicted x,y trajectory for object and hand
+
     if show_plot:
         plotter.show()
 
@@ -613,6 +660,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
     print 'Plotting batch trajectories'
+    plot_predicted_vs_observed_tracks(show_plot = False)
     plot_tracks(plio.push_trials, out_path = analysis_dir, show_plot = False)
 
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
