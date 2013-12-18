@@ -666,7 +666,7 @@ def test_svm_stuff(aff_file_name=None):
     print 'next_state.x:\n', next_state
     print 'Jacobian:\n', gradient
 
-    plot_out_path = '/home/thermans/src/gt_ros_pkg/cpl/tabletop_pushing/cfg/'
+    plot_out_path = '/home/thermans/sandbox/dynamics/'
     for i, trial in enumerate(plio.push_trials):
         (Y_hat, Y, X) = svm_dynamics2.test_batch_data(trial)
         plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = plot_out_path, show_plot = False,
