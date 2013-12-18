@@ -198,6 +198,18 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     plotter.plot(x_gt, y_gt, color = gt_color)
     plotter.plot(x_gt, y_gt, color = gt_color, marker = '+')
 
+    # Make axes equal scales
+    xlim_auto = plotter.xlim()
+    ylim_auto = plotter.ylim()
+    xlim_auto_range = xlim_auto[1] - xlim_auto[0]
+    ylim_auto_range = ylim_auto[1] - ylim_auto[0]
+    custom_range = max(xlim_auto_range, ylim_auto_range)
+    xlim_custom = (xlim_auto[0], xlim_auto[0] + custom_range)
+    ylim_custom = (ylim_auto[0], ylim_auto[0] + custom_range)
+    plotter.xlim(xlim_custom)
+    plotter.ylim(ylim_custom)
+
+    # Write stuff
     plot_title = 'MPC_Push_Control_Trajectory'+suffix
     plotter.title(plot_title)
     plotter.xlabel('x (meters)')
@@ -223,12 +235,6 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
 
     for i, (trial, plans) in enumerate(zip(trials, trajectories_segmented)):
         plotter.figure()
-        plot_title = 'Planned_Trajectories_'+str(i)+suffix
-        plotter.title(plot_title)
-        plotter.xlabel('x (meters)')
-        plotter.ylabel('y (meters)')
-        # plotter.xlim((0.0, 1.0))
-        # plotter.ylim((-0.5, 0.5))
 
         for X_d in plans:
             # Plot desired
@@ -249,6 +255,22 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
             arrows = [ax.add_patch(h) for h in headings]
         else:
             plotter.plot(x_gt, y_gt, c=gt_color, marker='o')
+        # Make axes equal scales
+        xlim_auto = plotter.xlim()
+        ylim_auto = plotter.ylim()
+        xlim_auto_range = xlim_auto[1] - xlim_auto[0]
+        ylim_auto_range = ylim_auto[1] - ylim_auto[0]
+        custom_range = max(xlim_auto_range, ylim_auto_range)
+        xlim_custom = (xlim_auto[0], xlim_auto[0] + custom_range)
+        ylim_custom = (ylim_auto[0], ylim_auto[0] + custom_range)
+        plotter.xlim(xlim_custom)
+        plotter.ylim(ylim_custom)
+        # Write stuff
+        plot_title = 'Planned_Trajectories_'+str(i)+suffix
+        plotter.title(plot_title)
+        plotter.xlabel('x (meters)')
+        plotter.ylabel('y (meters)')
+
         if len(out_path) > 0:
             plotter.savefig(out_path+plot_title+'.png')
 
@@ -385,11 +407,162 @@ def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', hi
     if show_plot:
         plotter.show()
 
-def plot_predicted_vs_observed_tracks(gt_delta_all, pred_delta_all, input_all, suffix = '', out_path = '',
+def plot_predicted_vs_observed_tracks(Y, Y_hat, X, suffix = '', out_path = '',
                                       show_plot = False):
-    # TODO: Plot observed vs predicted x,y trajectory for object and hand
-    # TODO: Need to transform deltas into Xs and Ys
-    # TODO: Get two sets of predicted: cascaded and feedback
+
+    # Display parameters
+    gt_color = _KULER_GREEN
+    pred_color = _KULER_BLUE
+    pred_cascade_color = _KULER_RED
+    gt_marker = 'o'
+    pred_marker = 'x'
+    pred_cascade_marker = '+'
+
+    xlabel = 'Time Step'
+    loc_ylabel = 'Location (m)'
+    orientation_ylabel = 'Orientation (rad)'
+
+    Obj_plot_title = 'Object Location Predicted vs Observed' + suffix
+    Theta_plot_title = 'Object Theta Predicted vs Observed' + suffix
+    EE_plot_title = 'End Effector Location Predicted vs Observed' + suffix
+
+    Obj_cascaded_plot_title = 'Object Location Predicted vs Observed (Cascaded)' + suffix
+    Theta_cascaded_plot_title = 'Object Theta Predicted vs Observed (Cascaded)' + suffix
+    EE_cascaded_plot_title = 'End Effector Location Predicted vs Observed (Cascaded)' + suffix
+
+    # Data lists
+    x_o_gt = []
+    y_o_gt = []
+    theta_o_gt = []
+    x_ee_gt = []
+    y_ee_gt = []
+
+    x_o_pred_cascade = []
+    y_o_pred_cascade = []
+    theta_o_pred_cascade = []
+    x_ee_pred_cascade = []
+    y_ee_pred_cascade = []
+
+    x_o_pred_fb = []
+    y_o_pred_fb = []
+    theta_o_pred_fb = []
+    x_ee_pred_fb = []
+    y_ee_pred_fb = []
+
+    # Transform deltas into Xs and Ys
+    # Get two sets of predicted: cascaded and feedback
+    # NOTE: There is one more prediction / gt delta we could add to this...
+    for i, x in enumerate(X):
+        x_o = x[0]
+        y_o = x[1]
+        theta_o = x[2]
+        x_ee = x[3]
+        y_ee = x[4]
+
+        # Append ground truth observations
+        x_o_gt.append(x_o)
+        y_o_gt.append(y_o)
+        theta_o_gt.append(theta_o)
+        x_ee_gt.append(x_ee)
+        y_ee_gt.append(y_ee)
+
+        if i == 0:
+            # Initialize all tracks with gt initial
+            x_o_pred_cascade.append(x_o)
+            y_o_pred_cascade.append(y_o)
+            theta_o_pred_cascade.append(theta_o)
+            x_ee_pred_cascade.append(x_ee)
+            y_ee_pred_cascade.append(y_ee)
+
+            x_o_pred_fb.append(x_o)
+            y_o_pred_fb.append(y_o)
+            theta_o_pred_fb.append(theta_o)
+            x_ee_pred_fb.append(x_ee)
+            y_ee_pred_fb.append(y_ee)
+            continue
+
+        delta_x_o_hat = Y_hat[0][i]
+        delta_y_o_hat = Y_hat[1][i]
+        delta_theta_o_hat = Y_hat[2][i]
+        delta_x_ee_hat = Y_hat[3][i]
+        delta_y_ee_hat = Y_hat[4][i]
+
+        # Integrate deltas with previous deltas
+        x_o_pred_cascade.append(x_o_pred_cascade[-1] + delta_x_o_hat)
+        y_o_pred_cascade.append(y_o_pred_cascade[-1] + delta_y_o_hat)
+        theta_o_pred_cascade.append(theta_o_pred_cascade[-1] + delta_y_o_hat)
+        x_ee_pred_cascade.append(x_ee_pred_cascade[-1] + delta_x_ee_hat)
+        y_ee_pred_cascade.append(y_ee_pred_cascade[-1] + delta_y_ee_hat)
+
+        # Add deltas to previous time step gt observations
+        x_o_pred_fb.append(x_o_gt[-2] + delta_x_o_hat)
+        y_o_pred_fb.append(y_o_gt[-2] + delta_y_o_hat)
+        theta_o_pred_fb.append(theta_o_gt[-2] + delta_y_o_hat)
+        x_ee_pred_fb.append(x_ee_gt[-2] + delta_x_ee_hat)
+        y_ee_pred_fb.append(y_ee_gt[-2] + delta_y_ee_hat)
+
+    # Plot observed vs predicted x,y trajectory for object
+    legend = ['Ground Truth', 'Predicted FB', 'Pred Cascade']
+    plotter.figure()
+    plotter.plot(x_o_gt, y_o_gt, color = gt_color, label = '_nolegend_')
+    plotter.plot(x_o_gt, y_o_gt, color = gt_color, marker = gt_marker)
+    plotter.plot(x_o_pred_fb, y_o_pred_fb, color = pred_color, label = '_nolegend_')
+    plotter.plot(x_o_pred_fb, y_o_pred_fb, color = pred_color, marker = pred_marker)
+    plotter.plot(x_o_pred_cascade, y_o_pred_cascade, color = pred_cascade_color, label = '_nolegend_')
+    plotter.plot(x_o_pred_cascade, y_o_pred_cascade, color = pred_cascade_color, marker = pred_cascade_marker)
+    # Set scale on axes
+    xlim_auto = plotter.xlim()
+    ylim_auto = plotter.ylim()
+    xlim_auto_range = xlim_auto[1] - xlim_auto[0]
+    ylim_auto_range = ylim_auto[1] - ylim_auto[0]
+    custom_range = max(xlim_auto_range, ylim_auto_range)
+    xlim_custom = (xlim_auto[0], xlim_auto[0] + custom_range)
+    ylim_custom = (ylim_auto[0], ylim_auto[0] + custom_range)
+    plotter.xlim(xlim_custom)
+    plotter.ylim(ylim_custom)
+    # Write stuff
+    plotter.title(Obj_plot_title)
+    plotter.xlabel('x location (m)')
+    plotter.xlabel('y location (m)')
+    plotter.legend(legend, loc = 0)
+    if len(out_path) > 0:
+        plotter.savefig(out_path + Obj_plot_title + '.png')
+
+    # Plot observed vs predicted x,y for end effector
+    legend = ['Ground Truth', 'Predicted FB', 'Pred Cascade']
+    plotter.figure()
+    plotter.plot(x_ee_gt, y_ee_gt, color = gt_color, label = '_nolegend_')
+    plotter.plot(x_ee_gt, y_ee_gt, color = gt_color, marker = gt_marker)
+    plotter.plot(x_ee_pred_fb, y_ee_pred_fb, color = pred_color, label = '_nolegend_')
+    plotter.plot(x_ee_pred_fb, y_ee_pred_fb, color = pred_color, marker = pred_marker)
+    plotter.plot(x_ee_pred_cascade, y_ee_pred_cascade, color = pred_cascade_color, label = '_nolegend_')
+    plotter.plot(x_ee_pred_cascade, y_ee_pred_cascade, color = pred_cascade_color, marker = pred_cascade_marker)
+    # Make axes equal scales
+    xlim_auto = plotter.xlim()
+    ylim_auto = plotter.ylim()
+    xlim_auto_range = xlim_auto[1] - xlim_auto[0]
+    ylim_auto_range = ylim_auto[1] - ylim_auto[0]
+    custom_range = max(xlim_auto_range, ylim_auto_range)
+    xlim_custom = (xlim_auto[0], xlim_auto[0] + custom_range)
+    ylim_custom = (ylim_auto[0], ylim_auto[0] + custom_range)
+    plotter.xlim(xlim_custom)
+    plotter.ylim(ylim_custom)
+    # Write stuff
+    plotter.title(EE_plot_title)
+    plotter.xlabel('x location (m)')
+    plotter.xlabel('y location (m)')
+    plotter.legend(legend, loc = 0)
+    if len(out_path) > 0:
+        plotter.savefig(out_path + EE_plot_title + '.png')
+
+    # Plot orientation vs time for object
+    plot_time_series(theta_o_gt, gt_color, new_fig = True)
+    plot_time_series(theta_o_pred_fb, pred_color, Theta_plot_title, xlabel, orientation_ylabel,
+                     new_fig = False, marker = pred_marker)#, legend = legend, out_path = out_path)
+    # plot_time_series(theta_o_gt, gt_color, new_fig = True)
+    plot_time_series(theta_o_pred_cascade, pred_cascade_color, Theta_plot_title, xlabel, orientation_ylabel,
+                     out_path = out_path, new_fig = False, legend = legend, marker = pred_cascade_marker)
+
     if show_plot:
         plotter.show()
 
@@ -459,7 +632,7 @@ def test_svm_stuff(aff_file_name=None):
     use_obj_frame = False
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
-    epsilons = [1e-4, 1e-4, 1e-5]
+    epsilons = [1e-5, 1e-5, 1e-5]
     if use_obj_frame:
         output_paths.append(base_path+'delta_x_dyn_obj_frame.model')
         output_paths.append(base_path+'delta_y_dyn_obj_frame.model')
@@ -501,10 +674,13 @@ def test_svm_stuff(aff_file_name=None):
     print 'next_state.x:\n', next_state
     print 'Jacobian:\n', gradient
 
-    (Y_hat, Y, X) = svm_dynamics2.test_batch_data(plio.push_trials)
-    plot_predicted_vs_observed_deltas(Y, Y_hat, out_path='/home/thermans/sandbox/dynamics/', show_plot = False)
-    plot_predicted_vs_observed_tracks(Y, Y_hat, X, show_plot = True)
-
+    plot_out_path = '/home/thermans/sandbox/dynamics/'
+    for i, trial in enumerate(plio.push_trials):
+        (Y_hat, Y, X) = svm_dynamics2.test_batch_data(trial)
+        plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = plot_out_path, show_plot = False,
+                                          suffix = ' '+str(i) )
+        plot_predicted_vs_observed_tracks(Y, Y_hat, X, show_plot = False, out_path = plot_out_path,
+                                          suffix = ' '+str(i) )
     # print 'Jacobian', svm_dynamics2.J
     return svm_dynamics2
 
@@ -677,10 +853,15 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     print 'Read in ', len(q_stars), ' control plans\n'
 
     # TODO: Do analysis of dynamics learning too
+    dynamics_model = None
     if dynamics_model is not None:
         print 'Plotting learned SVM predictions'
-        (Y_hat, Y, X) = dynamics_model.test_batch_data(plio.push_trials)
-        plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = anlaysis_dir, show_plot = False)
+        for i, trial in enumerate(plio.push_trials):
+            (Y_hat, Y, X) = dynamics_model.test_batch_data(trial)
+            plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = anlaysis_dir, show_plot = False,
+                                              suffix = '_' + str(i))
+            plot_predicted_vs_observed_tracks(Y, Y_hat, X, out_path = anlaysis_dir, show_plot = False,
+                                              suffix = '_' + str(i))
 
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
@@ -734,6 +915,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     p.wait()
 
 if __name__ == '__main__':
-    # analyze_mpc_trial_data(sys.argv[1])
-    test_svm_stuff(sys.argv[1])
+    analyze_mpc_trial_data(sys.argv[1])
+    # test_svm_stuff(sys.argv[1])
     # test_mpc()
