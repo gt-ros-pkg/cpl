@@ -276,7 +276,7 @@ def plot_track(trial, show_plot = False, suffix='', out_path=''):
     y_plot_title = 'Object y-Position vs Time' + suffix
     theta_plot_title = 'Object Orientation vs Time' + suffix
 
-    xlabel = 'Time_step'
+    xlabel = 'Time Step'
     loc_ylabel = 'Location (m)'
     theta_ylabel = 'Orientation (rad)'
 
@@ -305,7 +305,8 @@ def plot_time_series(data, color, plot_title=None, xlabel=None, ylabel=None, out
 
     plotter.plot(data, color = color, label='_nolegend_')
     plotter.plot(data, color = color, marker = marker)
-    plotter.xlim((0, len(data)-1))
+    if len(data) > 0:
+        plotter.xlim((0, len(data)-1))
 
     if plot_title is not None:
         plotter.title(plot_title)
@@ -318,7 +319,7 @@ def plot_time_series(data, color, plot_title=None, xlabel=None, ylabel=None, out
     if legend is not None:
         plotter.legend(legend, loc = 0)
 
-    if len(out_path) > 0:
+    if len(out_path) > 0 and plot_title is not None:
         plotter.savefig(out_path + plot_title + '.png')
 
 def plot_all_controls(trials, u_max, show_plot=True, suffix='', out_path=''):
@@ -384,55 +385,69 @@ def plot_controls_base(Ux, Uy, u_max, show_plot=True, suffix='', out_path='', hi
     if show_plot:
         plotter.show()
 
-def plot_predicted_vs_observed_tracks(suffix = '', out_path = '', show_plot = False):
-    # TODO: Parse data from that sent in
-    X_gt = [0, 1, 0.6]
-    Y_gt = []
-    Theta_gt = []
-    Xee_gt = []
-    Yee_gt = []
-    X_pred = [0.2, 0.75, 0.3]
-    Y_pred = []
-    Theta_pred = []
-    Xee_pred = []
-    Yee_pred = []
+def plot_predicted_vs_observed_tracks(gt_delta_all, pred_delta_all, input_all, suffix = '', out_path = '',
+                                      show_plot = False):
+    # TODO: Plot observed vs predicted x,y trajectory for object and hand
+    # TODO: Need to transform deltas into Xs and Ys
+    # TODO: Get two sets of predicted: cascaded and feedback
+    if show_plot:
+        plotter.show()
+
+def plot_predicted_vs_observed_deltas(gt_all, pred_all, suffix = '', out_path = '', show_plot = False):
+    X_gt = gt_all[0]
+    Y_gt = gt_all[1]
+    Theta_gt = gt_all[2]
+    if len(gt_all) > 3:
+        Xee_gt = gt_all[3]
+        Yee_gt = gt_all[4]
+    else:
+        Xee_gt = []
+        Yee_gt = []
+
+    X_pred = pred_all[0]
+    Y_pred = pred_all[1]
+    Theta_pred = pred_all[2]
+    if len(pred_all) > 3:
+        Xee_pred = pred_all[3]
+        Yee_pred = pred_all[4]
+    else:
+        Xee_pred = []
+        Yee_pred = []
 
     # Display parameters
     gt_color = _KULER_GREEN
     pred_color = _KULER_BLUE
-    xlabel = 'Time_step'
-    loc_ylabel = 'Location (m)'
-    orientation_ylabel = 'Orientation (rad)'
-    X_plot_title = 'Object X Location Predicted vs Observed' + suffix
-    Y_plot_title = 'Object Y Location Predicted vs Observed' + suffix
-    Theta_plot_title = 'Object Orientation Predicted vs Observed' + suffix
-    Xee_plot_title = 'End Effector X Location Predicted vs Observed' + suffix
-    Yee_plot_title = 'End Effector Y Location Predicted vs Observed' + suffix
+    xlabel = 'Time Step'
+    loc_ylabel = 'Distance (m)'
+    orientation_ylabel = 'Rotation (rad)'
+    X_plot_title = 'Object Delta X Predicted vs Observed' + suffix
+    Y_plot_title = 'Object Delta Y Predicted vs Observed' + suffix
+    Theta_plot_title = 'Object Delta Theta Predicted vs Observed' + suffix
+    Xee_plot_title = 'End Effector Delta X Predicted vs Observed' + suffix
+    Yee_plot_title = 'End Effector Delta Y Location Predicted vs Observed' + suffix
 
     # Plot observed vs predicted for all outputs individually
     legend = ['Ground Truth', 'Predicted']
     pred_marker = 'x'
-    plot_time_series(X_gt, gt_color, X_plot_title, xlabel, loc_ylabel, new_fig = True)
-    plot_time_series(X_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
-                     marker=pred_marker)
+    plot_time_series(X_gt, gt_color, new_fig = True)
+    plot_time_series(X_pred, pred_color, X_plot_title, xlabel, loc_ylabel,
+                     out_path = out_path, new_fig = False, legend = legend, marker=pred_marker)
 
-    plot_time_series(Y_gt, gt_color, Y_plot_title, xlabel, loc_ylabel, new_fig = True)
-    plot_time_series(Y_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
-                     marker=pred_marker)
+    plot_time_series(Y_gt, gt_color, new_fig = True)
+    plot_time_series(Y_pred, pred_color, Y_plot_title, xlabel, loc_ylabel,
+                     out_path = out_path, new_fig = False, legend = legend, marker=pred_marker)
 
-    plot_time_series(Theta_gt, gt_color, Theta_plot_title, xlabel, orientation_ylabel, new_fig = True)
-    plot_time_series(Theta_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
-                     marker=pred_marker)
+    plot_time_series(Theta_gt, gt_color, new_fig = True)
+    plot_time_series(Theta_pred, pred_color, Theta_plot_title, xlabel, orientation_ylabel,
+                     out_path = out_path, new_fig = False, legend = legend, marker=pred_marker)
 
-    plot_time_series(Xee_gt, gt_color, Xee_plot_title, xlabel, loc_ylabel, new_fig = True)
-    plot_time_series(Xee_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
-                     marker=pred_marker)
+    plot_time_series(Xee_gt, gt_color, new_fig = True)
+    plot_time_series(Xee_pred, pred_color, Xee_plot_title, xlabel, loc_ylabel,
+                     out_path = out_path, new_fig = False, legend = legend, marker=pred_marker)
 
-    plot_time_series(Yee_gt, gt_color, Yee_plot_title, xlabel, loc_ylabel, new_fig = True)
-    plot_time_series(Yee_pred, pred_color, out_path = out_path, new_fig = False, legend = legend,
-                     marker=pred_marker)
-
-    # TODO: Plot observed vs predicted x,y trajectory for object and hand
+    plot_time_series(Yee_gt, gt_color, new_fig = True)
+    plot_time_series(Yee_pred, pred_color, Yee_plot_title, xlabel, loc_ylabel,
+                     out_path = out_path, new_fig = False, legend = legend, marker=pred_marker)
 
     if show_plot:
         plotter.show()
@@ -441,7 +456,7 @@ def test_svm_stuff(aff_file_name=None):
     delta_t = 1./9.
     n = 5
     m = 2
-    use_obj_frame = True
+    use_obj_frame = False
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
     epsilons = [1e-4, 1e-4, 1e-5]
@@ -485,6 +500,10 @@ def test_svm_stuff(aff_file_name=None):
     print 'test_state.x:\n', test_x_k, test_u_k
     print 'next_state.x:\n', next_state
     print 'Jacobian:\n', gradient
+
+    (Y_hat, Y, X) = svm_dynamics2.test_batch_data(plio.push_trials)
+    plot_predicted_vs_observed_deltas(Y, Y_hat, out_path='/home/thermans/sandbox/dynamics/', show_plot = False)
+    plot_predicted_vs_observed_tracks(Y, Y_hat, X, show_plot = True)
 
     # print 'Jacobian', svm_dynamics2.J
     return svm_dynamics2
@@ -658,8 +677,10 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     print 'Read in ', len(q_stars), ' control plans\n'
 
     # TODO: Do analysis of dynamics learning too
-    print 'Plotting learned SVM predictions'
-    plot_predicted_vs_observed_tracks(show_plot = False)
+    if dynamics_model is not None:
+        print 'Plotting learned SVM predictions'
+        (Y_hat, Y, X) = dynamics_model.test_batch_data(plio.push_trials)
+        plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = anlaysis_dir, show_plot = False)
 
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
@@ -713,6 +734,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     p.wait()
 
 if __name__ == '__main__':
-    analyze_mpc_trial_data(sys.argv[1])
-    # test_svm_stuff(sys.argv[1])
+    # analyze_mpc_trial_data(sys.argv[1])
+    test_svm_stuff(sys.argv[1])
     # test_mpc()

@@ -142,16 +142,19 @@ class SVRPushDynamics:
         else:
             self.kernel_type = 'linear'
 
-        # TODO: Make switches to change based on preferences here
+        # NOTE: Make switches to change based on preferences here
         self.predict = self.predict_linear_hand
         self.jacobian = self.jacobian_linear_hand
         self.build_jacobian = self.build_jacobian_linear_hand
         self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_state_control
+        self.test_batch_data = self.test_batch_data_linear_hand
 
         if object_frame_feats:
             self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_object_frame
             self.jacobian = self.jacobian_linear_hand_object_frame
             self.build_jacobian = self.build_jacobian_linear_hand_object_frame
+            # TODO: Implement this method
+            self.test_batch_data = self.test_batch_data_linear_hand_object_frame
             self.p = 4 # Num feature vector elements
 
         self.svm_models = []
@@ -192,7 +195,43 @@ class SVRPushDynamics:
             for file_name, model in zip(output_file_names, self.svm_models):
                 svmutil.svm_save_model(file_name, model)
 
-    def transform_trial_data_to_feat_vectors(self, trajectory):
+    def test_batch_data_linear_hand(self, test_data):
+        X = []
+        Y = []
+        W = []
+        for trial in test_data:
+            (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory, True)
+            X.extend(x)
+            Y.extend(y)
+        Y_hat = []
+        Y_out = []
+        for i, svm_model in enumerate(self.svm_models):
+            Y_i = []
+            for y in Y:
+                Y_i.append(y[i])
+            [Y_hat_i, _, _] = svmutil.svm_predict(Y_i, X, svm_model, '-q')
+            Y_hat.append(Y_hat_i)
+            Y_out.append(Y_i)
+        # Get EE ground truth
+        for i in range(3,5):
+            Y_i = []
+            for y in Y:
+                Y_i.append(y[i])
+            Y_out.append(Y_i)
+
+        # Add EE predictions
+        Y_hat_Xee = []
+        Y_hat_Yee = []
+        for x in X:
+            Y_hat_Xee.append(self.delta_t*x[3])
+            Y_hat_Yee.append(self.delta_t*x[4])
+
+        Y_hat.append(Y_hat_Xee)
+        Y_hat.append(Y_hat_Yee)
+
+        return (Y_hat, Y_out, X)
+
+    def transform_trial_data_to_feat_vectors(self, trajectory, EE_deltas = False):
         '''
         Get SVM feature vector from push trial trajectory state information.
         Needs to be updated whenever transform_state_data_to_feat_vector() is updated
@@ -200,6 +239,7 @@ class SVRPushDynamics:
         '''
         Z = []
         Y = []
+        W = []
         # TODO: Have ability to extract xtra from the data
         xtra = []
         for i in xrange(len(trajectory)-1):
@@ -210,6 +250,9 @@ class SVRPushDynamics:
             u_t = [cts_t0.u.linear.x, cts_t0.u.linear.y]
             z_t = self.transform_opt_vector_to_feat_vector(x_t, u_t, xtra)
             y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
+            if EE_deltas:
+                y_t.extend([cts_t1.ee.position.x - cts_t0.ee.position.x,
+                            cts_t1.ee.position.y - cts_t0.ee.position.y])
             Z.extend(z_t)
             Y.append(y_t)
         return (Z, Y)
