@@ -630,7 +630,7 @@ def test_svm_stuff(aff_file_name=None):
     n = 5
     m = 2
     use_obj_frame = False
-    base_path = '/u/thermans/data/svm_dyn/'
+    base_path = '/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/SVR_DYN/'
     output_paths = []
     epsilons = [1e-5, 1e-5, 1e-5]
     if aff_file_name is not None:
