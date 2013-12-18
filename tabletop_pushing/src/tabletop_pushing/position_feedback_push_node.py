@@ -546,24 +546,12 @@ class PositionFeedbackPushNode:
                 dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
                                                self.mpc_input_space_dim)
             else:
-                # TODO: Parse the suffix for different dynamics models and paths
                 mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
-                if request.controller_name == MPC_SVR_DYN:
-                    # TODO: Parse mpc_suffix for paths
-                    base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
-                    model_paths = []
-                    use_transformed_feats = False
-                    if use_transformed_feats:
-                        model_paths.append(base_path+'delta_x_dyn_obj_frame.model')
-                        model_paths.append(base_path+'delta_y_dyn_obj_frame.model')
-                        model_paths.append(base_path+'delta_theta_dyn_obj_frame.model')
-                    else:
-                        model_paths.append(base_path+'delta_x_dyn.model')
-                        model_paths.append(base_path+'delta_y_dyn.model')
-                        model_paths.append(base_path+'delta_theta_dyn.model')
-                    dyn_model = SVRPushDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
-                                                self.mpc_input_space_dim, svm_file_names=model_paths,
-                                                object_frame_feats=use_transformed_feats)
+                # NOTE: Add switch here if we get other non svm dynamics models
+                base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
+                base_file_string = base_path + mpc_suffix
+                dyn_model = SVRPushDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
+                                            self.mpc_input_space_dim, base_file_string)
 
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
                                                   self.mpc_u_max, self.mpc_delta_t)

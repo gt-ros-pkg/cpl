@@ -633,24 +633,16 @@ def test_svm_stuff(aff_file_name=None):
     base_path = '/u/thermans/data/svm_dyn/'
     output_paths = []
     epsilons = [1e-5, 1e-5, 1e-5]
-    if use_obj_frame:
-        output_paths.append(base_path+'delta_x_dyn_obj_frame.model')
-        output_paths.append(base_path+'delta_y_dyn_obj_frame.model')
-        output_paths.append(base_path+'delta_theta_dyn_obj_frame.model')
-    else:
-        output_paths.append(base_path+'delta_x_dyn.model')
-        output_paths.append(base_path+'delta_y_dyn.model')
-        output_paths.append(base_path+'delta_theta_dyn.model')
-
     if aff_file_name is not None:
+        base_file_string = base_path + 'test_svm_stuff'
         plio = push_learning.CombinedPushLearnControlIO()
         plio.read_in_data_file(aff_file_name)
 
         svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=use_obj_frame, epsilons=epsilons)
         svm_dynamics.learn_model(plio.push_trials)
-        svm_dynamics.save_models(output_paths)
+        base_file_string = svm_dynamics.save_models(base_file_string)
 
-    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, svm_file_names=output_paths, object_frame_feats=use_obj_frame)
+    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, base_file_string)
 
     test_pose = VisFeedbackPushTrackingFeedback()
     test_pose.x.x = 0.2
@@ -674,7 +666,7 @@ def test_svm_stuff(aff_file_name=None):
     print 'next_state.x:\n', next_state
     print 'Jacobian:\n', gradient
 
-    plot_out_path = '/home/thermans/sandbox/dynamics/'
+    plot_out_path = '/home/thermans/src/gt_ros_pkg/cpl/tabletop_pushing/cfg/'
     for i, trial in enumerate(plio.push_trials):
         (Y_hat, Y, X) = svm_dynamics2.test_batch_data(trial)
         plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = plot_out_path, show_plot = False,
@@ -915,6 +907,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     p.wait()
 
 if __name__ == '__main__':
-    analyze_mpc_trial_data(sys.argv[1])
-    # test_svm_stuff(sys.argv[1])
+    # analyze_mpc_trial_data(sys.argv[1])
+    test_svm_stuff(sys.argv[1])
     # test_mpc()
