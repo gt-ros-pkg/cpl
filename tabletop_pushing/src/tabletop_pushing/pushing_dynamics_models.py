@@ -195,42 +195,6 @@ class SVRPushDynamics:
             for file_name, model in zip(output_file_names, self.svm_models):
                 svmutil.svm_save_model(file_name, model)
 
-    def test_batch_data_linear_hand(self, test_data):
-        X = []
-        Y = []
-        W = []
-        for trial in test_data:
-            (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory, True)
-            X.extend(x)
-            Y.extend(y)
-        Y_hat = []
-        Y_out = []
-        for i, svm_model in enumerate(self.svm_models):
-            Y_i = []
-            for y in Y:
-                Y_i.append(y[i])
-            [Y_hat_i, _, _] = svmutil.svm_predict(Y_i, X, svm_model, '-q')
-            Y_hat.append(Y_hat_i)
-            Y_out.append(Y_i)
-        # Get EE ground truth
-        for i in range(3,5):
-            Y_i = []
-            for y in Y:
-                Y_i.append(y[i])
-            Y_out.append(Y_i)
-
-        # Add EE predictions
-        Y_hat_Xee = []
-        Y_hat_Yee = []
-        for x in X:
-            Y_hat_Xee.append(self.delta_t*x[3])
-            Y_hat_Yee.append(self.delta_t*x[4])
-
-        Y_hat.append(Y_hat_Xee)
-        Y_hat.append(Y_hat_Yee)
-
-        return (Y_hat, Y_out, X)
-
     def transform_trial_data_to_feat_vectors(self, trajectory, EE_deltas = False):
         '''
         Get SVM feature vector from push trial trajectory state information.
@@ -305,6 +269,42 @@ class SVRPushDynamics:
             for alpha, sv in zip(alphas, svs):
                 for j in xrange(self.m+self.n):
                     self.J[i, j] += alpha[0]*sv[j+1]
+
+    def test_batch_data_linear_hand(self, test_data):
+        X = []
+        Y = []
+        W = []
+        for trial in test_data:
+            (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory, True)
+            X.extend(x)
+            Y.extend(y)
+        Y_hat = []
+        Y_out = []
+        for i, svm_model in enumerate(self.svm_models):
+            Y_i = []
+            for y in Y:
+                Y_i.append(y[i])
+            [Y_hat_i, _, _] = svmutil.svm_predict(Y_i, X, svm_model, '-q')
+            Y_hat.append(Y_hat_i)
+            Y_out.append(Y_i)
+        # Get EE ground truth
+        for i in range(3,5):
+            Y_i = []
+            for y in Y:
+                Y_i.append(y[i])
+            Y_out.append(Y_i)
+
+        # Add EE predictions
+        Y_hat_Xee = []
+        Y_hat_Yee = []
+        for x in X:
+            Y_hat_Xee.append(self.delta_t*x[3])
+            Y_hat_Yee.append(self.delta_t*x[4])
+
+        Y_hat.append(Y_hat_Xee)
+        Y_hat.append(Y_hat_Yee)
+
+        return (Y_hat, Y_out, X)
 
     def jacobian_linear_hand_object_frame(self, x_k, u_k, xtra=[]):
         '''
