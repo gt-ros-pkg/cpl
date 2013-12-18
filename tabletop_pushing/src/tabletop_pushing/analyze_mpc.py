@@ -227,8 +227,8 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
         plotter.title(plot_title)
         plotter.xlabel('x (meters)')
         plotter.ylabel('y (meters)')
-        # plotter.xlim((0.5, 1.0))
-        # plotter.ylim((-0.5, 0.0))
+        # plotter.xlim((0.0, 1.0))
+        # plotter.ylim((-0.5, 0.5))
 
         for X_d in plans:
             # Plot desired
@@ -657,10 +657,13 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     q_stars = q_star_io.read_file(q_star_file_name)
     print 'Read in ', len(q_stars), ' control plans\n'
 
+    # TODO: Do analysis of dynamics learning too
+    print 'Plotting learned SVM predictions'
+    plot_predicted_vs_observed_tracks(show_plot = False)
+
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
     print 'Plotting batch trajectories'
-    plot_predicted_vs_observed_tracks(show_plot = False)
     plot_tracks(plio.push_trials, out_path = analysis_dir, show_plot = False)
 
     plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
@@ -708,8 +711,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
         wait_time = '1'
     p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, wait_time], shell=False)
     p.wait()
-
-    # TODO: Do analysis of dynamics learning too
 
 if __name__ == '__main__':
     analyze_mpc_trial_data(sys.argv[1])
