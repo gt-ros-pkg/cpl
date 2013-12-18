@@ -270,14 +270,10 @@ class SVRPushDynamics:
                 for j in xrange(self.m+self.n):
                     self.J[i, j] += alpha[0]*sv[j+1]
 
-    def test_batch_data_linear_hand(self, test_data):
+    def test_batch_data_linear_hand(self, test_trial):
         X = []
         Y = []
-        W = []
-        for trial in test_data:
-            (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory, True)
-            X.extend(x)
-            Y.extend(y)
+        [X, Y] = self.transform_trial_data_to_feat_vectors(test_trial.trial_trajectory, True)
         Y_hat = []
         Y_out = []
         for i, svm_model in enumerate(self.svm_models):
@@ -298,8 +294,8 @@ class SVRPushDynamics:
         Y_hat_Xee = []
         Y_hat_Yee = []
         for x in X:
-            Y_hat_Xee.append(self.delta_t*x[3])
-            Y_hat_Yee.append(self.delta_t*x[4])
+            Y_hat_Xee.append(self.delta_t*x[5])
+            Y_hat_Yee.append(self.delta_t*x[6])
 
         Y_hat.append(Y_hat_Xee)
         Y_hat.append(Y_hat_Yee)
