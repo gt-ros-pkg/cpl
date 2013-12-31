@@ -376,9 +376,9 @@ cv::Mat projectHandIntoBoundaryImage(ControlTimeStep& cts, PushTrackerState& cur
 int main(int argc, char** argv)
 {
 
-  if (argc < 4 || argc > 5)
+  if (argc < 4 || argc > 6)
   {
-    std::cout << "usage: " << argv[0] << " aff_file_path data_directory_path out_file_path [wait_time]" << std::endl;
+    std::cout << "usage: " << argv[0] << " aff_file_path data_directory_path out_file_path [wait_time] [start_idx]" << std::endl;
     return -1;
   }
 
@@ -392,16 +392,22 @@ int main(int argc, char** argv)
     wait_time = atoi(argv[4]);
   }
 
+  int feedback_idx = 1;
+  if (argc > 5)
+  {
+    feedback_idx = atoi(argv[5]);
+  }
+
   // Read in aff file grouping each trajectory and number of elements
   std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
 
   // Go through all trials reading data associated with them
-  for (unsigned int i = 0; i < trials.size(); ++i)
+  for (unsigned int i = 0; i < trials.size(); ++i, feedback_idx++)
   {
     // Read in workspace transform and camera parameters
     std::stringstream cur_transform_name, cur_cam_info_name;
-    cur_transform_name << data_directory_path << "workspace_to_cam_" << (i+1) << ".txt";
-    cur_cam_info_name << data_directory_path << "cam_info_" << (i+1) << ".txt";
+    cur_transform_name << data_directory_path << "workspace_to_cam_" << feedback_idx << ".txt";
+    cur_cam_info_name << data_directory_path << "cam_info_" << feedback_idx << ".txt";
     tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
     sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
 
@@ -414,8 +420,8 @@ int main(int argc, char** argv)
 
       // Get associated image and object point cloud for this time step
       std::stringstream cur_img_name, cur_obj_name;
-      cur_img_name << data_directory_path << "feedback_control_input_" << (i+1) << "_" << j << ".png";
-      cur_obj_name << data_directory_path << "feedback_control_obj_" << (i+1) << "_" << j << ".pcd";
+      cur_img_name << data_directory_path << "feedback_control_input_" << feedback_idx << "_" << j << ".png";
+      cur_obj_name << data_directory_path << "feedback_control_obj_" << feedback_idx << "_" << j << ".pcd";
       cv::Mat cur_base_img = cv::imread(cur_img_name.str());
       XYZPointCloud cur_obj_cloud;
       if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(cur_obj_name.str(), cur_obj_cloud) == -1) //* load the file
@@ -439,8 +445,8 @@ int main(int argc, char** argv)
       cv::imshow("Cur state", obj_state_img);
       cv::imshow("Contact pt  image", hull_cloud_viz);
       std::stringstream state_out_name, contact_pt_name;
-      state_out_name << out_file_path << "state_" << i << "_" << j << ".png";
-      contact_pt_name << out_file_path << "contact_pt_" << i << "_" << j << ".png";
+      state_out_name << out_file_path << "state_" << feedback_idx << "_" << j << ".png";
+      contact_pt_name << out_file_path << "contact_pt_" << feedback_idx << "_" << j << ".png";
       cv::imwrite(state_out_name.str(), obj_state_img);
       cv::imwrite(contact_pt_name.str(), hull_cloud_viz);
       cv::waitKey(wait_time);

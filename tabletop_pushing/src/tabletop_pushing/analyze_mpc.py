@@ -900,13 +900,53 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
     if wait_for_renders:
-        wait_time = '0'
+        wait_time = 0
     else:
-        wait_time = '1'
-    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, wait_time], shell=False)
+        wait_time = 1
+
+    # Find correct starting index in the directory to render
+    start_idx = -1
+    # Read list of files in directory for feedback_K_n.pcd
+    render_input_files = os.listdir(aff_dir_path)
+    file_prefix_string = 'feedback_control_input_'
+    movie_indices = {}
+    for input_file in render_input_files:
+        if input_file.startswith(file_prefix_string):
+            k = int(input_file.split('_')[3])
+            movie_indices[k] = k
+            if start_idx < 0 or start_idx > k:
+                start_idx = k
+
+    if start_idx < 0:
+        print 'Error: No files for rendering state and contact pt information'
+        return
+
+    print 'Chose start_idx of', start_idx
+
+    p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, str(wait_time),
+                          str(start_idx)], shell=False)
     p.wait()
 
+    # Render resultant state and object image sequences into movies using ffmpeg
+    movie_render_bin_name = 'avconv'
+    input_rate = 10
+    output_rate = 29.97
+    for i in movie_indices.keys():
+        print 'Rendering state movie', i
+        state_movie_in_name = render_out_dir+'state_'+str(i)+'_%d.png'
+        state_movie_out_name = render_out_dir+'state_'+str(i)+'.mp4'
+        p = subprocess.Popen([movie_render_bin_name, '-y', '-r', str(input_rate), '-i', state_movie_in_name,
+                              '-r', str(output_rate), '-b', '1000k', state_movie_out_name])
+        p.wait()
+        print 'Rendering contact pt movie', i
+        contact_pt_movie_in_name = render_out_dir+'contact_pt_'+str(i)+'_%d.png'
+        contact_pt_movie_out_name = render_out_dir+'contact_pt_'+str(i)+'.mp4'
+        p = subprocess.Popen([movie_render_bin_name, '-y', '-r', str(input_rate), '-i', contact_pt_movie_in_name,
+                              '-r', str(output_rate), '-b', '1000k', contact_pt_movie_out_name])
+        p.wait()
+
+
 if __name__ == '__main__':
-    # analyze_mpc_trial_data(sys.argv[1])
-    test_svm_stuff(sys.argv[1])
+    analyze_mpc_trial_data(sys.argv[1])
+    # test_svm_stuff(sys.argv[1])
     # test_mpc()
