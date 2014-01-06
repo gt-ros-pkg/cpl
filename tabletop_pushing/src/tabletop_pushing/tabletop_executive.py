@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Software License Agreement (BSD License)
 #
-#  Copyright (c) 2012, Georgia Institute of Technology
+#  Copyright (c) 2014, Georgia Institute of Technology
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without

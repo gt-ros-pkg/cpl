@@ -7,9 +7,9 @@
 #     need to add which controllers can use it in BEHAVIOR_PRIMITIVES (maybe add to  another PUSH_PRIMITIVES, TOOL_PRIMITIVES, etc.)
 #     need to add a precondiiton method for it in PRECONDITION_METHODS
 # To add a new proxy: TODO: Check this by adding a new proxy
-#     need to put in computeState() in tabletop_pushing_perception_node.cpp
+#     need to put in computeState() in object_tracker_25d.cpp
 #     need to add which controllers can use it in PERCEPTUAL_PROXIES (maybe add to  another CENTROID_PROXIES, POSE_PROXIES, etc.)
-#     need to add a string constant for the name in tabletop_pushing_perception_node.cpp
+#     need to add a string constant for the name in push_primitives.h
 
 ROBOT_ARMS = ['r', 'l']
 # ROBOT_ARMS = ['r']
@@ -73,12 +73,13 @@ CENTROID_PROXY = 'centroid'
 SPHERE_PROXY = 'sphere'
 CYLINDER_PROXY = 'cylinder'
 BOUNDING_BOX_XY_PROXY = 'bounding_box_xy'
+FEATURE_POINT_ICP_PROXY = 'feature_point_icp'
 
-CENTROID_PROXIES = [CENTROID_PROXY, SPHERE_PROXY, BOUNDING_BOX_XY_PROXY, HULL_ELLIPSE_PROXY]
+CENTROID_PROXIES = [CENTROID_PROXY, SPHERE_PROXY, BOUNDING_BOX_XY_PROXY, HULL_ELLIPSE_PROXY, FEATURE_POINT_ICP_PROXY]
 CENTROID_PROXIES = [HULL_ICP_PROXY]
-POSE_PROXIES = [ELLIPSE_PROXY, HULL_ELLIPSE_PROXY, BOUNDING_BOX_XY_PROXY]
+POSE_PROXIES = [ELLIPSE_PROXY, HULL_ELLIPSE_PROXY, BOUNDING_BOX_XY_PROXY, FEATURE_POINT_ICP_PROXY]
 POSE_PROXIES = [HULL_ICP_PROXY]
-# POSE_PROXIES = [ELLIPSE_PROXY]
+# POSE_PROXIES = [FEATURE_POINT_ICP_PROXY]
 
 PERCEPTUAL_PROXIES = {CENTROID_CONTROLLER:CENTROID_PROXIES,
                       SPIN_COMPENSATION:POSE_PROXIES,

@@ -10,6 +10,7 @@
 
 // PCL
 #include <pcl16/common/pca.h>
+#include <pcl16/registration/transformation_estimation_lm.h>
 
 // cpl_visual_features
 #include <cpl_visual_features/helpers.h>
@@ -37,7 +38,7 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    shared_ptr<ArmObjSegmentation> arm_segmenter, int num_downsamples,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
-                                   bool use_graphcut_arm_seg, double hull_alpha) :
+                                   bool use_graphcut_arm_seg, double hull_alpha, int feature_point_close_size) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -45,9 +46,12 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
     have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg),
-    hull_alpha_(hull_alpha)
+    hull_alpha_(hull_alpha), /*feature_extracotr_(), */ // TODO: Figure out orb parameters and set here in constructor
+    matcher_(cv::NORM_HAMMING, true)
 {
   upscale_ = std::pow(2,num_downsamples_);
+  cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
+  tmp_morph.copyTo(feature_point_morph_element_);
 }
 
 ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
@@ -277,8 +281,10 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   // function to deal with saving and display.
   cv::RotatedRect obj_ellipse;
   if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY ||
-      proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY)
+      proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY ||
+      (proxy_name == FEATURE_POINT_ICP_PROXY && init_state))
   {
+    ROS_INFO_STREAM("Initializing feture point icp proxy with ellipse data");
     fitObjectEllipse(cur_obj, obj_ellipse);
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
@@ -501,6 +507,58 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     //                 state.z << ")");
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
     //                 << ", " << cur_obj.centroid[2] << ")");
+  }
+  if (proxy_name == FEATURE_POINT_ICP_PROXY)
+  {
+    if (init_state)
+    {
+      ROS_INFO_STREAM("Initializing feture point icp proxy");
+      // Extract object model
+      extractFeaturePointModel(in_frame, cloud, cur_obj, obj_feature_point_model_);
+    }
+    else
+    {
+      // Get feature points for current model
+      ObjectFeaturePointModel obj_model_detected;
+      extractFeaturePointModel(in_frame, cloud, cur_obj, obj_model_detected);
+
+      // Match feature points to model
+      ROS_INFO_STREAM("Getting matches");
+      std::vector<cv::DMatch> matches;
+      matcher_.match(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches);
+      std::vector<int> source_indices;
+      std::vector<int> target_indices;
+      for (int i = 0; i < matches.size(); ++i)
+      {
+        source_indices.push_back(matches[i].trainIdx);
+        target_indices.push_back(matches[i].queryIdx);
+      }
+      ROS_INFO_STREAM("Found " << matches.size() << " matches");
+
+      // Estimate transform
+      ROS_INFO_STREAM("Estimating transform");
+      // TODO: Initialize transform with previous timesteps transform?
+      // TODO: Make sure have at least 1 match, otherwise claim no detection
+      Eigen::Matrix4f transform;
+      pcl16::registration::TransformationEstimationLM<pcl16::PointXYZ, pcl16::PointXYZ> tlm;
+      tlm.estimateRigidTransformation(obj_feature_point_model_.locations, source_indices,
+                                      obj_model_detected.locations, target_indices, transform);
+      ROS_INFO_STREAM("Found transform of: \n" << transform);
+
+      // Transform initial state to current state using the estimate transform
+      Eigen::Vector4f x_t_0(init_state_.x.x, init_state_.x.y, init_state_.z, 1.0);
+      Eigen::Vector4f x_t_1 = transform*x_t_0;
+      state.x.x = x_t_1(0);
+      state.x.y = x_t_1(1);
+      state.z = x_t_1(2);
+      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+      const Eigen::Vector3f x_axis(cos(init_state_.x.theta), sin(init_state_.x.theta), 0.0);
+      const Eigen::Vector3f x_axis_t = rot*x_axis;
+      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+    }
+#ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
+    cv::waitKey(3);
+#endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
   }
   else
   {
@@ -764,8 +822,55 @@ void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_e
   obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
 }
 
+void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& cloud, ProtoObject& obj,
+                                                ObjectFeaturePointModel& model)
+{
+  // Get grayscale image for orb extraction
+  cv::Mat frame_bw;
+  cv::cvtColor(frame, frame_bw, CV_BGR2GRAY);
 
-void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud, std::string proxy_name,
+  // Get object mask in frame
+  cv::Mat obj_mask(frame.size(), CV_8UC1, cv::Scalar(0));
+  pcl_segmenter_->projectPointCloudIntoImage(obj.cloud, obj_mask);
+  obj_mask*=255;
+  cv::dilate(obj_mask, obj_mask, feature_point_morph_element_);
+  cv::erode(obj_mask, obj_mask, feature_point_morph_element_);
+
+  // Get keypoint descriptors from mask
+  std::vector<cv::KeyPoint> keypoints;
+  cv::Mat descriptors;
+  feature_extractor_(frame, obj_mask, keypoints, descriptors);
+  descriptors.copyTo(model.descriptors);
+  model.locations.width = keypoints.size();
+  model.locations.height = 1;
+  model.locations.is_dense = false;
+  model.locations.resize(keypoints.size());
+  model.locations.header = cloud.header;
+
+  // Get associated 3D locations for the keypoints
+  for (int i = 0; i < keypoints.size(); ++i)
+  {
+    model.locations.at(i) = cloud.at(keypoints[i].pt.x, keypoints[i].pt.y);
+  }
+
+#ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
+  cv::Mat key_disp_frame = frame.clone();
+  cv::drawKeypoints(frame, keypoints, key_disp_frame, cv::Scalar(18, 18, 178));
+  cv::imshow("object mask", obj_mask);
+  if (frame_count_ < 1)
+  {
+    cv::imshow("init keypoints", key_disp_frame);
+  }
+  else
+  {
+    cv::imshow("keypoints", key_disp_frame);
+  }
+  // TODO: Show keypoints on 3D segmentaiton data...
+#endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
+}
+
+void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
+                                  std::string proxy_name,
                                   tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
 {
   paused_ = false;

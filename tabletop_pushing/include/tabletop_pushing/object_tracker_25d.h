@@ -45,6 +45,7 @@
 
 // OpenCV
 #include <opencv2/core/core.hpp>
+#include <opencv2/features2d/features2d.hpp>
 
 // Boost
 #include <boost/shared_ptr.hpp>
@@ -60,6 +61,13 @@
 
 namespace tabletop_pushing
 {
+class ObjectFeaturePointModel
+{
+ public:
+  cv::Mat descriptors;
+  pcl16::PointCloud<pcl16::PointXYZ> locations;
+};
+
 class ObjectTracker25D
 {
  public:
@@ -69,7 +77,7 @@ class ObjectTracker25D
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
                    bool use_cv_ellipse = false, bool use_mps_segmentation=false, bool use_graphcut_arm_seg_=false,
-                   double hull_alpha=0.01);
+                   double hull_alpha=0.01, int feature_close_size=3);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -91,10 +99,14 @@ class ObjectTracker25D
 
   void fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  void initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
-                  std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap=false);
+  void extractFeaturePointModel(cv::Mat& frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud, ProtoObject& obj,
+                                ObjectFeaturePointModel& model);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
+
+  void initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                  std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state,
+                  bool start_swap=false);
 
   void updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                     std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
@@ -202,6 +214,10 @@ class ObjectTracker25D
   bool use_graphcut_arm_seg_;
   double hull_alpha_;
   XYZPointCloud previous_hull_cloud_;
+  ObjectFeaturePointModel obj_feature_point_model_;
+  cv::Mat feature_point_morph_element_;
+  cv::ORB feature_extractor_;
+  cv::BFMatcher matcher_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED
