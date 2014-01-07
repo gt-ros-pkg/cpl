@@ -40,9 +40,10 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    shared_ptr<ArmObjSegmentation> arm_segmenter, int num_downsamples,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
-                                   bool use_graphcut_arm_seg, double hull_alpha, int feature_point_close_size,
-                                   int icp_max_iters, float icp_transform_eps, float icp_max_cor_dist,
-                                   float icp_ransac_thresh) :
+                                   bool use_graphcut_arm_seg, double hull_alpha,
+                                   int feature_point_close_size, int icp_max_iters, float icp_transform_eps,
+                                   float icp_max_cor_dist, float icp_ransac_thresh, int icp_max_ransac_iters,
+                                   float icp_max_fitness_eps) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -56,10 +57,13 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
   upscale_ = std::pow(2,num_downsamples_);
   cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
   tmp_morph.copyTo(feature_point_morph_element_);
+
   feature_point_icp_.setMaximumIterations(icp_max_iters);
   feature_point_icp_.setTransformationEpsilon(icp_transform_eps);
   feature_point_icp_.setMaxCorrespondenceDistance(icp_max_cor_dist);
   feature_point_icp_.setRANSACOutlierRejectionThreshold(icp_ransac_thresh);
+  feature_point_icp_.setRANSACIterations(icp_max_ransac_iters);
+  feature_point_icp_.setEuclideanFitnessEpsilon(icp_max_fitness_eps);
 }
 
 ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
@@ -292,7 +296,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY ||
       (proxy_name == FEATURE_POINT_ICP_PROXY && init_state))
   {
-    ROS_INFO_STREAM("Initializing feture point icp proxy with ellipse data");
     fitObjectEllipse(cur_obj, obj_ellipse);
     state.x.theta = getThetaFromEllipse(obj_ellipse);
     state.x.x = cur_obj.centroid[0];
@@ -520,7 +523,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   {
     if (init_state)
     {
-      ROS_INFO_STREAM("Initializing feture point icp proxy");
       // Extract object model
       extractFeaturePointModel(in_frame, cloud, cur_obj, obj_feature_point_model_);
     }
@@ -954,8 +956,6 @@ void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   target_cloud->resize(target_cloud->width);
   target_cloud->header = target_model.locations.header;
 
-  // TODO: Set source during initial setup
-  // TODO: Just update source indices here
   for (int i = 0; i < source_indices.size(); ++i)
   {
     source_cloud->at(i) = source_model.locations.at(source_indices[i]);
@@ -964,19 +964,17 @@ void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   {
     target_cloud->at(i) = target_model.locations.at(target_indices[i]);
   }
-  // pcl16::PointIndices source_indices_pcl;
-  // source_indices_pcl.indices = source_indices;
-  // feature_point_icp_.setIndices(boost::make_shared<pcl16::PointIndices>(source_indices_pcl));
+
   feature_point_icp_.setInputCloud(source_cloud);
   feature_point_icp_.setInputTarget(target_cloud);
 
-  // ROS_INFO_STREAM("Aligning with initial guess: \n" << previous_transform_);
+  ROS_INFO_STREAM("Aligning with initial guess: \n" << previous_transform_);
   XYZPointCloud aligned;
   feature_point_icp_.align(aligned, previous_transform_);
-  double score = feature_point_icp_.getFitnessScore();
   transform = feature_point_icp_.getFinalTransformation();
-  // ROS_INFO_STREAM("Found transform of: \n" << transform);
-  // ROS_INFO_STREAM("Fitness of: " << score);
+  ROS_INFO_STREAM("Found transform of: \n" << transform);
+  double score = feature_point_icp_.getFitnessScore();
+  ROS_INFO_STREAM("Fitness of: " << score << "\n");
 }
 
 void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,

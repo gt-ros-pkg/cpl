@@ -86,7 +86,8 @@ class ObjectTracker25D
                    int icp_max_iters = 1000,
                    float icp_transform_eps = 0.001,
                    float icp_max_cor_dist = 10.0,
-                   float icp_ransac_thresh = 0.01);
+                   float icp_ransac_thresh = 0.01,
+                   int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.0005);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);

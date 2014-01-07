@@ -301,13 +301,16 @@ class TabletopPushingPerceptionNode
     n_.param("use_graphcut_arm_seg", use_graphcut_arm_seg_, false);
 
     // feature point icp settings
-    int feature_point_close_size, feature_point_icp_max_iters;
-    double feature_point_icp_transform_eps, feature_point_icp_max_cor_dist, feature_point_icp_ransac_thresh;
+    int feature_point_close_size, feature_point_icp_max_iters, feature_point_icp_max_ransac_iters;
+    double feature_point_icp_transform_eps, feature_point_icp_max_cor_dist,
+        feature_point_icp_ransac_thresh, feature_point_icp_max_fitness_eps;
     n_private_.param("feature_point_close_size", feature_point_close_size, 3);
     n_private_.param("feature_point_icp_max_iters", feature_point_icp_max_iters, 1000);
+    n_private_.param("feature_point_icp_max_ransac_iters", feature_point_icp_max_ransac_iters, 10);
     n_private_.param("feature_point_icp_transform_eps", feature_point_icp_transform_eps, 0.001);
     n_private_.param("feature_point_icp_max_cor_dist", feature_point_icp_max_cor_dist, 10.0);
     n_private_.param("feature_point_icp_ransac_thresh", feature_point_icp_ransac_thresh, 0.01);
+    n_private_.param("feature_point_icp_max_fitness_eps", feature_point_icp_max_fitness_eps, 0.001);
 
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
