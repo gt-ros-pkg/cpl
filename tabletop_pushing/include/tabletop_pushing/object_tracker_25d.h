@@ -66,6 +66,8 @@ class ObjectFeaturePointModel
  public:
   cv::Mat descriptors;
   pcl16::PointCloud<pcl16::PointXYZ> locations;
+  std::vector<cv::KeyPoint> keypoints;
+  std::vector<int> bad_locs;
 };
 
 class ObjectTracker25D
@@ -101,6 +103,10 @@ class ObjectTracker25D
 
   void extractFeaturePointModel(cv::Mat& frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud, ProtoObject& obj,
                                 ObjectFeaturePointModel& model);
+
+  void estimateFeaturePointTransform(ObjectFeaturePointModel& source_model, std::vector<int> source_indices,
+                                     ObjectFeaturePointModel& target_model, std::vector<int> target_indices,
+                                     Eigen::Matrix4f& transform);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
 
@@ -218,6 +224,8 @@ class ObjectTracker25D
   cv::Mat feature_point_morph_element_;
   cv::ORB feature_extractor_;
   cv::BFMatcher matcher_;
+  cv::Mat init_frame_;
+  Eigen::Matrix4f previous_transform_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

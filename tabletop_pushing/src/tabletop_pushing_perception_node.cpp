@@ -921,6 +921,10 @@ class TabletopPushingPerceptionNode
       res.no_push = true;
       return false;
     }
+    if (req.initialize)
+    {
+      ROS_INFO_STREAM("Initialized");
+    }
     return true;
   }
 

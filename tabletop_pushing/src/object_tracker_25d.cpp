@@ -11,6 +11,8 @@
 // PCL
 #include <pcl16/common/pca.h>
 #include <pcl16/registration/transformation_estimation_lm.h>
+#include <pcl16/registration/icp.h>
+#include <pcl16/registration/icp_nl.h>
 
 // cpl_visual_features
 #include <cpl_visual_features/helpers.h>
@@ -524,6 +526,27 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 
       // Match feature points to model
       ROS_INFO_STREAM("Getting matches");
+      // Setup mask of bad locs to not match to them
+      cv::Mat no_match_mask(obj_model_detected.keypoints.size(), obj_feature_point_model_.keypoints.size(),
+                            CV_8UC1, cv::Scalar(1) );
+      for (int i = 0; i < obj_feature_point_model_.bad_locs.size(); ++i)
+      {
+        int c = obj_feature_point_model_.bad_locs[i];
+        for (int r = 0; r < no_match_mask.rows; ++r)
+        {
+          no_match_mask.at<uchar>(r,c) = 0;
+        }
+      }
+
+      for (int i = 0; i < obj_model_detected.bad_locs.size(); ++i)
+      {
+        int r = obj_model_detected.bad_locs[i];
+        for (int c = 0; c < no_match_mask.cols; ++c)
+        {
+          no_match_mask.at<uchar>(r,c) = 0;
+        }
+      }
+
       std::vector<cv::DMatch> matches;
       matcher_.match(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches);
       std::vector<int> source_indices;
@@ -536,15 +559,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       ROS_INFO_STREAM("Found " << matches.size() << " matches");
 
       // Estimate transform
-      ROS_INFO_STREAM("Estimating transform");
-      // TODO: Initialize transform with previous timesteps transform?
-      // TODO: Make sure have at least 1 match, otherwise claim no detection
       Eigen::Matrix4f transform;
-      pcl16::registration::TransformationEstimationLM<pcl16::PointXYZ, pcl16::PointXYZ> tlm;
-      tlm.estimateRigidTransformation(obj_feature_point_model_.locations, source_indices,
-                                      obj_model_detected.locations, target_indices, transform);
-      ROS_INFO_STREAM("Found transform of: \n" << transform);
+      estimateFeaturePointTransform(obj_feature_point_model_, source_indices, obj_model_detected,
+                                    target_indices, transform);
 
+      // Update state estimates
       // Transform initial state to current state using the estimate transform
       Eigen::Vector4f x_t_0(init_state_.x.x, init_state_.x.y, init_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
@@ -555,15 +574,24 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       const Eigen::Vector3f x_axis(cos(init_state_.x.theta), sin(init_state_.x.theta), 0.0);
       const Eigen::Vector3f x_axis_t = rot*x_axis;
       state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
-    }
+
+      previous_transform_ = transform;
 #ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
-    cv::waitKey(3);
+      cv::Mat match_img = in_frame.clone();
+      for (int i = 0; i < matches.size(); ++i)
+      {
+        cv::circle(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt, 3,
+                   cv::Scalar(18, 18, 178));
+        cv::circle(match_img, obj_model_detected.keypoints[matches[i].queryIdx].pt, 3,
+                   cv::Scalar(51, 178, 0));
+        cv::line(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt,
+                 obj_model_detected.keypoints[matches[i].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
+      }
+      cv::imshow("Matches", match_img);
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
+    }
   }
-  else
-  {
-    ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
-  }
+
   if (proxy_name == SPHERE_PROXY)
   {
     XYZPointCloud sphere_cloud;
@@ -835,38 +863,119 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
   obj_mask*=255;
   cv::dilate(obj_mask, obj_mask, feature_point_morph_element_);
   cv::erode(obj_mask, obj_mask, feature_point_morph_element_);
+  obj_mask.at<uchar>(0,0) = 0;
 
   // Get keypoint descriptors from mask
-  std::vector<cv::KeyPoint> keypoints;
+  // std::vector<cv::KeyPoint> keypoints;
   cv::Mat descriptors;
-  feature_extractor_(frame, obj_mask, keypoints, descriptors);
+  feature_extractor_(frame, obj_mask, model.keypoints, descriptors);
   descriptors.copyTo(model.descriptors);
-  model.locations.width = keypoints.size();
+  model.locations.width = model.keypoints.size();
   model.locations.height = 1;
   model.locations.is_dense = false;
-  model.locations.resize(keypoints.size());
-  model.locations.header = cloud.header;
+  model.locations.resize(model.locations.width);
+  model.locations.header.frame_id = cloud.header.frame_id;
 
   // Get associated 3D locations for the keypoints
-  for (int i = 0; i < keypoints.size(); ++i)
+  for (int i = 0; i < model.keypoints.size(); ++i)
   {
-    model.locations.at(i) = cloud.at(keypoints[i].pt.x, keypoints[i].pt.y);
+    model.keypoints[i].pt.x = static_cast<int>(model.keypoints[i].pt.x);
+    model.keypoints[i].pt.y = static_cast<int>(model.keypoints[i].pt.y);
+    model.locations.at(i) = cloud.at((int)model.keypoints[i].pt.x, (int)model.keypoints[i].pt.y);
+    // Make sure this is a valid 3D point
+    if (isnan(model.locations.at(i).x) || isnan(model.locations.at(i).y) || isnan(model.locations.at(i).z))
+    {
+      ROS_WARN_STREAM("Has nan!");
+      model.bad_locs.push_back(i);
+    }
   }
 
 #ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
   cv::Mat key_disp_frame = frame.clone();
-  cv::drawKeypoints(frame, keypoints, key_disp_frame, cv::Scalar(18, 18, 178));
-  cv::imshow("object mask", obj_mask);
+  cv::drawKeypoints(frame, model.keypoints, key_disp_frame, cv::Scalar(51, 178, 0));
+  ROS_INFO_STREAM("Projecting model points into image");
+  cv::Mat model_points(frame.size(), CV_8UC1, cv::Scalar(0));
+  pcl_segmenter_->projectPointCloudIntoImage(model.locations, model_points);
+  ROS_INFO_STREAM("Projected model points into image");
+  model_points *= 255;
+  ROS_INFO_STREAM("Modulated model points");
+
+  // TODO: Show keypoints on 3D segmentaiton data...
+
   if (frame_count_ < 1)
   {
     cv::imshow("init keypoints", key_disp_frame);
+    cv::imshow("init object mask", obj_mask);
+    cv::imshow("init model points", model_points);
   }
   else
   {
     cv::imshow("keypoints", key_disp_frame);
+    cv::imshow("object mask", obj_mask);
+    cv::imshow("model points", model_points);
   }
-  // TODO: Show keypoints on 3D segmentaiton data...
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
+}
+
+void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& source_model,
+                                                     std::vector<int> source_indices,
+                                                     ObjectFeaturePointModel& target_model,
+                                                     std::vector<int> target_indices,
+                                                     Eigen::Matrix4f& transform)
+{
+  ROS_INFO_STREAM("Estimating transform");
+  /*
+  // TODO: Initialize transform with previous timesteps transform?
+  // TODO: Make sure have at least 4 matches, otherwise claim no detection
+  pcl16::registration::TransformationEstimationLM<pcl16::PointXYZ, pcl16::PointXYZ> tlm;
+  tlm.estimateRigidTransformation(source_model.locations, source_indices,
+                                  target_model.locations, target_indices, transform);
+  */
+
+  boost::shared_ptr<XYZPointCloud> source_cloud(new XYZPointCloud);
+  source_cloud->width = source_indices.size();
+  source_cloud->height = 1;
+  source_cloud->is_dense = false;
+  source_cloud->resize(source_cloud->width);
+  source_cloud->header = source_model.locations.header;
+
+  boost::shared_ptr<XYZPointCloud> target_cloud(new XYZPointCloud);
+  target_cloud->width = target_indices.size();
+  target_cloud->height = 1;
+  target_cloud->is_dense = false;
+  target_cloud->resize(target_cloud->width);
+  target_cloud->header = target_model.locations.header;
+
+  for (int i = 0; i < source_indices.size(); ++i)
+  {
+    source_cloud->at(i) = source_model.locations.at(source_indices[i]);
+  }
+  for (int i = 0; i < target_indices.size(); ++i)
+  {
+    target_cloud->at(i) = target_model.locations.at(target_indices[i]);
+  }
+
+  // pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  int icp_max_iters_ = 1000;
+  float icp_transform_eps_ = 0.001;
+  float icp_max_cor_dist_ = 10.0;
+  float icp_ransac_thresh_ = 0.001;
+  icp.setMaximumIterations(icp_max_iters_);
+  icp.setTransformationEpsilon(icp_transform_eps_);
+  icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
+  icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
+  icp.setInputCloud(source_cloud);
+  icp.setInputTarget(target_cloud);
+  XYZPointCloud aligned;
+  ROS_INFO_STREAM("Aligning with initial guess: \n" << previous_transform_);
+  icp.align(aligned, previous_transform_);
+  double score = icp.getFitnessScore();
+  transform = icp.getFinalTransformation();
+
+
+  ROS_INFO_STREAM("Found transform of: \n" << transform);
+  ROS_INFO_STREAM("Fitness of: " << score);
 }
 
 void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
@@ -882,6 +991,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   record_count_ = 0;
   frame_set_count_++;
   previous_obj_ = findTargetObject(in_frame, cloud, no_objects, true);
+  previous_transform_ = Eigen::Matrix4f::Identity();
   initialized_ = true;
   if (no_objects)
   {
@@ -912,6 +1022,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;
   init_state_ = state;
+  in_frame.copyTo(init_frame_);
   obj_saved_ = true;
   frame_count_ = 1;
   record_count_ = 1;
