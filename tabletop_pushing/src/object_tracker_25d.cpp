@@ -43,7 +43,7 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    bool use_graphcut_arm_seg, double hull_alpha,
                                    int feature_point_close_size, int icp_max_iters, float icp_transform_eps,
                                    float icp_max_cor_dist, float icp_ransac_thresh, int icp_max_ransac_iters,
-                                   float icp_max_fitness_eps) :
+                                   float icp_max_fitness_eps, int brief_descriptor_byte_size) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -51,8 +51,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
     have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg),
-    hull_alpha_(hull_alpha), /*feature_extracotr_(), */ // TODO: Figure out orb parameters and set here in constructor
-    matcher_(cv::NORM_HAMMING, true)
+    hull_alpha_(hull_alpha), matcher_(cv::NORM_HAMMING, true),
+    feature_extractor_(brief_descriptor_byte_size)
 {
   upscale_ = std::pow(2,num_downsamples_);
   cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
@@ -861,7 +861,7 @@ void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_e
 void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& cloud, ProtoObject& obj,
                                                 ObjectFeaturePointModel& model)
 {
-  // Get grayscale image for orb extraction
+  // Get grayscale image for keypoint extraction
   cv::Mat frame_bw;
   cv::cvtColor(frame, frame_bw, CV_BGR2GRAY);
 
@@ -874,9 +874,10 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
   obj_mask.at<uchar>(0,0) = 0;
 
   // Get keypoint descriptors from mask
-  // std::vector<cv::KeyPoint> keypoints;
   cv::Mat descriptors;
-  feature_extractor_(frame, obj_mask, model.keypoints, descriptors);
+  feature_detector_.detect(frame_bw, model.keypoints, obj_mask);
+  feature_extractor_.compute(frame_bw, model.keypoints, descriptors);
+
   descriptors.copyTo(model.descriptors);
   model.locations.width = model.keypoints.size();
   model.locations.height = 1;
@@ -896,11 +897,17 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
       model.bad_locs.push_back(i);
     }
   }
-  ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid 3D keypoints.");
+  if (frame_count_ < 1)
+  {
+    ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid initial 3D keypoints.");
+  }
+  else
+  {
+    ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid 3D keypoints.");
+  }
 
 #ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
   cv::Mat key_disp_frame = frame.clone();
-  cv::drawKeypoints(frame, model.keypoints, key_disp_frame, cv::Scalar(51, 178, 0));
   cv::Mat model_points = frame.clone();
   cv::Scalar kuler_green(51, 178, 0);
   cv::Scalar kuler_red(18, 18, 178);
@@ -923,14 +930,12 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
 
   if (frame_count_ < 1)
   {
-    cv::imshow("init keypoints", key_disp_frame);
-    cv::imshow("init object mask", obj_mask);
+    // cv::imshow("init object mask", obj_mask);
     cv::imshow("init model points", model_points);
   }
   else
   {
-    cv::imshow("keypoints", key_disp_frame);
-    cv::imshow("object mask", obj_mask);
+    // cv::imshow("object mask", obj_mask);
     cv::imshow("model points", model_points);
   }
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY

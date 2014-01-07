@@ -312,6 +312,9 @@ class TabletopPushingPerceptionNode
     n_private_.param("feature_point_icp_ransac_thresh", feature_point_icp_ransac_thresh, 0.01);
     n_private_.param("feature_point_icp_max_fitness_eps", feature_point_icp_max_fitness_eps, 0.001);
 
+    int brief_descriptor_byte_size; // must be 16, 32, or 64
+    n_private_.param("brief_descriptor_byte_size", brief_descriptor_byte_size, 16);
+
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
 

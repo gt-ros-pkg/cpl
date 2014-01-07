@@ -87,7 +87,8 @@ class ObjectTracker25D
                    float icp_transform_eps = 0.001,
                    float icp_max_cor_dist = 10.0,
                    float icp_ransac_thresh = 0.01,
-                   int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.0005);
+                   int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.001,
+                   int brief_descriptor_byte_size = 16);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -230,7 +231,8 @@ class ObjectTracker25D
   XYZPointCloud previous_hull_cloud_;
   ObjectFeaturePointModel obj_feature_point_model_;
   cv::Mat feature_point_morph_element_;
-  cv::ORB feature_extractor_;
+  cv::GoodFeaturesToTrackDetector feature_detector_;
+  cv::BriefDescriptorExtractor feature_extractor_;
   cv::BFMatcher matcher_;
   cv::Mat init_frame_;
   Eigen::Matrix4f previous_transform_;
