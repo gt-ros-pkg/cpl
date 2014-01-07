@@ -959,6 +959,8 @@ void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud,
 {
   for (unsigned int i = 0; i < cloud.size(); ++i)
   {
+    if (isnan(cloud.at(i).x) || isnan(cloud.at(i).y) || isnan(cloud.at(i).z))
+      continue;
     cv::Point img_idx = projectPointIntoImage(cloud.at(i),
                                               cloud.header.frame_id,
                                               cur_camera_header_.frame_id);
