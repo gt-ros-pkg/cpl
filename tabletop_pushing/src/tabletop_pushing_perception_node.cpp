@@ -300,6 +300,14 @@ class TabletopPushingPerceptionNode
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
     n_.param("use_graphcut_arm_seg", use_graphcut_arm_seg_, false);
 
+    // feature point icp settings
+    int feature_point_close_size, feature_point_icp_max_iters;
+    double feature_point_icp_transform_eps, feature_point_icp_max_cor_dist, feature_point_icp_ransac_thresh;
+    n_private_.param("feature_point_close_size", feature_point_close_size, 3);
+    n_private_.param("feature_point_icp_max_iters", feature_point_icp_max_iters, 1000);
+    n_private_.param("feature_point_icp_transform_eps", feature_point_icp_transform_eps, 0.001);
+    n_private_.param("feature_point_icp_max_cor_dist", feature_point_icp_max_cor_dist, 10.0);
+    n_private_.param("feature_point_icp_ransac_thresh", feature_point_icp_ransac_thresh, 0.01);
 
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
@@ -319,7 +327,11 @@ class TabletopPushingPerceptionNode
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
         new ObjectTracker25D(pcl_segmenter_, arm_obj_segmenter_, num_downsamples_, use_displays_,
                              write_to_disk_, base_output_path_, camera_frame_, use_cv_ellipse,
-                             use_mps_segmentation_, use_graphcut_arm_seg_, hull_alpha_));
+                             use_mps_segmentation_, use_graphcut_arm_seg_, hull_alpha_,
+                             feature_point_close_size,
+                             feature_point_icp_max_iters,
+                             feature_point_icp_transform_eps, feature_point_icp_max_cor_dist,
+                             feature_point_icp_ransac_thresh));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,

@@ -42,6 +42,8 @@
 // PCL
 #include <pcl16/point_cloud.h>
 #include <pcl16/point_types.h>
+#include <pcl16/registration/icp.h>
+#include <pcl16/registration/icp_nl.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -78,8 +80,13 @@ class ObjectTracker25D
                    int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
-                   bool use_cv_ellipse = false, bool use_mps_segmentation=false, bool use_graphcut_arm_seg_=false,
-                   double hull_alpha=0.01, int feature_close_size=3);
+                   bool use_cv_ellipse = false, bool use_mps_segmentation=false,
+                   bool use_graphcut_arm_seg_=false,
+                   double hull_alpha=0.01, int feature_close_size=3,
+                   int icp_max_iters = 1000,
+                   float icp_transform_eps = 0.001,
+                   float icp_max_cor_dist = 10.0,
+                   float icp_ransac_thresh = 0.01);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -226,6 +233,8 @@ class ObjectTracker25D
   cv::BFMatcher matcher_;
   cv::Mat init_frame_;
   Eigen::Matrix4f previous_transform_;
+  // pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+  pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED
