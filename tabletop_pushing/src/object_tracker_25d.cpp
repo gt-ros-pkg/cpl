@@ -318,8 +318,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   // function to deal with saving and display.
   cv::RotatedRect obj_ellipse;
   if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY ||
-      proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY ||
-      (proxy_name == FEATURE_POINT_ICP_PROXY && init_state))
+      proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY)
   {
     updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
   }
@@ -510,11 +509,12 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
-  if (proxy_name == FEATURE_POINT_ICP_PROXY)
+  else if (proxy_name == FEATURE_POINT_ICP_PROXY)
   {
     if (init_state)
     {
       // Extract object model
+      updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
       extractFeaturePointModel(in_frame, cloud, cur_obj, obj_feature_point_model_);
     }
     else
@@ -676,6 +676,10 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
 #endif// USE_FRAME_TO_FRAME_MATCHING
     }
+  }
+  else
+  {
+    ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << "!");
   }
 
   if (proxy_name == SPHERE_PROXY)
