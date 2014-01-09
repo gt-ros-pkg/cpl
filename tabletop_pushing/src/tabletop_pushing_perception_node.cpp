@@ -302,13 +302,12 @@ class TabletopPushingPerceptionNode
 
     // feature point icp settings
     int feature_point_close_size, feature_point_icp_max_iters, feature_point_icp_max_ransac_iters;
-    double feature_point_icp_transform_eps, feature_point_icp_max_cor_dist,
-        feature_point_icp_ransac_thresh, feature_point_icp_max_fitness_eps, feature_point_ratio_test_thresh;
+    double feature_point_icp_transform_eps, feature_point_icp_ransac_thresh,
+        feature_point_icp_max_fitness_eps, feature_point_ratio_test_thresh;
     n_private_.param("feature_point_close_size", feature_point_close_size, 3);
     n_private_.param("feature_point_icp_max_iters", feature_point_icp_max_iters, 1000);
     n_private_.param("feature_point_icp_max_ransac_iters", feature_point_icp_max_ransac_iters, 10);
     n_private_.param("feature_point_icp_transform_eps", feature_point_icp_transform_eps, 0.001);
-    n_private_.param("feature_point_icp_max_cor_dist", feature_point_icp_max_cor_dist, 10.0);
     n_private_.param("feature_point_icp_ransac_thresh", feature_point_icp_ransac_thresh, 0.01);
     n_private_.param("feature_point_icp_max_fitness_eps", feature_point_icp_max_fitness_eps, 0.001);
     n_private_.param("feature_point_ratio_test_thresh", feature_point_ratio_test_thresh, 0.75);
@@ -338,7 +337,7 @@ class TabletopPushingPerceptionNode
                              camera_frame_, use_cv_ellipse, use_mps_segmentation_,
                              use_graphcut_arm_seg_, hull_alpha_,
                              feature_point_close_size, feature_point_icp_max_iters, feature_point_icp_transform_eps,
-                             feature_point_icp_max_cor_dist, feature_point_icp_ransac_thresh, feature_point_icp_max_ransac_iters,
+                             feature_point_icp_ransac_thresh, feature_point_icp_max_ransac_iters,
                              feature_point_icp_max_fitness_eps, brief_descriptor_byte_size,
                              feature_point_ratio_test_thresh));
 
