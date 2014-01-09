@@ -22,7 +22,9 @@
 // #define USE_DISPLAY 1
 
 // Functional IFDEFS
-// #define USE_TRANSFORM_GUESS 1
+// #define USE_BOUNDARY_TRANSFORM_GUESS 1
+// #define USE_FRAME_TO_FRAME_MATCHING 1
+// #define USE_RATIO_TEST 1
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
@@ -319,12 +321,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY ||
       (proxy_name == FEATURE_POINT_ICP_PROXY && init_state))
   {
-    fitObjectEllipse(cur_obj, obj_ellipse);
-    state.x.theta = getThetaFromEllipse(obj_ellipse);
-    state.x.x = cur_obj.centroid[0];
-    state.x.y = cur_obj.centroid[1];
-    state.z = cur_obj.centroid[2];
-    updateHeading(state, init_state);
+    updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
   }
   else if (proxy_name == HULL_ELLIPSE_PROXY || proxy_name == HULL_ICP_PROXY ||
            proxy_name == HULL_SHAPE_CONTEXT_PROXY)
@@ -356,9 +353,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       state.z = cur_obj.centroid[2];
       updateHeading(state, init_state);
 
-#ifdef USE_TRANSFORM_GUESS
+#ifdef USE_BOUNDARY_TRANSFORM_GUESS
       previous_centroid_state_ = state;
-#endif // USE_TRANSFORM_GUESS
+#endif // USE_BOUNDARY_TRANSFORM_GUESS
 
 #ifdef PROFILE_COMPUTE_STATE_TIME
       fit_ellipse_elapsed_time = (((double)(Timer::nanoTime() - fit_ellipse_start_time)) /
@@ -386,7 +383,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       {
         Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
 
-#ifdef USE_TRANSFORM_GUESS
+#ifdef USE_BOUNDARY_TRANSFORM_GUESS
         cv::RotatedRect centroid_obj_ellipse;
         tabletop_pushing::VisFeedbackPushTrackingFeedback centroid_state;
         fitHullEllipse(hull_cloud, centroid_obj_ellipse);
@@ -397,38 +394,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         // Use vertical z centroid from object
         centroid_state.z = cur_obj.centroid[2];
 
-        double delta_x_guess = centroid_state.x.x - previous_centroid_state_.x.x;
-        double delta_y_guess = centroid_state.x.y - previous_centroid_state_.x.y;
-
-        // Make sure not a +/-pi swap of the heading between frames...
-        if ( (centroid_state.x.theta > 0) != (previous_state_.x.theta > 0) )
-        {
-          // Test if swapping makes a shorter distance than changing
-          float augmented_theta = state.x.theta + (state.x.theta > 0.0) ? - M_PI : M_PI;
-          float augmented_diff = fabs(subPIAngle(augmented_theta - previous_state_.x.theta));
-          float current_diff = fabs(subPIAngle(state.x.theta - previous_state_.x.theta));
-          if (augmented_diff < current_diff)
-          {
-            centroid_state.x.theta = augmented_theta;
-          }
-        }
-
-        double delta_theta_guess = subPIAngle(centroid_state.x.theta - previous_state_.x.theta);
+        estimateTransformFromStateChange(centroid_state, previous_centroid_state_, guess);
         previous_centroid_state_ = centroid_state;
-
-        guess(0,0) = cos(delta_theta_guess);
-        guess(0,1) = -sin(delta_theta_guess);
-        guess(1,0) = -guess(0,1);
-        guess(1,1) = guess(0,0);
-        guess(2,2) = 1.0;
-        guess(3,3) = 1.0;
-        guess(0,3) = delta_x_guess;
-        guess(1,3) = delta_y_guess;
-        ROS_INFO_STREAM("Delta X Guess: " << delta_x_guess);
-        ROS_INFO_STREAM("Delta Y Guess: " << delta_y_guess);
-        ROS_INFO_STREAM("Delta Theta Guess: " << delta_theta_guess);
-        ROS_INFO_STREAM("Initial transform guess of: \n" << guess);
-#endif // USE_TRANSFORM_GUESS
+#endif // USE_BOUNDARY_TRANSFORM_GUESS
 
         double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud,
                                                                 guess, transform, aligned);
@@ -608,12 +576,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       ROS_INFO_STREAM("Found " << source_indices.size() << " good matches");
 #endif
-
-      // Estimate transform
-      Eigen::Matrix4f transform;
-      estimateFeaturePointTransform(obj_feature_point_model_, source_indices, obj_model_detected,
-                                    target_indices, transform);
-
 #ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
       ROS_INFO_STREAM("Displaying stuff");
       cv::Mat match_img = in_frame.clone();
@@ -642,20 +604,58 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       cv::imshow("Matches", match_img);
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
 
-#ifdef USE_FRAME_TO_FRAME_MATCHING
-      // Update state estimates
-      // Transform initial state to current state using the estimate transform
-      ROS_INFO_STREAM("Transforming previous state");
-      Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
-      Eigen::Vector4f x_t_1 = transform*x_t_0;
-      state.x.x = x_t_1(0);
-      state.x.y = x_t_1(1);
-      state.z = x_t_1(2);
-      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
-      const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
-      const Eigen::Vector3f x_axis_t = rot*x_axis;
-      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+      // Estimate transform
+      Eigen::Matrix4f transform;
+      bool converged = estimateFeaturePointTransform(obj_feature_point_model_, source_indices, obj_model_detected,
+                                                     target_indices, transform);
+      if (!converged)
+      {
+        ROS_WARN_STREAM("ICP did not converge. Estimating state from ellipse");
+        updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
 
+        ROS_INFO_STREAM("Copying transform to previous transform");
+        Eigen::Matrix4f state_transform;
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+        estimateTransformFromStateChange(state, previous_state_, state_transform);
+#else
+        estimateTransformFromStateChange(state, initial_state_, state_transform);
+#endif
+        previous_transform_ = state_transform;
+      }
+      else
+      {
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+        // Update state estimates
+        // Transform initial state to current state using the estimate transform
+        ROS_INFO_STREAM("Transforming previous state");
+        Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
+        Eigen::Vector4f x_t_1 = transform*x_t_0;
+        state.x.x = x_t_1(0);
+        state.x.y = x_t_1(1);
+        state.z = x_t_1(2);
+        Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+        const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
+        const Eigen::Vector3f x_axis_t = rot*x_axis;
+        state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+
+#else // USE_FRAME_TO_FRAME_MATCHING
+        // Update state estimates
+        // Transform initial state to current state using the estimate transform
+        ROS_INFO_STREAM("Transforming init state");
+        Eigen::Vector4f x_t_0(initial_state_.x.x, initial_state_.x.y, initial_state_.z, 1.0);
+        Eigen::Vector4f x_t_1 = transform*x_t_0;
+        state.x.x = x_t_1(0);
+        state.x.y = x_t_1(1);
+        state.z = x_t_1(2);
+        Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+        const Eigen::Vector3f x_axis(cos(initial_state_.x.theta), sin(initial_state_.x.theta), 0.0);
+        const Eigen::Vector3f x_axis_t = rot*x_axis;
+        state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+#endif // USE_FRAME_TO_FRAME_MATCHING
+        ROS_INFO_STREAM("Copying transform to previous transform");
+        previous_transform_ = transform;
+      }
+#ifdef USE_FRAME_TO_FRAME_MATCHING
       // Update model to previous frame
       ROS_INFO_STREAM("Updating previous model");
       obj_model_detected.descriptors.copyTo(obj_feature_point_model_.descriptors);
@@ -674,23 +674,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       {
         obj_feature_point_model_.bad_locs.push_back(obj_model_detected.bad_locs[i]);
       }
-
-#else // USE_FRAME_TO_FRAME_MATCHING
-      // Update state estimates
-      // Transform initial state to current state using the estimate transform
-      ROS_INFO_STREAM("Transforming init state");
-      Eigen::Vector4f x_t_0(init_state_.x.x, init_state_.x.y, init_state_.z, 1.0);
-      Eigen::Vector4f x_t_1 = transform*x_t_0;
-      state.x.x = x_t_1(0);
-      state.x.y = x_t_1(1);
-      state.z = x_t_1(2);
-      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
-      const Eigen::Vector3f x_axis(cos(init_state_.x.theta), sin(init_state_.x.theta), 0.0);
-      const Eigen::Vector3f x_axis_t = rot*x_axis;
-      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
-#endif // USE_FRAME_TO_FRAME_MATCHING
-      ROS_INFO_STREAM("Copying transform to previous transform");
-      previous_transform_ = transform;
+#endif// USE_FRAME_TO_FRAME_MATCHING
     }
   }
 
@@ -866,6 +850,17 @@ void ObjectTracker25D::findFootprintEllipse(ProtoObject& obj, cv::RotatedRect& o
   obj_ellipse = cv::fitEllipse(obj_pts);
 }
 
+void ObjectTracker25D::updateStateEllipse(ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse,
+                                          PushTrackerState& state, bool init_state)
+{
+  fitObjectEllipse(cur_obj, obj_ellipse);
+  state.x.theta = getThetaFromEllipse(obj_ellipse);
+  state.x.x = cur_obj.centroid[0];
+  state.x.y = cur_obj.centroid[1];
+  state.z = cur_obj.centroid[2];
+  updateHeading(state, init_state);
+}
+
 
 void ObjectTracker25D::findFootprintBox(ProtoObject& obj, cv::RotatedRect& box)
 {
@@ -1038,7 +1033,7 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
 }
 
-void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& source_model,
+bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& source_model,
                                                      std::vector<int> source_indices,
                                                      ObjectFeaturePointModel& target_model,
                                                      std::vector<int> target_indices,
@@ -1094,11 +1089,50 @@ void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   ROS_INFO_STREAM("Found transform of: \n" << transform);
   double score = feature_point_icp_.getFitnessScore();
   ROS_INFO_STREAM("Fitness of: " << score << "\n");
+  return feature_point_icp_.hasConverged();
 }
+
+void ObjectTracker25D::estimateTransformFromStateChange(PushTrackerState& state,
+                                                        PushTrackerState& previous_state,
+                                                        Eigen::Matrix4f& transform)
+{
+  double delta_x = state.x.x - previous_state_.x.x;
+  double delta_y = state.x.y - previous_state_.x.y;
+
+  // Make sure not a +/-pi swap of the heading between frames...
+  if ( (state.x.theta > 0) != (previous_state_.x.theta > 0) )
+  {
+    // Test if swapping makes a shorter distance than changing
+    float augmented_theta = state.x.theta + (state.x.theta > 0.0) ? - M_PI : M_PI;
+    float augmented_diff = fabs(subPIAngle(augmented_theta - previous_state_.x.theta));
+    float current_diff = fabs(subPIAngle(state.x.theta - previous_state_.x.theta));
+    if (augmented_diff < current_diff)
+    {
+      state.x.theta = augmented_theta;
+    }
+  }
+
+  double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
+
+  transform(0,0) = cos(delta_theta);
+  transform(0,1) = -sin(delta_theta);
+  transform(1,0) = -transform(0,1);
+  transform(1,1) = transform(0,0);
+  transform(2,2) = 1.0;
+  transform(3,3) = 1.0;
+  transform(0,3) = delta_x;
+  transform(1,3) = delta_y;
+  ROS_INFO_STREAM("Delta X: " << delta_x);
+  ROS_INFO_STREAM("Delta Y: " << delta_y);
+  ROS_INFO_STREAM("Delta Theta: " << delta_theta);
+  ROS_INFO_STREAM("Initial transform of: \n" << transform);
+}
+
+
 
 void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
                                   std::string proxy_name,
-                                  tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
+                                  PushTrackerState& state, bool start_swap)
 {
   paused_ = false;
   initialized_ = false;
@@ -1139,7 +1173,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPoin
 
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;
-  init_state_ = state;
+  initial_state_ = state;
   in_frame.copyTo(init_frame_);
   obj_saved_ = true;
   frame_count_ = 1;
@@ -1236,9 +1270,9 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
     previous_obj_ = cur_obj;
   }
   // We update the header and take care of other bookkeeping before returning
-  state.init_x.x = init_state_.x.x;
-  state.init_x.y = init_state_.x.y;
-  state.init_x.theta = init_state_.x.theta;
+  state.init_x.x = initial_state_.x.x;
+  state.init_x.y = initial_state_.x.y;
+  state.init_x.theta = initial_state_.x.theta;
 
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;

@@ -113,10 +113,17 @@ class ObjectTracker25D
 
   void fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
+  void updateStateEllipse(ProtoObject& obj, cv::RotatedRect& ellipse,
+                          tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state);
+
+  void estimateTransformFromStateChange(tabletop_pushing::VisFeedbackPushTrackingFeedback& state,
+                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& previous_state,
+                                        Eigen::Matrix4f& transform);
+
   void extractFeaturePointModel(cv::Mat& frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud, ProtoObject& obj,
                                 ObjectFeaturePointModel& model);
 
-  void estimateFeaturePointTransform(ObjectFeaturePointModel& source_model, std::vector<int> source_indices,
+  bool estimateFeaturePointTransform(ObjectFeaturePointModel& source_model, std::vector<int> source_indices,
                                      ObjectFeaturePointModel& target_model, std::vector<int> target_indices,
                                      Eigen::Matrix4f& transform);
 
@@ -212,7 +219,7 @@ class ObjectTracker25D
   double previous_time_;
   ProtoObject previous_obj_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback previous_state_;
-  tabletop_pushing::VisFeedbackPushTrackingFeedback init_state_;
+  tabletop_pushing::VisFeedbackPushTrackingFeedback initial_state_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback previous_centroid_state_;
   bool use_displays_;
   bool write_to_disk_;
