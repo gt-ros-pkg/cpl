@@ -88,10 +88,14 @@ class TabletopExecutive:
         self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
-        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.5)
+        self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.475)
         self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.8)
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.4)
         self.min_workspace_y = -self.max_workspace_y
+        self.min_goal_x = rospy.get_param('~min_workspace_x', 0.5)
+        self.max_goal_x = rospy.get_param('~max_workspace_x', 0.75)
+        self.max_goal_y = rospy.get_param('~max_workspace_y', 0.375)
+        self.min_goal_y = -self.max_goal_y
 
         self.goal_y_base_delta = 0.01
         self.num_start_loc_clusters = 5
@@ -327,7 +331,7 @@ class TabletopExecutive:
                                               controller_name, proxy_name)
             push_time = time.time() - start_time
             if push_res.failed_pre_position:
-                rospy.loginfo('Writing trail bad line because of failed hand placement')
+                rospy.loginfo('Writing trial bad line because of failed hand placement')
                 if _USE_LEARN_IO:
                     self.learn_io.write_bad_trial_line()
             else:
@@ -450,7 +454,7 @@ class TabletopExecutive:
                     rospy.loginfo("Enter something to not save the previous push trial: ")
                     rlist, _, _ = select([sys.stdin], [], [], timeout)
                     if rlist:
-                        self.learn_io.write_bad_trial_line()
+                        self.learn_io.write_bad_trial_line(user=True)
                         s = sys.stdin.readline()
                         rospy.loginfo('Not saving previous trial.')
                         if s.lower().startswith('q'):
@@ -1089,10 +1093,10 @@ class TabletopExecutive:
             if self.start_loc_use_fixed_goal:
                 goal_pose.y += self.start_loc_goal_y_delta
             return goal_pose
-        min_x = self.min_workspace_x
-        max_x = self.max_workspace_x
-        min_y = self.min_workspace_y
-        max_y = self.max_workspace_y
+        min_x = self.min_goal_x
+        max_x = self.max_goal_x
+        min_y = self.min_goal_y
+        max_y = self.max_goal_y
         max_theta = pi
         min_theta = -pi
 

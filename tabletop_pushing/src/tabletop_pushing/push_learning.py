@@ -47,12 +47,14 @@ import random
 import os
 import subprocess
 
-_VERSION_LINE = '# v0.7'
+_VERSION_LINE = '# v0.8'
 _LEARN_TRIAL_HEADER_LINE = '# object_id/trial_id init_x init_y init_z init_theta final_x final_y final_z final_theta goal_x goal_y goal_theta push_start_point.x push_start_point.y push_start_point.z behavior_primitive controller proxy which_arm push_time precondition_method score [shape_descriptors]'
 _CONTROL_HEADER_LINE = '# x.x x.y x.theta x_dot.x x_dot.y x_dot.theta x_desired.x x_desired.y x_desired.theta theta0 u.linear.x u.linear.y u.linear.z u.angular.x u.angular.y u.angular.z time hand.x hand.y hand.z hand.a_x hand.a_y hand.a_z hand.a_w seq z_obj'
 _LEARN_TRIAL_HEADER_LINE_START = '# object_id/trial_id'
 _CONTROL_HEADER_LINE_START = '# x.x x.y x.theta'
-_BAD_TRIAL_HEADER_LINE='#BAD_TRIAL'
+_BAD_TRIAL_HEADER_LINE_PREFIX = '#BAD_TRIAL'
+_BAD_TRIAL_HEADER_LINE_USER = _BAD_TRIAL_HEADER_LINE_PREFIX + '_USER'
+_BAD_TRIAL_HEADER_LINE_PRE_FAIL = _BAD_TRIAL_HEADER_LINE_PREFIX + '_PRE_FAIL'
 _DEBUG_IO = False
 
 def subPIAngle(theta):
@@ -249,8 +251,11 @@ class PushLearningIO:
         self.data_out.write(data_line)
         self.data_out.flush()
 
-    def write_bad_trial_line(self):
-        self.data_out.write(_BAD_TRIAL_HEADER_LINE+'\n')
+    def write_bad_trial_line(self, user_ordered=False):
+        if user_ordered:
+            self.data_out.write(_BAD_TRIAL_HEADER_LINE_USER+'\n')
+        else:
+            self.data_out.write(_BAD_TRIAL_HEADER_LINE_PRE_FAIL+'\n')
         self.data_out.flush()
 
     def read_in_data_file(self, file_name):
@@ -419,7 +424,7 @@ class CombinedPushLearnControlIO:
                     print 'Read control header'
                 control_headers += 1
                 read_ctrl_line = True
-            elif line.startswith(_BAD_TRIAL_HEADER_LINE):
+            elif line.startswith(_BAD_TRIAL_HEADER_LINE_PREFIX):
                 bad_stops += 1
                 if _DEBUG_IO:
                     print 'BAD TRIAL: not adding current trial to list'
