@@ -42,7 +42,7 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
                                    bool use_graphcut_arm_seg, double hull_alpha,
                                    int feature_point_close_size, int icp_max_iters, float icp_transform_eps,
-                                   float icp_max_cor_dist, float icp_ransac_thresh, int icp_max_ransac_iters,
+                                   float icp_ransac_thresh, int icp_max_ransac_iters,
                                    float icp_max_fitness_eps, int brief_descriptor_byte_size,
                                    float feature_point_ratio_test_thresh) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
@@ -52,18 +52,40 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
     have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg),
-    hull_alpha_(hull_alpha), feature_extractor_(brief_descriptor_byte_size), matcher_(cv::NORM_HAMMING, false),
+    hull_alpha_(hull_alpha),
+#ifdef USE_ORB
+    // feature_extractor_(orb_params),
+#else
+    feature_extractor_(brief_descriptor_byte_size),
+#endif
+#ifdef USE_RATIO_TEST
+    matcher_(cv::NORM_HAMMING, false),
+#else
+    matcher_(cv::NORM_HAMMING, true),
+#endif
     ratio_test_thresh_(feature_point_ratio_test_thresh)
 {
   upscale_ = std::pow(2,num_downsamples_);
   cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
   tmp_morph.copyTo(feature_point_morph_element_);
-
+  ROS_INFO_STREAM("Changing ICP iters from " << feature_point_icp_.getMaximumIterations() << " to " <<
+                  icp_max_iters);
   feature_point_icp_.setMaximumIterations(icp_max_iters);
+
+  ROS_INFO_STREAM("Changing Transfrom epsilon from " << feature_point_icp_.getTransformationEpsilon() << " to " <<
+                  icp_transform_eps);
   feature_point_icp_.setTransformationEpsilon(icp_transform_eps);
-  feature_point_icp_.setMaxCorrespondenceDistance(icp_max_cor_dist);
+
+  ROS_INFO_STREAM("Changin RANSAC Outlier Rejection from " << feature_point_icp_.getRANSACOutlierRejectionThreshold() <<
+                  " to " << icp_ransac_thresh);
   feature_point_icp_.setRANSACOutlierRejectionThreshold(icp_ransac_thresh);
+
+  ROS_INFO_STREAM("Changing RANSAC iters from " << feature_point_icp_.getRANSACIterations() << " to " <<
+                  icp_max_ransac_iters);
   feature_point_icp_.setRANSACIterations(icp_max_ransac_iters);
+
+  ROS_INFO_STREAM("Changing Euclidean fitness from " << feature_point_icp_.getEuclideanFitnessEpsilon() << " to " <<
+                  icp_max_fitness_eps);
   feature_point_icp_.setEuclideanFitnessEpsilon(icp_max_fitness_eps);
 }
 
@@ -560,41 +582,44 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
                       obj_model_detected.keypoints.size() << " total keypoints");
 
       // Match feature points to model
+      std::vector<int> source_indices;
+      std::vector<int> target_indices;
+#ifdef USE_RATIO_TEST
       std::vector<std::vector<cv::DMatch> > matches;
       matcher_.knnMatch(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches, 2,
                         no_match_mask, true);
-      std::vector<int> source_indices;
-      std::vector<int> target_indices;
       for (int i = 0; i < matches.size(); ++i)
       {
-        source_indices.push_back(matches[i][0].trainIdx);
-        target_indices.push_back(matches[i][0].queryIdx);
+        if (matches[i][0].distance < ratio_test_thresh_*matches[i][1].distance)
+        {
+          source_indices.push_back(matches[i][0].trainIdx);
+          target_indices.push_back(matches[i][0].queryIdx);
+        }
       }
-      ROS_INFO_STREAM("Found " << source_indices.size() << " good matches with ratio test thresh of " << ratio_test_thresh_);
+      ROS_INFO_STREAM("Found " << source_indices.size() << " good matches with ratio test thresh of " <<
+                      ratio_test_thresh_);
+#else  // USE_RATIO_TEST
+      std::vector<cv::DMatch> matches;
+      matcher_.match(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches);
+      for (int i = 0; i < matches.size(); ++i)
+      {
+        source_indices.push_back(matches[i].trainIdx);
+        target_indices.push_back(matches[i].queryIdx);
+      }
+      ROS_INFO_STREAM("Found " << source_indices.size() << " good matches");
+#endif
 
       // Estimate transform
       Eigen::Matrix4f transform;
       estimateFeaturePointTransform(obj_feature_point_model_, source_indices, obj_model_detected,
                                     target_indices, transform);
 
-      // Update state estimates
-      // Transform initial state to current state using the estimate transform
-      Eigen::Vector4f x_t_0(init_state_.x.x, init_state_.x.y, init_state_.z, 1.0);
-      Eigen::Vector4f x_t_1 = transform*x_t_0;
-      state.x.x = x_t_1(0);
-      state.x.y = x_t_1(1);
-      state.z = x_t_1(2);
-      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
-      const Eigen::Vector3f x_axis(cos(init_state_.x.theta), sin(init_state_.x.theta), 0.0);
-      const Eigen::Vector3f x_axis_t = rot*x_axis;
-      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
-
-      previous_transform_ = transform;
-
 #ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
+      ROS_INFO_STREAM("Displaying stuff");
       cv::Mat match_img = in_frame.clone();
       for (int i = 0; i < matches.size(); ++i)
       {
+#ifdef USE_RATIO_TEST
         // Must pass ratio test
         if (matches[i][0].distance < ratio_test_thresh_*matches[i][1].distance)
         {
@@ -605,9 +630,67 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
           cv::line(match_img, obj_feature_point_model_.keypoints[matches[i][0].trainIdx].pt,
                    obj_model_detected.keypoints[matches[i][0].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
         }
+#else
+        cv::circle(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt, 3,
+                   cv::Scalar(18, 18, 178));
+        cv::circle(match_img, obj_model_detected.keypoints[matches[i].queryIdx].pt, 3,
+                   cv::Scalar(51, 178, 0));
+        cv::line(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt,
+                 obj_model_detected.keypoints[matches[i].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
+#endif
       }
       cv::imshow("Matches", match_img);
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
+
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+      // Update state estimates
+      // Transform initial state to current state using the estimate transform
+      ROS_INFO_STREAM("Transforming previous state");
+      Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
+      Eigen::Vector4f x_t_1 = transform*x_t_0;
+      state.x.x = x_t_1(0);
+      state.x.y = x_t_1(1);
+      state.z = x_t_1(2);
+      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+      const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
+      const Eigen::Vector3f x_axis_t = rot*x_axis;
+      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+
+      // Update model to previous frame
+      ROS_INFO_STREAM("Updating previous model");
+      obj_model_detected.descriptors.copyTo(obj_feature_point_model_.descriptors);
+      obj_feature_point_model_.locations.clear();
+      obj_feature_point_model_.keypoints.clear();
+      obj_feature_point_model_.bad_locs.clear();
+      for (int i = 0; i < obj_model_detected.locations.size(); ++i)
+      {
+        obj_feature_point_model_.locations.push_back(obj_model_detected.locations[i]);
+      }
+      for (int i = 0; i < obj_model_detected.keypoints.size(); ++i)
+      {
+        obj_feature_point_model_.keypoints.push_back(obj_model_detected.keypoints[i]);
+      }
+      for (int i = 0; i < obj_model_detected.bad_locs.size(); ++i)
+      {
+        obj_feature_point_model_.bad_locs.push_back(obj_model_detected.bad_locs[i]);
+      }
+
+#else // USE_FRAME_TO_FRAME_MATCHING
+      // Update state estimates
+      // Transform initial state to current state using the estimate transform
+      ROS_INFO_STREAM("Transforming init state");
+      Eigen::Vector4f x_t_0(init_state_.x.x, init_state_.x.y, init_state_.z, 1.0);
+      Eigen::Vector4f x_t_1 = transform*x_t_0;
+      state.x.x = x_t_1(0);
+      state.x.y = x_t_1(1);
+      state.z = x_t_1(2);
+      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+      const Eigen::Vector3f x_axis(cos(init_state_.x.theta), sin(init_state_.x.theta), 0.0);
+      const Eigen::Vector3f x_axis_t = rot*x_axis;
+      state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+#endif // USE_FRAME_TO_FRAME_MATCHING
+      ROS_INFO_STREAM("Copying transform to previous transform");
+      previous_transform_ = transform;
     }
   }
 
@@ -886,7 +969,11 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
   // Get keypoint descriptors from mask
   cv::Mat descriptors;
   feature_detector_.detect(frame_bw, model.keypoints, obj_mask);
+#ifdef USE_ORB
+  feature_extractor_(frame_bw, obj_mask, model.keypoints, descriptors, true);
+#else
   feature_extractor_.compute(frame_bw, model.keypoints, descriptors);
+#endif
 
   descriptors.copyTo(model.descriptors);
   model.locations.width = model.keypoints.size();
@@ -973,18 +1060,23 @@ void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
 
   for (int i = 0; i < source_indices.size(); ++i)
   {
-    source_cloud->at(i) = source_model.locations.at(source_indices[i]);
-    if (isnan(source_cloud->at(i).x) || isnan(source_cloud->at(i).y) || isnan(source_cloud->at(i).z))
+    pcl16::PointXYZ source_pt = source_model.locations.at(source_indices[i]);
+    pcl16::PointXYZ target_pt = target_model.locations.at(target_indices[i]);
+    bool add_pts = true;
+    if (isnan(source_pt.x) || isnan(source_pt.y) || isnan(source_pt.z))
     {
-      ROS_WARN_STREAM("nan point in source_cloud at " << i << " -> " << source_cloud->at(i));
+      ROS_WARN_STREAM("nan point in source_cloud at " << i << " -> " << source_pt);
+      add_pts = false;
     }
-  }
-  for (int i = 0; i < target_indices.size(); ++i)
-  {
-    target_cloud->at(i) = target_model.locations.at(target_indices[i]);
-    if (isnan(target_cloud->at(i).x) || isnan(target_cloud->at(i).y) || isnan(target_cloud->at(i).z))
+    if (isnan(target_pt.x) || isnan(target_pt.y) || isnan(target_pt.z))
     {
-      ROS_WARN_STREAM("nan point in target_cloud at " << i << " -> " << target_cloud->at(i));
+      ROS_WARN_STREAM("nan point in target_cloud at " << i << " -> " << target_pt);
+      add_pts = false;
+    }
+    if (add_pts)
+    {
+      target_cloud->at(i) = target_pt;
+      source_cloud->at(i) = source_pt;
     }
   }
 
@@ -993,7 +1085,11 @@ void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
 
   ROS_INFO_STREAM("Aligning with initial guess: \n" << previous_transform_);
   XYZPointCloud aligned;
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+  feature_point_icp_.align(aligned, Eigen::Matrix4f::Identity());
+#else
   feature_point_icp_.align(aligned, previous_transform_);
+#endif
   transform = feature_point_icp_.getFinalTransformation();
   ROS_INFO_STREAM("Found transform of: \n" << transform);
   double score = feature_point_icp_.getFitnessScore();

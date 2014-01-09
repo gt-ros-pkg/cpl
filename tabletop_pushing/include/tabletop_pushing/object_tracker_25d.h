@@ -61,6 +61,10 @@
 // STL
 #include <string>
 
+// Functional IFDEFS
+#define USE_ORB 1
+// #define USE_NL_ICP 1
+
 namespace tabletop_pushing
 {
 class ObjectFeaturePointModel
@@ -85,7 +89,6 @@ class ObjectTracker25D
                    double hull_alpha=0.01, int feature_close_size=3,
                    int icp_max_iters = 1000,
                    float icp_transform_eps = 0.001,
-                   float icp_max_cor_dist = 10.0,
                    float icp_ransac_thresh = 0.01,
                    int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.001,
                    int brief_descriptor_byte_size = 16, float feature_point_ratio_test_thresh=0.75);
@@ -232,12 +235,20 @@ class ObjectTracker25D
   ObjectFeaturePointModel obj_feature_point_model_;
   cv::Mat feature_point_morph_element_;
   cv::GoodFeaturesToTrackDetector feature_detector_;
+#ifdef USE_ORB
+  cv::ORB feature_extractor_;
+#else
   cv::BriefDescriptorExtractor feature_extractor_;
+#endif
   cv::BFMatcher matcher_;
   cv::Mat init_frame_;
   Eigen::Matrix4f previous_transform_;
-  // pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+#ifdef USE_NL_ICP
   pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+#else
+  pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+#endif
+
   double ratio_test_thresh_;
 };
 };
