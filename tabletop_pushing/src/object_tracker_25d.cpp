@@ -43,7 +43,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    bool use_graphcut_arm_seg, double hull_alpha,
                                    int feature_point_close_size, int icp_max_iters, float icp_transform_eps,
                                    float icp_max_cor_dist, float icp_ransac_thresh, int icp_max_ransac_iters,
-                                   float icp_max_fitness_eps, int brief_descriptor_byte_size) :
+                                   float icp_max_fitness_eps, int brief_descriptor_byte_size,
+                                   float feature_point_ratio_test_thresh) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -51,8 +52,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
     have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg),
-    hull_alpha_(hull_alpha), matcher_(cv::NORM_HAMMING, true),
-    feature_extractor_(brief_descriptor_byte_size)
+    hull_alpha_(hull_alpha), feature_extractor_(brief_descriptor_byte_size), matcher_(cv::NORM_HAMMING, false),
+    ratio_test_thresh_(feature_point_ratio_test_thresh)
 {
   upscale_ = std::pow(2,num_downsamples_);
   cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
@@ -553,17 +554,23 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         }
       }
 
+      ROS_INFO_STREAM("object source model has " << obj_feature_point_model_.bad_locs.size() << " bad locs from " <<
+                      obj_feature_point_model_.keypoints.size() << " total keypoints");
+      ROS_INFO_STREAM("object target model has " << obj_model_detected.bad_locs.size() << " bad locs from " <<
+                      obj_model_detected.keypoints.size() << " total keypoints");
+
       // Match feature points to model
-      std::vector<cv::DMatch> matches;
-      matcher_.match(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches);
+      std::vector<std::vector<cv::DMatch> > matches;
+      matcher_.knnMatch(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches, 2,
+                        no_match_mask, true);
       std::vector<int> source_indices;
       std::vector<int> target_indices;
       for (int i = 0; i < matches.size(); ++i)
       {
-        source_indices.push_back(matches[i].trainIdx);
-        target_indices.push_back(matches[i].queryIdx);
+        source_indices.push_back(matches[i][0].trainIdx);
+        target_indices.push_back(matches[i][0].queryIdx);
       }
-      ROS_INFO_STREAM("Found " << matches.size() << " matches");
+      ROS_INFO_STREAM("Found " << source_indices.size() << " good matches with ratio test thresh of " << ratio_test_thresh_);
 
       // Estimate transform
       Eigen::Matrix4f transform;
@@ -588,12 +595,16 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       cv::Mat match_img = in_frame.clone();
       for (int i = 0; i < matches.size(); ++i)
       {
-        cv::circle(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt, 3,
-                   cv::Scalar(18, 18, 178));
-        cv::circle(match_img, obj_model_detected.keypoints[matches[i].queryIdx].pt, 3,
-                   cv::Scalar(51, 178, 0));
-        cv::line(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt,
-                 obj_model_detected.keypoints[matches[i].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
+        // Must pass ratio test
+        if (matches[i][0].distance < ratio_test_thresh_*matches[i][1].distance)
+        {
+          cv::circle(match_img, obj_feature_point_model_.keypoints[matches[i][0].trainIdx].pt, 3,
+                     cv::Scalar(18, 18, 178));
+          cv::circle(match_img, obj_model_detected.keypoints[matches[i][0].queryIdx].pt, 3,
+                     cv::Scalar(51, 178, 0));
+          cv::line(match_img, obj_feature_point_model_.keypoints[matches[i][0].trainIdx].pt,
+                   obj_model_detected.keypoints[matches[i][0].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
+        }
       }
       cv::imshow("Matches", match_img);
 #endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
@@ -871,7 +882,6 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
   obj_mask*=255;
   cv::dilate(obj_mask, obj_mask, feature_point_morph_element_);
   cv::erode(obj_mask, obj_mask, feature_point_morph_element_);
-  obj_mask.at<uchar>(0,0) = 0;
 
   // Get keypoint descriptors from mask
   cv::Mat descriptors;
@@ -964,10 +974,18 @@ void ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   for (int i = 0; i < source_indices.size(); ++i)
   {
     source_cloud->at(i) = source_model.locations.at(source_indices[i]);
+    if (isnan(source_cloud->at(i).x) || isnan(source_cloud->at(i).y) || isnan(source_cloud->at(i).z))
+    {
+      ROS_WARN_STREAM("nan point in source_cloud at " << i << " -> " << source_cloud->at(i));
+    }
   }
   for (int i = 0; i < target_indices.size(); ++i)
   {
     target_cloud->at(i) = target_model.locations.at(target_indices[i]);
+    if (isnan(target_cloud->at(i).x) || isnan(target_cloud->at(i).y) || isnan(target_cloud->at(i).z))
+    {
+      ROS_WARN_STREAM("nan point in target_cloud at " << i << " -> " << target_cloud->at(i));
+    }
   }
 
   feature_point_icp_.setInputCloud(source_cloud);
@@ -1208,7 +1226,14 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
   cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
   if (use_displays_)
   {
-    cv::imshow("Object State", centroid_frame);
+    if (frame_count_ < 1)
+    {
+      cv::imshow("Init State", centroid_frame);
+    }
+    else
+    {
+      cv::imshow("Object State", centroid_frame);
+    }
   }
   if (write_to_disk_ && !isPaused())
   {
@@ -1270,7 +1295,14 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   }
   if (use_displays_)
   {
-    cv::imshow("Object State", centroid_frame);
+    if (frame_count_ < 1)
+    {
+      cv::imshow("Init State", centroid_frame);
+    }
+    else
+    {
+      cv::imshow("Object State", centroid_frame);
+    }
   }
   if (write_to_disk_ && !isPaused())
   {
@@ -1328,7 +1360,14 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
 
   if (use_displays_)
   {
-    cv::imshow("Object State", centroid_frame);
+    if (frame_count_ < 1)
+    {
+      cv::imshow("Init State", centroid_frame);
+    }
+    else
+    {
+      cv::imshow("Object State", centroid_frame);
+    }
   }
   if (write_to_disk_ && !isPaused())
   {

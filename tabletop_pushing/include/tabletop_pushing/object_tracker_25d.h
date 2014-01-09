@@ -88,7 +88,7 @@ class ObjectTracker25D
                    float icp_max_cor_dist = 10.0,
                    float icp_ransac_thresh = 0.01,
                    int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.001,
-                   int brief_descriptor_byte_size = 16);
+                   int brief_descriptor_byte_size = 16, float feature_point_ratio_test_thresh=0.75);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -238,6 +238,7 @@ class ObjectTracker25D
   Eigen::Matrix4f previous_transform_;
   // pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
   pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+  double ratio_test_thresh_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

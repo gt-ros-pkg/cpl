@@ -327,6 +327,7 @@ class TabletopExecutive:
                                               controller_name, proxy_name)
             push_time = time.time() - start_time
             if push_res.failed_pre_position:
+                rospy.loginfo('Writing trail bad line because of failed hand placement')
                 if _USE_LEARN_IO:
                     self.learn_io.write_bad_trial_line()
             else:
