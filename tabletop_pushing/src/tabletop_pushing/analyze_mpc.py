@@ -633,14 +633,16 @@ def test_svm_stuff(aff_file_name=None):
     base_path = '/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/SVR_DYN/'
     output_paths = []
     epsilons = [1e-5, 1e-5, 1e-5]
+    plio = push_learning.CombinedPushLearnControlIO()
     if aff_file_name is not None:
         base_file_string = base_path + 'test_svm_stuff'
-        plio = push_learning.CombinedPushLearnControlIO()
         plio.read_in_data_file(aff_file_name)
 
         svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=use_obj_frame, epsilons=epsilons)
         svm_dynamics.learn_model(plio.push_trials)
         base_file_string = svm_dynamics.save_models(base_file_string)
+    else:
+        base_file_string = '/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/SVR_DYN/test_svm_stuff_LINEAR_linearEE_worldFrame'
 
     svm_dynamics2 = SVRPushDynamics(delta_t, n, m, base_file_string)
 
@@ -947,6 +949,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
 
 
 if __name__ == '__main__':
-    analyze_mpc_trial_data(sys.argv[1])
+    # analyze_mpc_trial_data(sys.argv[1])
     # test_svm_stuff(sys.argv[1])
-    # test_mpc()
+    test_mpc()
