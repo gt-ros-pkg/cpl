@@ -76,6 +76,10 @@ class ObjectFeaturePointModel
   std::vector<int> bad_locs;
 };
 
+// template <typename PointSource, typename PointTarget> class ObjectFeaturePointICP : public pcl16::Registration<PointSource, PointTarget>
+// {
+// }
+
 class ObjectTracker25D
 {
  public:

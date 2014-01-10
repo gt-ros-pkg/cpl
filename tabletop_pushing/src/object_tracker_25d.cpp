@@ -91,6 +91,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
   ROS_INFO_STREAM("Changing Euclidean fitness from " << feature_point_icp_.getEuclideanFitnessEpsilon() << " to " <<
                   icp_max_fitness_eps);
   feature_point_icp_.setEuclideanFitnessEpsilon(icp_max_fitness_eps);
+
+  ROS_INFO_STREAM("Setting tracker search radius to " << segment_search_radius_);
 }
 
 ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
@@ -1353,10 +1355,11 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
       table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
   const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
       table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
+
   cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(18, 18, 178),1);
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(51, 178, 0),1);
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                              std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
@@ -1366,7 +1369,7 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
                                        img_maj_idx.x-img_c_idx.x));
   cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
   cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
-  cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
+  cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(25, 252, 255), 1);
   if (use_displays_)
   {
     if (frame_count_ < 1)
@@ -1415,9 +1418,9 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
       table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
   cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(18, 18, 178),1);
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(51, 178, 0),1);
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                              std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
@@ -1434,7 +1437,7 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   }
   for (int i = 0; i < 4; i++)
   {
-    cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(0,255,255), 1);
+    cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(25, 252, 255), 1);
   }
   if (use_displays_)
   {
@@ -1482,13 +1485,13 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
   if( other_color)
   {
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(255, 255,0),1);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0, 255, 255),1);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(204, 133, 20),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(25, 252, 255),1);
   }
   else
   {
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(18, 18, 178),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(51, 178, 0),1);
   }
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +

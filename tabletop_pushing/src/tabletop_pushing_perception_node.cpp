@@ -2072,13 +2072,15 @@ class TabletopPushingPerceptionNode
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
+    cv::Scalar kuler_green(51, 178, 0);
+    cv::Scalar kuler_red(18, 18, 178);
 
     cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(end_point);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
-    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::line(disp_img, img_start_point, img_end_point, kuler_green);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
-    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
+    cv::circle(disp_img, img_end_point, 4, kuler_green);
     if (use_displays_)
     {
       cv::imshow(display_name, disp_img);
@@ -2098,16 +2100,18 @@ class TabletopPushingPerceptionNode
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
+    cv::Scalar kuler_green(51, 178, 0);
+    cv::Scalar kuler_red(18, 18, 178);
 
     cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(end_point);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
-    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::line(disp_img, img_start_point, img_end_point, kuler_green);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
-    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
+    cv::circle(disp_img, img_end_point, 4, kuler_green);
     cv::Point img_centroid_point = pcl_segmenter_->projectPointIntoImage(centroid);
     cv::circle(disp_img, img_centroid_point, 4, cv::Scalar(0,0,0),3);
-    cv::circle(disp_img, img_centroid_point, 4, cv::Scalar(0,0,255));
+    cv::circle(disp_img, img_centroid_point, 4, kuler_red);
     cv::imshow("initial_vector", disp_img);
   }
 
