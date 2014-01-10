@@ -8,5 +8,5 @@ const std::string CENTROID_PROXY = "centroid";
 const std::string SPHERE_PROXY = "sphere";
 const std::string CYLINDER_PROXY = "cylinder";
 const std::string BOUNDING_BOX_XY_PROXY = "bounding_box_xy";
-const std::string FEATURE_POINT_ICP_PROXY = "feature_point_icp";
+const std::string FEATURE_POINT_PROXY = "feature_point";
 #endif // push_primitives_h_DEFINED

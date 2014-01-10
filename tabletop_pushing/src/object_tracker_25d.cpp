@@ -510,7 +510,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
-  else if (proxy_name == FEATURE_POINT_ICP_PROXY)
+  else if (proxy_name == FEATURE_POINT_PROXY)
   {
     if (init_state)
     {
@@ -545,10 +545,10 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         }
       }
 
-      ROS_INFO_STREAM("object source model has " << obj_feature_point_model_.bad_locs.size() << " bad locs from " <<
-                      obj_feature_point_model_.keypoints.size() << " total keypoints");
-      ROS_INFO_STREAM("object target model has " << obj_model_detected.bad_locs.size() << " bad locs from " <<
-                      obj_model_detected.keypoints.size() << " total keypoints");
+      // ROS_INFO_STREAM("object source model has " << obj_feature_point_model_.bad_locs.size() << " bad locs from " <<
+      //                 obj_feature_point_model_.keypoints.size() << " total keypoints");
+      // ROS_INFO_STREAM("object target model has " << obj_model_detected.bad_locs.size() << " bad locs from " <<
+      //                 obj_model_detected.keypoints.size() << " total keypoints");
 
       // Match feature points to model
       pcl16::Correspondences correspondences;
@@ -594,8 +594,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       ROS_INFO_STREAM("Found " << correspondences.size() << " good matches");
 #endif
-#ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
-      ROS_INFO_STREAM("Displaying stuff");
+#ifdef VISUALIZE_FEATURE_POINT_PROXY
       cv::Mat match_img = in_frame.clone();
       for (int i = 0; i < matches.size(); ++i)
       {
@@ -620,7 +619,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 #endif
       }
       cv::imshow("Matches", match_img);
-#endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
+#endif // VISUALIZE_FEATURE_POINT_PROXY
 
       // Estimate transform
       Eigen::Matrix4f transform;
@@ -628,10 +627,8 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
                                                      transform);
       if (!converged)
       {
-        ROS_WARN_STREAM("ICP did not converge. Estimating state from ellipse");
+        ROS_WARN_STREAM("RANSAC did not converge. Estimating state from ellipse");
         updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
-
-        ROS_INFO_STREAM("Copying transform to previous transform");
         Eigen::Matrix4f state_transform;
 #ifdef USE_FRAME_TO_FRAME_MATCHING
         estimateTransformFromStateChange(state, previous_state_, state_transform);
@@ -642,10 +639,10 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       else
       {
-#ifdef USE_FRAME_TO_FRAME_MATCHING
         // Update state estimates
-        // Transform initial state to current state using the estimate transform
-        ROS_INFO_STREAM("Transforming previous state");
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+        // Transform previous state to current state using the estimate transform
+        // ROS_INFO_STREAM("Transforming previous state");
         Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
         Eigen::Vector4f x_t_1 = transform*x_t_0;
         state.x.x = x_t_1(0);
@@ -657,9 +654,8 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
 
 #else // USE_FRAME_TO_FRAME_MATCHING
-        // Update state estimates
         // Transform initial state to current state using the estimate transform
-        ROS_INFO_STREAM("Transforming init state");
+        // ROS_INFO_STREAM("Transforming init state");
         Eigen::Vector4f x_t_0(initial_state_.x.x, initial_state_.x.y, initial_state_.z, 1.0);
         Eigen::Vector4f x_t_1 = transform*x_t_0;
         state.x.x = x_t_1(0);
@@ -670,12 +666,10 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         const Eigen::Vector3f x_axis_t = rot*x_axis;
         state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
 #endif // USE_FRAME_TO_FRAME_MATCHING
-        ROS_INFO_STREAM("Copying transform to previous transform");
         previous_transform_ = transform;
       }
 #ifdef USE_FRAME_TO_FRAME_MATCHING
       // Update model to previous frame
-      ROS_INFO_STREAM("Updating previous model");
       obj_model_detected.descriptors.copyTo(obj_feature_point_model_.descriptors);
       obj_feature_point_model_.locations.clear();
       obj_feature_point_model_.locations.width = obj_model_detected.locations.size();
@@ -683,7 +677,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       obj_feature_point_model_.locations.resize(obj_feature_point_model_.locations.width);
       for (int i = 0; i < obj_model_detected.locations.size(); ++i)
       {
-        obj_feature_point_model_.locations.push_back(obj_model_detected.locations[0]);
+        obj_feature_point_model_.locations.push_back(obj_model_detected.locations[i]);
       }
       obj_feature_point_model_.keypoints.assign(obj_model_detected.keypoints.begin(),
                                                 obj_model_detected.keypoints.end());
@@ -1017,7 +1011,7 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
     ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid 3D keypoints.");
   }
 
-#ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
+#ifdef VISUALIZE_FEATURE_POINT_PROXY
   cv::Mat key_disp_frame = frame.clone();
   cv::Mat model_points = frame.clone();
   cv::Scalar kuler_green(51, 178, 0);
@@ -1049,7 +1043,7 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
     // cv::imshow("object mask", obj_mask);
     cv::imshow("model points", model_points);
   }
-#endif // VISUALIZE_FEATURE_POINT_ICP_PROXY
+#endif // VISUALIZE_FEATURE_POINT_PROXY
 }
 
 bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& source_model,
@@ -1079,6 +1073,7 @@ bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   }
 
   pcl16::Correspondences inliers;
+  inliers.clear();
   for (int iter = 0; iter < feature_point_max_ransac_iters_; ++iter)
   {
     std::vector<int> available_sample_indices(sample_indices.begin(), sample_indices.end());
@@ -1115,7 +1110,8 @@ bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
     {
       inliers.assign(cur_inliers.begin(), cur_inliers.end());
       ROS_INFO_STREAM("Found " << inliers.size() << " inliers at " <<
-                      static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 << "%");
+                      static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 <<
+                      "% on iteration" << iter);
     }
     // Check convergence
     if (static_cast<float>(inliers.size())/static_cast<float>(correspondences.size()) >
@@ -1130,6 +1126,7 @@ bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   // Compute final transform using all inlier points
   feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations, inliers,
                                                            transform);
+  ROS_INFO_STREAM("Found final transform of \n" << transform << "\n");
   return true;
 }
 
