@@ -581,7 +581,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
                                                           matches[i][0].distance));
         }
       }
-      ROS_INFO_STREAM("Found " << correspondences.size() << " good matches with ratio test thresh of " <<
+      // ROS_INFO_STREAM("Found " << correspondences.size() << " good matches with ratio test thresh of " <<
                       ratio_test_thresh_);
 #else  // USE_RATIO_TEST
       std::vector<cv::DMatch> matches;
@@ -590,25 +590,18 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       {
         pcl16::PointXYZ source_pt = obj_feature_point_model_.locations.at(matches[i].trainIdx);
         pcl16::PointXYZ target_pt = obj_model_detected.locations.at(matches[i].queryIdx);
-        bool add_pts = true;
-        if (isnan(source_pt.x) || isnan(source_pt.y) || isnan(source_pt.z))
+        if (isnan(source_pt.x) || isnan(source_pt.y) || isnan(source_pt.z) ||
+            isnan(target_pt.x) || isnan(target_pt.y) || isnan(target_pt.z))
         {
-          ROS_WARN_STREAM("nan point in source_cloud at " << i << " -> " << source_pt);
-          add_pts = false;
         }
-        if (isnan(target_pt.x) || isnan(target_pt.y) || isnan(target_pt.z))
-        {
-          ROS_WARN_STREAM("nan point in target_cloud at " << i << " -> " << target_pt);
-          add_pts = false;
-        }
-        if (add_pts)
+        else
         {
           correspondences.push_back(pcl16::Correspondence(matches[i].trainIdx,
                                                           matches[i].queryIdx,
                                                           matches[i].distance));
         }
       }
-      ROS_INFO_STREAM("Found " << correspondences.size() << " good matches");
+      // ROS_INFO_STREAM("Found " << correspondences.size() << " good matches");
 #endif
 #ifdef PROFILE_COMPUTE_STATE_TIME
       long long feature_align_start_time = Timer::nanoTime();
@@ -783,8 +776,23 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
 
+  if (frame_count_ < 1)
+  {
+    if (proxy_name == ELLIPSE_PROXY)
+    {
+      trackerDisplay(in_frame, cur_obj, obj_ellipse);
+    }
+    else if(proxy_name == BOUNDING_BOX_XY_PROXY)
+    {
+      trackerBoxDisplay(in_frame, cur_obj, obj_ellipse);
+    }
+    else
+    {
+      trackerDisplay(in_frame, state, cur_obj);
+    }
+  }
 #ifdef USE_DISPLAY
-  if (use_displays_ || write_to_disk_)
+  else if (use_displays_ || write_to_disk_)
   {
     if (proxy_name == ELLIPSE_PROXY)
     {
@@ -1049,11 +1057,11 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
   }
   if (frame_count_ < 1)
   {
-    ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid initial 3D keypoints.");
+    // ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid initial 3D keypoints.");
   }
   else
   {
-    ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid 3D keypoints.");
+    // ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid 3D keypoints.");
   }
 
 #ifdef VISUALIZE_FEATURE_POINT_PROXY
@@ -1154,16 +1162,16 @@ bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
     if (cur_inliers.size() > inliers.size())
     {
       inliers.assign(cur_inliers.begin(), cur_inliers.end());
-      ROS_INFO_STREAM("Found " << inliers.size() << " inliers at " <<
-                      static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 <<
-                      "% on iteration " << iter);
+      // ROS_INFO_STREAM("Found " << inliers.size() << " inliers at " <<
+      //                 static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 <<
+      //                 "% on iteration " << iter);
     }
     // Check convergence
     if (static_cast<float>(inliers.size())/static_cast<float>(correspondences.size()) >
         feature_point_ransac_inlier_percent_thresh_)
     {
       // TODO: Cleanup if necessary
-      ROS_INFO_STREAM("Converged since found over " << 100*feature_point_ransac_inlier_percent_thresh_ << "% inliers");
+      // ROS_INFO_STREAM("Converged since found over " << 100*feature_point_ransac_inlier_percent_thresh_ << "% inliers");
       break;
     }
   }
@@ -1171,7 +1179,7 @@ bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
   // Compute final transform using all inlier points
   feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations, inliers,
                                                            transform);
-  ROS_INFO_STREAM("Found final transform of \n" << transform << "\n");
+  // ROS_INFO_STREAM("Found final transform of \n" << transform << "\n");
   return true;
 }
 
@@ -1438,16 +1446,13 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
   cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
   cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
   cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(25, 252, 255), 1);
-  if (use_displays_)
+  if (frame_count_ < 1)
   {
-    if (frame_count_ < 1)
-    {
-      cv::imshow("Init State", centroid_frame);
-    }
-    else
-    {
-      cv::imshow("Object State", centroid_frame);
-    }
+    cv::imshow("Init State", centroid_frame);
+  }
+  else if (use_displays_)
+  {
+    cv::imshow("Object State", centroid_frame);
   }
   if (write_to_disk_ && !isPaused())
   {
@@ -1507,16 +1512,13 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   {
     cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(25, 252, 255), 1);
   }
-  if (use_displays_)
+  if (frame_count_ < 1)
   {
-    if (frame_count_ < 1)
-    {
-      cv::imshow("Init State", centroid_frame);
-    }
-    else
-    {
-      cv::imshow("Object State", centroid_frame);
-    }
+    cv::imshow("Init State", centroid_frame);
+  }
+  else if (use_displays_)
+  {
+    cv::imshow("Object State", centroid_frame);
   }
   if (write_to_disk_ && !isPaused())
   {
@@ -1572,16 +1574,13 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
   // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
 
-  if (use_displays_)
+  if (frame_count_ < 1)
   {
-    if (frame_count_ < 1)
-    {
-      cv::imshow("Init State", centroid_frame);
-    }
-    else
-    {
-      cv::imshow("Object State", centroid_frame);
-    }
+    cv::imshow("Init State", centroid_frame);
+  }
+  else if (use_displays_ || other_color)
+  {
+    cv::imshow("Object State", centroid_frame);
   }
   if (write_to_disk_ && !isPaused())
   {
