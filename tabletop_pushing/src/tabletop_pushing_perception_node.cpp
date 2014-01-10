@@ -210,9 +210,12 @@ class TabletopPushingPerceptionNode
     n_private_.param("write_dyn_learning_to_disk", write_dyn_to_disk_, false);
 
     n_private_.param("min_workspace_x", pcl_segmenter_->min_workspace_x_, 0.0);
-    n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
     n_private_.param("max_workspace_x", pcl_segmenter_->max_workspace_x_, 0.0);
+    n_private_.param("min_workspace_y", pcl_segmenter_->min_workspace_y_, 0.0);
+    n_private_.param("max_workspace_y", pcl_segmenter_->min_workspace_y_, 0.0);
+    n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
     n_private_.param("max_workspace_z", pcl_segmenter_->max_workspace_z_, 0.0);
+
     n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
     n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
 
@@ -315,6 +318,9 @@ class TabletopPushingPerceptionNode
     int brief_descriptor_byte_size; // must be 16, 32, or 64
     n_private_.param("brief_descriptor_byte_size", brief_descriptor_byte_size, 16);
 
+    double segment_search_radius;
+    n_private_.param("tracker_segment_search_radius", segment_search_radius, 0.3);
+
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
 
@@ -339,7 +345,8 @@ class TabletopPushingPerceptionNode
                              feature_point_close_size, feature_point_icp_max_iters, feature_point_icp_transform_eps,
                              feature_point_icp_ransac_thresh, feature_point_icp_max_ransac_iters,
                              feature_point_icp_max_fitness_eps, brief_descriptor_byte_size,
-                             feature_point_ratio_test_thresh));
+                             feature_point_ratio_test_thresh,
+                             segment_search_radius));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,

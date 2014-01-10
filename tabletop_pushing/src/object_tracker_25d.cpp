@@ -46,7 +46,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    int feature_point_close_size, int icp_max_iters, float icp_transform_eps,
                                    float icp_ransac_thresh, int icp_max_ransac_iters,
                                    float icp_max_fitness_eps, int brief_descriptor_byte_size,
-                                   float feature_point_ratio_test_thresh) :
+                                   float feature_point_ratio_test_thresh,
+                                   double segment_search_radius) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -65,7 +66,8 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
 #else
     matcher_(cv::NORM_HAMMING, true),
 #endif
-    ratio_test_thresh_(feature_point_ratio_test_thresh)
+    ratio_test_thresh_(feature_point_ratio_test_thresh),
+    segment_search_radius_(segment_search_radius)
 {
   upscale_ = std::pow(2,num_downsamples_);
   cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
@@ -177,7 +179,14 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   long long find_target_start_time = Timer::nanoTime();
 #endif
   ProtoObjects objs;
-  pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
+  if (init)
+  {
+    pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
+  }
+  else
+  {
+    pcl_segmenter_->findTabletopObjectsRestricted(cloud, objs, previous_state_.x, segment_search_radius_);
+  }
 #ifdef PROFILE_FIND_TARGET_TIME
   double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);

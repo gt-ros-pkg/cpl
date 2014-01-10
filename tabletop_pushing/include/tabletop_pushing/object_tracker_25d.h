@@ -91,7 +91,8 @@ class ObjectTracker25D
                    float icp_transform_eps = 0.001,
                    float icp_ransac_thresh = 0.01,
                    int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.001,
-                   int brief_descriptor_byte_size = 16, float feature_point_ratio_test_thresh=0.75);
+                   int brief_descriptor_byte_size = 16, float feature_point_ratio_test_thresh=0.75,
+                   double segment_search_radius = 0.3);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -257,6 +258,7 @@ class ObjectTracker25D
 #endif
 
   double ratio_test_thresh_;
+  double segment_search_radius_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED
