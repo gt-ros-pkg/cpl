@@ -25,6 +25,7 @@
 // #define USE_BOUNDARY_TRANSFORM_GUESS 1
 // #define USE_FRAME_TO_FRAME_MATCHING 1
 // #define USE_RATIO_TEST 1
+// #define USE_RESTRICTED_SEARCH 1
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
@@ -181,6 +182,7 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   long long find_target_start_time = Timer::nanoTime();
 #endif
   ProtoObjects objs;
+#ifdef USE_RESTRICTED_SEARCH
   if (init)
   {
     pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
@@ -189,6 +191,9 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   {
     pcl_segmenter_->findTabletopObjectsRestricted(cloud, objs, previous_state_.x, segment_search_radius_);
   }
+#else // USE_RESTRICTED_SEARCH
+  pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
+#endif
 #ifdef PROFILE_FIND_TARGET_TIME
   double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);
