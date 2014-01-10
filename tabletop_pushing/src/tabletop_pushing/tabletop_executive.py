@@ -350,6 +350,9 @@ class TabletopExecutive:
                 else:
                     done_with_push = True
                     rospy.loginfo('Stopping push attempt because of too many restarts\n')
+            elif push_res.failed_pre_position:
+                rospy.loginfo('Stopping push because of failed pre positioning\n')
+                done_with_push = True
             else:
                 rospy.loginfo('Stopping push attempt because reached goal\n')
                 done_with_push = True
