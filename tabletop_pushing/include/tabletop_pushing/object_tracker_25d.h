@@ -43,7 +43,7 @@
 #include <pcl16/point_cloud.h>
 #include <pcl16/point_types.h>
 #include <pcl16/registration/icp.h>
-#include <pcl16/registration/icp_nl.h>
+#include <pcl16/registration/transformation_estimation_svd.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
@@ -63,7 +63,6 @@
 
 // Functional IFDEFS
 #define USE_ORB 1
-// #define USE_NL_ICP 1
 
 namespace tabletop_pushing
 {
@@ -76,52 +75,6 @@ class ObjectFeaturePointModel
   std::vector<int> bad_locs;
 };
 
-template <typename PointSource, typename PointTarget> class ObjectFeaturePointICP :
-      public pcl16::Registration<PointSource, PointTarget>
-{
-  typedef typename Registration<PointSource, PointTarget>::PointCloudSource PointCloudSource;
-  typedef typename PointCloudSource::Ptr PointCloudSourcePtr;
-  typedef typename PointCloudSource::ConstPtr PointCloudSourceConstPtr;
-
-  typedef typename Registration<PointSource, PointTarget>::PointCloudTarget PointCloudTarget;
-  typedef PointIndices::Ptr PointIndicesPtr;
-  typedef PointIndices::ConstPtr PointIndicesConstPtr;
-
- public:
-  IterativeClosestPoint ()
-  {
-    reg_name_ = "IterativeClosestPoint";
-    ransac_iterations_ = 1000;
-    transformation_estimation_.reset (new pcl::registration::TransformationEstimationSVD<PointSource, PointTarget>);
-  };
-
-  // void setSourceIndices(std::vector<
-
- protected:
-  virtual void computeTransformation (PointCloudSource &output, const Eigen::Matrix4f &guess);
-
-  using Registration<PointSource, PointTarget>::reg_name_;
-  using Registration<PointSource, PointTarget>::getClassName;
-  using Registration<PointSource, PointTarget>::input_;
-  using Registration<PointSource, PointTarget>::indices_;
-  using Registration<PointSource, PointTarget>::target_;
-  using Registration<PointSource, PointTarget>::nr_iterations_;
-  using Registration<PointSource, PointTarget>::max_iterations_;
-  using Registration<PointSource, PointTarget>::ransac_iterations_;
-  using Registration<PointSource, PointTarget>::previous_transformation_;
-  using Registration<PointSource, PointTarget>::final_transformation_;
-  using Registration<PointSource, PointTarget>::transformation_;
-  using Registration<PointSource, PointTarget>::transformation_epsilon_;
-  using Registration<PointSource, PointTarget>::converged_;
-  using Registration<PointSource, PointTarget>::corr_dist_threshold_;
-  using Registration<PointSource, PointTarget>::inlier_threshold_;
-  using Registration<PointSource, PointTarget>::min_number_correspondences_;
-  using Registration<PointSource, PointTarget>::update_visualizer_;
-  using Registration<PointSource, PointTarget>::correspondence_distances_;
-  using Registration<PointSource, PointTarget>::euclidean_fitness_epsilon_;
-  using Registration<PointSource, PointTarget>::transformation_estimation_;
-};
-
 class ObjectTracker25D
 {
  public:
@@ -132,13 +85,14 @@ class ObjectTracker25D
                    std::string base_output_path="", std::string camera_frame="",
                    bool use_cv_ellipse = false, bool use_mps_segmentation=false,
                    bool use_graphcut_arm_seg_=false,
-                   double hull_alpha=0.01, int feature_close_size=3,
-                   int icp_max_iters = 1000,
-                   float icp_transform_eps = 0.001,
-                   float icp_ransac_thresh = 0.01,
-                   int icp_max_ransac_iters = 10, float icp_max_fitness_eps = 0.001,
-                   int brief_descriptor_byte_size = 16, float feature_point_ratio_test_thresh=0.75,
-                   double segment_search_radius = 0.3);
+                   double hull_alpha = 0.01,
+                   int feature_close_size = 3,
+                   float feature_point_ransac_inlier_thresh = 0.01,
+                   int feature_point_max_ransac_iters = 100,
+                   int brief_descriptor_byte_size = 16,
+                   float feature_point_ratio_test_thresh=0.75,
+                   double segment_search_radius = 0.3,
+                   double feature_point_ransac_inlier_percent_thresh = 0.85);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -170,9 +124,8 @@ class ObjectTracker25D
   void extractFeaturePointModel(cv::Mat& frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud, ProtoObject& obj,
                                 ObjectFeaturePointModel& model);
 
-  bool estimateFeaturePointTransform(ObjectFeaturePointModel& source_model, std::vector<int> source_indices,
-                                     ObjectFeaturePointModel& target_model, std::vector<int> target_indices,
-                                     Eigen::Matrix4f& transform);
+  bool estimateFeaturePointTransform(ObjectFeaturePointModel& source_model, ObjectFeaturePointModel& target_model,
+                                     pcl16::Correspondences correspondences, Eigen::Matrix4f& transform);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
 
@@ -297,14 +250,13 @@ class ObjectTracker25D
   cv::BFMatcher matcher_;
   cv::Mat init_frame_;
   Eigen::Matrix4f previous_transform_;
-#ifdef USE_NL_ICP
-  pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
-#else
-  pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
-#endif
-
+  // pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+  pcl16::registration::TransformationEstimationSVD<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_transform_est_;
   double ratio_test_thresh_;
   double segment_search_radius_;
+  double feature_point_max_ransac_iters_;
+  double feature_point_inlier_squared_dist_thresh_;
+  double feature_point_ransac_inlier_percent_thresh_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

@@ -22,6 +22,7 @@
 // #define USE_DISPLAY 1
 
 // Functional IFDEFS
+#define NUM_RIGID_RANSAC_SAMPLES 4
 // #define USE_BOUNDARY_TRANSFORM_GUESS 1
 // #define USE_FRAME_TO_FRAME_MATCHING 1
 // #define USE_RATIO_TEST 1
@@ -44,11 +45,13 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
                                    bool use_graphcut_arm_seg, double hull_alpha,
-                                   int feature_point_close_size, int icp_max_iters, float icp_transform_eps,
-                                   float icp_ransac_thresh, int icp_max_ransac_iters,
-                                   float icp_max_fitness_eps, int brief_descriptor_byte_size,
+                                   int feature_point_close_size,
+                                   float feature_point_ransac_inlier_thresh,
+                                   int feature_point_max_ransac_iters,
+                                   int brief_descriptor_byte_size,
                                    float feature_point_ratio_test_thresh,
-                                   double segment_search_radius) :
+                                   double segment_search_radius,
+                                   double feature_point_ransac_inlier_percent_thresh) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -68,32 +71,14 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     matcher_(cv::NORM_HAMMING, true),
 #endif
     ratio_test_thresh_(feature_point_ratio_test_thresh),
-    segment_search_radius_(segment_search_radius)
+    segment_search_radius_(segment_search_radius),
+    feature_point_max_ransac_iters_(feature_point_max_ransac_iters),
+    feature_point_inlier_squared_dist_thresh_(feature_point_ransac_inlier_thresh),
+    feature_point_ransac_inlier_percent_thresh_(feature_point_ransac_inlier_percent_thresh)
 {
   upscale_ = std::pow(2,num_downsamples_);
   cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
   tmp_morph.copyTo(feature_point_morph_element_);
-  ROS_INFO_STREAM("Changing ICP iters from " << feature_point_icp_.getMaximumIterations() << " to " <<
-                  icp_max_iters);
-  feature_point_icp_.setMaximumIterations(icp_max_iters);
-
-  ROS_INFO_STREAM("Changing Transfrom epsilon from " << feature_point_icp_.getTransformationEpsilon() << " to " <<
-                  icp_transform_eps);
-  feature_point_icp_.setTransformationEpsilon(icp_transform_eps);
-
-  ROS_INFO_STREAM("Changin RANSAC Outlier Rejection from " << feature_point_icp_.getRANSACOutlierRejectionThreshold() <<
-                  " to " << icp_ransac_thresh);
-  feature_point_icp_.setRANSACOutlierRejectionThreshold(icp_ransac_thresh);
-
-  ROS_INFO_STREAM("Changing RANSAC iters from " << feature_point_icp_.getRANSACIterations() << " to " <<
-                  icp_max_ransac_iters);
-  feature_point_icp_.setRANSACIterations(icp_max_ransac_iters);
-
-  ROS_INFO_STREAM("Changing Euclidean fitness from " << feature_point_icp_.getEuclideanFitnessEpsilon() << " to " <<
-                  icp_max_fitness_eps);
-  feature_point_icp_.setEuclideanFitnessEpsilon(icp_max_fitness_eps);
-
-  ROS_INFO_STREAM("Setting tracker search radius to " << segment_search_radius_);
 }
 
 ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
@@ -566,8 +551,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
                       obj_model_detected.keypoints.size() << " total keypoints");
 
       // Match feature points to model
-      std::vector<int> source_indices;
-      std::vector<int> target_indices;
+      pcl16::Correspondences correspondences;
 #ifdef USE_RATIO_TEST
       std::vector<std::vector<cv::DMatch> > matches;
       matcher_.knnMatch(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches, 2,
@@ -576,21 +560,39 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       {
         if (matches[i][0].distance < ratio_test_thresh_*matches[i][1].distance)
         {
-          source_indices.push_back(matches[i][0].trainIdx);
-          target_indices.push_back(matches[i][0].queryIdx);
+          correspondences.push_back(pcl16::Correspondence(matches[i][0].trainIdx,
+                                                          matches[i][0].queryIdx,
+                                                          matches[i][0].distance));
         }
       }
-      ROS_INFO_STREAM("Found " << source_indices.size() << " good matches with ratio test thresh of " <<
+      ROS_INFO_STREAM("Found " << correspondences.size() << " good matches with ratio test thresh of " <<
                       ratio_test_thresh_);
 #else  // USE_RATIO_TEST
       std::vector<cv::DMatch> matches;
       matcher_.match(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches);
       for (int i = 0; i < matches.size(); ++i)
       {
-        source_indices.push_back(matches[i].trainIdx);
-        target_indices.push_back(matches[i].queryIdx);
+        pcl16::PointXYZ source_pt = obj_feature_point_model_.locations.at(matches[i].trainIdx);
+        pcl16::PointXYZ target_pt = obj_model_detected.locations.at(matches[i].queryIdx);
+        bool add_pts = true;
+        if (isnan(source_pt.x) || isnan(source_pt.y) || isnan(source_pt.z))
+        {
+          ROS_WARN_STREAM("nan point in source_cloud at " << i << " -> " << source_pt);
+          add_pts = false;
+        }
+        if (isnan(target_pt.x) || isnan(target_pt.y) || isnan(target_pt.z))
+        {
+          ROS_WARN_STREAM("nan point in target_cloud at " << i << " -> " << target_pt);
+          add_pts = false;
+        }
+        if (add_pts)
+        {
+          correspondences.push_back(pcl16::Correspondence(matches[i].trainIdx,
+                                                          matches[i].queryIdx,
+                                                          matches[i].distance));
+        }
       }
-      ROS_INFO_STREAM("Found " << source_indices.size() << " good matches");
+      ROS_INFO_STREAM("Found " << correspondences.size() << " good matches");
 #endif
 #ifdef VISUALIZE_FEATURE_POINT_ICP_PROXY
       ROS_INFO_STREAM("Displaying stuff");
@@ -622,8 +624,8 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
 
       // Estimate transform
       Eigen::Matrix4f transform;
-      bool converged = estimateFeaturePointTransform(obj_feature_point_model_, source_indices, obj_model_detected,
-                                                     target_indices, transform);
+      bool converged = estimateFeaturePointTransform(obj_feature_point_model_, obj_model_detected, correspondences,
+                                                     transform);
       if (!converged)
       {
         ROS_WARN_STREAM("ICP did not converge. Estimating state from ellipse");
@@ -676,20 +678,17 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       ROS_INFO_STREAM("Updating previous model");
       obj_model_detected.descriptors.copyTo(obj_feature_point_model_.descriptors);
       obj_feature_point_model_.locations.clear();
-      obj_feature_point_model_.keypoints.clear();
-      obj_feature_point_model_.bad_locs.clear();
+      obj_feature_point_model_.locations.width = obj_model_detected.locations.size();
+      obj_feature_point_model_.locations.height = 1;
+      obj_feature_point_model_.locations.resize(obj_feature_point_model_.locations.width);
       for (int i = 0; i < obj_model_detected.locations.size(); ++i)
       {
-        obj_feature_point_model_.locations.push_back(obj_model_detected.locations[i]);
+        obj_feature_point_model_.locations.push_back(obj_model_detected.locations[0]);
       }
-      for (int i = 0; i < obj_model_detected.keypoints.size(); ++i)
-      {
-        obj_feature_point_model_.keypoints.push_back(obj_model_detected.keypoints[i]);
-      }
-      for (int i = 0; i < obj_model_detected.bad_locs.size(); ++i)
-      {
-        obj_feature_point_model_.bad_locs.push_back(obj_model_detected.bad_locs[i]);
-      }
+      obj_feature_point_model_.keypoints.assign(obj_model_detected.keypoints.begin(),
+                                                obj_model_detected.keypoints.end());
+      obj_feature_point_model_.bad_locs.assign(obj_model_detected.bad_locs.begin(),
+                                               obj_model_detected.bad_locs.end());
 #endif// USE_FRAME_TO_FRAME_MATCHING
     }
   }
@@ -1054,62 +1053,84 @@ void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& c
 }
 
 bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& source_model,
-                                                     std::vector<int> source_indices,
                                                      ObjectFeaturePointModel& target_model,
-                                                     std::vector<int> target_indices,
+                                                     pcl16::Correspondences correspondences,
                                                      Eigen::Matrix4f& transform)
 {
-  boost::shared_ptr<XYZPointCloud> source_cloud(new XYZPointCloud);
-  source_cloud->width = source_indices.size();
-  source_cloud->height = 1;
-  source_cloud->is_dense = false;
-  source_cloud->resize(source_cloud->width);
-  source_cloud->header = source_model.locations.header;
-
-  boost::shared_ptr<XYZPointCloud> target_cloud(new XYZPointCloud);
-  target_cloud->width = target_indices.size();
-  target_cloud->height = 1;
-  target_cloud->is_dense = false;
-  target_cloud->resize(target_cloud->width);
-  target_cloud->header = target_model.locations.header;
-
-  for (int i = 0; i < source_indices.size(); ++i)
+  if (correspondences.size() < NUM_RIGID_RANSAC_SAMPLES)
   {
-    pcl16::PointXYZ source_pt = source_model.locations.at(source_indices[i]);
-    pcl16::PointXYZ target_pt = target_model.locations.at(target_indices[i]);
-    bool add_pts = true;
-    if (isnan(source_pt.x) || isnan(source_pt.y) || isnan(source_pt.z))
+    ROS_WARN_STREAM("Too few feature point samples to estimate rigid transform");
+    return false;
+  }
+  // Just estimate the transform and return if there is no sampling to be done
+  if (correspondences.size() == NUM_RIGID_RANSAC_SAMPLES)
+  {
+    ROS_WARN_STREAM("Estimating transfrom from 4 samples.");
+    feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations,
+                                                             correspondences, transform);
+    return true;
+  }
+
+  // Setup indices from which to sample
+  std::vector<int> sample_indices;
+  for (int i = 0; i < correspondences.size(); ++i)
+  {
+    sample_indices.push_back(i);
+  }
+
+  pcl16::Correspondences inliers;
+  for (int iter = 0; iter < feature_point_max_ransac_iters_; ++iter)
+  {
+    std::vector<int> available_sample_indices(sample_indices.begin(), sample_indices.end());
+    pcl16::Correspondences samples;
+    Eigen::Matrix4f cur_transform;
+    for (int i = 0; i < NUM_RIGID_RANSAC_SAMPLES; ++i)
     {
-      ROS_WARN_STREAM("nan point in source_cloud at " << i << " -> " << source_pt);
-      add_pts = false;
+      // Sample pair from source & target indices
+      int rand_idx = rand() % available_sample_indices.size();
+      samples.push_back(correspondences[rand_idx]);
+      // Remove rand_idx from available_sample_indices
+      available_sample_indices.erase(available_sample_indices.begin()+rand_idx);
     }
-    if (isnan(target_pt.x) || isnan(target_pt.y) || isnan(target_pt.z))
+    feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations,
+                                                             samples, cur_transform);
+    // Check all other pairs for inliears vs outliers
+    pcl16::Correspondences cur_inliers(samples);
+    for (unsigned int i = 0; i < available_sample_indices.size(); ++i)
     {
-      ROS_WARN_STREAM("nan point in target_cloud at " << i << " -> " << target_pt);
-      add_pts = false;
+      int idx = available_sample_indices[i];
+      Eigen::Vector4f source_pt(source_model.locations[correspondences[idx].index_query].x,
+                                source_model.locations[correspondences[idx].index_query].y,
+                                source_model.locations[correspondences[idx].index_query].z,
+                                1.0f);
+      Eigen::Vector4f transformed_pt = cur_transform*source_pt;
+      pcl16::PointXYZ target_pt = target_model.locations[correspondences[idx].index_match];
+      // Add correspondence to inlier set if the error is less than the set threshold
+      if ( PointCloudSegmentation::sqrDist(target_pt, transformed_pt) < feature_point_inlier_squared_dist_thresh_)
+      {
+        cur_inliers.push_back(correspondences[idx]);
+      }
     }
-    if (add_pts)
+    if (cur_inliers.size() > inliers.size())
     {
-      target_cloud->at(i) = target_pt;
-      source_cloud->at(i) = source_pt;
+      inliers.assign(cur_inliers.begin(), cur_inliers.end());
+      ROS_INFO_STREAM("Found " << inliers.size() << " inliers at " <<
+                      static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 << "%");
+    }
+    // Check convergence
+    if (static_cast<float>(inliers.size())/static_cast<float>(correspondences.size()) >
+        feature_point_ransac_inlier_percent_thresh_)
+    {
+      // TODO: Cleanup if necessary
+      ROS_INFO_STREAM("Converged since found over " << 100*feature_point_ransac_inlier_percent_thresh_ << "% inliers");
+      break;
     }
   }
 
-  feature_point_icp_.setInputCloud(source_cloud);
-  feature_point_icp_.setInputTarget(target_cloud);
-
-  ROS_INFO_STREAM("Aligning with initial guess: \n" << previous_transform_);
-  XYZPointCloud aligned;
-#ifdef USE_FRAME_TO_FRAME_MATCHING
-  feature_point_icp_.align(aligned, Eigen::Matrix4f::Identity());
-#else
-  feature_point_icp_.align(aligned, previous_transform_);
-#endif
-  transform = feature_point_icp_.getFinalTransformation();
-  ROS_INFO_STREAM("Found transform of: \n" << transform);
-  double score = feature_point_icp_.getFitnessScore();
-  ROS_INFO_STREAM("Fitness of: " << score << "\n");
-  return feature_point_icp_.hasConverged();
+  // Compute final transform using all inlier points
+  feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations, inliers,
+                                                           transform);
+  return true;
 }
 
 void ObjectTracker25D::estimateTransformFromStateChange(PushTrackerState& state,
@@ -1275,7 +1296,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
     // Estimate dynamics and do some bookkeeping
     double delta_x = state.x.x - previous_state_.x.x;
     double delta_y = state.x.y - previous_state_.x.y;
-    double delta_z = state.z - previous_state_.z;
+    // double delta_z = state.z - previous_state_.z;
     double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
     double delta_t = state.header.stamp.toSec() - previous_time_;
     state.x_dot.x = delta_x/delta_t;

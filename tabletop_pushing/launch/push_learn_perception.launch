@@ -99,8 +99,8 @@
     <param name="feature_point_close_size" value="3" type="int"/>
     <param name="feature_point_icp_max_iters" value="1000" type="int"/>
     <param name="feature_point_icp_transform_eps" value="0" type="double"/>
-    <param name="feature_point_icp_ransac_thresh" value="0.025" type="double"/>
-    <param name="feature_point_icp_max_ransac_iters" value="1000" type="int"/>
+    <param name="feature_point_icp_ransac_thresh" value="0.005" type="double"/>
+    <param name="feature_point_icp_max_ransac_iters" value="100" type="int"/>
     <param name="feature_point_icp_max_fitness_eps" value="0.0001" type="double"/>
 
     <param name="brief_descriptor_byte_size" value="16" type="int"/>

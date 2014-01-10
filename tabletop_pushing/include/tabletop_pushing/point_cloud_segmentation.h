@@ -253,6 +253,14 @@ class PointCloudSegmentation
     return dx*dx+dy*dy+dz*dz;
   }
 
+  static inline double sqrDist(pcl16::PointXYZ a, Eigen::Vector4f b)
+  {
+    const double dx = a.x-b[0];
+    const double dy = a.y-b[1];
+    const double dz = a.z-b[2];
+    return dx*dx+dy*dy+dz*dz;
+  }
+
   static inline double sqrDistXY(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
     const double dx = a.x-b.x;

@@ -304,16 +304,14 @@ class TabletopPushingPerceptionNode
     n_.param("use_graphcut_arm_seg", use_graphcut_arm_seg_, false);
 
     // feature point icp settings
-    int feature_point_close_size, feature_point_icp_max_iters, feature_point_icp_max_ransac_iters;
-    double feature_point_icp_transform_eps, feature_point_icp_ransac_thresh,
-        feature_point_icp_max_fitness_eps, feature_point_ratio_test_thresh;
+    int feature_point_close_size, feature_point_max_ransac_iters;
+    double feature_point_ransac_inlier_thresh, feature_point_ratio_test_thresh,
+        feature_point_ransac_inlier_percent_thresh;
     n_private_.param("feature_point_close_size", feature_point_close_size, 3);
-    n_private_.param("feature_point_icp_max_iters", feature_point_icp_max_iters, 1000);
-    n_private_.param("feature_point_icp_max_ransac_iters", feature_point_icp_max_ransac_iters, 10);
-    n_private_.param("feature_point_icp_transform_eps", feature_point_icp_transform_eps, 0.001);
-    n_private_.param("feature_point_icp_ransac_thresh", feature_point_icp_ransac_thresh, 0.01);
-    n_private_.param("feature_point_icp_max_fitness_eps", feature_point_icp_max_fitness_eps, 0.001);
+    n_private_.param("feature_point_max_ransac_iters", feature_point_max_ransac_iters, 10);
+    n_private_.param("feature_point_ransac_inlier_thresh", feature_point_ransac_inlier_thresh, 0.01);
     n_private_.param("feature_point_ratio_test_thresh", feature_point_ratio_test_thresh, 0.75);
+    n_private_.param("feature_point_ransac_inlier_percent_thresh", feature_point_ransac_inlier_percent_thresh, 0.85);
 
     int brief_descriptor_byte_size; // must be 16, 32, or 64
     n_private_.param("brief_descriptor_byte_size", brief_descriptor_byte_size, 16);
@@ -342,11 +340,13 @@ class TabletopPushingPerceptionNode
                              use_displays_, write_to_disk_, base_output_path_,
                              camera_frame_, use_cv_ellipse, use_mps_segmentation_,
                              use_graphcut_arm_seg_, hull_alpha_,
-                             feature_point_close_size, feature_point_icp_max_iters, feature_point_icp_transform_eps,
-                             feature_point_icp_ransac_thresh, feature_point_icp_max_ransac_iters,
-                             feature_point_icp_max_fitness_eps, brief_descriptor_byte_size,
+                             feature_point_close_size,
+                             feature_point_ransac_inlier_thresh,
+                             feature_point_max_ransac_iters,
+                             brief_descriptor_byte_size,
                              feature_point_ratio_test_thresh,
-                             segment_search_radius));
+                             segment_search_radius,
+                             feature_point_ransac_inlier_percent_thresh));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
