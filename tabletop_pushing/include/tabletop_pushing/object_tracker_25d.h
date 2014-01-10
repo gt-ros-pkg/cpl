@@ -76,9 +76,51 @@ class ObjectFeaturePointModel
   std::vector<int> bad_locs;
 };
 
-// template <typename PointSource, typename PointTarget> class ObjectFeaturePointICP : public pcl16::Registration<PointSource, PointTarget>
-// {
-// }
+template <typename PointSource, typename PointTarget> class ObjectFeaturePointICP :
+      public pcl16::Registration<PointSource, PointTarget>
+{
+  typedef typename Registration<PointSource, PointTarget>::PointCloudSource PointCloudSource;
+  typedef typename PointCloudSource::Ptr PointCloudSourcePtr;
+  typedef typename PointCloudSource::ConstPtr PointCloudSourceConstPtr;
+
+  typedef typename Registration<PointSource, PointTarget>::PointCloudTarget PointCloudTarget;
+  typedef PointIndices::Ptr PointIndicesPtr;
+  typedef PointIndices::ConstPtr PointIndicesConstPtr;
+
+ public:
+  IterativeClosestPoint ()
+  {
+    reg_name_ = "IterativeClosestPoint";
+    ransac_iterations_ = 1000;
+    transformation_estimation_.reset (new pcl::registration::TransformationEstimationSVD<PointSource, PointTarget>);
+  };
+
+  // void setSourceIndices(std::vector<
+
+ protected:
+  virtual void computeTransformation (PointCloudSource &output, const Eigen::Matrix4f &guess);
+
+  using Registration<PointSource, PointTarget>::reg_name_;
+  using Registration<PointSource, PointTarget>::getClassName;
+  using Registration<PointSource, PointTarget>::input_;
+  using Registration<PointSource, PointTarget>::indices_;
+  using Registration<PointSource, PointTarget>::target_;
+  using Registration<PointSource, PointTarget>::nr_iterations_;
+  using Registration<PointSource, PointTarget>::max_iterations_;
+  using Registration<PointSource, PointTarget>::ransac_iterations_;
+  using Registration<PointSource, PointTarget>::previous_transformation_;
+  using Registration<PointSource, PointTarget>::final_transformation_;
+  using Registration<PointSource, PointTarget>::transformation_;
+  using Registration<PointSource, PointTarget>::transformation_epsilon_;
+  using Registration<PointSource, PointTarget>::converged_;
+  using Registration<PointSource, PointTarget>::corr_dist_threshold_;
+  using Registration<PointSource, PointTarget>::inlier_threshold_;
+  using Registration<PointSource, PointTarget>::min_number_correspondences_;
+  using Registration<PointSource, PointTarget>::update_visualizer_;
+  using Registration<PointSource, PointTarget>::correspondence_distances_;
+  using Registration<PointSource, PointTarget>::euclidean_fitness_epsilon_;
+  using Registration<PointSource, PointTarget>::transformation_estimation_;
+};
 
 class ObjectTracker25D
 {
