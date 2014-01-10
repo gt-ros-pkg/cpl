@@ -202,7 +202,7 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   if (find_centroid)
   {
     pcl16::compute3DCentroid(plane_cloud, table_centroid);
-    ROS_WARN_STREAM("Updating table z to: " << table_centroid[2]);
+    // ROS_WARN_STREAM("Updating table z to: " << table_centroid[2]);
     table_z_ = table_centroid[2];
   }
   // cv::Size img_size(320, 240);
