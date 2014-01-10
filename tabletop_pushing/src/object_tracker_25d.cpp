@@ -313,6 +313,9 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   double copy_state_elapsed_time = 0.0;
   double icp_elapsed_time = 0.0;
   double update_stuff_elapsed_time = 0.0;
+  double feature_extract_elapsed_time = 0.0;
+  double feature_match_elapsed_time = 0.0;
+  double feature_align_elapsed_time = 0.0;
 #endif // PROFILE_COMPUTE_STATE_TIME
 
   // TODO: Have each proxy create an image, and send that image to the trackerDisplay
@@ -512,18 +515,39 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   }
   else if (proxy_name == FEATURE_POINT_PROXY)
   {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    long long feature_extract_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
     if (init_state)
     {
       // Extract object model
       updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
       extractFeaturePointModel(in_frame, cloud, cur_obj, obj_feature_point_model_);
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      feature_extract_elapsed_time = (((double)(Timer::nanoTime() - feature_extract_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
     }
     else
     {
       // Get feature points for current model
       ObjectFeaturePointModel obj_model_detected;
       extractFeaturePointModel(in_frame, cloud, cur_obj, obj_model_detected);
+      // ROS_INFO_STREAM("object source model has " << obj_feature_point_model_.bad_locs.size() << " bad locs from " <<
+      //                 obj_feature_point_model_.keypoints.size() << " total keypoints");
+      // ROS_INFO_STREAM("object target model has " << obj_model_detected.bad_locs.size() << " bad locs from " <<
+      //                 obj_model_detected.keypoints.size() << " total keypoints");
 
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long feature_match_start_time = Timer::nanoTime();
+      feature_extract_elapsed_time = (((double)(feature_match_start_time - feature_extract_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
+      // Match feature points to model
+      pcl16::Correspondences correspondences;
+#ifdef USE_RATIO_TEST
       // Setup mask of bad locs to not match to them
       cv::Mat no_match_mask(obj_model_detected.keypoints.size(), obj_feature_point_model_.keypoints.size(),
                             CV_8UC1, cv::Scalar(1) );
@@ -545,14 +569,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         }
       }
 
-      // ROS_INFO_STREAM("object source model has " << obj_feature_point_model_.bad_locs.size() << " bad locs from " <<
-      //                 obj_feature_point_model_.keypoints.size() << " total keypoints");
-      // ROS_INFO_STREAM("object target model has " << obj_model_detected.bad_locs.size() << " bad locs from " <<
-      //                 obj_model_detected.keypoints.size() << " total keypoints");
-
-      // Match feature points to model
-      pcl16::Correspondences correspondences;
-#ifdef USE_RATIO_TEST
       std::vector<std::vector<cv::DMatch> > matches;
       matcher_.knnMatch(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches, 2,
                         no_match_mask, true);
@@ -594,6 +610,12 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       ROS_INFO_STREAM("Found " << correspondences.size() << " good matches");
 #endif
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long feature_align_start_time = Timer::nanoTime();
+      feature_match_elapsed_time = (((double)(feature_align_start_time - feature_match_start_time)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
 #ifdef VISUALIZE_FEATURE_POINT_PROXY
       cv::Mat match_img = in_frame.clone();
       for (int i = 0; i < matches.size(); ++i)
@@ -625,6 +647,12 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       Eigen::Matrix4f transform;
       bool converged = estimateFeaturePointTransform(obj_feature_point_model_, obj_model_detected, correspondences,
                                                      transform);
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long copy_state_start_time = Timer::nanoTime();
+      feature_align_elapsed_time = (((double)(copy_state_start_time - feature_align_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
       if (!converged)
       {
         ROS_WARN_STREAM("RANSAC did not converge. Estimating state from ellipse");
@@ -684,6 +712,11 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       obj_feature_point_model_.bad_locs.assign(obj_model_detected.bad_locs.begin(),
                                                obj_model_detected.bad_locs.end());
 #endif// USE_FRAME_TO_FRAME_MATCHING
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      copy_state_elapsed_time = (((double)(Timer::nanoTime() - copy_state_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     }
   }
   else
@@ -772,16 +805,28 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
   double compute_state_elapsed_time = (((double)(Timer::nanoTime() - compute_state_start_time)) /
                                           Timer::NANOSECONDS_PER_SECOND);
   ROS_INFO_STREAM("compute_state_elapsed_time " << compute_state_elapsed_time);
-  ROS_INFO_STREAM("\t fit_ellipse_elapsed_time " << fit_ellipse_elapsed_time << "\t\t\t" <<
-                  (100.0*fit_ellipse_elapsed_time/compute_state_elapsed_time) << "\%");
-  ROS_INFO_STREAM("\t boundary_samples_elapsed_time " << boundary_samples_elapsed_time << "\t" <<
-                  (100.0*boundary_samples_elapsed_time/compute_state_elapsed_time) << "\%");
+  if (proxy_name == HULL_ICP_PROXY)
+  {
+    ROS_INFO_STREAM("\t fit_ellipse_elapsed_time " << fit_ellipse_elapsed_time << "\t\t\t" <<
+                    (100.0*fit_ellipse_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t boundary_samples_elapsed_time " << boundary_samples_elapsed_time << "\t" <<
+                    (100.0*boundary_samples_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t icp_elapsed_time " << icp_elapsed_time << "\t\t\t" <<
+                    (100.0*icp_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t update_stuff_elapsed_time " << update_stuff_elapsed_time << "\t\t" <<
+                    (100.0*update_stuff_elapsed_time/compute_state_elapsed_time) << "\%");
+  }
+  if (proxy_name == FEATURE_POINT_PROXY)
+  {
+    ROS_INFO_STREAM("\t feature_extract_elapsed_time " << feature_extract_elapsed_time << "\t\t" <<
+                    (100.0*feature_extract_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t feature_match_elapsed_time " << feature_match_elapsed_time << "\t\t" <<
+                    (100.0*feature_match_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t feature_align_elapsed_time " << feature_align_elapsed_time << "\t\t" <<
+                    (100.0*feature_align_elapsed_time/compute_state_elapsed_time) << "\%");
+  }
   ROS_INFO_STREAM("\t copy_state_elapsed_time " << copy_state_elapsed_time << "\t\t" <<
-                  (100.0*copy_state_elapsed_time/compute_state_elapsed_time) << "\%");
-  ROS_INFO_STREAM("\t icp_elapsed_time " << icp_elapsed_time << "\t\t\t" <<
-                  (100.0*icp_elapsed_time/compute_state_elapsed_time) << "\%");
-  ROS_INFO_STREAM("\t update_stuff_elapsed_time " << update_stuff_elapsed_time << "\t\t" <<
-                  (100.0*update_stuff_elapsed_time/compute_state_elapsed_time) << "\%\n");
+                  (100.0*copy_state_elapsed_time/compute_state_elapsed_time) << "\%\n");
 #endif // PROFILE_COMPUTE_STATE_TIME
 
 }
@@ -1111,7 +1156,7 @@ bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& so
       inliers.assign(cur_inliers.begin(), cur_inliers.end());
       ROS_INFO_STREAM("Found " << inliers.size() << " inliers at " <<
                       static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 <<
-                      "% on iteration" << iter);
+                      "% on iteration " << iter);
     }
     // Check convergence
     if (static_cast<float>(inliers.size())/static_cast<float>(correspondences.size()) >
