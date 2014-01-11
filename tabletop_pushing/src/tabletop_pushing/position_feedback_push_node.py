@@ -280,6 +280,7 @@ class PositionFeedbackPushNode:
         self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.03)
         self.min_num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 2)
         self.mpc_max_step_size = rospy.get_param('~mpc_max_step_size', 0.01)
+        self.open_loop_segment_length = rospy.get_param('~sqp_open_loop_segment_length', 10)
 
         # Set joint gains
         self.arm_mode = None
@@ -717,28 +718,52 @@ class PositionFeedbackPushNode:
                          push_request.obj_start_pose.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
 
-        # Get push plan using SQP via MPC class, set H to full sequence length
-        self.SQPOpt.H = len(x_d)-1
-        self.SQPOpt.regenerate_bounds()
-        rospy.loginfo('Solving optimization for push plan')
-        q_star = self.SQPOpt.feedbackControl(x0, x_d)
-
-        # Loop through the plan converting the SQP results into twist messages
+        # Get push plan using SQP via MPC class
+        H = self.open_loop_segment_length
+        num_segments = int(ceil(float(len(x_d))/H))
         control_tape = []
+        q_super_star = np.asarray([])
         q_step = self.mpc_input_space_dim + self.mpc_state_space_dim
-        for i in xrange(self.SQPOpt.H):
-            u_x = q_star[i*q_step]
-            u_y = q_star[i*q_step+1]
-            u = TwistStamped()
-            u.header.frame_id = 'torso_lift_link'
-            u.header.stamp = rospy.Time.now()
-            u.twist.linear.x = max( min(u_x, self.mpc_u_max), -self.mpc_u_max)
-            u.twist.linear.y = max( min(u_y, self.mpc_u_max), -self.mpc_u_max)
-            u.twist.linear.z = 0.0
-            u.twist.angular.x = 0.0
-            u.twist.angular.y = 0.0
-            u.twist.angular.z = 0.0
-            control_tape.append(u)
+        # Solve for each segment
+        for i in xrange(num_segments):
+            # Get current segment of the desired chain x_d_i
+            # TODO: Check on what the structure of x_d is
+            x_d_i = x_d[i*H:(i+1)*H]
+            # set H to full sequence length x_d_i
+            if len(x_d_i) < 2:
+                break
+            self.SQPOpt.H = len(x_d_i)-1
+            self.SQPOpt.regenerate_bounds()
+            rospy.loginfo('Solving optimization for push plan segment ' + str(i) + ' of ' + str(num_segments))
+            rospy.loginfo('Current segment has ' + str(len(x_d_i)) + ' steps')
+            q_star = self.SQPOpt.feedbackControl(x0, x_d)
+            q_super_star = np.concatenate((q_super_star, q_star))
+
+            # Loop through the plan converting the SQP results into twist messages
+            for i in xrange(self.SQPOpt.H):
+                u_x = q_star[i*q_step]
+                u_y = q_star[i*q_step+1]
+                u = TwistStamped()
+                u.header.frame_id = 'torso_lift_link'
+                u.header.stamp = rospy.Time.now()
+                u.twist.linear.x = u_x # max( min(u_x, self.mpc_u_max), -self.mpc_u_max)
+                u.twist.linear.y = u_y # max( min(u_y, self.mpc_u_max), -self.mpc_u_max)
+                u.twist.linear.z = 0.0
+                u.twist.angular.x = 0.0
+                u.twist.angular.y = 0.0
+                u.twist.angular.z = 0.0
+                control_tape.append(u)
+
+            # update x0 based on final poase in q_star
+            x0 = np.asarray(q_star[-self.mpc_state_space_dim:])
+        # TODO: Setup data logging here
+        if _SAVE_MPC_DATA:
+            if _BUFFER_DATA:
+                self.target_trajectory_io.buffer_line(0, x_d)
+                self.mpc_q_star_io.buffer_line(0, q_super_star)
+            else:
+                self.target_trajectory_io.write_line(0, x_d)
+                self.mpc_q_star_io.write_line(0, q_super_star)
 
         # Run the control tape
         r = rospy.Rate(1.0/self.mpc_delta_t)
@@ -752,7 +777,6 @@ class PositionFeedbackPushNode:
                               str(u.twist.angular.x) + ', ' +
                               str(u.twist.angular.y) + ', ' +
                               str(u.twist.angular.z) + ')\n')
-            # TODO: Setup data logging here
 
             # Apply control
             if not _OFFLINE:
