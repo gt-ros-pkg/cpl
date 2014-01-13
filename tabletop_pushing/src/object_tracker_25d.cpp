@@ -1529,7 +1529,8 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   }
 }
 
-void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj, bool other_color)
+void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj, bool other_color,
+                                      bool force_display)
 {
   cv::Mat centroid_frame;
   in_frame.copyTo(centroid_frame);
@@ -1578,7 +1579,7 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   {
     cv::imshow("Init State", centroid_frame);
   }
-  else if (use_displays_ || other_color)
+  else if (use_displays_ || other_color || force_display)
   {
     cv::imshow("Object State", centroid_frame);
   }

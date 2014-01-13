@@ -122,6 +122,7 @@
 // #define DEBUG_POSE_ESTIMATION 1
 // #define VISUALIZE_CONTACT_PT 1
 #define BUFFER_AND_WRITE 1
+#define FORCE_BEFORE_AND_AFTER_VIZ 1
 
 using boost::shared_ptr;
 
@@ -754,6 +755,7 @@ class TabletopPushingPerceptionNode
     float x_error = tracker_goal_pose_.x - tracker_state.x.x;
     float y_error = tracker_goal_pose_.y - tracker_state.x.y;
     float theta_error = subPIAngle(tracker_goal_pose_.theta - tracker_state.x.theta);
+    float pos_error = hypot(y_error, x_error);
 
     float x_dist = fabs(x_error);
     float y_dist = fabs(y_error);
@@ -788,15 +790,14 @@ class TabletopPushingPerceptionNode
       }
       return;
     }
-    // TODO: Switch to radius?
-    if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
+    if (pos_error < tracker_dist_thresh_)
     {
       ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                       tracker_state.x.y << ", " << tracker_state.x.theta << ")");
       ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
                       tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
       ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
-                      << theta_dist << ")");
+                      << theta_dist << ") : " << pos_error);
       PushTrackerResult res;
       res.aborted = false;
       as_.setSucceeded(res);
@@ -898,9 +899,14 @@ class TabletopPushingPerceptionNode
           // Display different color to signal swap available
           obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
           ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
-          ROS_INFO_STREAM("Presss 's' to swap orientation: ");
+          ROS_INFO_STREAM("Press 's' to swap orientation. Any other key to continue.");
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+          ROS_INFO_STREAM("Waiting for key press...");
+          char key_press = cv::waitKey(-1);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
           char key_press = cv::waitKey(2000);
-          if (key_press == 's')
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+          while (key_press == 's')
           {
             // TODO: Is this correct?
             force_swap_ = !obj_tracker_->getSwapState();
@@ -908,15 +914,21 @@ class TabletopPushingPerceptionNode
             ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
             res.theta = cur_state.x.theta;
             obj_tracker_->stopTracking();
-            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+            ROS_INFO_STREAM("Press 's' to swap. Any other key to continue.");
+            key_press = cv::waitKey(-1);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
             // NOTE: Try and force redraw
             cv::waitKey(100);
+            key_press = 'a';
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
           }
         }
-        else
+        else // Get pose only
         {
           ROS_INFO_STREAM("Calling tracker display");
-          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
           obj_tracker_->stopTracking();
         }
         ROS_INFO_STREAM("Done getting current pose\n");
@@ -958,23 +970,40 @@ class TabletopPushingPerceptionNode
     PushTrackerState cur_state;
     startTracking(cur_state, force_swap_);
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-    if (req.learn_start_loc)
+
+    if (req.learn_start_loc || req.dynamics_learning)
     {
       obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
       ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
-      ROS_INFO_STREAM("Presss 's' to swap orientation: ");
+      ROS_INFO_STREAM("Press 's' to swap orientation: ");
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+      ROS_INFO_STREAM("Waiting for key press...");
+      char key_press = cv::waitKey(-1);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
       char key_press = cv::waitKey(2000);
-      if (key_press == 's')
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+      while (key_press == 's')
       {
         force_swap_ = !force_swap_;
         obj_tracker_->toggleSwap();
         startTracking(cur_state, force_swap_);
-        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+        ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+        ROS_INFO_STREAM("Press any key to continue");
+        key_press = cv::waitKey(-1);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
         // NOTE: Try and force redraw
         cv::waitKey(100);
-        ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+        key_press = 'a';
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+
       }
     }
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+    cv::destroyWindow("Init State");
+    cv::destroyWindow("Object State");
+#endif
 
     if (!start_tracking_on_push_call_)
     {
@@ -1131,7 +1160,11 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
       displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
-      cv::waitKey(100);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+      ROS_INFO_STREAM("Press any key to continue");
+      cv::waitKey(-1);
+      cv::destroyWindow("initial_vector");
+#endif
     }
 
     // Cleanup and return

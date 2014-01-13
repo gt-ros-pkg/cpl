@@ -202,7 +202,7 @@ class ObjectTracker25D
   void trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse);
 
   void trackerDisplay(cv::Mat& in_frame, tabletop_pushing::VisFeedbackPushTrackingFeedback& state, ProtoObject& obj,
-                      bool other_color=false);
+                      bool other_color = false, bool force_display = false);
 
  protected:
   void updateHeading(tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state);

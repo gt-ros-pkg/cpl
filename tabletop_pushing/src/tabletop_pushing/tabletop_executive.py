@@ -102,6 +102,7 @@ class TabletopExecutive:
         self.start_loc_use_fixed_goal = rospy.get_param('start_loc_use_fixed_goal', False)
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.learn_file_base = rospy.get_param('push_learn_file_base_path', '/u/thermans/data/new/aff_learn_out_')
+        self.learning_dynamics = False
 
         # Setup service proxies
         if not _OFFLINE:
@@ -697,6 +698,7 @@ class TabletopExecutive:
         push_vector_req.num_start_loc_pushes_per_sample = num_pushes_per_sample
         push_vector_req.start_loc_param_path=start_loc_param_path
         push_vector_req.previous_position_worked = position_worked
+        push_vector_req.dynamics_learning = self.learning_dynamics
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -1138,6 +1140,7 @@ if __name__ == '__main__':
     num_start_loc_pushes_per_sample = 3
     use_singulation = False
     use_learning = True
+    learning_dynamics = True
     use_guided = True
     running = True
     max_pushes = 500
@@ -1159,6 +1162,7 @@ if __name__ == '__main__':
         if use_singulation:
             node.run_singulation(max_pushes, use_guided)
         elif use_learning:
+            node.learning_dynamics = learning_dynamics
             running = True
             need_object_id = True
             while need_object_id:

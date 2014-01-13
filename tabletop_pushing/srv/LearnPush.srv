@@ -2,6 +2,7 @@ bool initialize
 bool analyze_previous
 geometry_msgs/Pose2D goal_pose
 bool learn_start_loc
+bool dynamics_learning
 bool new_object
 bool get_pose_only
 string controller_name

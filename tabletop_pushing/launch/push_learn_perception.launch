@@ -98,7 +98,7 @@
 
     <param name="feature_point_close_size" value="3" type="int"/>
     <param name="feature_point_max_ransac_iters" value="100" type="int"/>
-   <param name="feature_point_ransac_inlier_thresh" value="0.0025" type="double"/>
+    <param name="feature_point_ransac_inlier_thresh" value="0.0025" type="double"/>
     <param name="feature_point_ratio_test_thresh" value="0.85" type="double"/>
     <param name="brief_descriptor_byte_size" value="16" type="int"/>
     <param name="tracker_segment_search_radius" value="0.25" type="double"/>
