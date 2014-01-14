@@ -38,6 +38,7 @@ import numpy as np
 import os
 import svmutil
 from math import sin, cos, pi
+import random
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 # Setup dictionaries to index into labels and features
@@ -219,7 +220,7 @@ def convert_push_trial_to_feat_vectors(trial):
         Y.append(y_t)
     return (Z, Y)
 
-def write_dynamics_learning_trial_file(X, Y, out_file_base_name):
+def write_dynamics_learning_trial_files(X, Y, out_file_base_name):
     for i in xrange(len(Y[0])):
         Y_i = []
         for y in Y:
@@ -229,12 +230,18 @@ def write_dynamics_learning_trial_file(X, Y, out_file_base_name):
         print 'Writing:', out_file_name
         push_learning.write_example_file(out_file_name, X, Y_i)
 
-def create_object_class_svm_files(directory_list, base_out_dir):
-    '''
-    directory_list - list of directories to get aff files from
-    '''
+def write_dynamics_learning_example_files(X, Y, out_file_base_name):
+    for i in xrange(len(Y[0])):
+        Y_i = []
+        for y in Y:
+            Y_i.append(y[i])
+        target_name = _TARGET_NAMES[i]
+        out_file_name = out_file_base_name + '_' + target_name + '.txt'
+        print 'Writing:', out_file_name
+        push_learning.write_example_file(out_file_name, X, Y_i)
+
+def read_aff_files(directory_list):
     plio = push_learning.CombinedPushLearnControlIO()
-    print 'Current number of trials:', len(plio.push_trials)
     for directory in directory_list:
         # Get list of directory contents, load all aff learning files
         all_files = os.listdir(directory)
@@ -243,10 +250,16 @@ def create_object_class_svm_files(directory_list, base_out_dir):
                 continue
             aff_file_name = directory + '/' + f
             plio.read_in_data_file(aff_file_name, True)
-            print 'Current number of trials:', len(plio.push_trials)
+    return plio.push_trials
+
+def create_object_class_svm_files(directory_list, base_out_dir):
+    '''
+    directory_list - list of directories to get aff files from
+    '''
+    push_trials = read_aff_files(directory_list)
 
     object_classes = {}
-    for i, trial in enumerate(plio.push_trials):
+    for i, trial in enumerate(push_trials):
         obj_id = trial.trial_start.object_id
         if obj_id in object_classes:
             object_classes[obj_id].append(i)
@@ -263,13 +276,55 @@ def create_object_class_svm_files(directory_list, base_out_dir):
         for i, t_idx in enumerate(object_classes[obj_id]):
             out_file_base_name = out_dir + str(i)
             print 'out_file_base_name:', out_file_base_name
-            (X, Y) = convert_push_trial_to_feat_vectors(plio.push_trials[t_idx])
-            write_dynamics_learning_trial_file(X, Y, out_file_base_name)
+            (X, Y) = convert_push_trial_to_feat_vectors(push_trials[t_idx])
+            write_dynamics_learning_trial_files(X, Y, out_file_base_name)
 
-def create_train_and_validate_splits(in_dir, out_dir):
+def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes):
     # TODO: Create function to take in header to link different files
     # together into training and validation sets
-    pass
+    train_file_name = out_dir + 'train.txt'
+    validate_file_name = out_dir + 'validate.txt'
+    # NOTE: Assume only directories of class names are listed in in_dir
+    class_names = os.listdir(in_dir)
+
+def split_aff_files_train_validate_percent(in_dirs, out_dir, train_percent=0.7):
+    push_trials = read_aff_files(in_dirs)
+    feat_trials = []
+    trial_Xs = []
+    trial_Ys = []
+    for trial in push_trials:
+        (X, Y) = convert_push_trial_to_feat_vectors(trial)
+        trial_Xs.append(X)
+        trial_Ys.append(Y)
+
+    num_train_trials = int(len(trial_Xs)*train_percent)
+    num_validate_trials = len(trial_Xs) - num_train_trials
+    print 'Selecting', num_train_trials, 'trials for training as ', train_percent, '% of', len(trial_Xs), 'total trials'
+    train_Xs = []
+    train_Ys = []
+    # Randomly select num_train_trials without replacement and add to train list
+    for i in xrange(num_train_trials):
+        rand_idx = random.randint(0,len(trial_Xs)-1)
+        train_Xs.extend(trial_Xs.pop(rand_idx))
+        train_Ys.extend(trial_Ys.pop(rand_idx))
+
+    print 'len(train_Xs)', len(train_Xs)
+    print 'len(train_Ys)', len(train_Ys)
+
+    val_Xs = []
+    val_Ys = []
+    for i in xrange(len(trial_Xs)):
+        val_Xs.extend(trial_Xs[i])
+        val_Ys.extend(trial_Ys[i])
+    print 'len(val_Xs)', len(val_Xs)
+    print 'len(val_Ys)', len(val_Ys)
+
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+    train_file_base_name = out_dir+'train'
+    val_file_base_name = out_dir+'validate'
+    write_dynamics_learning_example_files(train_Xs, train_Ys, train_file_base_name)
+    write_dynamics_learning_example_files(val_Xs, val_Ys, val_file_base_name)
 
 def test_conversions():
     push_trials = []
