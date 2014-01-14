@@ -1658,7 +1658,7 @@ def plot_junk():
     # pla.object_proxy_ranking()
     print 'Num trials: ' + str(len(pla.all_trials))
 
-def read_example_file(file_name):
+def read_example_file(file_name, max_idx=1):
     data_in = file(file_name, 'r')
     lines = [l.split() for l in data_in.readlines()]
     data_in.close()
@@ -1675,6 +1675,8 @@ def read_example_file(file_name):
             while len(x) < idx:
                 x.append(0)
             x.append(val)
+        while len(x) < max_idx:
+            x.append(0)
         X.append(x)
     return (X,Y)
 

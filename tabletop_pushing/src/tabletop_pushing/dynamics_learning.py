@@ -44,7 +44,7 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 # Setup dictionaries to index into labels and features
 _DELTA_OBJ_X_WORLD = 'DELTA_OBJ_X_WORLD'
 _DELTA_OBJ_Y_WORLD = 'DELTA_OBJ_Y_WORLD'
-_DELTA_THETA_OBJ_WORLD = 'DELTA_THETA_OBJ_WORLD'
+_DELTA_OBJ_THETA_WORLD = 'DELTA_OBJ_THETA_WORLD'
 _DELTA_EE_X_WORLD = 'DELTA_EE_X_WORLD'
 _DELTA_EE_Y_WORLD = 'DELTA_EE_Y_WORLD'
 _DELTA_EE_Z_WORLD = 'DELTA_EE_Z_WORLD'
@@ -57,7 +57,7 @@ _DELTA_EE_Y_OBJ = 'DELTA_EE_Y_OBJ'
 
 _OBJ_X_WORLD = 'OBJ_X_WORLD'
 _OBJ_Y_WORLD = 'OBJ_Y_WORLD'
-_THETA_OBJ_WORLD = 'THETA_OBJ_WORLD'
+_OBJ_THETA_WORLD = 'OBJ_THETA_WORLD'
 _EE_X_WORLD = 'EE_X_WORLD'
 _EE_Y_WORLD = 'EE_Y_WORLD'
 _EE_Z_WORLD = 'EE_Z_WORLD'
@@ -77,7 +77,7 @@ _SHAPE_GLOBAL = 'SHAPE_GLOBAL'
 
 _TARGET_INDICES = {_DELTA_OBJ_X_WORLD:0,
                    _DELTA_OBJ_Y_WORLD:1,
-                   _DELTA_THETA_OBJ_WORLD:2,
+                   _DELTA_OBJ_THETA_WORLD:2,
                    _DELTA_EE_X_WORLD:3,
                    _DELTA_EE_Y_WORLD:4,
                    _DELTA_EE_Z_WORLD:5,
@@ -90,7 +90,7 @@ _TARGET_INDICES = {_DELTA_OBJ_X_WORLD:0,
 
 _FEAT_INDICES = {_OBJ_X_WORLD:0,
                  _OBJ_Y_WORLD:1,
-                 _THETA_OBJ_WORLD:2,
+                 _OBJ_THETA_WORLD:2,
                  _EE_X_WORLD:3,
                  _EE_Y_WORLD:4,
                  _EE_Z_WORLD:5,
@@ -239,6 +239,20 @@ def write_dynamics_learning_example_files(X, Y, out_file_base_name):
         out_file_name = out_file_base_name + '_' + target_name + '.txt'
         print 'Writing:', out_file_name
         push_learning.write_example_file(out_file_name, X, Y_i)
+
+def read_dynamics_learning_example_files(in_file_base_name):
+    X = []
+    Y = {}
+    max_feat_idx = max(_FEAT_INDICES.values())
+    # print 'max_feat_idx',max_feat_idx
+    for key in _TARGET_NAMES.keys():
+        name = _TARGET_NAMES[key]
+        file_name = in_file_base_name + '_' + name + '.txt'
+        print 'Reading:', file_name
+        (X_i, Y_i) = push_learning.read_example_file(file_name, max_idx = max_feat_idx)
+        X = X_i
+        Y[name] = Y_i
+    return (X, Y)
 
 def read_aff_files(directory_list):
     plio = push_learning.CombinedPushLearnControlIO()

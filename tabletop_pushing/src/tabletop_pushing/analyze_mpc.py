@@ -45,6 +45,7 @@ import push_learning
 import push_trajectory_generator as ptg
 from model_based_pushing_control import *
 from pushing_dynamics_models import *
+import dynamics_learning
 import subprocess
 import os
 
@@ -947,6 +948,52 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
                               '-r', str(output_rate), '-b', '1000k', contact_pt_movie_out_name])
         p.wait()
 
+def test_svm_new(base_dir_name):
+    target_names = [dynamics_learning._DELTA_OBJ_X_WORLD,
+                    dynamics_learning._DELTA_OBJ_Y_WORLD,
+                    dynamics_learning._DELTA_OBJ_THETA_WORLD,
+                    dynamics_learning._DELTA_EE_X_OBJ,
+                    dynamics_learning._DELTA_EE_Y_OBJ]
+
+    feature_names = [dynamics_learning._EE_X_OBJ,
+                     dynamics_learning._EE_Y_OBJ,
+                     dynamics_learning._U_X_OBJ,
+                     dynamics_learning._U_Y_OBJ]
+
+    train_file_base_name = base_dir_name + 'train'
+    val_file_base_name = base_dir_name + 'validate'
+
+    # Read data from disk
+    (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
+    # TODO: Create SVM class
+    epsilons = []
+    for i in xrange(len(target_names)):
+        epsilons.append(1e-3)
+    delta_t = 1./9.
+    n = 5
+    m = 2
+
+    svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons, feature_names = feature_names,
+                                   target_names = target_names, kernel_type='RBF')
+    # Do Learning
+    svr_dynamics.learn_model(train_X, train_Y)
+
+    # Do verification on training set
+    (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
+
+    # Do Testing on validation set
+    (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
+    (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
+
+    # Visualize training and validation results
+    plot_out_path = '/home/thermans/sandbox/dynamics/'
+    plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
+                                      suffix = ' '+'train' )
+
+    plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
+                                      suffix = ' '+'val' )
+    # plot_predicted_vs_observed_tracks(Y_gt, Y_hat, X, show_plot = False, out_path = plot_out_path,
+    #                                   suffix = ' '+'val' )
 
 if __name__ == '__main__':
     # analyze_mpc_trial_data(sys.argv[1])

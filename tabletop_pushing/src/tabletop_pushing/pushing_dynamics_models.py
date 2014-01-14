@@ -34,8 +34,7 @@
 import svmutil
 import numpy as np
 from math import sin, cos
-
-# TODO: Put dict here to easily get state name to index
+import dynamics_learning
 
 class NaiveInputDynamics:
     def __init__(self, delta_t, n, m):
@@ -121,7 +120,8 @@ class SVRPushDynamics:
     def __init__(self, delta_t, n, m,
                  base_file_string='', epsilons = None, kernel_type = None,
                  learned_out_dims = 3,
-                 object_frame_feats = False, use_learned_ee = False):
+                 object_frame_feats = False, use_learned_ee = False,
+                 feature_names = [], target_names = []):
         '''
         delta_t - the (average) time between time steps
         n - number of state space dimensions
@@ -140,6 +140,10 @@ class SVRPushDynamics:
         # Get settings from disk if a file base is specified
         if len(base_file_string) > 0:
             [model_names, kernel, o, feats, ee] = self.parse_file_string(base_file_string)
+            # TODO: figure out the names for these lists from saved data
+            self.feature_names = []
+            self.target_names = []
+
             for svm_file_name in model_names:
                 print 'Loading file', svm_file_name
                 self.svm_models.append(svmutil.svm_load_model(svm_file_name))
@@ -148,6 +152,9 @@ class SVRPushDynamics:
             self.build_jacobian()
         else:
             # Custom initialization otherwise
+            self.feature_names = feature_names
+            self.target_names = target_names
+            learned_out_dims = len(target_names)
             self.initialize(epsilons, kernel_type, learned_out_dims, object_frame_feats, use_learned_ee)
 
     def initialize(self, epsilons = None, kernel_type = None, learned_out_dims = 3,
@@ -175,17 +182,18 @@ class SVRPushDynamics:
             for i in xrange(learned_out_dims):
                 self.epsilons.append(1e-6)
 
+        if len(self.feature_names) > 0 and len(self.target_names) > 0:
+            return
+
         # NOTE: Make switches to change based on preferences here
         # TODO: Make a version with learned feature transform
         if use_learned_ee:
             self.ee_model_name = 'learnedEE'
             # TODO: Setup these functions
-            self.predict = self.predict_learned_ee
             self.jacobian = self.jacobian_learned_ee
             self.build_jacobian = self.build_jacobian_learned_ee
         else:
             self.ee_model_name = 'linearEE'
-            self.predict = self.predict_linear_ee
             self.jacobian = self.jacobian_linear_ee
             self.build_jacobian = self.build_jacobian_linear_ee
 
@@ -196,114 +204,41 @@ class SVRPushDynamics:
             self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_object_frame
             self.jacobian = self.jacobian_linear_ee_object_frame
             self.build_jacobian = self.build_jacobian_linear_ee_object_frame
-            # TODO: Implement this method
-            self.test_batch_data = self.test_batch_data_linear_ee_object_frame
         else:
             self.p = self.m + self.n
             self.feature_transform_name = 'worldFrame'
             self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_state_control
-            self.test_batch_data = self.test_batch_data_linear_ee
 
-    def learn_model(self, learn_data):
+    def learn_model(self, X_all, Y_all, kernel_params = ''):
         '''
         Learns SVMs to predict dynamics given the input data
-        learn_data - List of PushCtrlTrial() defined in push_learning.py
+        X_all - batch list of features
+        Y_all - batch list of targets
+        kernel_params - user specified kernel specific parameters
         '''
-        X = []
-        Y = []
-        for trial in learn_data:
-            (x, y) = self.transform_trial_data_to_feat_vectors(trial.trial_trajectory)
-            X.extend(x)
-            Y.extend(y)
+        (X, Y) = self.select_feature_data_and_targets(X_all, Y_all)
 
-        for i in xrange(len(Y[0])):
-            Y_i = []
-            for y in Y:
-                Y_i.append(y[i])
-            param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_type]) + ' -p ' + str(self.epsilons[i])
-            # TODO: Kernel specific options
+        for i, Y_i in enumerate(Y):
+            print 'Learning for target:', self.target_names[i]
+            param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_type]) + ' -p ' + str(self.epsilons[i]) + \
+                kernel_params
             svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
-        self.build_jacobian()
+        # TODO: Setup build_jacobian
+        # self.build_jacobian()
 
-    def save_models(self, output_file_base_string):
-        '''
-        Write svm models to disk
-        output_file_names - list of file paths for saving to, assumes length = len(self.svm_models)
-        '''
-        for i, model in enumerate(self.svm_models):
-            file_name = self.get_out_file_name(output_file_base_string, i)
-            svmutil.svm_save_model(file_name, model)
-        return self.get_base_name(output_file_base_string)
-
-    def get_base_name(self, base_string):
-        return base_string + '_' + self.kernel_type + '_' + self.ee_model_name + '_' + \
-            self.feature_transform_name
-
-    def get_out_file_name(self, base_string, out_var_idx):
-        '''
-        Return filename from target base string and out variable index
-        '''
-        return self.get_base_name(base_string) + '_' + self._OUT_VARIABLE_NAMES[out_var_idx] + '.model'
-
-    def parse_file_string(self, base_file_string):
-        '''
-        [model_names, kernel, o, feats, ee] = self.parse_file_string(base_file_string)
-        '''
-        params = base_file_string.split('/')[-1].split('_')[-3:]
-        kernel_name = params[0]
-        ee_model = params[1]
-        feat_transform = params[2]
-
-        if ee_model == 'learnedEE':
-            output_dims = 5
-            ee = True
-        else:
-            output_dims = 3
-            ee = False
-
-        if feat_transform == 'objectFrame':
-            use_object_frame = True
-        else:
-            use_object_frame = False
-
-        model_names = []
-        for i in xrange(output_dims):
-            file_name = base_file_string+'_' + self._OUT_VARIABLE_NAMES[i] + '.model'
-            model_names.append(file_name)
-
-        return [model_names, kernel_name, output_dims, use_object_frame, ee]
-
-    def transform_trial_data_to_feat_vectors(self, trajectory, EE_deltas = False):
-        '''
-        Get SVM feature vector from push trial trajectory state information.
-        Needs to be updated whenever transform_state_data_to_feat_vector() is updated
-        trajectory - list of ControlTimeStep() defined in push_learning.py
-        '''
-        Z = []
-        Y = []
-        W = []
-        # TODO: Have ability to extract xtra from the data
-        xtra = []
-        for i in xrange(len(trajectory)-1):
-            cts_t0 = trajectory[i]
-            cts_t1 = trajectory[i+1]
-            x_t = [cts_t0.x.x, cts_t0.x.y, cts_t0.x.theta,
-                   cts_t0.ee.position.x, cts_t0.ee.position.y]
-            u_t = [cts_t0.u.linear.x, cts_t0.u.linear.y]
-            z_t = self.transform_opt_vector_to_feat_vector(x_t, u_t, xtra)
-            y_t = [cts_t1.x.x - cts_t0.x.x, cts_t1.x.y - cts_t0.x.y, cts_t1.x.theta - cts_t0.x.theta]
-            if EE_deltas:
-                y_t.extend([cts_t1.ee.position.x - cts_t0.ee.position.x,
-                            cts_t1.ee.position.y - cts_t0.ee.position.y])
-            Z.extend(z_t)
-            Y.append(y_t)
-        return (Z, Y)
+    def test_batch_data(self, X_all, Y_all):
+        (X, Y_out) = self.select_feature_data_and_targets(X_all, Y_all)
+        Y_hat = []
+        for Y_i, svm_model in zip(Y_out, self.svm_models):
+            [Y_hat_i, _, _] = svmutil.svm_predict(Y_i, X, svm_model, '-q')
+            Y_hat.append(Y_hat_i)
+        return (Y_hat, Y_out, X)
 
     #
     # Prediction and jacobian methods
     #
-    def predict_linear_ee(self, x_k, u_k, xtra=[]):
+    def predict(self, x_k, u_k, xtra=[]):
         '''
         Predict the next state given current state estimates and control input
         x_k - current state estimate (ndarray)
@@ -324,13 +259,15 @@ class SVRPushDynamics:
 
         return np.array(x_k_plus_1)
 
-    def jacobian_linear_ee(self, x_k, u_k, xtra=[]):
+    def jacobian(self, x_k, u_k, xtra=[]):
         '''
         Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
         x_k - current state estimate (ndarray)
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
+        if self.jacobain_needs_updates:
+            self.update_jacobian(x_k, u_k, xtra)
         return self.J
 
     def build_jacobian_linear_ee(self):
@@ -348,38 +285,6 @@ class SVRPushDynamics:
             for alpha, sv in zip(alphas, svs):
                 for j in xrange(self.m+self.n):
                     self.J[i, j] += alpha[0]*sv[j+1]
-
-    def test_batch_data_linear_ee(self, test_trial):
-        X = []
-        Y = []
-        [X, Y] = self.transform_trial_data_to_feat_vectors(test_trial.trial_trajectory, True)
-        Y_hat = []
-        Y_out = []
-        for i, svm_model in enumerate(self.svm_models):
-            Y_i = []
-            for y in Y:
-                Y_i.append(y[i])
-            [Y_hat_i, _, _] = svmutil.svm_predict(Y_i, X, svm_model, '-q')
-            Y_hat.append(Y_hat_i)
-            Y_out.append(Y_i)
-        # Get EE ground truth
-        for i in range(3,5):
-            Y_i = []
-            for y in Y:
-                Y_i.append(y[i])
-            Y_out.append(Y_i)
-
-        # Add EE predictions
-        Y_hat_Xee = []
-        Y_hat_Yee = []
-        for x in X:
-            Y_hat_Xee.append(self.delta_t*x[5])
-            Y_hat_Yee.append(self.delta_t*x[6])
-
-        Y_hat.append(Y_hat_Xee)
-        Y_hat.append(Y_hat_Yee)
-
-        return (Y_hat, Y_out, X)
 
     def jacobian_linear_ee_object_frame(self, x_k, u_k, xtra=[]):
         '''
@@ -442,6 +347,27 @@ class SVRPushDynamics:
     #
     # Features transforms
     #
+    def select_feature_data_and_targets(self, X_all, Y_all):
+        '''
+        X_all - full feature vector for all examples (list of lists)
+        Y_all - dictionary of all targets, keys are _TARGET_NAMES.keys()
+        '''
+        X = []
+        for x_raw in X_all:
+            x_subset = []
+            for feat in self.feature_names:
+                # TODO: Correctly deal with shape features heres
+                feat_idx = dynamics_learning._FEAT_INDICES[feat]
+                x_subset.append(x_raw[feat_idx])
+            X.append(x_subset)
+
+        Y = []
+
+        # Select target sets based on requested target names
+        for name in self.target_names:
+            Y.append(Y_all[name])
+        return (X, Y)
+
     def opt_vector_to_feats_state_control(self, x_k, u_k, xtra):
         '''
         Does the simplest form of features, just passing on the decision variables
@@ -472,3 +398,55 @@ class SVRPushDynamics:
         # SVM expects a list of lists, but we're only doing one instance at a time
         z = [z.tolist()]
         return z
+
+    #
+    # I/O Functions
+    #
+    def save_models(self, output_file_base_string):
+        '''
+        Write svm models to disk
+        output_file_base_string - base paths for saving learning data
+        '''
+        for i, model in enumerate(self.svm_models):
+            file_name = self.get_out_file_name(output_file_base_string, i)
+            svmutil.svm_save_model(file_name, model)
+        return self.get_base_name(output_file_base_string)
+
+    def get_base_name(self, base_string):
+        return base_string + '_' + self.kernel_type + '_' + self.ee_model_name + '_' + \
+            self.feature_transform_name
+
+    def get_out_file_name(self, base_string, out_var_idx):
+        '''
+        Return filename from target base string and out variable index
+        '''
+        return self.get_base_name(base_string) + '_' + self._OUT_VARIABLE_NAMES[out_var_idx] + '.model'
+
+    def parse_file_string(self, base_file_string):
+        '''
+        [model_names, kernel, o, feats, ee] = self.parse_file_string(base_file_string)
+        '''
+        params = base_file_string.split('/')[-1].split('_')[-3:]
+        kernel_name = params[0]
+        ee_model = params[1]
+        feat_transform = params[2]
+
+        if ee_model == 'learnedEE':
+            output_dims = 5
+            ee = True
+        else:
+            output_dims = 3
+            ee = False
+
+        if feat_transform == 'objectFrame':
+            use_object_frame = True
+        else:
+            use_object_frame = False
+
+        model_names = []
+        for i in xrange(output_dims):
+            file_name = base_file_string+'_' + self._OUT_VARIABLE_NAMES[i] + '.model'
+            model_names.append(file_name)
+
+        return [model_names, kernel_name, output_dims, use_object_frame, ee]
+
