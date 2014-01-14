@@ -37,72 +37,71 @@ from push_learning import subPIAngle
 import numpy as np
 import os
 import svmutil
-from math import sin, cos
-from tf.transformations import euler_from_quaternion
-
+from math import sin, cos, pi
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 # Setup dictionaries to index into labels and features
-_DELTA_X_OBJ_WORLD = 'DELTA_X_OBJ_WORLD'
-_DELTA_Y_OBJ_WORLD = 'DELTA_Y_OBJ_WORLD'
+_DELTA_OBJ_X_WORLD = 'DELTA_OBJ_X_WORLD'
+_DELTA_OBJ_Y_WORLD = 'DELTA_OBJ_Y_WORLD'
 _DELTA_THETA_OBJ_WORLD = 'DELTA_THETA_OBJ_WORLD'
-_DELTA_X_EE_WORLD = 'DELTA_X_EE_WORLD'
-_DELTA_Y_EE_WORLD = 'DELTA_Y_EE_WORLD'
-_DELTA_Z_EE_WORLD = 'DELTA_Z_EE_WORLD'
-_DELTA_PHI_EE_WORLD = 'DELTA_PHI_EE_WORLD'
+_DELTA_EE_X_WORLD = 'DELTA_EE_X_WORLD'
+_DELTA_EE_Y_WORLD = 'DELTA_EE_Y_WORLD'
+_DELTA_EE_Z_WORLD = 'DELTA_EE_Z_WORLD'
+_DELTA_EE_PHI_WORLD = 'DELTA_EE_PHI_WORLD'
 _DELTA_T = 'DELTA_T'
-_DELTA_X_OBJ_OBJ = 'DELTA_X_OBJ_OBJ'
-_DELTA_Y_OBJ_OBJ = 'DELTA_Y_OBJ_OBJ'
-_DELTA_X_EE_OBJ = 'DELTA_X_EE_OBJ'
-_DELTA_Y_EE_OBJ = 'DELTA_Y_EE_OBJ'
+_DELTA_OBJ_X_OBJ = 'DELTA_OBJ_X_OBJ'
+_DELTA_OBJ_Y_OBJ = 'DELTA_OBJ_Y_OBJ'
+_DELTA_EE_X_OBJ = 'DELTA_EE_X_OBJ'
+_DELTA_EE_Y_OBJ = 'DELTA_EE_Y_OBJ'
 
-_X_OBJ_WORLD = 'X_OBJ_WORLD'
-_Y_OBJ_WORLD = 'Y_OBJ_WORLD'
+_OBJ_X_WORLD = 'OBJ_X_WORLD'
+_OBJ_Y_WORLD = 'OBJ_Y_WORLD'
 _THETA_OBJ_WORLD = 'THETA_OBJ_WORLD'
-_X_EE_WORLD = 'X_EE_WORLD'
-_Y_EE_WORLD = 'Y_EE_WORLD'
-_Z_EE_WORLD = 'Z_EE_WORLD'
-_PHI_EE_WORLD = 'PHI_EE_WORLD'
+_EE_X_WORLD = 'EE_X_WORLD'
+_EE_Y_WORLD = 'EE_Y_WORLD'
+_EE_Z_WORLD = 'EE_Z_WORLD'
+_EE_PHI_WORLD = 'EE_PHI_WORLD'
 _U_X_WORLD = 'U_X_WORLD'
 _U_Y_WORLD = 'U_Y_WORLD'
 _U_Z_WORLD = 'U_Z_WORLD'
 _U_PHI_WORLD = 'U_PHI_WORLD'
-_X_EE_OBJ = 'X_EE_OBJ'
-_Y_EE_OBJ = 'Y_EE_OBJ'
-_Z_EE_OBJ = 'Z_EE_OBJ'
-_PHI_EE_OBJ = 'PHI_EE_OBJ'
+_EE_X_OBJ = 'EE_X_OBJ'
+_EE_Y_OBJ = 'EE_Y_OBJ'
+_EE_Z_OBJ = 'EE_Z_OBJ'
+_EE_PHI_OBJ = 'EE_PHI_OBJ'
 _U_X_OBJ = 'U_X_OBJ'
 _U_Y_OBJ = 'U_Y_OBJ'
 _SHAPE_LOCAL = 'SHAPE_LOCAL'
 _SHAPE_GLOBAL = 'SHAPE_GLOBAL'
 
-_TARGET_INDICES = {_DELTA_X_OBJ_WORLD:0,
-                   _DELTA_Y_OBJ_WORLD:1,
+_TARGET_INDICES = {_DELTA_OBJ_X_WORLD:0,
+                   _DELTA_OBJ_Y_WORLD:1,
                    _DELTA_THETA_OBJ_WORLD:2,
-                   _DELTA_X_EE_WORLD:3,
-                   _DELTA_Y_EE_WORLD:4,
-                   _DELTA_Z_EE_WORLD:5,
-                   _DELTA_PHI_EE_WORLD:6,
+                   _DELTA_EE_X_WORLD:3,
+                   _DELTA_EE_Y_WORLD:4,
+                   _DELTA_EE_Z_WORLD:5,
+                   _DELTA_EE_PHI_WORLD:6,
                    _DELTA_T:7,
-                   _DELTA_X_OBJ_OBJ:8,
-                   _DELTA_Y_OBJ_OBJ:9,
-                   _DELTA_X_EE_OBJ:10,
-                   _DELTA_Y_EE_OBJ:11}
+                   _DELTA_OBJ_X_OBJ:8,
+                   _DELTA_OBJ_Y_OBJ:9,
+                   _DELTA_EE_X_OBJ:10,
+                   _DELTA_EE_Y_OBJ:11}
 
-_FEAT_INDICES = {_X_OBJ_WORLD:0,
-                 _Y_OBJ_WORLD:1,
+_FEAT_INDICES = {_OBJ_X_WORLD:0,
+                 _OBJ_Y_WORLD:1,
                  _THETA_OBJ_WORLD:2,
-                 _X_EE_WORLD:3,
-                 _Y_EE_WORLD:4,
-                 _Z_EE_WORLD:5,
-                 _PHI_EE_WORLD:6,
+                 _EE_X_WORLD:3,
+                 _EE_Y_WORLD:4,
+                 _EE_Z_WORLD:5,
+                 _EE_PHI_WORLD:6,
                  _U_X_WORLD:7,
                  _U_Y_WORLD:8,
                  _U_Z_WORLD:9,
                  _U_PHI_WORLD:10,
-                 _X_EE_OBJ:11,
-                 _Y_EE_OBJ:12,
-                 _Z_EE_OBJ:13,
-                 _PHI_EE_OBJ:14,
+                 _EE_X_OBJ:11,
+                 _EE_Y_OBJ:12,
+                 _EE_Z_OBJ:13,
+                 _EE_PHI_OBJ:14,
                  _U_X_OBJ:15,
                  _U_Y_OBJ:16,
                  # TODO: Fix the shape stuff
@@ -112,42 +111,40 @@ _FEAT_INDICES = {_X_OBJ_WORLD:0,
 _FEAT_NAMES = dict((v,k) for k,v in _FEAT_INDICES.items())
 _TARGET_NAMES = dict((v,k) for k,v in _TARGET_INDICES.items())
 
-# TODO: Need to test with synthetic data to confirm
 def get_object_frame_features(cts, ee_phi):
     # Demean EE coordinates into object frame
-    X_ee_demeaned = np.matrix([[cts.ee.position.x - cts.x.x],
+    ee_x_demeaned = np.matrix([[cts.ee.position.x - cts.x.x],
                                [cts.ee.position.y - cts.x.y]])
-    z_ee_obj = cts.ee.position.z - cts.z
+    ee_z_obj = cts.ee.position.z - cts.z
     # Rotate x,y into object orientated frame
     st = sin(cts.x.theta)
     ct = cos(cts.x.theta)
     R = np.matrix([[ct, st],
                    [-st, ct]])
-    X_ee_obj = np.array(R*X_ee_demeaned).T.ravel()
+    ee_x_obj = np.array(R*ee_x_demeaned).T.ravel()
     # Rotate push vector into object frame
     U_obj = np.array(R*np.matrix([[cts.u.linear.x],
                                   [cts.u.linear.y]])).ravel()
     # Rotate EE orientation into object frame
-    phi_ee_obj = subPIAngle(ee_phi - cts.x.theta)
+    ee_phi_obj = subPIAngle(ee_phi - cts.x.theta)
 
-    return [X_ee_obj[0], X_ee_obj[1], z_ee_obj,
-            phi_ee_obj,
+    return [ee_x_obj[0], ee_x_obj[1], ee_z_obj,
+            ee_phi_obj,
             U_obj[0], U_obj[1]]
 
-# TODO: Need to test with synthetic data to confirm
 def get_object_frame_targets(cts_t0, cts_t1):
     # Delta x and y of the object are just the object locations at the next time step
     # in the current object's frame
     X_t1_demeaned = np.matrix([[cts_t1.x.x - cts_t0.x.x],
                                [cts_t1.x.y - cts_t0.x.y]])
     st = sin(cts_t0.x.theta)
-    ct = cos(cts_t1.x.theta)
+    ct = cos(cts_t0.x.theta)
     R = np.matrix([[ct, st],
                    [-st, ct]])
     X_t1_obj = np.array(R*X_t1_demeaned).T.ravel()
 
-    delta_x_obj_obj = X_t1_obj[0]
-    delta_y_obj_obj = X_t1_obj[1]
+    delta_obj_x_obj = X_t1_obj[0]
+    delta_obj_y_obj = X_t1_obj[1]
 
     # Convert both ee positions into t0 object frame and get diff
     ee_t0_demeaned = np.matrix([[cts_t0.ee.position.x - cts_t0.x.x],
@@ -159,29 +156,28 @@ def get_object_frame_targets(cts_t0, cts_t1):
     ee_t1_obj = np.array(R*ee_t1_demeaned).T.ravel()
     ee_delta_X = ee_t1_obj - ee_t0_obj
 
-    delta_x_ee_obj = ee_delta_X[0]
-    delta_y_ee_obj = ee_delta_X[1]
+    delta_ee_x_obj = ee_delta_X[0]
+    delta_ee_y_obj = ee_delta_X[1]
 
-    return [delta_x_obj_obj,
-            delta_y_obj_obj,
-            delta_x_ee_obj,
-            delta_y_ee_obj]
+    return [delta_obj_x_obj,
+            delta_obj_y_obj,
+            delta_ee_x_obj,
+            delta_ee_y_obj]
 
-# TODO: Need to test with synthetic data to confirm
 def convert_push_trial_to_feat_vectors(trial):
     Z = []
     Y = []
     for i in xrange(len(trial.trial_trajectory)-1):
         cts_t0 = trial.trial_trajectory[i]
         cts_t1 = trial.trial_trajectory[i+1]
-        [_, _, ee_phi_t0] = euler_from_quaternion([cts_t0.ee.orientation.x,
-                                                   cts_t0.ee.orientation.y,
-                                                   cts_t0.ee.orientation.z,
-                                                   cts_t0.ee.orientation.w])
-        [_, _, ee_phi_t1] = euler_from_quaternion([cts_t1.ee.orientation.x,
-                                                   cts_t1.ee.orientation.y,
-                                                   cts_t1.ee.orientation.z,
-                                                   cts_t1.ee.orientation.w])
+        [_, _, ee_phi_t0] = euler_from_quaternion(np.array([cts_t0.ee.orientation.x,
+                                                            cts_t0.ee.orientation.y,
+                                                            cts_t0.ee.orientation.z,
+                                                            cts_t0.ee.orientation.w]))
+        [_, _, ee_phi_t1] = euler_from_quaternion(np.array([cts_t1.ee.orientation.x,
+                                                            cts_t1.ee.orientation.y,
+                                                            cts_t1.ee.orientation.z,
+                                                            cts_t1.ee.orientation.w]))
         # TODO: This will depend on the primitive used
         u_phi_world = cts_t0.u.angular.x
 
@@ -272,5 +268,58 @@ def create_object_class_svm_files(directory_list, base_out_dir):
 
 def create_train_and_validate_splits(in_dir, out_dir):
     # TODO: Create function to take in header to link different files
-    # together in train and validate sets
+    # together into training and validation sets
     pass
+
+def test_conversions():
+    push_trials = []
+    trial = push_learning.PushCtrlTrial()
+    trial.trial_start = push_learning.PushTrial()
+    trial.trial_end = push_learning.PushTrial()
+
+    cts0 = push_learning.ControlTimeStep()
+    cts0.x.x = 1.0
+    cts0.x.y = 2.0
+    cts0.x.theta = 0.5*pi
+    cts0.z = 2.0
+    cts0.ee.position.x = -0.5
+    cts0.ee.position.y = 3.0
+    cts0.ee.position.z = 2.5
+    q = quaternion_from_euler(0.0,0.0,0.5*pi)
+    cts0.ee.orientation.x = q[0]
+    cts0.ee.orientation.y = q[1]
+    cts0.ee.orientation.z = q[2]
+    cts0.ee.orientation.w = q[3]
+
+    cts0.u.linear.x = 2.0
+    cts0.u.linear.y = 1.0
+    cts0.u.angular.x = -pi
+    cts0.t = 0.0
+
+    cts1 = push_learning.ControlTimeStep()
+    cts1.x.x = cts0.x.x + 1.0
+    cts1.x.y = cts0.x.y + 1.5
+    cts1.x.theta = cts0.x.theta + 0.5*pi
+    cts1.z = cts0.z+0.25
+
+    cts1.ee.position.x = cts0.ee.position.x + 0.75
+    cts1.ee.position.y = cts0.ee.position.y + 1.75
+    cts1.ee.position.z = cts0.ee.position.z - 0.25
+    q = quaternion_from_euler(0.0,0.0,0.25*pi)
+    cts1.ee.orientation.x = q[0]
+    cts1.ee.orientation.y = q[1]
+    cts1.ee.orientation.z = q[2]
+    cts1.ee.orientation.w = q[3]
+    cts1.t = 0.25
+    trial.trial_trajectory.append(cts0)
+    trial.trial_trajectory.append(cts1)
+    trial.trial_trajectory.append(cts1)
+
+    (X, Y) = convert_push_trial_to_feat_vectors(trial)
+    for j, x in enumerate(X):
+        print j,':'
+        for i in xrange(len(x)):
+            print _FEAT_NAMES[i], '=', x[i]
+    print ''
+    for i in xrange(len(Y[0])):
+        print _TARGET_NAMES[i], '=', Y[0][i]
