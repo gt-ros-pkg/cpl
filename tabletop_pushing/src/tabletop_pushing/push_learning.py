@@ -392,7 +392,7 @@ class CombinedPushLearnControlIO:
         self.ctrl_io = ControlAnalysisIO()
         self.push_trials = []
 
-    def read_in_data_file(self, file_name):
+    def read_in_data_file(self, file_name, append = False):
         data_in = file(file_name, 'r')
         read_pl_trial_line = False
         read_ctrl_line = False
@@ -403,7 +403,8 @@ class CombinedPushLearnControlIO:
         object_comments = 0
         control_headers = 0
 
-        self.push_trials = []
+        if not append:
+            self.push_trials = []
         current_trial = PushCtrlTrial()
         for line in  data_in.readlines():
             if line.startswith(_VERSION_LINE):
