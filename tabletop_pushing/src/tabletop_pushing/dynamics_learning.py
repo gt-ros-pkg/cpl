@@ -109,6 +109,9 @@ _FEAT_INDICES = {_X_OBJ_WORLD:0,
                  _SHAPE_LOCAL:17,
                  _SHAPE_GLOBAL:-1}
 
+_FEAT_NAMES = dict((v,k) for k,v in _FEAT_INDICES.items())
+_TARGET_NAMES = dict((v,k) for k,v in _TARGET_INDICES.items())
+
 # TODO: Need to test with synthetic data to confirm
 def get_object_frame_features(cts, ee_phi):
     # Demean EE coordinates into object frame
@@ -221,12 +224,14 @@ def convert_push_trial_to_feat_vectors(trial):
     return (Z, Y)
 
 def write_dynamics_learning_trial_file(X, Y, out_file_base_name):
-    # TODO: Use svmutil to write file...
-    for (x, y) in zip(X,Y):
-        for y_i in y:
-            # TODO: Write a file for y_i and x..., label accordingly
-            pass
-
+    for i in xrange(len(Y[0])):
+        Y_i = []
+        for y in Y:
+            Y_i.append(y[i])
+        target_name = _TARGET_NAMES[i]
+        out_file_name = out_file_base_name + '_' + target_name + '.txt'
+        print 'Writing:', out_file_name
+        push_learning.write_example_file(out_file_name, X, Y_i)
 
 def create_object_class_svm_files(directory_list, base_out_dir):
     '''
