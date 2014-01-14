@@ -269,23 +269,71 @@ def create_object_class_svm_files(directory_list, base_out_dir):
     print 'Object classes:', object_classes.keys()
 
     for obj_id in object_classes:
-        out_dir = base_out_dir + obj_id+'/'
+        out_dir = base_out_dir + 'object_classes/'
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
         print 'object_classes[',obj_id,'] =', object_classes[obj_id]
+        print 'out_file_base_name:', out_file_base_name
+        obj_Xs = []
+        obj_Ys = []
+        out_file_base_name = out_dir + obj_id
         for i, t_idx in enumerate(object_classes[obj_id]):
-            out_file_base_name = out_dir + str(i)
-            print 'out_file_base_name:', out_file_base_name
             (X, Y) = convert_push_trial_to_feat_vectors(push_trials[t_idx])
-            write_dynamics_learning_trial_files(X, Y, out_file_base_name)
+            obj_Xs.extend(X)
+            obj_Ys.extend(Y)
+        write_dynamics_learning_example_files(obj_Xs, obj_Ys, out_file_base_name)
 
 def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes):
-    # TODO: Create function to take in header to link different files
-    # together into training and validation sets
-    train_file_name = out_dir + 'train.txt'
-    validate_file_name = out_dir + 'validate.txt'
-    # NOTE: Assume only directories of class names are listed in in_dir
-    class_names = os.listdir(in_dir)
+    class_file_names = os.listdir(in_dir)
+    train_classes = []
+    target_names = {}
+    # Get names of classes not in hold out list
+    # Get target file names
+    for i, f in enumerate(class_file_names):
+        class_id = f.split('_')[0]
+        target_name = f[len(class_id):]
+        target_names[target_name] = target_name
+        if class_id in hold_out_classes:
+            pass
+        else:
+            if not (class_id in train_classes):
+                train_classes.append(class_id)
+
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+
+    hold_out_str = ''
+    for obj_class in hold_out_classes:
+        hold_out_str += '_' + obj_class
+
+    train_file_base_name = out_dir + 'hold_out' + hold_out_str + '_train'
+    validate_file_base_name = out_dir + 'hold_out' + hold_out_str + '_validate'
+    # Write new files grouping hold out files into validate set and others into train
+    for name in target_names.keys():
+        validate_file_name = validate_file_base_name + name
+        train_file_name = train_file_base_name + name
+
+        print 'Writing:', train_file_name
+        train_file = file(train_file_name, 'w')
+        for class_id in train_classes:
+            class_file_name = in_dir + class_id + name
+            file_in = file(class_file_name, 'r')
+            lines_in = file_in.readlines()
+            file_in.close()
+            for line in lines_in:
+                train_file.write(line+'\n')
+        train_file.close()
+
+        print 'Writing:', validate_file_name
+        validate_file = file(validate_file_name, 'w')
+        for class_id in hold_out_classes:
+            class_file_name = in_dir + class_id + name
+            file_in = file(class_file_name, 'r')
+            lines_in = file_in.readlines()
+            file_in.close()
+            for line in lines_in:
+                validate_file.write(line+'\n')
+        validate_file.close()
 
 def split_aff_files_train_validate_percent(in_dirs, out_dir, train_percent=0.7):
     push_trials = read_aff_files(in_dirs)
