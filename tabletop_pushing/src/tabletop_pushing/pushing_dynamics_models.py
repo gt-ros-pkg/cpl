@@ -36,6 +36,10 @@ import numpy as np
 from math import sin, cos
 import dynamics_learning
 
+_PARAM_FILE_SUFFIX = '_params.txt'
+_PARAM_FEATURE_HEADER = 'FEATURE_NAMES'
+_PARAM_TARGET_HEADER = 'TARGET_NAMES'
+
 class NaiveInputDynamics:
     def __init__(self, delta_t, n, m):
         '''
@@ -114,118 +118,77 @@ class StochasticNaiveInputDynamics:
 
 class SVRPushDynamics:
     # Setup constants
-    _OUT_VARIABLE_NAMES = ['deltaX', 'deltaY', 'deltaTheta', 'deltaXEE', 'deltaYEE']
     _KERNEL_TYPES = {'LINEAR': 0, 'POLYNOMIAL': 1, 'RBF': 2, 'SIGMOID': 3, 'PRECOMPUTED':4}
+    _KERNEL_NAMES = dict((v,k) for k,v in _KERNEL_TYPES.items())
 
-    def __init__(self, delta_t, n, m,
-                 base_file_string='', epsilons = None, kernel_type = None,
-                 learned_out_dims = 3,
-                 object_frame_feats = False, use_learned_ee = False,
+    def __init__(self, delta_t = 1.0, n = 5, m = 2,
+                 param_file_name = '', epsilons = None, kernel_type = None,
                  feature_names = [], target_names = []):
         '''
         delta_t - the (average) time between time steps
         n - number of state space dimensions
         m - number of control space dimensions
-        base_file_string - base path and file string to be parsed
+        param_file_name - base path and file name for parameter file
         epsilons - list of epislon values for the epislon insensitive loss function (training only)
         kernel_type - type of kernel to use for traning, can be any of the self.KERNEL_TYPES keys (training only)
-        learned_out_dims - number of output dimensions in the model (training only)
         '''
         # Class paramters
         self.delta_t = delta_t
         self.n = n
         self.m = m
         self.svm_models = []
+        self.kernel_types = []
+        self.feature_names = []
+        self.target_names = []
 
         # Get settings from disk if a file base is specified
-        if len(base_file_string) > 0:
-            [model_names, kernel, o, feats, ee] = self.parse_file_string(base_file_string)
-            # TODO: figure out the names for these lists from saved data
-            self.feature_names = []
-            self.target_names = []
-
-            for svm_file_name in model_names:
-                print 'Loading file', svm_file_name
-                self.svm_models.append(svmutil.svm_load_model(svm_file_name))
-            self.initialize(kernel_type = kernel, learned_out_dims = o,
-                            object_frame_feats = feats, use_learned_ee = ee)
-            self.build_jacobian()
+        if len(param_file_name) > 0:
+            self.load_models(param_file_name)
         else:
             # Custom initialization otherwise
             self.feature_names = feature_names
             self.target_names = target_names
             learned_out_dims = len(target_names)
-            self.initialize(epsilons, kernel_type, learned_out_dims, object_frame_feats, use_learned_ee)
 
-    def initialize(self, epsilons = None, kernel_type = None, learned_out_dims = 3,
-                   object_frame_feats = False, use_learned_ee = False):
+            # Set kernel types
+            # TODO: Make this variable between different dimension
+            if kernel_type is not None:
+                for i in xrange(learned_out_dims):
+                    self.kernel_types.append(kernel_type)
+            else:
+                for i in xrange(learned_out_dims):
+                    self.kernel_types.append('LINEAR')
 
-        # print 'epsilons', epsilons
-        # print 'kernel_type', kernel_type
-        # print 'learned_out_dims', learned_out_dims
-        # print 'object_frame_feats', object_frame_feats
-        # print 'use_learned_ee', use_learned_ee
+            # Setup loss function paramters
+            if epsilons is not None:
+                self.epsilons = epsilons
+            else:
+                self.epsilons = []
+                for i in xrange(learned_out_dims):
+                    self.epsilons.append(1e-6)
 
-        self.o = learned_out_dims
+        # Set secondary parameters
+        self.p = len(self.feature_names)
+        self.build_jacobian()
 
-        # Set kernel type
-        if kernel_type is not None:
-            self.kernel_type = kernel_type
-        else:
-            self.kernel_type = 'LINEAR'
-
-        # Setup loss function paramters
-        if epsilons is not None:
-            self.epsilons = epsilons
-        else:
-            self.epsilons = []
-            for i in xrange(learned_out_dims):
-                self.epsilons.append(1e-6)
-
-        if len(self.feature_names) > 0 and len(self.target_names) > 0:
-            return
-
-        # NOTE: Make switches to change based on preferences here
-        # TODO: Make a version with learned feature transform
-        if use_learned_ee:
-            self.ee_model_name = 'learnedEE'
-            # TODO: Setup these functions
-            self.jacobian = self.jacobian_learned_ee
-            self.build_jacobian = self.build_jacobian_learned_ee
-        else:
-            self.ee_model_name = 'linearEE'
-            self.jacobian = self.jacobian_linear_ee
-            self.build_jacobian = self.build_jacobian_linear_ee
-
-        if object_frame_feats:
-            self.feature_transform_name = 'objectFrame'
-            self.p = 4 # Num feature vector elements
-            # Set required functions
-            self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_object_frame
-            self.jacobian = self.jacobian_linear_ee_object_frame
-            self.build_jacobian = self.build_jacobian_linear_ee_object_frame
-        else:
-            self.p = self.m + self.n
-            self.feature_transform_name = 'worldFrame'
-            self.transform_opt_vector_to_feat_vector = self.opt_vector_to_feats_state_control
-
-    def learn_model(self, X_all, Y_all, kernel_params = ''):
+    def learn_model(self, X_all, Y_all, kernel_params = {}):
         '''
         Learns SVMs to predict dynamics given the input data
         X_all - batch list of features
         Y_all - batch list of targets
-        kernel_params - user specified kernel specific parameters
+        kernel_params - user specified dictionary of kernel specific parameters
         '''
         (X, Y) = self.select_feature_data_and_targets(X_all, Y_all)
 
         for i, Y_i in enumerate(Y):
             print 'Learning for target:', self.target_names[i]
-            param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_type]) + ' -p ' + str(self.epsilons[i]) + \
-                kernel_params
+            param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_types[i]]) + ' -p ' + str(self.epsilons[i])
+            # TODO: test this out
+            if i in kernel_params:
+                param_string += kernel_params[i]
             svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
-        # TODO: Setup build_jacobian
-        # self.build_jacobian()
+        self.build_jacobian()
 
     def test_batch_data(self, X_all, Y_all):
         (X, Y_out) = self.select_feature_data_and_targets(X_all, Y_all)
@@ -269,6 +232,10 @@ class SVRPushDynamics:
         if self.jacobain_needs_updates:
             self.update_jacobian(x_k, u_k, xtra)
         return self.J
+
+    def build_jacobian(self):
+        self.J = np.eye(self.n, self.n+self.m)
+        # TODO: Set this up correctly...
 
     def build_jacobian_linear_ee(self):
         self.J = np.eye(self.n, self.n+self.m)
@@ -405,48 +372,83 @@ class SVRPushDynamics:
     def save_models(self, output_file_base_string):
         '''
         Write svm models to disk
-        output_file_base_string - base paths for saving learning data
+        output_file_base_string - base path and naming prefix for saving learning model and parameters
         '''
-        for i, model in enumerate(self.svm_models):
-            file_name = self.get_out_file_name(output_file_base_string, i)
+        param_file_name = output_file_base_string+_PARAM_FILE_SUFFIX
+        print 'Writing param_file:', param_file_name
+        self.write_param_file(param_file_name)
+
+        for model, target_name in zip(self.svm_models, self.target_names):
+            file_name = output_file_base_string + '_' + target_name + '.model'
+            print 'Saving svm model file', file_name
             svmutil.svm_save_model(file_name, model)
-        return self.get_base_name(output_file_base_string)
 
-    def get_base_name(self, base_string):
-        return base_string + '_' + self.kernel_type + '_' + self.ee_model_name + '_' + \
-            self.feature_transform_name
-
-    def get_out_file_name(self, base_string, out_var_idx):
+    def load_models(self, param_file_name):
         '''
-        Return filename from target base string and out variable index
+        Load parameters and previously learned SVM models
         '''
-        return self.get_base_name(base_string) + '_' + self._OUT_VARIABLE_NAMES[out_var_idx] + '.model'
+        input_base_string = param_file_name[:-len(_PARAM_FILE_SUFFIX)]
+        self.parse_param_file(param_file_name)
+        for target_name in self.target_names:
+            svm_file_name = input_base_string + '_' + target_name + '.model'
+            print 'Loading file', svm_file_name
+            model = svmutil.svm_load_model(svm_file_name)
+            self.svm_models.append(model)
+            self.kernel_types.append(self._KERNEL_NAMES[model.param.kernel_type])
 
-    def parse_file_string(self, base_file_string):
+    def write_param_file(self, param_file_name):
         '''
-        [model_names, kernel, o, feats, ee] = self.parse_file_string(base_file_string)
+        Write necessary parameters not stored in the SVM model file
         '''
-        params = base_file_string.split('/')[-1].split('_')[-3:]
-        kernel_name = params[0]
-        ee_model = params[1]
-        feat_transform = params[2]
+        param_file = file(param_file_name, 'w')
+        param_file.write(str(self.delta_t)+'\n')
+        param_file.write(str(self.n)+'\n')
+        param_file.write(str(self.m)+'\n')
 
-        if ee_model == 'learnedEE':
-            output_dims = 5
-            ee = True
-        else:
-            output_dims = 3
-            ee = False
+        param_file.write(_PARAM_FEATURE_HEADER+'\n')
+        for feature_name in self.feature_names:
+            param_file.write(feature_name+'\n')
+        param_file.write(_PARAM_TARGET_HEADER+'\n')
+        for target_name in self.target_names:
+            param_file.write(target_name+'\n')
+        # NOTE: Add any other necessary parameters here
+        param_file.close()
 
-        if feat_transform == 'objectFrame':
-            use_object_frame = True
-        else:
-            use_object_frame = False
+    def parse_param_file(self, param_file_name, debug=False):
+        '''
+        Parse necessary parameters not stored in the SVM model file
+        '''
+        param_file = file(param_file_name, 'r')
+        lines = param_file.readlines()
 
-        model_names = []
-        for i in xrange(output_dims):
-            file_name = base_file_string+'_' + self._OUT_VARIABLE_NAMES[i] + '.model'
-            model_names.append(file_name)
+        parsing_features = False
+        parsing_targets = False
+        param_file.close()
 
-        return [model_names, kernel_name, output_dims, use_object_frame, ee]
+        self.feature_names = []
+        self.target_names = []
 
+        self.delta_t = float(lines.pop(0).rstrip())
+        self.n = int(lines.pop(0).rstrip())
+        self.m = int(lines.pop(0).rstrip())
+
+        for l in lines:
+            if l.startswith(_PARAM_FEATURE_HEADER):
+                parsing_features = True
+                parsing_targets = False
+                if debug:
+                    print 'Now parsing features'
+            elif l.startswith(_PARAM_TARGET_HEADER):
+                parsing_features = False
+                parsing_targets = True
+                if debug:
+                    print 'Now parsing targets'
+            elif parsing_features:
+                self.feature_names.append(l.rstrip())
+                if debug:
+                    print 'Read feature', l.rstrip()
+            elif parsing_targets:
+                self.target_names.append(l.rstrip())
+                if debug:
+                    print 'Read target', l.rstrip()
+            # NOTE: Add any other necessary parameters here

@@ -978,6 +978,13 @@ def test_svm_new(base_dir_name):
     # Do Learning
     svr_dynamics.learn_model(train_X, train_Y)
 
+    # Test saving and loading
+    svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
+    svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
+    svr_dynamics.save_models(svr_base_output_path)
+
+    svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
+
     # Do verification on training set
     (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
 
@@ -985,13 +992,17 @@ def test_svm_new(base_dir_name):
     (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
     (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
 
+    print 'svr_dynamics', svr_dynamics.kernel_types, svr_dynamics.feature_names, svr_dynamics.target_names, svr_dynamics.delta_t, svr_dynamics.n, svr_dynamics.m
+    print 'svr_dynamics2', svr_dynamics2.kernel_types, svr_dynamics2.feature_names, svr_dynamics2.target_names, svr_dynamics2.delta_t, svr_dynamics2.n, svr_dynamics2.m
+
     # Visualize training and validation results
     plot_out_path = '/home/thermans/sandbox/dynamics/'
-    plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
-                                      suffix = ' '+'train' )
+    # plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
+    #                                   suffix = ' '+'train' )
 
-    plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
-                                      suffix = ' '+'val' )
+    # plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
+    #                                   suffix = ' '+'val' )
+    # TODO: Make this work, need trial based data
     # plot_predicted_vs_observed_tracks(Y_gt, Y_hat, X, show_plot = False, out_path = plot_out_path,
     #                                   suffix = ' '+'val' )
 
