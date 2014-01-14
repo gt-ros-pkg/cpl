@@ -52,10 +52,8 @@ _DELTA_PHI_EE_WORLD = 'DELTA_PHI_EE_WORLD'
 _DELTA_T = 'DELTA_T'
 _DELTA_X_OBJ_OBJ = 'DELTA_X_OBJ_OBJ'
 _DELTA_Y_OBJ_OBJ = 'DELTA_Y_OBJ_OBJ'
-_DELTA_THETA_OBJ_OBJ = 'DELTA_THETA_OBJ_OBJ'
 _DELTA_X_EE_OBJ = 'DELTA_X_EE_OBJ'
 _DELTA_Y_EE_OBJ = 'DELTA_Y_EE_OBJ'
-_DELTA_PHI_EE_OBJ = 'DELTA_PHI_EE_OBJ'
 
 _X_OBJ_WORLD = 'X_OBJ_WORLD'
 _Y_OBJ_WORLD = 'Y_OBJ_WORLD'
@@ -87,10 +85,8 @@ _TARGET_INDICES = {_DELTA_X_OBJ_WORLD:0,
                    _DELTA_T:7,
                    _DELTA_X_OBJ_OBJ:8,
                    _DELTA_Y_OBJ_OBJ:9,
-                   _DELTA_THETA_OBJ_OBJ:10,
-                   _DELTA_X_EE_OBJ:11,
-                   _DELTA_Y_EE_OBJ:12,
-                   _DELTA_PHI_EE_OBJ:13}
+                   _DELTA_X_EE_OBJ:10,
+                   _DELTA_Y_EE_OBJ:11}
 
 _FEAT_INDICES = {_X_OBJ_WORLD:0,
                  _Y_OBJ_WORLD:1,
@@ -113,6 +109,7 @@ _FEAT_INDICES = {_X_OBJ_WORLD:0,
                  _SHAPE_LOCAL:17,
                  _SHAPE_GLOBAL:-1}
 
+# TODO: Need to test with synthetic data to confirm
 def get_object_frame_features(cts, ee_phi):
     # Demean EE coordinates into object frame
     X_ee_demeaned = np.matrix([[cts.ee.position.x - cts.x.x],
@@ -134,31 +131,54 @@ def get_object_frame_features(cts, ee_phi):
             phi_ee_obj,
             U_obj[0], U_obj[1]]
 
-def get_object_frame_targets(cts_t0):
-    # TODO: Get these working
-    delta_x_obj_obj = 0.
-    delta_y_obj_obj = 0.
-    delta_theta_obj_obj = 0.
-    delta_x_ee_obj = 0.
-    delta_y_ee_obj = 0.
-    delta_phi_ee_obj = 0.
+# TODO: Need to test with synthetic data to confirm
+def get_object_frame_targets(cts_t0, cts_t1):
+    # Delta x and y of the object are just the object locations at the next time step
+    # in the current object's frame
+    X_t1_demeaned = np.matrix([[cts_t1.x.x - cts_t0.x.x],
+                               [cts_t1.x.y - cts_t0.x.y]])
+    st = sin(cts_t0.x.theta)
+    ct = cos(cts_t1.x.theta)
+    R = np.matrix([[ct, st],
+                   [-st, ct]])
+    X_t1_obj = np.array(R*X_t1_demeaned).T.ravel()
+
+    delta_x_obj_obj = X_t1_obj[0]
+    delta_y_obj_obj = X_t1_obj[1]
+
+    # Convert both ee positions into t0 object frame and get diff
+    ee_t0_demeaned = np.matrix([[cts_t0.ee.position.x - cts_t0.x.x],
+                                [cts_t0.ee.position.y - cts_t0.x.y]])
+    ee_t1_demeaned = np.matrix([[cts_t1.ee.position.x - cts_t0.x.x],
+                                [cts_t1.ee.position.y - cts_t0.x.y]])
+
+    ee_t0_obj = np.array(R*ee_t0_demeaned).T.ravel()
+    ee_t1_obj = np.array(R*ee_t1_demeaned).T.ravel()
+    ee_delta_X = ee_t1_obj - ee_t0_obj
+
+    delta_x_ee_obj = ee_delta_X[0]
+    delta_y_ee_obj = ee_delta_X[1]
+
     return [delta_x_obj_obj,
             delta_y_obj_obj,
-            delta_theta_obj_obj,
             delta_x_ee_obj,
-            delta_y_ee_obj,
-            delta_phi_ee_obj]
+            delta_y_ee_obj]
 
+# TODO: Need to test with synthetic data to confirm
 def convert_push_trial_to_feat_vectors(trial):
     Z = []
     Y = []
     for i in xrange(len(trial.trial_trajectory)-1):
         cts_t0 = trial.trial_trajectory[i]
         cts_t1 = trial.trial_trajectory[i+1]
-        [_, _, ee_phi] = euler_from_quaternion([cts_t0.ee.orientation.x,
-                                                cts_t0.ee.orientation.y,
-                                                cts_t0.ee.orientation.z,
-                                                cts_t0.ee.orientation.w])
+        [_, _, ee_phi_t0] = euler_from_quaternion([cts_t0.ee.orientation.x,
+                                                   cts_t0.ee.orientation.y,
+                                                   cts_t0.ee.orientation.z,
+                                                   cts_t0.ee.orientation.w])
+        [_, _, ee_phi_t1] = euler_from_quaternion([cts_t1.ee.orientation.x,
+                                                   cts_t1.ee.orientation.y,
+                                                   cts_t1.ee.orientation.z,
+                                                   cts_t1.ee.orientation.w])
         # TODO: This will depend on the primitive used
         u_phi_world = cts_t0.u.angular.x
 
@@ -168,15 +188,16 @@ def convert_push_trial_to_feat_vectors(trial):
                cts_t0.ee.position.x,
                cts_t0.ee.position.y,
                cts_t0.ee.position.z,
-               ee_phi,
+               ee_phi_t0,
                cts_t0.u.linear.x,
                cts_t0.u.linear.y,
                cts_t0.u.linear.z,
                u_phi_world]
 
         # Convert world frame feats into object frame
-        z_t_obj_frame = get_object_frame_features(cts_t0, ee_phi)
+        z_t_obj_frame = get_object_frame_features(cts_t0, ee_phi_t0)
         # TODO: Convert shape into frame for each instance?
+        # TODO: Need to extract this first...
         z_shape = trial.trial_start.shape_descriptor
         z_t.extend(z_t_obj_frame)
         z_t.extend(z_shape)
@@ -188,13 +209,14 @@ def convert_push_trial_to_feat_vectors(trial):
                cts_t1.ee.position.x - cts_t0.ee.position.x,
                cts_t1.ee.position.y - cts_t0.ee.position.y,
                cts_t1.ee.position.z - cts_t0.ee.position.z,
-               0, # EE phi change
-               cts_t1.t - cts_t0.t] # Delta t
-        # TODO: Transform targets into object frame here...
-        y_t_obj_frame = get_object_frame_targets(cts_t0)
+               ee_phi_t1 - ee_phi_t0,
+               cts_t1.t - cts_t0.t]
+
+        # Transform targets into object frame here...
+        y_t_obj_frame = get_object_frame_targets(cts_t0, cts_t1)
         y_t.extend(y_t_obj_frame)
 
-        Z.extend(z_t)
+        Z.append(z_t)
         Y.append(y_t)
     return (Z, Y)
 
@@ -240,8 +262,8 @@ def create_object_class_svm_files(directory_list, base_out_dir):
         for i, t_idx in enumerate(object_classes[obj_id]):
             out_file_base_name = out_dir + str(i)
             print 'out_file_base_name:', out_file_base_name
-            [X, Y] = convert_push_trial_to_feat_vectors(plio.push_trials[t_idx])
-            # write_dynamics_learning_trial_file(X, Y, out_file_base_name)
+            (X, Y) = convert_push_trial_to_feat_vectors(plio.push_trials[t_idx])
+            write_dynamics_learning_trial_file(X, Y, out_file_base_name)
 
 def create_train_and_validate_splits(in_dir, out_dir):
     # TODO: Create function to take in header to link different files
