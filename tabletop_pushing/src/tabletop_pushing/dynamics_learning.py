@@ -282,6 +282,10 @@ def create_object_class_svm_files(directory_list, base_out_dir):
 
     print 'Object classes:', object_classes.keys()
 
+
+    if base_out_dir[-1] != '/':
+        base_out_dir += '/'
+
     for obj_id in object_classes:
         out_dir = base_out_dir + 'object_classes/'
         if not os.path.exists(out_dir):
@@ -313,6 +317,8 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
             if not (class_id in train_classes):
                 train_classes.append(class_id)
 
+    if out_dir[-1] != '/':
+        out_dir += '/'
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
@@ -380,6 +386,9 @@ def split_aff_files_train_validate_percent(in_dirs, out_dir, train_percent=0.7):
         val_Ys.extend(trial_Ys[i])
     print 'len(val_Xs)', len(val_Xs)
     print 'len(val_Ys)', len(val_Ys)
+
+    if out_dir[-1] != '/':
+        out_dir += '/'
 
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
