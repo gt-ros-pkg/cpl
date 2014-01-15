@@ -33,7 +33,7 @@
 
 import svmutil
 import numpy as np
-from math import sin, cos
+from math import sin, cos, exp, tanh
 import dynamics_learning
 
 _PARAM_FILE_SUFFIX = '_params.txt'
@@ -152,7 +152,7 @@ class SVRPushDynamics:
             learned_out_dims = len(target_names)
 
             # Set kernel types
-            # TODO: Make this variable between different dimension
+            # TODO: Make this variable between different dimensions
             if kernel_type is not None:
                 for i in xrange(learned_out_dims):
                     self.kernel_types.append(kernel_type)
@@ -207,7 +207,8 @@ class SVRPushDynamics:
             param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_types[i]]) + ' -p ' + str(self.epsilons[i])
             # TODO: test this out
             if i in kernel_params:
-                param_string += kernel_params[i]
+                param_string += ' ' + kernel_params[i]
+            # print 'Parameters', param_string
             svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
         self.build_jacobian()
@@ -256,58 +257,54 @@ class SVRPushDynamics:
         '''
         Setup the basic structure of the jacobian for faster computation at each iteration
         '''
-        self.J = np.eye(self.n, self.n+self.m)
+        self.J_base = np.matrix(np.eye(self.n, self.n+self.m))
+        self.J_delta_d_targets = np.matrix(np.zeros((self.n, self.n)))
         self.jacobian_needs_updates = False
 
         # Setup partials for ee position change, currently using linear model of applied velocity
         if self.use_naive_ee_model:
-            self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
-        elif self.obj_frame_ee_targets:
-            pass
-        else:
-            pass
+            self.J_base[3:5, 5: ] = np.eye(self.m)*self.delta_t
 
-        if self.obj_frame_obj_targets:
-            pass
-        else:
-            pass
-
-        if self.obj_frame_ee_feats:
+        if (self.obj_frame_ee_targets or self.obj_frame_obj_targets or
+            self.obj_frame_ee_feats or self.obj_frame_u_feats):
             self.jacobian_needs_updates = True
-        else:
-            pass
 
-        if self.obj_frame_u_feats:
-            self.jacobian_needs_updates = True
-        else:
-            pass
+        # Setup static deltas d targets (currently none)
+        J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
 
         # TODO: Need to figure out kernel SVM stuff
-
-        # Setup partials w.r.t. SVM model parameters
-        # TODO: This is for world frame stuff
-        for i, svm_model in enumerate(self.svm_models):
-            alphas = svm_model.get_sv_coef()
-            svs = svm_model.get_SV()
-            # Partial derivative is the sum of the product of the SV elements and coefficients
-            # \sum_{i=1}^{l} alpha_i*z_i^j
-            for alpha, sv in zip(alphas, svs):
-                for j in xrange(self.p):
-                    self.J[i, j] += alpha[0]*sv[j+1]
-
-        # TODO: This is for object frame stuff
-        self.sv_coeffs = np.matrix(np.zeros((len(self.svm_models), self.p)))
-
-        # TODO: Pick up correct dimensions
+        # TODO: Setup jacobain of learned targets w.r.t. features
+        self.J_targets_d_feats = np.matrix(np.zeros((self.n, self.p)))
+        self.rbf_deriv_prefixes = {}
+        self.full_SVs = {}
         # Setup partials w.r.t. SVM model parameters
         for i, svm_model in enumerate(self.svm_models):
             alphas = svm_model.get_sv_coef()
-            svs = svm_model.get_SV()
-            # Partial derivative is the sum of the product of the SV elements and coefficients
-            # \sum_{i=1}^{l} alpha_i*z_i^j
-            for alpha, sv in zip(alphas, svs):
-                for j in xrange(self.p):
-                    self.sv_coeffs[i, j] += alpha[0]*sv[j+1]
+            svs_sparse = svm_model.get_SV()
+            svs = self.make_svs_dense(svs_sparse)
+            self.full_SVs[i] = svs
+            print 'svm[',i, '] has kernel type', self._KERNEL_NAMES[svm_model.param.kernel_type]
+            if self.kernel_types[i] == 'LINEAR':
+                # Partial derivative is the sum of the product of the SV elements and coefficients
+                # \sum_{i=1}^{l} alpha_i*z_i^j
+                for alpha, sv in zip(alphas, svs):
+                    for j in xrange(self.p):
+                        self.J_targets_d_feats[i, j] += alpha[0]*sv[j]
+            elif self.kernel_types[i] == 'RBF':
+                gamma = svm_model.param.gamma
+                self.rbf_deriv_prefixes[i] = []
+                for alpha in alphas:
+                    self.rbf_deriv_prefixes[i].append(-2.*alpha[0]*gamma)
+
+        # Setup static feature d opts (currently none)
+        J_feats_d_opts = np.matrix(np.eye(self.p, self.n+self.m))
+
+        # print 'self.J_base:\n', self.J_base
+        # print 'J_delta_d_targets:\n',J_delta_d_targets
+        # print 'self.J_targets_d_feats:\n',self.J_targets_d_feats
+        # print 'J_feats_d_opts:\n', J_feats_d_opts
+
+        self.J = self.J_base + J_delta_d_targets*self.J_targets_d_feats*J_feats_d_opts
 
 
     def update_jacobian(self, x_k, u_k, xtra=[]):
@@ -317,44 +314,119 @@ class SVRPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
+        # NOTE: Being lazy and assuming a specific order of features here...
+        # TODO: Change all to variables, i.e. using things like used in transform opts
+        # self.obj_frame_obj_x_idx
+        # self.obj_frame_obj_y_idx
+        # self.obj_frame_ee_x_idx
+        # self.obj_frame_ee_y_idx
 
         st = sin(x_k[2])
         ct = cos(x_k[2])
-        # Partial derivatives of the transformed features
-        J_feats = np.matrix(np.zeros((self.p, self.n+self.m)))
 
+        # Update derivative of opt deltas w.r.t. learned targets
+        J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
+        if self.obj_frame_obj_targets:
+            J_delta_d_targets[0, 0] = ct # d/do_x^o[o_x^w]
+            J_delta_d_targets[0, 1] = -st # d/do_y^o[o_x^w]
+            J_delta_d_targets[1, 0] = st # d/do_x^o[o_y^w]
+            J_delta_d_targets[1, 1] = ct # d/do_y^o[o_y^w]
+
+        if self.obj_frame_ee_targets:
+            J_delta_d_targets[3, 3] = ct # d/dee_x^o[ee_x^w]
+            J_delta_d_targets[3, 4] = -st # d/dee_y^o[ee_x^w]
+            J_delta_d_targets[4, 3] = st # d/dee_x^o[ee_y^w]
+            J_delta_d_targets[4, 4] = ct # d/dee_y^o[ee_y^w]
+
+        # Update derivatives of features w.r.t. decision variables
+        J_feats_d_opts = np.matrix(np.zeros((self.p, self.n+self.m)))
         if self.obj_frame_ee_feats:
             x_ee_demeaned = x_k[3] - x_k[0]
             y_ee_demeaned = x_k[4] - x_k[1]
 
-            J_feats[0, 0] = -ct # d/dx[x_ee]
-            J_feats[0, 1] = -st # d/dy[x_ee]
-            J_feats[0, 2] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[x_ee]
-            J_feats[0, 3] =  ct # d/dx_ee[x_ee]
-            J_feats[0, 4] =  st # d/dy_ee[x_ee]
+            J_feats_d_opts[0, 0] = -ct # d/dx[x_ee]
+            J_feats_d_opts[0, 1] = -st # d/dy[x_ee]
+            J_feats_d_opts[0, 2] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[x_ee]
+            J_feats_d_opts[0, 3] =  ct # d/dx_ee[x_ee]
+            J_feats_d_opts[0, 4] =  st # d/dy_ee[x_ee]
 
-            J_feats[1, 0] =  st # d/dx[y_ee]
-            J_feats[1, 1] = -ct # d/dy[y_ee]
-            J_feats[1, 2] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[y_ee]
-            J_feats[1, 3] = -st # d/dx_ee[y_ee]
-            J_feats[1, 4] =  ct # d/dy_ee[y_ee]
-
+            J_feats_d_opts[1, 0] =  st # d/dx[y_ee]
+            J_feats_d_opts[1, 1] = -ct # d/dy[y_ee]
+            J_feats_d_opts[1, 2] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[y_ee]
+            J_feats_d_opts[1, 3] = -st # d/dx_ee[y_ee]
+            J_feats_d_opts[1, 4] =  ct # d/dy_ee[y_ee]
+        else:
+            # Identity matrix
+            J_feats_d_opts[0:2, 0:2] = np.eye(2)
         if self.obj_frame_u_feats:
-            J_feats[2, 2] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
-            J_feats[2, 5] = ct # d/du_x[u_x]
-            J_feats[2, 6] = st # d/du_y[u_x]
+            J_feats_d_opts[2, 2] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
+            J_feats_d_opts[2, 5] = ct # d/du_x[u_x]
+            J_feats_d_opts[2, 6] = st # d/du_y[u_x]
 
-            J_feats[3, 2] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
-            J_feats[3, 5] = -st # d/du_x[u_y]
-            J_feats[3, 6] =  ct # d/du_y[u_y]
+            J_feats_d_opts[3, 2] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
+            J_feats_d_opts[3, 5] = -st # d/du_x[u_y]
+            J_feats_d_opts[3, 6] =  ct # d/du_y[u_y]
+        else:
+            # Identity matrix
+            J_feats_d_opts[2:4, 2:4] = np.eye(2)
 
-        # TODO: Add in kernel chain rule stuff here too
+        # Needed for kernel derivative evaluation
+        z_k = self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)
+
+        J_targets_d_feats = np.matrix(np.zeros((self.n, self.p)))
+        # Update derivatives of targets w.r.t feature variables
+        for i, svm_model in enumerate(self.svm_models):
+            if self.kernel_types[i] == 'LINEAR':
+                J_targets_d_feats[i,:] = self.J_targets_d_feats[i,:]
+
+            elif self.kernel_types[i] == 'RBF':
+                svs = self.full_SVs[i]
+                gamma = svm_model.param.gamma
+                for l, v in enumerate(svs):
+                    k_sv = self.rbf_kernel(z_k, v, gamma)
+                    alpha_gamma = self.rbf_deriv_prefixes[i][l]
+                    for j in xrange(self.p):
+                        v_j = v[j]
+                        J_targets_d_feats[i, j] += alpha_gamma*k_sv*(z_k[j] - v_j)
+
+            elif self.kernel_types[i] == 'POLYNOMIAL':
+                k = svm_model.param.coef0
+                svs = self.full_SVs[i]
+                gamma = svm_model.param.gamma
+                alphas = svm_model.get_sv_coef()
+                for l, v in enumerate(svs):
+                    alpha = alphas[l][0]
+                    c = alpha*k*gamma
+                    for j in xrange(self.p):
+                        v_j = v[j]
+                        core = gamma*np.dot(z_k, v)
+                        core_k = core**(k-1)
+                        J_targets_d_feats[i, j] += c*v_j*core_k
+
+            elif self.kernel_types[i] == 'SGIMOID':
+                # (1-tanh(gamma*np.dot(z,v)+c0))*gamma*v_j
+                c0 = svm_model.param.coef0
+                svs = self.full_SVs[i]
+                gamma = svm_model.param.gamma
+                alphas = svm_model.get_sv_coef()
+                for l, v in enumerate(svs):
+                    alpha = alphas[l][0]
+                    for j in xrange(self.p):
+                        if j in v:
+                            v_j = v[j]
+                        else:
+                            v_j = 0.
+                        J_targets_d_feats[i, j] += (1-tanh(gamma*np.dot(z_k, v)+c0))*gamma*v_j
+            elif self.kernel_types[i] == 'PRECOMPUTED':
+                # TODO: User needs to supply a function to be called here
+                pass
 
         # Do chain rule here
-        # TODO: Only update the appropriate subsections
-        J_update = np.zeros(self.J.shape)
-        J_update[:len(self.svm_models),:] = self.sv_coeffs*J_feats
-        J = self.J + J_update
+        # print 'J_base', self.J_base
+        # print 'J_delta_d_targets', J_delta_d_targets
+        # print 'J_targets_d_feats', J_targets_d_feats
+        # print 'J_feats_d_opts', J_feats_d_opts
+        J = self.J_base + J_delta_d_targets*J_targets_d_feats*J_feats_d_opts
         return J
 
     #
@@ -497,6 +569,13 @@ class SVRPushDynamics:
         return [obj_x_val, obj_y_val, obj_theta_val, ee_x_val, ee_y_val]
 
     #
+    # Kernel Functions
+    #
+    def rbf_kernel(self, z, v, gamma):
+        d = z - v
+        return exp(-gamma*sum(d*d))
+
+    #
     # I/O Functions
     #
     def save_models(self, output_file_base_string):
@@ -575,3 +654,14 @@ class SVRPushDynamics:
             elif parsing_targets:
                 self.target_names.append(l.rstrip())
             # NOTE: Add any other necessary parameters here
+
+    def make_svs_dense(self, svs):
+        full_SVs = []
+        for v in svs:
+            v_full = np.zeros(self.p)
+            for key, val in v.items():
+                if key > 0:
+                    v_full[key-1] = val
+            full_SVs.append(v_full)
+        return full_SVs
+

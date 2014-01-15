@@ -178,6 +178,8 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     plan_color = _KULER_RED
     gt_color = _KULER_GREEN
     predicted_color = _KULER_BLUE
+    ee_predicted_color = _KULER_BLUE1
+    gt_ee_color = _KULER_GREEN1
 
     # Plot desired
     x_d = [X_d_k[0] for X_d_k in X_d]
@@ -189,16 +191,24 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     # Plot predicted
     x_hat = [X_k[0] for X_k in X[t:]]
     y_hat = [X_k[1] for X_k in X[t:]]
-    theta_hat = [X_k[1] for X_k in X[t:]]
+    theta_hat = [X_k[2] for X_k in X[t:]]
+    ee_x_hat = [X_k[3] for X_k in X[t:]]
+    ee_y_hat = [X_k[4] for X_k in X[t:]]
     plotter.plot(x_hat, y_hat, color = predicted_color)
     plotter.plot(x_hat, y_hat, color = predicted_color, marker = '+')
+    # plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color)
+    # plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color, marker = '+')
 
     # Plot observed / GT
     x_gt = [X_k[0] for X_k in X[:t+1]]
     y_gt = [X_k[1] for X_k in X[:t+1]]
-    theta_gt = [X_k[1] for X_k in X[:t+1]]
+    theta_gt = [X_k[2] for X_k in X[:t+1]]
+    ee_x_gt = [X_k[3] for X_k in X[:t+1]]
+    ee_y_gt = [X_k[4] for X_k in X[:t+1]]
     plotter.plot(x_gt, y_gt, color = gt_color)
     plotter.plot(x_gt, y_gt, color = gt_color, marker = '+')
+    plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color)
+    plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color, marker ='x')
 
     # Make axes equal scales
     xlim_auto = plotter.xlim()
@@ -708,7 +718,10 @@ def test_svm_new(base_dir_name):
     svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons, feature_names = feature_names,
                                    target_names = target_names, kernel_type='RBF')
     # Do Learning
-    svr_dynamics.learn_model(train_X, train_Y)
+    kernel_params = {}
+    for i in xrange(len(feature_names)):
+        kernel_params[i] = '-g 0.05'
+    svr_dynamics.learn_model(train_X, train_Y, kernel_params)
 
     # Test saving and loading
     svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
@@ -788,14 +801,14 @@ def test_svm_new(base_dir_name):
     return svr_dynamics2
 
 def test_mpc(base_dir_name):
-    delta_t = 2.0
+    delta_t = 1.0/9.0
     H = 10
     n = 5
     m = 2
-    u_max = 0.5
-    sigma = 0.01
-    # plot_output_path = '/home/thermans/sandbox/mpc_plots/'
-    plot_output_path = ''
+    u_max = 0.05
+    sigma = 0.0001
+    plot_output_path = '/home/thermans/sandbox/mpc_plots/with_ee/'
+    # plot_output_path = ''
     xtra = []
     plot_all_t = False
     plot_gt = True
@@ -823,12 +836,12 @@ def test_mpc(base_dir_name):
                    ee_pose.pose.position.x, ee_pose.pose.position.y])
 
     goal_loc = Pose2D()
-    goal_loc.x = 2.0
-    goal_loc.y = 0.0
+    goal_loc.x = 0.75
+    goal_loc.y = -0.25
 
     p1 = Pose2D()
     p1.x = 0.5
-    p1.y = 0.5
+    p1.y = 0.0#5
 
     p2 = Pose2D()
     p2.x = 1.0
@@ -838,10 +851,10 @@ def test_mpc(base_dir_name):
     p4.x = 2.5
     p4.y = 0.0
 
-    pose_list = [p1, p2, goal_loc, p4]
-    # trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator()
-    trajectory_generator = ptg.ViaPointTrajectoryGenerator()
-    x_d = trajectory_generator.generate_trajectory(H*2, cur_state.x, pose_list)
+    pose_list = [goal_loc]
+    trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator(0.01, 2)
+    # trajectory_generator = ptg.ViaPointTrajectoryGenerator()
+    x_d = trajectory_generator.generate_trajectory(cur_state.x, pose_list)
 
     if test_trajectory:
         for i in xrange(len(x_d)):
@@ -865,6 +878,8 @@ def test_mpc(base_dir_name):
     u_gt = []
     for i in xrange(len(x_d)-1):
         # Update desired trajectory
+        # TODO: Recompute trajectory from current pose
+        # x_d = trajectory_generator.generate_trajectory(cur_state.x, pose_list)
         x_d_i = x_d[i:]
         mpc.H = min(mpc.H, len(x_d_i)-1)
         mpc.regenerate_bounds()
