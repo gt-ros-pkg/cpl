@@ -253,74 +253,52 @@ class SVRPushDynamics:
         return self.J
 
     def build_jacobian(self):
-        # TODO: Set this up correctly...
+        '''
+        Setup the basic structure of the jacobian for faster computation at each iteration
+        '''
         self.J = np.eye(self.n, self.n+self.m)
         self.jacobian_needs_updates = False
 
-    def build_jacobian_linear_ee(self):
-        self.J = np.eye(self.n, self.n+self.m)
-
         # Setup partials for ee position change, currently using linear model of applied velocity
-        self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
+        if self.use_naive_ee_model:
+            self.J[3:5, 5: ] = np.eye(self.m)*self.delta_t
+        elif self.obj_frame_ee_targets:
+            pass
+        else:
+            pass
+
+        if self.obj_frame_obj_targets:
+            pass
+        else:
+            pass
+
+        if self.obj_frame_ee_feats:
+            self.jacobian_needs_updates = True
+        else:
+            pass
+
+        if self.obj_frame_u_feats:
+            self.jacobian_needs_updates = True
+        else:
+            pass
+
+        # TODO: Need to figure out kernel SVM stuff
 
         # Setup partials w.r.t. SVM model parameters
+        # TODO: This is for world frame stuff
         for i, svm_model in enumerate(self.svm_models):
             alphas = svm_model.get_sv_coef()
             svs = svm_model.get_SV()
             # Partial derivative is the sum of the product of the SV elements and coefficients
             # \sum_{i=1}^{l} alpha_i*z_i^j
             for alpha, sv in zip(alphas, svs):
-                for j in xrange(self.m+self.n):
+                for j in xrange(self.p):
                     self.J[i, j] += alpha[0]*sv[j+1]
 
-    def update_jacobian(self, x_k, u_k, xtra=[]):
-        '''
-        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
-        x_k - current state estimate (ndarray)
-        u_k - current control to evaluate (ndarray)
-        xtra - other features for SVM
-        '''
-        x_ee_demeaned = x_k[3] - x_k[0]
-        y_ee_demeaned = x_k[4] - x_k[1]
-        st = sin(x_k[2])
-        ct = cos(x_k[2])
-        # Partial derivatives of the transformed features
-        J_feats = np.matrix(np.zeros((self.p, self.n+self.m)))
-
-        J_feats[0, 0] = -ct # d/dx[x_ee]
-        J_feats[0, 1] = -st # d/dy[x_ee]
-        J_feats[0, 2] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[x_ee]
-        J_feats[0, 3] =  ct # d/dx_ee[x_ee]
-        J_feats[0, 4] =  st # d/dy_ee[x_ee]
-
-        J_feats[1, 0] =  st # d/dx[y_ee]
-        J_feats[1, 1] = -ct # d/dy[y_ee]
-        J_feats[1, 2] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[y_ee]
-        J_feats[1, 3] = -st # d/dx_ee[y_ee]
-        J_feats[1, 4] =  ct # d/dy_ee[y_ee]
-
-        J_feats[2, 2] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
-        J_feats[2, 5] = ct # d/du_x[u_x]
-        J_feats[2, 6] = st # d/du_y[u_x]
-
-        J_feats[3, 2] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
-        J_feats[3, 5] = -st # d/du_x[u_y]
-        J_feats[3, 6] =  ct # d/du_y[u_y]
-
-        # Do chain rule here
-        J_update = np.zeros(self.J_base.shape)
-        J_update[:len(self.svm_models),:] = self.sv_coeffs*J_feats
-        J = self.J_base + J_update
-        return J
-
-    def build_jacobian_linear_ee_object_frame(self):
-        self.J_base = np.eye(self.n, self.n+self.m)
-
-        # Setup partials for ee position change, currently using linear model of applied velocity
-        self.J_base[3:5, 5: ] = np.eye(self.m)*self.delta_t
-
+        # TODO: This is for object frame stuff
         self.sv_coeffs = np.matrix(np.zeros((len(self.svm_models), self.p)))
 
+        # TODO: Pick up correct dimensions
         # Setup partials w.r.t. SVM model parameters
         for i, svm_model in enumerate(self.svm_models):
             alphas = svm_model.get_sv_coef()
@@ -330,6 +308,54 @@ class SVRPushDynamics:
             for alpha, sv in zip(alphas, svs):
                 for j in xrange(self.p):
                     self.sv_coeffs[i, j] += alpha[0]*sv[j+1]
+
+
+    def update_jacobian(self, x_k, u_k, xtra=[]):
+        '''
+        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
+        x_k - current state estimate (ndarray)
+        u_k - current control to evaluate (ndarray)
+        xtra - other features for SVM
+        '''
+
+        st = sin(x_k[2])
+        ct = cos(x_k[2])
+        # Partial derivatives of the transformed features
+        J_feats = np.matrix(np.zeros((self.p, self.n+self.m)))
+
+        if self.obj_frame_ee_feats:
+            x_ee_demeaned = x_k[3] - x_k[0]
+            y_ee_demeaned = x_k[4] - x_k[1]
+
+            J_feats[0, 0] = -ct # d/dx[x_ee]
+            J_feats[0, 1] = -st # d/dy[x_ee]
+            J_feats[0, 2] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[x_ee]
+            J_feats[0, 3] =  ct # d/dx_ee[x_ee]
+            J_feats[0, 4] =  st # d/dy_ee[x_ee]
+
+            J_feats[1, 0] =  st # d/dx[y_ee]
+            J_feats[1, 1] = -ct # d/dy[y_ee]
+            J_feats[1, 2] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[y_ee]
+            J_feats[1, 3] = -st # d/dx_ee[y_ee]
+            J_feats[1, 4] =  ct # d/dy_ee[y_ee]
+
+        if self.obj_frame_u_feats:
+            J_feats[2, 2] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
+            J_feats[2, 5] = ct # d/du_x[u_x]
+            J_feats[2, 6] = st # d/du_y[u_x]
+
+            J_feats[3, 2] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
+            J_feats[3, 5] = -st # d/du_x[u_y]
+            J_feats[3, 6] =  ct # d/du_y[u_y]
+
+        # TODO: Add in kernel chain rule stuff here too
+
+        # Do chain rule here
+        # TODO: Only update the appropriate subsections
+        J_update = np.zeros(self.J.shape)
+        J_update[:len(self.svm_models),:] = self.sv_coeffs*J_feats
+        J = self.J + J_update
+        return J
 
     #
     # Features transforms
