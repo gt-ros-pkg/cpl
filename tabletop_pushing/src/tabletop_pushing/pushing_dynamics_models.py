@@ -140,6 +140,7 @@ class SVRPushDynamics:
         self.kernel_types = []
         self.feature_names = []
         self.target_names = []
+        self.jacobian_needs_updates = False
 
         # Get settings from disk if a file base is specified
         if len(param_file_name) > 0:
@@ -168,6 +169,27 @@ class SVRPushDynamics:
                     self.epsilons.append(1e-6)
 
         # Set secondary parameters
+        self.obj_frame_ee_feats = (dynamics_learning._EE_X_OBJ in self.feature_names or
+                                   dynamics_learning._EE_Y_OBJ in self.feature_names)
+        self.obj_frame_u_feats  = (dynamics_learning._U_X_OBJ in self.feature_names or
+                                   dynamics_learning._U_Y_OBJ in self.feature_names)
+        self.use_naive_ee_model = not (dynamics_learning._DELTA_EE_X_WORLD in self.target_names or
+                                       dynamics_learning._DELTA_EE_Y_WORLD in self.target_names or
+                                       dynamics_learning._DELTA_EE_X_OBJ in self.target_names or
+                                       dynamics_learning._DELTA_EE_Y_OBJ in self.target_names)
+
+        self.obj_frame_obj_targets = (dynamics_learning._DELTA_OBJ_X_OBJ in self.target_names or
+                                      dynamics_learning._DELTA_OBJ_Y_OBJ in self.target_names)
+        self.obj_frame_ee_targets = (dynamics_learning._DELTA_EE_X_OBJ in self.target_names or
+                                     dynamics_learning._DELTA_EE_Y_OBJ in self.target_names)
+
+        if self.obj_frame_obj_targets:
+            self.obj_frame_obj_x_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_X_OBJ);
+            self.obj_frame_obj_y_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_Y_OBJ);
+        if self.obj_frame_ee_targets:
+            self.obj_frame_ee_x_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_OBJ);
+            self.obj_frame_ee_y_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_OBJ);
+
         self.p = len(self.feature_names)
         self.build_jacobian()
 
@@ -208,19 +230,16 @@ class SVRPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        z = self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)
-        x_k_plus_1 = []
+        z = [self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)]
         y = [0]
+
+        deltas = []
+
         for i, svm_model in enumerate(self.svm_models):
             [delta_i, _, _] = svmutil.svm_predict(y, z, svm_model, '-q')
-            x_k_plus_1.append(x_k[i]+delta_i[0])
+            deltas.append(delta_i[0])
 
-        # X ee
-        x_k_plus_1.append(x_k[3] + self.delta_t*u_k[0])
-        # Y ee
-        x_k_plus_1.append(x_k[4] + self.delta_t*u_k[1])
-
-        return np.array(x_k_plus_1)
+        return np.array(self.transform_svm_results_to_opt_vector(x_k, u_k, deltas))
 
     def jacobian(self, x_k, u_k, xtra=[]):
         '''
@@ -229,13 +248,14 @@ class SVRPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        if self.jacobain_needs_updates:
-            self.update_jacobian(x_k, u_k, xtra)
+        if self.jacobian_needs_updates:
+            return self.update_jacobian(x_k, u_k, xtra)
         return self.J
 
     def build_jacobian(self):
-        self.J = np.eye(self.n, self.n+self.m)
         # TODO: Set this up correctly...
+        self.J = np.eye(self.n, self.n+self.m)
+        self.jacobian_needs_updates = False
 
     def build_jacobian_linear_ee(self):
         self.J = np.eye(self.n, self.n+self.m)
@@ -253,7 +273,7 @@ class SVRPushDynamics:
                 for j in xrange(self.m+self.n):
                     self.J[i, j] += alpha[0]*sv[j+1]
 
-    def jacobian_linear_ee_object_frame(self, x_k, u_k, xtra=[]):
+    def update_jacobian(self, x_k, u_k, xtra=[]):
         '''
         Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
         x_k - current state estimate (ndarray)
@@ -335,36 +355,120 @@ class SVRPushDynamics:
             Y.append(Y_all[name])
         return (X, Y)
 
-    def opt_vector_to_feats_state_control(self, x_k, u_k, xtra):
-        '''
-        Does the simplest form of features, just passing on the decision variables
-        '''
-        z = np.concatenate([x_k, u_k, xtra])
-        # SVM expects a list of lists, but we're only doing one instance at a time
-        z = [z.tolist()]
+    def transform_opt_vector_to_feat_vector(self, x_k, u_k, xtra):
+        z = []
+        # Setup rotation matrix for local feats
+        if self.obj_frame_ee_feats or self.obj_frame_u_feats:
+            st = sin(x_k[2])
+            ct = cos(x_k[2])
+            R = np.matrix([[ct, st],
+                           [-st, ct]])
+            # Transfrom ee to object frame
+            if self.obj_frame_ee_feats:
+                ee_demeaned = np.matrix([[x_k[3]-x_k[0]],
+                                         [x_k[4]-x_k[1]]])
+                ee_obj = np.array(R*ee_demeaned).T.ravel()
+            if self.obj_frame_u_feats:
+                # transfrom u to object frame
+                u_obj = np.array(R*np.matrix(u_k).T).ravel()
+
+        for feature_name in self.feature_names:
+            if feature_name == dynamics_learning._OBJ_X_WORLD:
+                feat = x_k[0]
+            elif feature_name == dynamics_learning._OBJ_Y_WORLD:
+                feat = x_k[1]
+            elif feature_name == dynamics_learning._OBJ_THETA_WORLD:
+                feat = x_k[2]
+            elif feature_name == dynamics_learning._EE_X_WORLD:
+                feat = x_k[3]
+            elif feature_name == dynamics_learning._EE_Y_WORLD:
+                feat = x_k[4]
+            elif feature_name == dynamics_learning._U_X_WORLD:
+                feat = u_k[0]
+            elif feature_name == dynamics_learning._U_Y_WORLD:
+                feat = u_k[1]
+            elif feature_name == dynamics_learning._EE_X_OBJ:
+                feat = ee_obj[0]
+            elif feature_name == dynamics_learning._EE_Y_OBJ:
+                feat = ee_obj[1]
+            elif feature_name == dynamics_learning._U_X_OBJ:
+                feat = u_obj[0]
+            elif feature_name == dynamics_learning._U_Y_OBJ:
+                feat = u_obj[1]
+            # TODO: Implement below if desired
+            # elif feature_name == dynamics_learning._EE_Z_WORLD:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._EE_PHI_WORLD:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._U_Z_WORLD:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._U_PHI_WORLD:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._EE_Z_OBJ:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._EE_PHI_OBJ:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._SHAPE_LOCAL:
+            #     feat = 0.0
+            # elif feature_name == dynamics_learning._SHAPE_GLOBAL:
+            #     feat = 0.0
+            z.append(feat)
         return z
 
-    def opt_vector_to_feats_object_frame(self, x_k, u_k, xtra):
-        '''
-        Projects features into ee frame, ignores absolute coordinates
-        '''
-        # Remove mean
-        x_ee_demeaned = np.matrix([[x_k[3]-x_k[0]],
-                                   [x_k[4]-x_k[1]]])
-        # Rotate into frame
-        st = sin(x_k[2])
-        ct = cos(x_k[2])
-        R = np.matrix([[ct, st],
-                       [-st, ct]])
-        x_ee_obj = np.array(R*x_ee_demeaned).T.ravel()
+    def transform_svm_results_to_opt_vector(self, x_k, u_k, deltas):
+        obj_x_val = 0.0
+        obj_y_val = 0.0
+        obj_theta_val = 0.0
+        ee_x_val = 0.0
+        ee_y_val = 0.0
 
-        # Rotate u_k into frame
-        u_k_obj = np.array(R*np.matrix(u_k).T).ravel()
+        if self.obj_frame_ee_targets or self.obj_frame_obj_targets:
+            st = sin(x_k[2])
+            ct = cos(x_k[2])
+            R = np.matrix([[ct, -st],
+                           [st, ct]])
 
-        z = np.concatenate([x_ee_obj, u_k_obj, xtra])
-        # SVM expects a list of lists, but we're only doing one instance at a time
-        z = [z.tolist()]
-        return z
+            if self.obj_frame_obj_targets:
+                delta_obj_world = np.array(R*np.matrix([[ deltas[self.obj_frame_obj_x_idx] ],
+                                                        [ deltas[self.obj_frame_obj_y_idx] ]])).ravel()
+            if self.obj_frame_ee_targets:
+                delta_ee_world = np.array(R*np.matrix([[ deltas[self.obj_frame_ee_x_idx] ],
+                                                       [ deltas[self.obj_frame_ee_y_idx] ]])).ravel()
+
+        for i, target_name in enumerate(self.target_names):
+            if target_name == dynamics_learning._DELTA_OBJ_X_WORLD:
+                obj_x_val = x_k[0] + deltas[i]
+            elif target_name == dynamics_learning._DELTA_OBJ_Y_WORLD:
+                obj_y_val = x_k[1] + deltas[i]
+            elif target_name == dynamics_learning._DELTA_OBJ_THETA_WORLD:
+                obj_theta_val = x_k[2] + deltas[i]
+            elif target_name == dynamics_learning._DELTA_EE_X_WORLD:
+                ee_x_val = x_k[3] + deltas[i]
+            elif target_name == dynamics_learning._DELTA_EE_Y_WORLD:
+                ee_y_val = x_k[4] + deltas[i]
+            elif target_name == dynamics_learning._DELTA_OBJ_X_OBJ:
+                obj_x_val = x_k[0] + delta_obj_world[0]
+            elif target_name == dynamics_learning._DELTA_OBJ_Y_OBJ:
+                obj_y_val = x_k[1] + delta_obj_world[1]
+            elif target_name == dynamics_learning._DELTA_EE_X_OBJ:
+                ee_x_val = x_k[3] + delta_ee_world[0]
+            elif target_name == dynamics_learning._DELTA_EE_Y_OBJ:
+                ee_x_val = x_k[4] + delta_ee_world[1]
+            # TODO: Setup these if desired
+            # elif target_name == dynamics_learning._DELTA_EE_Z_WORLD:
+            #     pass
+            # elif target_name == dynamics_learning._DELTA_EE_PHI_WORLD:
+            #     pass
+            # elif target_name == dynamics_learning._DELTA_T:
+            #     pass
+
+        if self.use_naive_ee_model:
+            # X ee
+            ee_x_val = x_k[3] + self.delta_t*u_k[0]
+            # Y ee
+            ee_y_val = x_k[4] + self.delta_t*u_k[1]
+
+        return [obj_x_val, obj_y_val, obj_theta_val, ee_x_val, ee_y_val]
 
     #
     # I/O Functions
@@ -380,7 +484,7 @@ class SVRPushDynamics:
 
         for model, target_name in zip(self.svm_models, self.target_names):
             file_name = output_file_base_string + '_' + target_name + '.model'
-            print 'Saving svm model file', file_name
+            print 'Saving svm model file:', file_name
             svmutil.svm_save_model(file_name, model)
 
     def load_models(self, param_file_name):
@@ -391,7 +495,7 @@ class SVRPushDynamics:
         self.parse_param_file(param_file_name)
         for target_name in self.target_names:
             svm_file_name = input_base_string + '_' + target_name + '.model'
-            print 'Loading file', svm_file_name
+            print 'Loading file:', svm_file_name
             model = svmutil.svm_load_model(svm_file_name)
             self.svm_models.append(model)
             self.kernel_types.append(self._KERNEL_NAMES[model.param.kernel_type])
@@ -414,10 +518,11 @@ class SVRPushDynamics:
         # NOTE: Add any other necessary parameters here
         param_file.close()
 
-    def parse_param_file(self, param_file_name, debug=False):
+    def parse_param_file(self, param_file_name):
         '''
         Parse necessary parameters not stored in the SVM model file
         '''
+        print 'Loading SVRDynamics parameter file:', param_file_name
         param_file = file(param_file_name, 'r')
         lines = param_file.readlines()
 
@@ -436,19 +541,11 @@ class SVRPushDynamics:
             if l.startswith(_PARAM_FEATURE_HEADER):
                 parsing_features = True
                 parsing_targets = False
-                if debug:
-                    print 'Now parsing features'
             elif l.startswith(_PARAM_TARGET_HEADER):
                 parsing_features = False
                 parsing_targets = True
-                if debug:
-                    print 'Now parsing targets'
             elif parsing_features:
                 self.feature_names.append(l.rstrip())
-                if debug:
-                    print 'Read feature', l.rstrip()
             elif parsing_targets:
                 self.target_names.append(l.rstrip())
-                if debug:
-                    print 'Read target', l.rstrip()
             # NOTE: Add any other necessary parameters here

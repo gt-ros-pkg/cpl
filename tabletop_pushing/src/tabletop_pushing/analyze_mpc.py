@@ -679,7 +679,66 @@ def test_svm_stuff(aff_file_name=None):
     # print 'Jacobian', svm_dynamics2.J
     return svm_dynamics2
 
-def test_mpc():
+def test_svm_new(base_dir_name):
+    target_names = [dynamics_learning._DELTA_OBJ_X_WORLD,
+                    dynamics_learning._DELTA_OBJ_Y_WORLD,
+                    dynamics_learning._DELTA_OBJ_THETA_WORLD,
+                    dynamics_learning._DELTA_EE_X_OBJ,
+                    dynamics_learning._DELTA_EE_Y_OBJ]
+
+    feature_names = [dynamics_learning._EE_X_OBJ,
+                     dynamics_learning._EE_Y_OBJ,
+                     dynamics_learning._U_X_OBJ,
+                     dynamics_learning._U_Y_OBJ]
+
+    train_file_base_name = base_dir_name + 'train'
+    val_file_base_name = base_dir_name + 'validate'
+
+    # Read data from disk
+    (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
+    # TODO: Create SVM class
+    epsilons = []
+    for i in xrange(len(target_names)):
+        epsilons.append(1e-3)
+    delta_t = 1./9.
+    n = 5
+    m = 2
+
+    svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons, feature_names = feature_names,
+                                   target_names = target_names, kernel_type='RBF')
+    # Do Learning
+    svr_dynamics.learn_model(train_X, train_Y)
+
+    # Test saving and loading
+    svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
+    svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
+    svr_dynamics.save_models(svr_base_output_path)
+
+    svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
+
+    # Do verification on training set
+    (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
+
+    # Do Testing on validation set
+    (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
+    (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
+
+    print 'svr_dynamics', svr_dynamics.kernel_types, svr_dynamics.feature_names, svr_dynamics.target_names, svr_dynamics.delta_t, svr_dynamics.n, svr_dynamics.m
+    print 'svr_dynamics2', svr_dynamics2.kernel_types, svr_dynamics2.feature_names, svr_dynamics2.target_names, svr_dynamics2.delta_t, svr_dynamics2.n, svr_dynamics2.m
+
+    # Visualize training and validation results
+    plot_out_path = '/home/thermans/sandbox/dynamics/'
+    # plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
+    #                                   suffix = ' '+'train' )
+
+    # plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
+    #                                   suffix = ' '+'val' )
+    # TODO: Make this work, need trial based data
+    # plot_predicted_vs_observed_tracks(Y_gt, Y_hat, X, show_plot = False, out_path = plot_out_path,
+    #                                   suffix = ' '+'val' )
+    return svr_dynamics2
+
+def test_mpc(base_dir_name):
     delta_t = 2.0
     H = 10
     n = 5
@@ -745,7 +804,7 @@ def test_mpc():
 
     # TODO: Test with a more complicated dynamics model
     # dyn_model = NaiveInputDynamics(delta_t, n, m)
-    dyn_model = test_svm_stuff()
+    dyn_model = test_svm_new(base_dir_name)
 
     # TODO: Improve the way noise is added to make this better
     sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
@@ -947,64 +1006,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
         p = subprocess.Popen([movie_render_bin_name, '-y', '-r', str(input_rate), '-i', contact_pt_movie_in_name,
                               '-r', str(output_rate), '-b', '1000k', contact_pt_movie_out_name])
         p.wait()
-
-def test_svm_new(base_dir_name):
-    target_names = [dynamics_learning._DELTA_OBJ_X_WORLD,
-                    dynamics_learning._DELTA_OBJ_Y_WORLD,
-                    dynamics_learning._DELTA_OBJ_THETA_WORLD,
-                    dynamics_learning._DELTA_EE_X_OBJ,
-                    dynamics_learning._DELTA_EE_Y_OBJ]
-
-    feature_names = [dynamics_learning._EE_X_OBJ,
-                     dynamics_learning._EE_Y_OBJ,
-                     dynamics_learning._U_X_OBJ,
-                     dynamics_learning._U_Y_OBJ]
-
-    train_file_base_name = base_dir_name + 'train'
-    val_file_base_name = base_dir_name + 'validate'
-
-    # Read data from disk
-    (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
-    # TODO: Create SVM class
-    epsilons = []
-    for i in xrange(len(target_names)):
-        epsilons.append(1e-3)
-    delta_t = 1./9.
-    n = 5
-    m = 2
-
-    svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons, feature_names = feature_names,
-                                   target_names = target_names, kernel_type='RBF')
-    # Do Learning
-    svr_dynamics.learn_model(train_X, train_Y)
-
-    # Test saving and loading
-    svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
-    svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
-    svr_dynamics.save_models(svr_base_output_path)
-
-    svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
-
-    # Do verification on training set
-    (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
-
-    # Do Testing on validation set
-    (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
-    (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
-
-    print 'svr_dynamics', svr_dynamics.kernel_types, svr_dynamics.feature_names, svr_dynamics.target_names, svr_dynamics.delta_t, svr_dynamics.n, svr_dynamics.m
-    print 'svr_dynamics2', svr_dynamics2.kernel_types, svr_dynamics2.feature_names, svr_dynamics2.target_names, svr_dynamics2.delta_t, svr_dynamics2.n, svr_dynamics2.m
-
-    # Visualize training and validation results
-    plot_out_path = '/home/thermans/sandbox/dynamics/'
-    # plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
-    #                                   suffix = ' '+'train' )
-
-    # plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
-    #                                   suffix = ' '+'val' )
-    # TODO: Make this work, need trial based data
-    # plot_predicted_vs_observed_tracks(Y_gt, Y_hat, X, show_plot = False, out_path = plot_out_path,
-    #                                   suffix = ' '+'val' )
 
 if __name__ == '__main__':
     # analyze_mpc_trial_data(sys.argv[1])
