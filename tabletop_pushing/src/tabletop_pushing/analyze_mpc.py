@@ -48,6 +48,7 @@ from pushing_dynamics_models import *
 import dynamics_learning
 import subprocess
 import os
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 _KULER_RED = (178./255, 18./255, 18./255)
 _KULER_YELLOW = (1., 252./255, 25./255)
@@ -680,8 +681,8 @@ def test_svm_stuff(aff_file_name=None):
     return svm_dynamics2
 
 def test_svm_new(base_dir_name):
-    target_names = [dynamics_learning._DELTA_OBJ_X_WORLD,
-                    dynamics_learning._DELTA_OBJ_Y_WORLD,
+    target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
+                    dynamics_learning._DELTA_OBJ_Y_OBJ,
                     dynamics_learning._DELTA_OBJ_THETA_WORLD,
                     dynamics_learning._DELTA_EE_X_OBJ,
                     dynamics_learning._DELTA_EE_Y_OBJ]
@@ -723,8 +724,8 @@ def test_svm_new(base_dir_name):
     (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
     (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
 
-    print 'svr_dynamics', svr_dynamics.kernel_types, svr_dynamics.feature_names, svr_dynamics.target_names, svr_dynamics.delta_t, svr_dynamics.n, svr_dynamics.m
-    print 'svr_dynamics2', svr_dynamics2.kernel_types, svr_dynamics2.feature_names, svr_dynamics2.target_names, svr_dynamics2.delta_t, svr_dynamics2.n, svr_dynamics2.m
+    # print 'svr_dynamics', svr_dynamics.kernel_types, svr_dynamics.feature_names, svr_dynamics.target_names, svr_dynamics.delta_t, svr_dynamics.n, svr_dynamics.m
+    # print 'svr_dynamics2', svr_dynamics2.kernel_types, svr_dynamics2.feature_names, svr_dynamics2.target_names, svr_dynamics2.delta_t, svr_dynamics2.n, svr_dynamics2.m
 
     # Visualize training and validation results
     plot_out_path = '/home/thermans/sandbox/dynamics/'
@@ -736,6 +737,54 @@ def test_svm_new(base_dir_name):
     # TODO: Make this work, need trial based data
     # plot_predicted_vs_observed_tracks(Y_gt, Y_hat, X, show_plot = False, out_path = plot_out_path,
     #                                   suffix = ' '+'val' )
+
+    cts0 = push_learning.ControlTimeStep()
+    cts0.x.x = 1.0
+    cts0.x.y = 2.0
+    cts0.x.theta = 0.5*pi
+    cts0.z = 2.0
+    cts0.ee.position.x = -0.5
+    cts0.ee.position.y = 3.0
+    cts0.ee.position.z = 2.5
+    q = quaternion_from_euler(0.0,0.0,0.5*pi)
+    cts0.ee.orientation.x = q[0]
+    cts0.ee.orientation.y = q[1]
+    cts0.ee.orientation.z = q[2]
+    cts0.ee.orientation.w = q[3]
+
+    cts0.u.linear.x = 2.0
+    cts0.u.linear.y = 1.0
+    cts0.u.angular.x = -pi
+    cts0.t = 0.0
+
+    cts1 = push_learning.ControlTimeStep()
+    cts1.x.x = cts0.x.x + 1.0
+    cts1.x.y = cts0.x.y + 1.5
+    cts1.x.theta = cts0.x.theta + 0.5*pi
+    cts1.z = cts0.z+0.25
+
+    cts1.ee.position.x = cts0.ee.position.x + 0.75
+    cts1.ee.position.y = cts0.ee.position.y + 1.75
+    cts1.ee.position.z = cts0.ee.position.z - 0.25
+    q = quaternion_from_euler(0.0,0.0,0.25*pi)
+    cts1.ee.orientation.x = q[0]
+    cts1.ee.orientation.y = q[1]
+    cts1.ee.orientation.z = q[2]
+    cts1.ee.orientation.w = q[3]
+    cts1.t = 0.25
+    # trial.trial_trajectory.append(cts0)
+    # trial.trial_trajectory.append(cts1)
+    # trial.trial_trajectory.append(cts1)
+
+    x_k = [cts0.x.x, cts0.x.y, -cts0.x.theta, cts0.ee.position.x, cts0.ee.position.y]
+    u_k = [cts0.u.linear.x, cts0.u.linear.y]
+    deltas = [0.5, 1.0, 0.5*pi, -1.0, 0.5]
+    print 'x_k',x_k
+    print 'u_k',u_k
+    print svr_dynamics2.transform_opt_vector_to_feat_vector(x_k, u_k, [])
+    print 'deltas',deltas
+    print svr_dynamics2.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+
     return svr_dynamics2
 
 def test_mpc(base_dir_name):

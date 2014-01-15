@@ -355,7 +355,7 @@ class SVRPushDynamics:
             Y.append(Y_all[name])
         return (X, Y)
 
-    def transform_opt_vector_to_feat_vector(self, x_k, u_k, xtra):
+    def transform_opt_vector_to_feat_vector(self, x_k, u_k, xtra=[]):
         z = []
         # Setup rotation matrix for local feats
         if self.obj_frame_ee_feats or self.obj_frame_u_feats:
@@ -453,7 +453,7 @@ class SVRPushDynamics:
             elif target_name == dynamics_learning._DELTA_EE_X_OBJ:
                 ee_x_val = x_k[3] + delta_ee_world[0]
             elif target_name == dynamics_learning._DELTA_EE_Y_OBJ:
-                ee_x_val = x_k[4] + delta_ee_world[1]
+                ee_y_val = x_k[4] + delta_ee_world[1]
             # TODO: Setup these if desired
             # elif target_name == dynamics_learning._DELTA_EE_Z_WORLD:
             #     pass
