@@ -774,6 +774,7 @@ class TabletopPushingPerceptionNode
     {
       if (theta_dist < tracker_angle_thresh_)
       {
+        ROS_WARN_STREAM("Goal Reached!");
         ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                         tracker_state.x.y << ", " << tracker_state.x.theta << ")");
         ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
@@ -792,6 +793,7 @@ class TabletopPushingPerceptionNode
     }
     if (pos_error < tracker_dist_thresh_)
     {
+      ROS_WARN_STREAM("Goal Reached!");
       ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                       tracker_state.x.y << ", " << tracker_state.x.theta << ")");
       ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<

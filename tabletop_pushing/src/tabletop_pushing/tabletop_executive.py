@@ -1133,15 +1133,16 @@ class TabletopExecutive:
         if self.use_learning:
             self.finish_learning()
 
-def get_object_id():
+def get_object_id(previous_id=None):
     need_object_id = True
     while need_object_id:
         code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
         if len(code_in) > 0:
-            need_object_id = False
+            return code_in
+        elif previous_id is not None:
+            return previous_id
         else:
             rospy.logwarn("No object id given.")
-    return code_in
 
 if __name__ == '__main__':
     random.seed()
@@ -1187,13 +1188,15 @@ if __name__ == '__main__':
     elif use_learning:
         running = True
         node.init_learning_io()
+        previous_id = None
         while running:
-            code_in = get_object_id()
+            code_in = get_object_id(previous_id)
             if quit_code(code_in):
                 running = False
             else:
                 node.start_loc_use_fixed_goal = False
                 rospy.loginfo('Running push exploration')
+                previous_id = code_in
                 clean_exploration = node.run_push_exploration(object_id=code_in)
                 if not clean_exploration:
                     rospy.loginfo('Not clean end to pushing stuff')
