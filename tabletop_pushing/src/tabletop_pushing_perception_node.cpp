@@ -123,6 +123,7 @@
 // #define VISUALIZE_CONTACT_PT 1
 #define BUFFER_AND_WRITE 1
 #define FORCE_BEFORE_AND_AFTER_VIZ 1
+// #define DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY 1
 
 using boost::shared_ptr;
 
@@ -582,7 +583,7 @@ class TabletopPushingPerceptionNode
 #ifdef PROFILE_CB_TIME
         long long write_dyn_start_time = Timer::nanoTime();
 #endif
-
+        ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
         if (write_dyn_to_disk_)
         {
           // Write image and cur obj cloud
@@ -591,7 +592,6 @@ class TabletopPushingPerceptionNode
                          << "_" << feedback_control_count_ << ".png";
           obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
                              << "_" << feedback_control_count_ << ".pcd";
-          ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
 
 #ifdef BUFFER_AND_WRITE
           cv::Mat color_frame_to_buffer;
@@ -634,6 +634,8 @@ class TabletopPushingPerceptionNode
 
         // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
         tracker_state.header.seq = feedback_control_count_++;
+        // ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, tracker_state);
+        // TODO: Publish sd in feedback if desired
         as_.publishFeedback(tracker_state);
 
 #ifdef PROFILE_CB_TIME
