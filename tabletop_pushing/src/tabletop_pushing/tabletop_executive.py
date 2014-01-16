@@ -172,9 +172,8 @@ class TabletopExecutive:
             r.sleep()
         rospy.loginfo('Done initializing learning')
 
-    def init_loc_learning(self):
+    def init_learning_io(self):
         # Start loc learning stuff
-        self.push_loc_shape_features = []
         self.push_count = 0
         self.base_trial_id = str(rospy.get_time())
 
@@ -245,7 +244,6 @@ class TabletopExecutive:
                           ' objects')
 
     def run_start_loc_learning(self, object_id, num_pushes_per_sample, num_sample_locs, start_loc_param_path=''):
-        self.push_loc_shape_features = []
         for controller in CONTROLLERS:
             for behavior_primitive in BEHAVIOR_PRIMITIVES[controller]:
                 for proxy in PERCEPTUAL_PROXIES[controller]:
@@ -322,10 +320,12 @@ class TabletopExecutive:
                 which_arm = input_arm
 
             if _USE_LEARN_IO:
+                shape_descriptor = push_vec_res.shape_descriptor[:]
                 self.learn_io.write_pre_push_line(push_vec_res.centroid, push_vec_res.theta,
                                                   goal_pose, push_vec_res.push.start_point,
                                                   behavior_primitive, controller_name,
-                                                  proxy_name, which_arm, object_id, precondition_method)
+                                                  proxy_name, which_arm, object_id, precondition_method,
+                                                  shape_descriptor = shape_descriptor)
 
             res, push_res = self.perform_push(which_arm, behavior_primitive,
                                               push_vec_res, goal_pose,
@@ -438,7 +438,6 @@ class TabletopExecutive:
 
                 goal_pose = push_vec_res.goal_pose
                 shape_descriptor = push_vec_res.shape_descriptor[:]
-                self.push_loc_shape_features.append(shape_descriptor)
 
                 if _USE_LEARN_IO:
                     # TODO: Check that the predicted_score is sent correctly
@@ -1130,6 +1129,16 @@ class TabletopExecutive:
         if self.use_learning:
             self.finish_learning()
 
+def get_object_id():
+    need_object_id = True
+    while need_object_id:
+        code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
+        if len(code_in) > 0:
+            need_object_id = False
+        else:
+            rospy.logwarn("No object id given.")
+    return code_in
+
 if __name__ == '__main__':
     random.seed()
     learn_start_loc = False
@@ -1142,52 +1151,49 @@ if __name__ == '__main__':
     use_learning = True
     learning_dynamics = True
     use_guided = True
-    running = True
     max_pushes = 500
     node = TabletopExecutive(use_singulation, use_learning)
-    # Set the path to the learned parameter file here to use the learned SVM parameters
-    hold_out_objects = ['small_brush', 'soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush']
-    for hold_out_object in hold_out_objects:
-        if not running:
-            break
-        # hold_out_object = 'soap_box'
-        rospy.loginfo('Testing with hold out object ' + hold_out_object)
-        # rospy.loginfo('Collecting training data for object ' + hold_out_object)
-        start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
-            hold_out_object+'.model'
-        # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_rotate/push_svm_no_'+\
-        #     hold_out_object+'.model'
-        # start_loc_param_path = 'rand'
-        # start_loc_param_path = ''
-        if use_singulation:
-            node.run_singulation(max_pushes, use_guided)
-        elif use_learning:
-            node.learning_dynamics = learning_dynamics
-            running = True
-            need_object_id = True
-            while need_object_id:
-                code_in = raw_input('Place object on table, enter id, and press <Enter>: ')
-                if len(code_in) > 0:
-                    need_object_id = False
-                else:
-                    rospy.logwarn("No object id given.")
+    node.learning_dynamics = learning_dynamics
+    if use_singulation:
+        node.run_singulation(max_pushes, use_guided)
+    elif learn_start_loc:
+        # Set the path to the learned parameter file here to use the learned SVM parameters
+        hold_out_objects = ['small_brush', 'soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush']
+        running = True
+        for hold_out_object in hold_out_objects:
+            if not running:
+                break
+            # hold_out_object = 'soap_box'
+            rospy.loginfo('Testing with hold out object ' + hold_out_object)
+            # rospy.loginfo('Collecting training data for object ' + hold_out_object)
+            start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_straight/push_svm_no_'+\
+                hold_out_object+'.model'
+            # start_loc_param_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/ichr_rotate/push_svm_no_'+\
+            #     hold_out_object+'.model'
+            # start_loc_param_path = 'rand'
+            # start_loc_param_path = ''
+            code_in = get_object_id()
             if code_in.lower().startswith('q'):
                 running = False
-                break
-            if learn_start_loc:
-                node.init_loc_learning()
+            else:
+                node.init_learning_io()
                 clean_exploration = node.run_start_loc_learning(code_in, num_start_loc_pushes_per_sample,
                                                                 num_start_loc_sample_locs, start_loc_param_path)
                 node.finish_learning()
+    elif use_learning:
+        running = True
+        node.init_learning_io()
+        while running:
+            code_in = get_object_id()
+            if code_in.lower().startswith('q'):
+                running = False
             else:
                 node.start_loc_use_fixed_goal = False
-                node.init_loc_learning()
                 rospy.loginfo('Running push exploration')
                 clean_exploration = node.run_push_exploration(object_id=code_in)
-                node.finish_learning()
-            if not clean_exploration:
-                rospy.loginfo('Not clean end to pushing stuff')
-                running = False
-                node.finish_learning()
-                break
-
+                if not clean_exploration:
+                    rospy.loginfo('Not clean end to pushing stuff')
+                    running = False
+        node.finish_learning()
+    else:
+        print 'Nothing to do. Bye bye!'
