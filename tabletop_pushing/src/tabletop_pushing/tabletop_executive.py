@@ -55,6 +55,10 @@ _USE_LEARN_IO = True
 _TEST_START_POSE = False
 _USE_FIXED_GOAL = False
 
+def quit_code(code_in):
+    return code_in.lower().strip().startswith('q')
+
+
 class TabletopExecutive:
 
     def __init__(self, use_singulation, use_learning):
@@ -89,11 +93,11 @@ class TabletopExecutive:
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
         self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.475)
-        self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.8)
+        self.max_workspace_x = rospy.get_param('~max_workspace_x', 0.75)
         self.max_workspace_y = rospy.get_param('~max_workspace_y', 0.4)
         self.min_workspace_y = -self.max_workspace_y
         self.min_goal_x = rospy.get_param('~min_workspace_x', 0.5)
-        self.max_goal_x = rospy.get_param('~max_workspace_x', 0.75)
+        self.max_goal_x = rospy.get_param('~max_workspace_x', 0.7)
         self.max_goal_y = rospy.get_param('~max_workspace_y', 0.375)
         self.min_goal_y = -self.max_goal_y
 
@@ -200,7 +204,7 @@ class TabletopExecutive:
         for i in xrange(num_pushes):
             if _OFFLINE:
                 code_in = raw_input("Press <Enter> to determine next singulation push: ")
-                if code_in.startswith('q'):
+                if quit_code(code_in):
                     break
             pose_res = self.request_singulation_push(use_guided)
             if pose_res is None:
@@ -282,7 +286,7 @@ class TabletopExecutive:
         if rlist:
             s = sys.stdin.readline()
             code_in = raw_input('Move object and press <Enter> to continue: ')
-            if code_in.lower().startswith('q'):
+            if quit_code(code_in):
                 return 'quit'
         else:
             rospy.loginfo("No input. Moving on...")
@@ -296,7 +300,7 @@ class TabletopExecutive:
             rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
                           str(init_pose.y) + ')')
             code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
-            if code_in.lower().startswith('q'):
+            if quit_code(code_in):
                 return 'quit'
             init_pose = self.get_feedback_push_initial_obj_pose()
         goal_pose = self.generate_random_table_pose(init_pose)
@@ -370,7 +374,7 @@ class TabletopExecutive:
         if rlist:
             s = sys.stdin.readline()
             code_in = raw_input('Move object and press <Enter> to continue: ')
-            if code_in.lower().startswith('q'):
+            if quit_code(code_in):
                 return 'quit'
         else:
             rospy.loginfo("No input. Moving on...")
@@ -401,7 +405,7 @@ class TabletopExecutive:
                     reset = False
                     while not reset:
                         code_in = raw_input('Move object to initial test pose and press <Enter> to continue: ')
-                        if code_in.lower().startswith('q'):
+                        if quit_code(code_in):
                             return 'quit'
                         reset = True
                         init_pose = self.get_feedback_push_initial_obj_pose()
@@ -410,7 +414,7 @@ class TabletopExecutive:
                         rospy.loginfo('Object out of workspace at pose: (' + str(init_pose.x) + ', ' +
                                       str(init_pose.y) + ')')
                         code_in = raw_input('Move object inside workspace and press <Enter> to continue: ')
-                        if code_in.lower().startswith('q'):
+                        if quit_code(code_in):
                             return 'quit'
                         init_pose = self.get_feedback_push_initial_obj_pose()
 
@@ -502,7 +506,7 @@ class TabletopExecutive:
                 return None
             if push_vec_res.no_objects:
                 code_in = raw_input('No objects found. Place object and press <Enter>: ')
-                if code_in.lower().startswith('q'):
+                if quit_code(code_in):
                     return 'quit'
             else:
                 return push_vec_res.centroid
@@ -530,7 +534,7 @@ class TabletopExecutive:
                 return None
             if push_vec_res.no_objects:
                 code_in = raw_input('No objects found. Place object and press <Enter>: ')
-                if code_in.lower().startswith('q'):
+                if quit_code(code_in):
                     return 'quit'
             else:
                 return push_vec_res
@@ -630,7 +634,7 @@ class TabletopExecutive:
         rospy.loginfo('Done performing push behavior.')
         # if _OFFLINE:
         #     code_in = raw_input("Press <Enter> to try another push: ")
-        #     if code_in.lower().startswith('q'):
+        #     if quit_code(code_in):
         #         return ('quit', result)
         return ('done', result)
 
@@ -1173,7 +1177,7 @@ if __name__ == '__main__':
             # start_loc_param_path = 'rand'
             # start_loc_param_path = ''
             code_in = get_object_id()
-            if code_in.lower().startswith('q'):
+            if quit_code(code_in):
                 running = False
             else:
                 node.init_learning_io()
@@ -1185,7 +1189,7 @@ if __name__ == '__main__':
         node.init_learning_io()
         while running:
             code_in = get_object_id()
-            if code_in.lower().startswith('q'):
+            if quit_code(code_in):
                 running = False
             else:
                 node.start_loc_use_fixed_goal = False
