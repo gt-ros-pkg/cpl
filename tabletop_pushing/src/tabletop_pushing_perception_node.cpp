@@ -1139,6 +1139,13 @@ class TabletopPushingPerceptionNode
       // Get push distance
       p.push_dist = hypot(res.centroid.x - res.goal_pose.x, res.centroid.y - res.goal_pose.y);
       timing_push_ = false;
+      if (req.dynamics_learning)
+      {
+        // Extract shape descriptor from the start location to return for storage and prediction use
+        ROS_INFO_STREAM("Extracting shape descriptor for learning.");
+        ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, cur_state);
+        res.shape_descriptor.assign(sd.begin(), sd.end());
+      }
     }
     // Visualize push vector
     PointStamped obj_centroid;
@@ -1597,6 +1604,33 @@ class TabletopPushingPerceptionNode
     chosen_loc.boundary_loc_ = hull_cloud[chosen_idx];
     chosen_loc.descriptor_ = sds[chosen_idx];
     return chosen_loc;
+  }
+
+  ShapeDescriptor getDominantOrientationShapeDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state)
+  {
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+    int boundary_loc_idx = -1;
+    double min_angle_dist = FLT_MAX;
+    for (int i = 0; i < hull_cloud.size(); ++i)
+    {
+      double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).x - cur_state.x.x);
+      double angle_dist_i = fabs(subPIAngle(theta_i - cur_state.x.theta));
+      if (angle_dist_i < min_angle_dist)
+      {
+        min_angle_dist = angle_dist_i;
+        boundary_loc_idx = i;
+      }
+    }
+    if (boundary_loc_idx < 0)
+    {
+      ROS_ERROR_STREAM("Failed to find dominant orientation boundary sample");
+      ShapeDescriptor sd;
+      return sd;
+    }
+    pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
+    return tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
+                                                                boundary_loc_idx, gripper_spread_,
+                                                                hull_alpha_, point_cloud_hist_res_);
   }
 
   std::vector<pcl16::PointXYZ> findAxisAlignedBoundingBox(PushTrackerState& cur_state, ProtoObject& cur_obj)
