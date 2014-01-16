@@ -123,7 +123,7 @@ class SVRPushDynamics:
 
     def __init__(self, delta_t = 1.0, n = 5, m = 2,
                  param_file_name = '', epsilons = None, kernel_type = None,
-                 feature_names = [], target_names = []):
+                 feature_names = [], target_names = [], xtra_names = []):
         '''
         delta_t - the (average) time between time steps
         n - number of state space dimensions
@@ -444,6 +444,7 @@ class SVRPushDynamics:
                 # TODO: Correctly deal with shape features heres
                 feat_idx = dynamics_learning._FEAT_INDICES[feat]
                 x_subset.append(x_raw[feat_idx])
+            # TODO: Append XTRA Features
             X.append(x_subset)
 
         Y = []
@@ -511,6 +512,8 @@ class SVRPushDynamics:
             # elif feature_name == dynamics_learning._SHAPE_GLOBAL:
             #     feat = 0.0
             z.append(feat)
+        # Add auxilarty features
+        z.extend(xtra)
         return z
 
     def transform_svm_results_to_opt_vector(self, x_k, u_k, deltas):

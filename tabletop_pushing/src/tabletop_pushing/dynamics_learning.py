@@ -104,11 +104,12 @@ _FEAT_INDICES = {_OBJ_X_WORLD:0,
                  _EE_Z_OBJ:13,
                  _EE_PHI_OBJ:14,
                  _U_X_OBJ:15,
-                 _U_Y_OBJ:16,
-                 # TODO: Fix the shape stuff
-                 _SHAPE_LOCAL:17,
-                 _SHAPE_GLOBAL:-1}
+                 _U_Y_OBJ:16}
 
+_XTRA_INDICES = {_SHAPE_LOCAL: [17, 18],
+                 _SHAPE_GLOBAL:[19, 20]}
+
+# Get inverse dictionaries for quick name lookups
 _FEAT_NAMES = dict((v,k) for k,v in _FEAT_INDICES.items())
 _TARGET_NAMES = dict((v,k) for k,v in _TARGET_INDICES.items())
 
@@ -243,7 +244,7 @@ def write_dynamics_learning_example_files(X, Y, out_file_base_name):
 def read_dynamics_learning_example_files(in_file_base_name):
     X = []
     Y = {}
-    max_feat_idx = max(_FEAT_INDICES.values())
+    max_feat_idx = max(_FEAT_INDICES.values())+1
     # print 'max_feat_idx',max_feat_idx
     for key in _TARGET_NAMES.keys():
         name = _TARGET_NAMES[key]

@@ -169,7 +169,8 @@ def plot_desired_vs_controlled_with_history(trial_traj, q_planned, X_d, n, m,
     t = len(trial_traj)-1
     plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot, suffix, t, out_path)
 
-def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '', t = 0, out_path = ''):
+def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '', t = 0, out_path = '',
+                               plot_ee=True):
     H = len(q_star)/(n+m)
     X,U =  get_x_u_from_q(q_star, x0, H, n, m)
 
@@ -196,8 +197,9 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     ee_y_hat = [X_k[4] for X_k in X[t:]]
     plotter.plot(x_hat, y_hat, color = predicted_color,label='_nolegend_')
     plotter.plot(x_hat, y_hat, color = predicted_color, marker = '+', label='Predicted Object')
-    plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color,label='_nolegend_')
-    plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color, marker = 'x',label='Predicted EE')
+    if plot_ee:
+        plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color,label='_nolegend_')
+        plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color, marker = 'x',label='Predicted EE')
 
     # Plot observed / GT
     x_gt = [X_k[0] for X_k in X[:t+1]]
@@ -207,8 +209,9 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     ee_y_gt = [X_k[4] for X_k in X[:t+1]]
     plotter.plot(x_gt, y_gt, color = gt_color,label='_nolegend_')
     plotter.plot(x_gt, y_gt, color = gt_color, marker = '+',label='Observed Object')
-    plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color,label='_nolegend_')
-    plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color, marker ='x',label='Observed EE')
+    if plot_ee:
+        plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color,label='_nolegend_')
+        plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color, marker ='x',label='Observed EE')
 
     # Make axes equal scales
     xlim_auto = plotter.xlim()
@@ -233,21 +236,18 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     if show_plot:
         plotter.show()
 
-def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_path='', show_headings=False):
-    trajectories_segmented = []
-    for i, traj in enumerate(trajs):
-        if traj[0] == 0:
-            if i > 0:
-                trajectories_segmented.append(segment)
-            segment = []
-        segment.append(traj[1])
-    trajectories_segmented.append(segment)
+def plot_all_planned_trajectories_base(all_x_gt, all_y_gt, all_theta_gt, all_plans, show_plot=False, suffix='',
+                                       out_path='', show_headings=False):
 
     plan_color = _KULER_RED
     gt_color = _KULER_GREEN
 
-    for i, (trial, plans) in enumerate(zip(trials, trajectories_segmented)):
+    for i in xrange(len(all_x_gt)):
         plotter.figure()
+        plans = all_plans[i]
+        x_gt = all_x_gt[i]
+        y_gt = all_y_gt[i]
+        theta_gt = all_theta_gt[i]
 
         for X_d in plans:
             # Plot desired
@@ -256,9 +256,6 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
             theta_d = [X_d_k[2] for X_d_k in X_d]
             plotter.plot(x_d, y_d, color=plan_color, ls='--')
 
-        x_gt = [state.x.x for state in trial.trial_trajectory]
-        y_gt = [state.x.y for state in trial.trial_trajectory]
-        theta_gt = [state.x.theta for state in trial.trial_trajectory]
         plotter.plot(x_gt, y_gt, c=gt_color, ls='-')
         if show_headings:
             ax = plotter.gca()
@@ -289,6 +286,44 @@ def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_
 
     if show_plot:
         plotter.show()
+
+def plot_all_planned_trajectories(trajs, trials, show_plot=True, suffix='', out_path='', show_headings=False):
+    trajectories_segmented = []
+    for i, traj in enumerate(trajs):
+        if traj[0] == 0:
+            if i > 0:
+                trajectories_segmented.append(segment)
+            segment = []
+        segment.append(traj[1])
+    trajectories_segmented.append(segment)
+
+    all_x_gt = []
+    all_y_gt = []
+    all_theta_gt = []
+    all_plans = []
+    for i, (trial, plans) in enumerate(zip(trials, trajectories_segmented)):
+        all_plans.append(plans)
+        x_gt = [state.x.x for state in trial.trial_trajectory]
+        y_gt = [state.x.y for state in trial.trial_trajectory]
+        theta_gt = [state.x.theta for state in trial.trial_trajectory]
+    plot_all_planned_trajectories_base(all_x_gt, all_y_gt, all_theta_gt, all_plans, show_plot, suffix, out_path,
+                                       show_headings)
+
+def plot_all_planend_trajectories_x_d(q_star, all_X_d, x0, n, m,
+                                      show_plot=True, suffix = '', out_path = '', show_headings=False):
+    H = len(q_star)/(n+m)
+    X,U =  get_x_u_from_q(q_star, x0, H, n, m)
+    x_gt = [X_k[0] for X_k in X]
+    y_gt = [X_k[1] for X_k in X]
+    theta_gt = [X_k[2] for X_k in X]
+
+    all_x_gt = [x_gt]
+    all_y_gt = [y_gt]
+    all_theta_gt = [theta_gt]
+    all_plans = [all_X_d]
+    plot_all_planned_trajectories_base(all_x_gt, all_y_gt, all_theta_gt, all_plans, show_plot, suffix, out_path,
+                                       show_headings)
+
 
 def plot_tracks(trials, show_plot = False, suffix='', out_path=''):
     for i, trial in enumerate(trials):
@@ -705,6 +740,8 @@ def test_svm_new(base_dir_name):
                      dynamics_learning._U_X_OBJ,
                      dynamics_learning._U_Y_OBJ]
 
+    xtra_names = []
+
     train_file_base_name = base_dir_name + 'train'
     val_file_base_name = base_dir_name + 'validate'
 
@@ -718,11 +755,14 @@ def test_svm_new(base_dir_name):
     n = 5
     m = 2
 
-    svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons, feature_names = feature_names,
-                                   target_names = target_names, kernel_type='SIGMOID')
+    svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
+                                   feature_names = feature_names,
+                                   target_names = target_names,
+                                   xtra_names = xtra_names,
+                                   kernel_type='SIGMOID')
     # Do Learning
     kernel_params = {}
-    for i in xrange(len(feature_names)):
+    for i in xrange(len(target_names)):
         kernel_params[i] = '-g 0.05'
     svr_dynamics.learn_model(train_X, train_Y, kernel_params)
 
@@ -805,15 +845,15 @@ def test_svm_new(base_dir_name):
 
 def test_mpc(base_dir_name):
     delta_t = 1.0/9.0
-    H = 10
+    H = 20
     n = 5
     m = 2
-    u_max = 0.05
-    sigma = 0.0001
+    u_max = 0.1
+    sigma = 0.01
     plot_output_path = '/home/thermans/sandbox/mpc_plots/with_ee/'
     # plot_output_path = ''
     xtra = []
-    plot_all_t = True
+    plot_all_t = False
     plot_gt = True
     test_trajectory = True
 
@@ -865,7 +905,7 @@ def test_mpc(base_dir_name):
         q_fake = np.zeros((n+m)*H)
 
         plot_desired_vs_controlled(q_fake, x_d, x0, n, m, show_plot=True, suffix='-piecewise-linear',
-                                   out_path=plot_output_path)
+                                   out_path=plot_output_path, plot_ee=False)
 
     # TODO: Test with a more complicated dynamics model
     # dyn_model = NaiveInputDynamics(delta_t, n, m)
@@ -879,11 +919,13 @@ def test_mpc(base_dir_name):
     q_gt = []
     q_stars = []
     u_gt = []
+    all_x_d = []
     # TODO: Have better criteria for halting
     for i in xrange(len(x_d)-1):
         # Update desired trajectory
         # Recompute trajectory from current pose
         x_d_i = trajectory_generator.generate_trajectory(cur_state.x, pose_list)
+        all_x_d.append(x_d_i)
         # x_d_i = x_d[i:]
         mpc.H = min(mpc.H, len(x_d_i)-1)
         mpc.regenerate_bounds()
@@ -903,8 +945,7 @@ def test_mpc(base_dir_name):
         if plot_all_t:
             plot_controls(q_cur, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(i)+']',
                           out_path=plot_output_path, history_start=i)
-
-            plot_desired_vs_controlled(q_cur, x_d, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+            plot_desired_vs_controlled(q_cur, x_d_i, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
                                        out_path=plot_output_path)
 
         # Generate next start point based on simulation model
@@ -934,6 +975,8 @@ def test_mpc(base_dir_name):
                       out_path=plot_output_path)
         plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=False, suffix='-q*-final',
                                    t=len(x_d), out_path=plot_output_path)
+        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, n, m, show_plot=(not plot_all_t),
+                                          suffix='-q*-final', out_path=plot_output_path)
         # plot_all_planned_trajectories(trajs, plio.push_trials, out_path = plot_output_path, show_plot = False)
 
     # Plot initial guess trajectory
