@@ -917,7 +917,7 @@ class TabletopPushingPerceptionNode
             obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
 #ifdef FORCE_BEFORE_AND_AFTER_VIZ
             ROS_INFO_STREAM("Press 's' to swap. Any other key to continue.");
-            key_press = cv::waitKey(-1);
+            key_press = cv::waitKey(1000);
 #else // FORCE_BEFORE_AND_AFTER_VIZ
             // NOTE: Try and force redraw
             cv::waitKey(100);
@@ -991,7 +991,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
 #ifdef FORCE_BEFORE_AND_AFTER_VIZ
         ROS_INFO_STREAM("Press any key to continue");
-        key_press = cv::waitKey(-1);
+        key_press = cv::waitKey(1000);
 #else // FORCE_BEFORE_AND_AFTER_VIZ
         // NOTE: Try and force redraw
         cv::waitKey(100);
@@ -1169,7 +1169,7 @@ class TabletopPushingPerceptionNode
       displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
 #ifdef FORCE_BEFORE_AND_AFTER_VIZ
       ROS_INFO_STREAM("Press any key to continue");
-      cv::waitKey(-1);
+      cv::waitKey(3000);
       cv::destroyWindow("initial_vector");
 #endif
     }
