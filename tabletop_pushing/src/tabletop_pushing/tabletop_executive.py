@@ -60,7 +60,7 @@ class TabletopExecutive:
     def __init__(self, use_singulation, use_learning):
         self.previous_rand_pose = None
 
-        rospy.init_node('tabletop_executive_node',log_level=rospy.INFO)
+        rospy.init_node('tabletop_executive_node')
         self.min_push_dist = rospy.get_param('~min_push_dist', 0.07)
         self.max_push_dist = rospy.get_param('~mix_push_dist', 0.3)
         self.use_overhead_x_thresh = rospy.get_param('~use_overhead_x_thresh', 0.55)
