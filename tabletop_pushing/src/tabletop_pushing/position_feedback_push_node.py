@@ -255,6 +255,7 @@ class PositionFeedbackPushNode:
 
         self.k_contact_g = rospy.get_param('~push_control_contact_goal_gain', 0.05)
         self.k_contact_d = rospy.get_param('~push_control_contact_gain', 0.05)
+        self.k_alignment_spin_x = rospy.get_param('~push_control_contact_spin_gain', 0.25)
 
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_rotate_spin_x = rospy.get_param('~rotate_to_heading_hand_spin_gain', 0.0)
@@ -278,6 +279,7 @@ class PositionFeedbackPushNode:
         self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
         self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
         self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.03)
+        self.mpc_u_max_angular = rospy.get_param('~mpc_max_u_angular', 0.1)
         self.min_num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 2)
         self.mpc_max_step_size = rospy.get_param('~mpc_max_step_size', 0.01)
         self.open_loop_segment_length = rospy.get_param('~sqp_open_loop_segment_length', 10)
@@ -746,8 +748,8 @@ class PositionFeedbackPushNode:
                 u = TwistStamped()
                 u.header.frame_id = 'torso_lift_link'
                 u.header.stamp = rospy.Time.now()
-                u.twist.linear.x = u_x # max( min(u_x, self.mpc_u_max), -self.mpc_u_max)
-                u.twist.linear.y = u_y # max( min(u_y, self.mpc_u_max), -self.mpc_u_max)
+                u.twist.linear.x = max( min(u_x, self.mpc_u_max), -self.mpc_u_max)
+                u.twist.linear.y = max( min(u_y, self.mpc_u_max), -self.mpc_u_max)
                 u.twist.linear.z = 0.0
                 u.twist.angular.x = 0.0
                 u.twist.angular.y = 0.0
@@ -822,54 +824,6 @@ class PositionFeedbackPushNode:
                           str(spin_y_dot) + ')')
         return u
 
-    def rotateHeadingController(self, cur_state, desired_state, which_arm, ee_pose):
-        '''
-        TODO: Change to align to a given point in object frame while pushing in direction perpendicular
-        to the original orientation...?
-        '''
-        u = TwistStamped()
-        u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time.now()
-        u.twist.linear.z = 0.0
-        u.twist.angular.x = 0.0
-        u.twist.angular.y = 0.0
-        u.twist.angular.z = 0.0
-
-        # TODO: Add term to perpendicular to current orientation given current pushing location
-        # TODO: Pass in offset x and y in object frame
-        centroid = cur_state.x
-        ee = ee_pose.pose.position
-        rotate_x_dot = 0.0
-        rotate_y_dot = 0.0
-        # Push centroid towards the desired goal
-        x_error = desired_state.x - cur_state.x.x
-        y_error = desired_state.y - cur_state.x.y
-        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
-        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
-        goal_x_dot = self.k_g*x_error
-        goal_y_dot = self.k_g*y_error
-
-        # Add in direction to corect for not pushing through the centroid
-        goal_angle = atan2(goal_y_dot, goal_x_dot)
-        transform_angle = goal_angle
-        m = (((ee.x - centroid.x)*x_error + (ee.y - centroid.y)*y_error) /
-             sqrt(x_error*x_error + y_error*y_error))
-        tan_pt_x = centroid.x + m*x_error
-        tan_pt_y = centroid.y + m*y_error
-        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
-        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
-        # TODO: Clip values that get too big
-        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
-        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
-        if self.feedback_count % 5 == 0:
-            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
-            rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
-            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
-                          str(goal_y_dot) + ')')
-            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
-                          str(contact_pt_y_dot) + ')')
-        return u
-
     def rotateHeadingControllerPalm(self, cur_state, desired_state, which_arm, ee_pose):
         u = TwistStamped()
         u.header.frame_id = which_arm+'_gripper_palm_link'
@@ -927,9 +881,14 @@ class PositionFeedbackPushNode:
         tan_pt_y = centroid.y + m*y_error
         contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
         contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
-        # TODO: Clip values that get too big
-        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
-        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        # Compensate for spinning with wrist rotation
+        # TODO: Make switch for only overhead push?
+        contact_pt_z_angular_dot = -self.k_alignment_spin_x*cur_state.x_dot.theta
+        # Clip values that get too big
+        u.twist.linear.x = max( min(goal_x_dot + contact_pt_x_dot, self.mpc_u_max), -self.mpc_u_max)
+        u.twist.linear.y = max( min(goal_y_dot + contact_pt_y_dot, self.mpc_u_max), -self.mpc_u_max)
+        u.twist.angular.z = max( min(contact_pt_z_angular_dot, self.mpc_u_max_angular), -self.mpc_u_max_angular)
+
         if self.feedback_count % 5 == 0:
             rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
             rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
