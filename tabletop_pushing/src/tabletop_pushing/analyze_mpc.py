@@ -259,9 +259,9 @@ def plot_all_planned_trajectories_base(all_x_gt, all_y_gt, all_theta_gt, all_pla
         plotter.plot(x_gt, y_gt, c=gt_color, ls='-')
         if show_headings:
             ax = plotter.gca()
-            headings = [plotter.Arrow(c.x.x, c.x.y, cos(c.x.theta)*0.005,
-                                      sin(c.x.theta)*0.005, 0.005, axes=ax,
-                                      color=gt_color) for c in trial.trial_trajectory]
+            headings = [plotter.Arrow(x, y, cos(theta)*0.005,
+                                      sin(theta)*0.005, 0.005, axes=ax,
+                                      color=gt_color) for (x,y,theta) in zip(x_gt, y_gt, theta_gt)]
             arrows = [ax.add_patch(h) for h in headings]
         else:
             plotter.plot(x_gt, y_gt, c=gt_color, marker='o')
@@ -975,9 +975,11 @@ def test_mpc(base_dir_name):
                       out_path=plot_output_path)
         plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=False, suffix='-q*-final',
                                    t=len(x_d), out_path=plot_output_path)
-        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, n, m, show_plot=(not plot_all_t),
+        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, n, m, show_plot=False,
                                           suffix='-q*-final', out_path=plot_output_path)
-        # plot_all_planned_trajectories(trajs, plio.push_trials, out_path = plot_output_path, show_plot = False)
+        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, n, m, show_plot=(not plot_all_t),
+                                          suffix='-q*-final', out_path=plot_output_path, show_headings=True)
+
 
     # Plot initial guess trajectory
     # mpc.H = 10
