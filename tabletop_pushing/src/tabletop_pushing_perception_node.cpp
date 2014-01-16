@@ -1628,6 +1628,17 @@ class TabletopPushingPerceptionNode
       return sd;
     }
     pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
+#ifdef DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY
+    cv::Mat hull_img(cur_color_frame_.size(), CV_8UC1, cv::Scalar(0));
+    pcl_segmenter_->projectPointCloudIntoImage(hull_cloud, hull_img);
+    hull_img*=255;
+    cv::Mat hull_disp_img(hull_img.size(), CV_8UC3, cv::Scalar(0,0,0));
+    cv::cvtColor(hull_img, hull_disp_img, CV_GRAY2BGR);
+    cv::Point2f img_loc_idx = pcl_segmenter_->projectPointIntoImage(boundary_loc,
+                                                                    hull_cloud.header.frame_id, camera_frame_);
+    cv::circle(hull_disp_img, img_loc_idx, 4, cv::Scalar(18, 18, 178));
+    cv::imshow("object hull", hull_disp_img);
+#endif // DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY
     return tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
                                                                 boundary_loc_idx, gripper_spread_,
                                                                 hull_alpha_, point_cloud_hist_res_);
