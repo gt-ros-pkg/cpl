@@ -869,7 +869,7 @@ def test_mpc(base_dir_name):
     xtra = []
     plot_all_t = False
     plot_gt = True
-    test_trajectory = True
+    test_trajectory = False
 
     # print 'H = ', H
     # print 'delta_t = ', delta_t
@@ -928,7 +928,7 @@ def test_mpc(base_dir_name):
     # TODO: Improve the way noise is added to make this better
     sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
 
-    mpc =  ModelPredictiveController(dyn_model, H, u_max, delta_t)
+    mpc =  ModelPredictiveController(dyn_model, H, u_max, delta_t, n = n, m = m)
 
     q_gt = []
     q_stars = []
@@ -945,12 +945,13 @@ def test_mpc(base_dir_name):
         mpc.regenerate_bounds()
 
         # Compute optimal control
-        x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta, ee_pose.pose.position.x, ee_pose.pose.position.y]
+        x_i = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+               ee_pose.pose.position.x, ee_pose.pose.position.y, ee_pose.pose.orientation.z]
         q_star = mpc.feedbackControl(x_i, x_d_i, xtra)
         mpc.init_from_previous = True
 
         # Convert q_star to correct form for prediction
-        u_i = [q_star[0], q_star[1]]
+        u_i = q_star[:m]
 
         # Plot performance so far
         q_cur = q_gt[:]

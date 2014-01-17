@@ -120,7 +120,7 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
     return J
 
 class ModelPredictiveController:
-    def __init__(self, model, H=5, u_max=1.0, delta_t=1.0):
+    def __init__(self, model, H=5, u_max=1.0, delta_t=1.0, n = 5, m = 2):
         '''
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
@@ -129,8 +129,8 @@ class ModelPredictiveController:
         self.init_from_previous = False
         self.dyn_model = model
         self.H = H # Time horizon
-        self.n = 5 # Predicted state space dimension
-        self.m = 2 # Control space dimension
+        self.n = n # Predicted state space dimension
+        self.m = m # Control space dimension
         self.u_max = u_max
         self.delta_t = delta_t
         self.max_iter = 1000 # Max number of iterations
@@ -176,17 +176,7 @@ class ModelPredictiveController:
         # TODO: Get initial guess at U from cur_state and trajectory (or at least goal)
         U_init = []
         for k in xrange(self.H):
-            if k % 2 == 0:
-                u_x = self.u_max*0.01
-            else:
-                u_x = self.u_max*0.4
-            if k / 3 == 0:
-                u_y = self.u_max*0.2
-            elif k / 3 == 1:
-                u_y = -self.u_max*0.6
-            else:
-                u_y = self.u_max*0.5
-            U_init.append(np.array([u_x, u_y]))
+            U_init.append(np.ones(self.m)*self.delta_t)
         return U_init
 
     def get_q0(self, x0, U, xtra):
@@ -214,7 +204,10 @@ class ModelPredictiveController:
                 x_k = q0[-self.n:]
                 # Initialize next control assuming straight line motion between via points
                 deltaX = x_d[k0+k+1] - x_d[k0+k]
-                next_u = np.array([deltaX[0]/self.delta_t, deltaX[1]/self.delta_t])
+                next_u = np.zeros(self.m)
+                # HACK: This shouldn't be hardcoded...
+                next_u[0] = deltaX[0]/self.delta_t
+                next_u[1] = deltaX[1]/self.delta_t
                 q0 = np.concatenate([q0, next_u])
                 # Use dynamics to add next location
                 q0 = np.concatenate([q0, self.dyn_model.predict(x_k, next_u, xtra)])

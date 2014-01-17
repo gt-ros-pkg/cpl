@@ -467,7 +467,7 @@ class SVRPushDynamics:
         # Do chain rule here
         # print 'J_base:\n', self.J_base
         # print 'J_delta_d_targets:\n', J_delta_d_targets
-        print 'J_targets_d_feats:\n', J_targets_d_feats
+        # print 'J_targets_d_feats:\n', J_targets_d_feats
         # print 'J_feats_d_opts:\n', J_feats_d_opts
         J = self.J_base + J_delta_d_targets*J_targets_d_feats*J_feats_d_opts
         return J
