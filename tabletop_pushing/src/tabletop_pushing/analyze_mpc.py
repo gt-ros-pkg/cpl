@@ -957,6 +957,7 @@ def test_mpc(base_dir_name):
                                        out_path=plot_output_path)
 
         # Generate next start point based on simulation model
+        print 'Generating next ground truth location'
         y_i = sim_model.predict(x_i, u_i)
 
         # Store for evaluation later
