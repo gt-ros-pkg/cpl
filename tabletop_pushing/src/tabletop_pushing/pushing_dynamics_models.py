@@ -35,6 +35,7 @@ import svmutil
 import numpy as np
 from math import sin, cos, exp, tanh
 import dynamics_learning
+from push_learning import subPIAngle
 
 _PARAM_FILE_SUFFIX = '_params.txt'
 _PARAM_FEATURE_HEADER = 'FEATURE_NAMES'
@@ -169,6 +170,7 @@ class SVRPushDynamics:
                     self.epsilons.append(1e-6)
 
         # Set secondary parameters
+        self.p = len(self.feature_names)
         self.obj_frame_ee_feats = (dynamics_learning._EE_X_OBJ in self.feature_names or
                                    dynamics_learning._EE_Y_OBJ in self.feature_names)
         self.obj_frame_u_feats  = (dynamics_learning._U_X_OBJ in self.feature_names or
@@ -183,14 +185,58 @@ class SVRPushDynamics:
         self.obj_frame_ee_targets = (dynamics_learning._DELTA_EE_X_OBJ in self.target_names or
                                      dynamics_learning._DELTA_EE_Y_OBJ in self.target_names)
 
-        if self.obj_frame_obj_targets:
-            self.obj_frame_obj_x_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_X_OBJ);
-            self.obj_frame_obj_y_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_Y_OBJ);
-        if self.obj_frame_ee_targets:
-            self.obj_frame_ee_x_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_OBJ);
-            self.obj_frame_ee_y_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_OBJ);
+        # Optimization vector variables [Fixed outside of scope here]
+        self.obj_x_opt_idx = 0
+        self.obj_y_opt_idx = 1
+        self.obj_theta_opt_idx = 2
+        self.ee_x_opt_idx = 3
+        self.ee_y_opt_idx = 4
+        self.ee_phi_opt_idx = 5
+        self.u_phi_opt_idx = 8
+        self.u_x_opt_idx = 6
+        self.u_y_opt_idx = 7
 
-        self.p = len(self.feature_names)
+        # Set all indices for Jacobian junk
+        if self.obj_frame_obj_targets:
+            self.obj_x_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_X_OBJ)
+            self.obj_y_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_Y_OBJ)
+        else:
+            self.obj_x_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_X_WORLD)
+            self.obj_y_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_Y_WORLD)
+
+        self.obj_theta_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_THETA_WORLD)
+
+        if self.obj_frame_ee_targets:
+            self.ee_x_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_OBJ)
+            self.ee_y_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_OBJ)
+        else:
+            self.ee_x_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_WORLD)
+            self.ee_y_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_WORLD)
+
+        self.ee_phi_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_PHI_WORLD)
+
+
+        if self.obj_frame_ee_feats:
+            self.ee_x_feat_idx = self.feature_names.index(dynamics_learning._EE_X_OBJ)
+            self.ee_y_feat_idx = self.feature_names.index(dynamics_learning._EE_Y_OBJ)
+            self.ee_phi_feat_idx = self.feature_names.index(dynamics_learning._EE_PHI_OBJ)
+        else:
+            self.ee_x_feat_idx = self.feature_names.index(dynamics_learning._EE_X_WORLD)
+            self.ee_y_feat_idx = self.feature_names.index(dynamics_learning._EE_Y_WORLD)
+            self.ee_phi_feat_idx = self.feature_names.index(dynamics_learning._EE_PHI_WORLD)
+
+        if self.obj_frame_u_feats:
+            self.u_x_feat_idx = self.feature_names.index(dynamics_learning._U_X_OBJ)
+            self.u_y_feat_idx = self.feature_names.index(dynamics_learning._U_Y_OBJ)
+        else:
+            self.u_x_feat_idx = self.feature_names.index(dynamics_learning._U_X_WORLD)
+            self.u_y_feat_idx = self.feature_names.index(dynamics_learning._U_Y_WORLD)
+
+        self.u_phi_feat_idx = self.feature_names.index(dynamics_learning._U_PHI_WORLD)
+
+        # TODO: Do we need to do something here?
+        # if self.use_naive_ee_model:
+
         self.build_jacobian()
 
     def learn_model(self, X_all, Y_all, kernel_params = {}):
@@ -263,7 +309,7 @@ class SVRPushDynamics:
 
         # Setup partials for ee position change, currently using linear model of applied velocity
         if self.use_naive_ee_model:
-            self.J_base[3:5, 5: ] = np.eye(self.m)*self.delta_t
+            self.J_base[3:self.n, self.n: ] = np.eye(self.m)*self.delta_t
 
         if (self.obj_frame_ee_targets or self.obj_frame_obj_targets or
             self.obj_frame_ee_feats or self.obj_frame_u_feats):
@@ -306,7 +352,6 @@ class SVRPushDynamics:
 
         self.J = self.J_base + J_delta_d_targets*self.J_targets_d_feats*J_feats_d_opts
 
-
     def update_jacobian(self, x_k, u_k, xtra=[]):
         '''
         Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
@@ -315,60 +360,66 @@ class SVRPushDynamics:
         xtra - other features for SVM
         '''
         # NOTE: Being lazy and assuming a specific order of features here...
-        # TODO: Change all to variables, i.e. using things like used in transform opts
-        # self.obj_frame_obj_x_idx
-        # self.obj_frame_obj_y_idx
-        # self.obj_frame_ee_x_idx
-        # self.obj_frame_ee_y_idx
-
-        st = sin(x_k[2])
-        ct = cos(x_k[2])
+        st = sin(x_k[self.obj_theta_opt_idx])
+        ct = cos(x_k[self.obj_theta_opt_idx])
 
         # Update derivative of opt deltas w.r.t. learned targets
         J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
         if self.obj_frame_obj_targets:
-            J_delta_d_targets[0, 0] = ct # d/do_x^o[o_x^w]
-            J_delta_d_targets[0, 1] = -st # d/do_y^o[o_x^w]
-            J_delta_d_targets[1, 0] = st # d/do_x^o[o_y^w]
-            J_delta_d_targets[1, 1] = ct # d/do_y^o[o_y^w]
+            J_delta_d_targets[self.obj_x_opt_idx, self.obj_x_target_idx] = ct # d/do_x^o[o_x^w]
+            J_delta_d_targets[self.obj_x_opt_idx, self.obj_y_target_idx] = -st # d/do_y^o[o_x^w]
+            J_delta_d_targets[self.obj_y_opt_idx, self.obj_x_target_idx] = st # d/do_x^o[o_y^w]
+            J_delta_d_targets[self.obj_y_opt_idx, self.obj_y_target_idx] = ct # d/do_y^o[o_y^w]
 
         if self.obj_frame_ee_targets:
-            J_delta_d_targets[3, 3] = ct # d/dee_x^o[ee_x^w]
-            J_delta_d_targets[3, 4] = -st # d/dee_y^o[ee_x^w]
-            J_delta_d_targets[4, 3] = st # d/dee_x^o[ee_y^w]
-            J_delta_d_targets[4, 4] = ct # d/dee_y^o[ee_y^w]
+            J_delta_d_targets[self.ee_x_opt_idx, self.ee_x_target_idx] = ct # d/dee_x^o[ee_x^w]
+            J_delta_d_targets[self.ee_x_opt_idx, self.ee_y_target_idx] = -st # d/dee_y^o[ee_x^w]
+            J_delta_d_targets[self.ee_y_opt_idx, self.ee_x_target_idx] = st # d/dee_x^o[ee_y^w]
+            J_delta_d_targets[self.ee_y_opt_idx, self.ee_y_target_idx] = ct # d/dee_y^o[ee_y^w]
 
         # Update derivatives of features w.r.t. decision variables
         J_feats_d_opts = np.matrix(np.zeros((self.p, self.n+self.m)))
         if self.obj_frame_ee_feats:
-            x_ee_demeaned = x_k[3] - x_k[0]
-            y_ee_demeaned = x_k[4] - x_k[1]
+            x_ee_demeaned = x_k[self.ee_x_opt_idx] - x_k[self.obj_x_opt_idx]
+            y_ee_demeaned = x_k[self.ee_y_opt_idx] - x_k[self.obj_y_opt_idx]
 
-            J_feats_d_opts[0, 0] = -ct # d/dx[x_ee]
-            J_feats_d_opts[0, 1] = -st # d/dy[x_ee]
-            J_feats_d_opts[0, 2] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[x_ee]
-            J_feats_d_opts[0, 3] =  ct # d/dx_ee[x_ee]
-            J_feats_d_opts[0, 4] =  st # d/dy_ee[x_ee]
+            J_feats_d_opts[self.ee_x_feat_idx, self.obj_x_opt_idx] = -ct # d/dx[ee_x^o]
+            J_feats_d_opts[self.ee_x_feat_idx, self.obj_y_opt_idx] = -st # d/dy[ee_x^o]
+            J_feats_d_opts[self.ee_x_feat_idx,
+                           self.obj_theta_opt_idx] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[ee_x^o]
+            J_feats_d_opts[self.ee_x_feat_idx, self.ee_x_opt_idx] =  ct # d/dee_x[ee_x^o]
+            J_feats_d_opts[self.ee_x_feat_idx, self.ee_y_opt_idx] =  st # d/dee_y[ee_x^o]
 
-            J_feats_d_opts[1, 0] =  st # d/dx[y_ee]
-            J_feats_d_opts[1, 1] = -ct # d/dy[y_ee]
-            J_feats_d_opts[1, 2] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[y_ee]
-            J_feats_d_opts[1, 3] = -st # d/dx_ee[y_ee]
-            J_feats_d_opts[1, 4] =  ct # d/dy_ee[y_ee]
+            J_feats_d_opts[self.ee_y_feat_idx, self.obj_x_opt_idx] =  st # d/dx[ee_y^o]
+            J_feats_d_opts[self.ee_y_feat_idx, self.obj_y_opt_idx] = -ct # d/dy[ee_y^o]
+            J_feats_d_opts[self.ee_y_feat_idx,
+                           self.obj_theta_opt_idx] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[ee_y^o]
+            J_feats_d_opts[self.ee_y_feat_idx, self.ee_x_opt_idx] = -st # d/dx_ee[ee_y^o]
+            J_feats_d_opts[self.ee_y_feat_idx, self.ee_y_opt_idx] =  ct # d/dy_ee[ee_y^o]
+
+            # Setup ee_phi partials
+            J_feats_d_opts[self.ee_phi_feat_idx, self.ee_phi_opt_idx] = 1.0 # d/dee_phi^w[ee_phi^o]
+            J_feats_d_opts[self.ee_phi_feat_idx, self.obj_theta_opt_idx] =  -1.0 # d/dtheta[ee_phi^o]
         else:
             # Identity matrix
-            J_feats_d_opts[0:2, 0:2] = np.eye(2)
+            J_feats_d_opts[self.ee_x_feat_idx, self.ee_x_opt_idx] = 1.
+            J_feats_d_opts[self.ee_y_feat_idx, self.ee_y_opt_idx] = 1.
+            J_feats_d_opts[self.ee_phi_feat_idx, self.ee_phi_opt_idx] = 1.
+
         if self.obj_frame_u_feats:
-            J_feats_d_opts[2, 2] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
-            J_feats_d_opts[2, 5] = ct # d/du_x[u_x]
-            J_feats_d_opts[2, 6] = st # d/du_y[u_x]
+            J_feats_d_opts[self.u_x_feat_idx, self.obj_theta_opt_idx] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
+            J_feats_d_opts[self.u_x_feat_idx, self.u_x_opt_idx] = ct # d/du_x[u_x]
+            J_feats_d_opts[self.u_x_feat_idx, self.u_y_opt_idx] = st # d/du_y[u_x]
 
-            J_feats_d_opts[3, 2] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
-            J_feats_d_opts[3, 5] = -st # d/du_x[u_y]
-            J_feats_d_opts[3, 6] =  ct # d/du_y[u_y]
+            J_feats_d_opts[self.u_y_feat_idx, self.obj_theta_opt_idx] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
+            J_feats_d_opts[self.u_y_feat_idx, self.u_x_opt_idx] = -st # d/du_x[u_y]
+            J_feats_d_opts[self.u_y_feat_idx, self.u_y_opt_idx] =  ct # d/du_y[u_y]
         else:
             # Identity matrix
-            J_feats_d_opts[2:4, 2:4] = np.eye(2)
+            J_feats_d_opts[self.u_x_feat_idx, self.u_x_opt_idx] = 1.
+            J_feats_d_opts[self.u_y_feat_idx, self.u_y_opt_idx] = 1.
+        # Setup derivates of u_phi
+        J_feats_d_opts[self.u_phi_feat_idx, self.u_phi_opt_idx] = 1.
 
         # Needed for kernel derivative evaluation
         z_k = self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)
@@ -403,7 +454,7 @@ class SVRPushDynamics:
                         core_k = core**(k-1)
                         J_targets_d_feats[i, j] += c*v_j*core_k
 
-            elif self.kernel_types[i] == 'SGIMOID':
+            elif self.kernel_types[i] == 'SIGMOID':
                 # (1-tanh(gamma*np.dot(z,v)+c0))*gamma*v_j
                 c0 = svm_model.param.coef0
                 svs = self.full_SVs[i]
@@ -422,10 +473,10 @@ class SVRPushDynamics:
                 pass
 
         # Do chain rule here
-        # print 'J_base', self.J_base
-        # print 'J_delta_d_targets', J_delta_d_targets
-        # print 'J_targets_d_feats', J_targets_d_feats
-        # print 'J_feats_d_opts', J_feats_d_opts
+        # print 'J_base:\n', self.J_base
+        # print 'J_delta_d_targets:\n', J_delta_d_targets
+        print 'J_targets_d_feats:\n', J_targets_d_feats
+        # print 'J_feats_d_opts:\n', J_feats_d_opts
         J = self.J_base + J_delta_d_targets*J_targets_d_feats*J_feats_d_opts
         return J
 
@@ -467,51 +518,53 @@ class SVRPushDynamics:
                 ee_demeaned = np.matrix([[x_k[3]-x_k[0]],
                                          [x_k[4]-x_k[1]]])
                 ee_obj = np.array(R*ee_demeaned).T.ravel()
+                ee_phi_obj = subPIAngle(x_k[5] - x_k[2])
             if self.obj_frame_u_feats:
                 # transfrom u to object frame
-                u_obj = np.array(R*np.matrix(u_k).T).ravel()
+                u_obj = np.array(R*np.matrix(u_k[:2]).T).ravel()
 
         for feature_name in self.feature_names:
             if feature_name == dynamics_learning._OBJ_X_WORLD:
-                feat = x_k[0]
+                z.append(x_k[0])
             elif feature_name == dynamics_learning._OBJ_Y_WORLD:
-                feat = x_k[1]
+                z.append(x_k[1])
             elif feature_name == dynamics_learning._OBJ_THETA_WORLD:
-                feat = x_k[2]
+                z.append(x_k[2])
             elif feature_name == dynamics_learning._EE_X_WORLD:
-                feat = x_k[3]
+                z.append(x_k[3])
             elif feature_name == dynamics_learning._EE_Y_WORLD:
-                feat = x_k[4]
+                z.append(x_k[4])
+            elif feature_name == dynamics_learning._EE_PHI_WORLD:
+                z.append(x_k[5])
             elif feature_name == dynamics_learning._U_X_WORLD:
-                feat = u_k[0]
+                z.append(u_k[0])
             elif feature_name == dynamics_learning._U_Y_WORLD:
-                feat = u_k[1]
+                z.append(u_k[1])
+            elif feature_name == dynamics_learning._U_PHI_WORLD:
+                z.append(u_k[2])
             elif feature_name == dynamics_learning._EE_X_OBJ:
-                feat = ee_obj[0]
+                z.append(ee_obj[0])
             elif feature_name == dynamics_learning._EE_Y_OBJ:
-                feat = ee_obj[1]
+                z.append(ee_obj[1])
+            elif feature_name == dynamics_learning._EE_PHI_OBJ:
+                z.append(ee_phi_obj)
             elif feature_name == dynamics_learning._U_X_OBJ:
-                feat = u_obj[0]
+                z.append(u_obj[0])
             elif feature_name == dynamics_learning._U_Y_OBJ:
-                feat = u_obj[1]
+                z.append(u_obj[1])
             # TODO: Implement below if desired
             # elif feature_name == dynamics_learning._EE_Z_WORLD:
-            #     feat = 0.0
-            # elif feature_name == dynamics_learning._EE_PHI_WORLD:
-            #     feat = 0.0
+            #     z.append(0.0)
             # elif feature_name == dynamics_learning._U_Z_WORLD:
-            #     feat = 0.0
+            #     z.append(0.0)
             # elif feature_name == dynamics_learning._U_PHI_WORLD:
-            #     feat = 0.0
+            #     z.append(0.0)
             # elif feature_name == dynamics_learning._EE_Z_OBJ:
-            #     feat = 0.0
-            # elif feature_name == dynamics_learning._EE_PHI_OBJ:
-            #     feat = 0.0
+            #     z.append(0.0)
             # elif feature_name == dynamics_learning._SHAPE_LOCAL:
-            #     feat = 0.0
+            #     z.append(0.0)
             # elif feature_name == dynamics_learning._SHAPE_GLOBAL:
-            #     feat = 0.0
-            z.append(feat)
+            #     z.append(0.0)
         # Add auxilarty features
         z.extend(xtra)
         return z
@@ -522,6 +575,7 @@ class SVRPushDynamics:
         obj_theta_val = 0.0
         ee_x_val = 0.0
         ee_y_val = 0.0
+        ee_phi_val = 0.0
 
         if self.obj_frame_ee_targets or self.obj_frame_obj_targets:
             st = sin(x_k[2])
@@ -530,11 +584,11 @@ class SVRPushDynamics:
                            [st, ct]])
 
             if self.obj_frame_obj_targets:
-                delta_obj_world = np.array(R*np.matrix([[ deltas[self.obj_frame_obj_x_idx] ],
-                                                        [ deltas[self.obj_frame_obj_y_idx] ]])).ravel()
+                delta_obj_world = np.array(R*np.matrix([[ deltas[self.obj_x_target_idx] ],
+                                                        [ deltas[self.obj_y_target_idx] ]])).ravel()
             if self.obj_frame_ee_targets:
-                delta_ee_world = np.array(R*np.matrix([[ deltas[self.obj_frame_ee_x_idx] ],
-                                                       [ deltas[self.obj_frame_ee_y_idx] ]])).ravel()
+                delta_ee_world = np.array(R*np.matrix([[ deltas[self.ee_x_target_idx] ],
+                                                       [ deltas[self.ee_y_target_idx] ]])).ravel()
 
         for i, target_name in enumerate(self.target_names):
             if target_name == dynamics_learning._DELTA_OBJ_X_WORLD:
@@ -542,11 +596,13 @@ class SVRPushDynamics:
             elif target_name == dynamics_learning._DELTA_OBJ_Y_WORLD:
                 obj_y_val = x_k[1] + deltas[i]
             elif target_name == dynamics_learning._DELTA_OBJ_THETA_WORLD:
-                obj_theta_val = x_k[2] + deltas[i]
+                obj_theta_val = subPIAngle(x_k[2] + deltas[i])
             elif target_name == dynamics_learning._DELTA_EE_X_WORLD:
                 ee_x_val = x_k[3] + deltas[i]
             elif target_name == dynamics_learning._DELTA_EE_Y_WORLD:
                 ee_y_val = x_k[4] + deltas[i]
+            elif target_name == dynamics_learning._DELTA_EE_PHI_WORLD:
+                ee_phi_val = subPIAngle(x_k[5] + deltas[i])
             elif target_name == dynamics_learning._DELTA_OBJ_X_OBJ:
                 obj_x_val = x_k[0] + delta_obj_world[0]
             elif target_name == dynamics_learning._DELTA_OBJ_Y_OBJ:
@@ -558,8 +614,6 @@ class SVRPushDynamics:
             # TODO: Setup these if desired
             # elif target_name == dynamics_learning._DELTA_EE_Z_WORLD:
             #     pass
-            # elif target_name == dynamics_learning._DELTA_EE_PHI_WORLD:
-            #     pass
             # elif target_name == dynamics_learning._DELTA_T:
             #     pass
 
@@ -568,8 +622,10 @@ class SVRPushDynamics:
             ee_x_val = x_k[3] + self.delta_t*u_k[0]
             # Y ee
             ee_y_val = x_k[4] + self.delta_t*u_k[1]
+            # Phi ee
+            ee_phi_val = x_k[5] + self.delta_t*u_k[2]
 
-        return [obj_x_val, obj_y_val, obj_theta_val, ee_x_val, ee_y_val]
+        return [obj_x_val, obj_y_val, obj_theta_val, ee_x_val, ee_y_val, ee_phi_val]
 
     #
     # Kernel Functions

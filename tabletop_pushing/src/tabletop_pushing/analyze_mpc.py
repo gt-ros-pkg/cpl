@@ -733,12 +733,15 @@ def test_svm_new(base_dir_name):
                     dynamics_learning._DELTA_OBJ_Y_OBJ,
                     dynamics_learning._DELTA_OBJ_THETA_WORLD,
                     dynamics_learning._DELTA_EE_X_OBJ,
-                    dynamics_learning._DELTA_EE_Y_OBJ]
+                    dynamics_learning._DELTA_EE_Y_OBJ,
+                    dynamics_learning._DELTA_EE_PHI_WORLD]
 
     feature_names = [dynamics_learning._EE_X_OBJ,
                      dynamics_learning._EE_Y_OBJ,
+                     dynamics_learning._EE_PHI_OBJ,
                      dynamics_learning._U_X_OBJ,
-                     dynamics_learning._U_Y_OBJ]
+                     dynamics_learning._U_Y_OBJ,
+                     dynamics_learning._U_PHI_WORLD]
 
     xtra_names = []
 
@@ -752,14 +755,14 @@ def test_svm_new(base_dir_name):
     for i in xrange(len(target_names)):
         epsilons.append(1e-3)
     delta_t = 1./9.
-    n = 5
-    m = 2
+    n = 6
+    m = 3
 
     svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
                                    feature_names = feature_names,
                                    target_names = target_names,
                                    xtra_names = xtra_names,
-                                   kernel_type='SIGMOID')
+                                   kernel_type='RBF')
     # Do Learning
     kernel_params = {}
     for i in xrange(len(target_names)):
@@ -810,7 +813,7 @@ def test_svm_new(base_dir_name):
 
     cts0.u.linear.x = 2.0
     cts0.u.linear.y = 1.0
-    cts0.u.angular.x = -pi
+    cts0.u.angular.z = -pi*0.5
     cts0.t = 0.0
 
     cts1 = push_learning.ControlTimeStep()
@@ -822,32 +825,42 @@ def test_svm_new(base_dir_name):
     cts1.ee.position.x = cts0.ee.position.x + 0.75
     cts1.ee.position.y = cts0.ee.position.y + 1.75
     cts1.ee.position.z = cts0.ee.position.z - 0.25
-    q = quaternion_from_euler(0.0,0.0,0.25*pi)
-    cts1.ee.orientation.x = q[0]
-    cts1.ee.orientation.y = q[1]
-    cts1.ee.orientation.z = q[2]
-    cts1.ee.orientation.w = q[3]
+    q1 = quaternion_from_euler(0.0,0.0,0.25*pi)
+    cts1.ee.orientation.x = q1[0]
+    cts1.ee.orientation.y = q1[1]
+    cts1.ee.orientation.z = q1[2]
+    cts1.ee.orientation.w = q1[3]
     cts1.t = 0.25
     # trial.trial_trajectory.append(cts0)
     # trial.trial_trajectory.append(cts1)
     # trial.trial_trajectory.append(cts1)
 
-    x_k = [cts0.x.x, cts0.x.y, -cts0.x.theta, cts0.ee.position.x, cts0.ee.position.y]
-    u_k = [cts0.u.linear.x, cts0.u.linear.y]
-    deltas = [0.5, 1.0, 0.5*pi, -1.0, 0.5]
-    print 'x_k',x_k
-    print 'u_k',u_k
-    print svr_dynamics2.transform_opt_vector_to_feat_vector(x_k, u_k, [])
-    print 'deltas',deltas
-    print svr_dynamics2.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+    [_, _, ee_phi0] = euler_from_quaternion(q)
+    [_, _, ee_phi1] = euler_from_quaternion(q1)
 
+    x_k = np.array([cts0.x.x, cts0.x.y, -cts0.x.theta, cts0.ee.position.x, cts0.ee.position.y,
+                    ee_phi0])
+    x_1 = np.array([cts1.x.x, cts1.x.y, -cts1.x.theta, cts1.ee.position.x, cts1.ee.position.y,
+                    ee_phi1])
+    u_k = np.array([cts0.u.linear.x, cts0.u.linear.y, cts0.u.angular.z])
+    deltas = x_1 - x_k
+    print 'u[0]', u_k
+    print 'x[0]', x_k
+    print 'feats:', svr_dynamics2.transform_opt_vector_to_feat_vector(x_k, u_k, [])
+    print 'deltas',deltas
+    print 'x[1]', x_1
+    print 'opts:', svr_dynamics2.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+
+    x_1_hat = svr_dynamics2.predict(x_k, u_k)
+    print 'x^[1]', x_1_hat
+    print 'J', svr_dynamics2.jacobian(x_k, u_k)
     return svr_dynamics2
 
 def test_mpc(base_dir_name):
     delta_t = 1.0/9.0
     H = 20
-    n = 5
-    m = 2
+    n = 6
+    m = 3
     u_max = 0.1
     sigma = 0.01
     plot_output_path = '/home/thermans/sandbox/mpc_plots/with_ee/'
