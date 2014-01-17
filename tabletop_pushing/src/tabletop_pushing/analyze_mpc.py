@@ -762,7 +762,7 @@ def test_svm_new(base_dir_name):
                                    feature_names = feature_names,
                                    target_names = target_names,
                                    xtra_names = xtra_names,
-                                   kernel_type='POLYNOMIAL')
+                                   kernel_type='RBF')
     # Do Learning
     kernel_params = {}
     for i in xrange(len(target_names)):
@@ -858,25 +858,15 @@ def test_svm_new(base_dir_name):
     return svr_dynamics2
 
 def test_mpc(base_dir_name):
-    delta_t = 1.0/9.0
-    H = 20
-    n = 6
-    m = 3
-    u_max = 0.1
+    H = 10
+    u_max = [0.5, 0.5, pi*0.25]
     sigma = 0.01
     plot_output_path = '/home/thermans/sandbox/mpc_plots/with_ee/'
     # plot_output_path = ''
     xtra = []
-    plot_all_t = False
+    plot_all_t = True
     plot_gt = True
     test_trajectory = False
-
-    # print 'H = ', H
-    # print 'delta_t = ', delta_t
-    # print 'u_max = ', u_max
-    # print 'max displacement = ', delta_t*u_max
-    # print 'Total max displacement = ', delta_t*u_max*H
-    # print 'x_d = ', np.array(x_d)
 
     cur_state = VisFeedbackPushTrackingFeedback()
     cur_state.x.x = 0.0
@@ -885,12 +875,14 @@ def test_mpc(base_dir_name):
     ee_pose = PoseStamped()
     ee_pose.pose.position.x = cur_state.x.x - 0.2
     ee_pose.pose.position.y = cur_state.x.y - 0.2
+    ee_pose.pose.orientation.z = 0.0
     cur_u = TwistStamped()
     cur_u.twist.linear.x = u_max
     cur_u.twist.linear.y = 0.0
 
     x0 = np.array([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                   ee_pose.pose.position.x, ee_pose.pose.position.y])
+                   ee_pose.pose.position.x, ee_pose.pose.position.y,
+                   ee_pose.pose.orientation.z])
 
     goal_loc = Pose2D()
     goal_loc.x = 0.75
@@ -912,23 +904,23 @@ def test_mpc(base_dir_name):
     trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator(0.01, 2)
     # trajectory_generator = ptg.ViaPointTrajectoryGenerator()
     x_d = trajectory_generator.generate_trajectory(cur_state.x, pose_list)
-
+    # Get learned dynamics model
+    dyn_model = test_svm_new(base_dir_name)
+    n = dyn_model.n
+    m = dyn_model.m
+    delta_t = dyn_model.delta_t
     if test_trajectory:
         for i in xrange(len(x_d)):
             print 'x_d[',i,'] =', x_d[i]
         q_fake = np.zeros((n+m)*H)
 
-        plot_desired_vs_controlled(q_fake, x_d, x0, n, m, show_plot=True, suffix='-piecewise-linear',
+        plot_desired_vs_controlled(q_fake, x_d, x0, dyn_model.n, dyn_model.m, show_plot=True, suffix='-piecewise-linear',
                                    out_path=plot_output_path, plot_ee=False)
 
-    # TODO: Test with a more complicated dynamics model
-    # dyn_model = NaiveInputDynamics(delta_t, n, m)
-    dyn_model = test_svm_new(base_dir_name)
-
     # TODO: Improve the way noise is added to make this better
-    sim_model = StochasticNaiveInputDynamics(delta_t, n, m, sigma)
+    sim_model = dyn_model # StochasticNaiveInputDynamics(dyn_model.delta_t, dyn_model.n, dyn_model.m, sigma)
 
-    mpc =  ModelPredictiveController(dyn_model, H, u_max, delta_t, n = n, m = m)
+    mpc =  ModelPredictiveController(dyn_model, H, u_max)
 
     q_gt = []
     q_stars = []
@@ -936,6 +928,7 @@ def test_mpc(base_dir_name):
     all_x_d = []
     # TODO: Have better criteria for halting
     for i in xrange(len(x_d)-1):
+        print 'Solving for iteration', i
         # Update desired trajectory
         # Recompute trajectory from current pose
         x_d_i = trajectory_generator.generate_trajectory(cur_state.x, pose_list)
@@ -951,16 +944,16 @@ def test_mpc(base_dir_name):
         mpc.init_from_previous = True
 
         # Convert q_star to correct form for prediction
-        u_i = q_star[:m]
+        u_i = q_star[:mpc.m]
 
         # Plot performance so far
         q_cur = q_gt[:]
         q_cur.extend(q_star)
         q_cur = np.array(q_cur)
         if plot_all_t:
-            plot_controls(q_cur, x0, n, m, u_max, show_plot=False, suffix='-q*['+str(i)+']',
+            plot_controls(q_cur, x0, mpc.n, mpc.m, u_max[0], show_plot=False, suffix='-q*['+str(i)+']',
                           out_path=plot_output_path, history_start=i)
-            plot_desired_vs_controlled(q_cur, x_d_i, x0, n, m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
+            plot_desired_vs_controlled(q_cur, x_d_i, x0, mpc.n, mpc.m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
                                        out_path=plot_output_path)
 
         # Generate next start point based on simulation model
@@ -986,13 +979,13 @@ def test_mpc(base_dir_name):
 
     # Plot final ground truth trajectory
     if plot_gt:
-        plot_controls(q_gt, x0, n, m, u_max, show_plot=False, suffix='-q*-final',
+        plot_controls(q_gt, x0, mpc.n, mpc.m, u_max[0], show_plot=False, suffix='-q*-final',
                       out_path=plot_output_path)
-        plot_desired_vs_controlled(q_gt, x_d, x0, n, m, show_plot=False, suffix='-q*-final',
+        plot_desired_vs_controlled(q_gt, x_d, x0, mpc.n, mpc.m, show_plot=False, suffix='-q*-final',
                                    t=len(x_d), out_path=plot_output_path)
-        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, n, m, show_plot=False,
+        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, mpc.n, mpc.m, show_plot=False,
                                           suffix='-q*-final', out_path=plot_output_path)
-        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, n, m, show_plot=(not plot_all_t),
+        plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, mpc.n, mpc.m, show_plot=(not plot_all_t),
                                           suffix='-q*-final', out_path=plot_output_path, show_headings=True)
 
 

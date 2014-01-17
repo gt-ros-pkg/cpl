@@ -178,7 +178,8 @@ class SVRPushDynamics:
         self.use_naive_ee_model = not (dynamics_learning._DELTA_EE_X_WORLD in self.target_names or
                                        dynamics_learning._DELTA_EE_Y_WORLD in self.target_names or
                                        dynamics_learning._DELTA_EE_X_OBJ in self.target_names or
-                                       dynamics_learning._DELTA_EE_Y_OBJ in self.target_names)
+                                       dynamics_learning._DELTA_EE_Y_OBJ in self.target_names or
+                                       dynamics_learning._DELTA_EE_PHI_WORLD in self.target_names)
 
         self.obj_frame_obj_targets = (dynamics_learning._DELTA_OBJ_X_OBJ in self.target_names or
                                       dynamics_learning._DELTA_OBJ_Y_OBJ in self.target_names)
@@ -209,11 +210,15 @@ class SVRPushDynamics:
         if self.obj_frame_ee_targets:
             self.ee_x_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_OBJ)
             self.ee_y_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_OBJ)
+            self.ee_phi_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_PHI_WORLD)
+        elif self.use_naive_ee_model:
+            self.ee_x_target_idx = 3
+            self.ee_y_target_idx = 4
+            self.ee_phi_target_idx = 5
         else:
             self.ee_x_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_WORLD)
             self.ee_y_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_WORLD)
-
-        self.ee_phi_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_PHI_WORLD)
+            self.ee_phi_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_PHI_WORLD)
 
 
         if self.obj_frame_ee_feats:

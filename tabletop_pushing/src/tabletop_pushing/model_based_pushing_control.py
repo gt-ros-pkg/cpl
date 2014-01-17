@@ -120,7 +120,7 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
     return J
 
 class ModelPredictiveController:
-    def __init__(self, model, H=5, u_max=1.0, delta_t=1.0, n = 5, m = 2):
+    def __init__(self, model, H = 5, u_max = []):
         '''
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
@@ -129,10 +129,11 @@ class ModelPredictiveController:
         self.init_from_previous = False
         self.dyn_model = model
         self.H = H # Time horizon
-        self.n = n # Predicted state space dimension
-        self.m = m # Control space dimension
+        self.n = model.n # Predicted state space dimension
+        self.m = model.m # Control space dimension
+        self.N = self.n + self.m
         self.u_max = u_max
-        self.delta_t = delta_t
+        self.delta_t = model.delta_t
         self.max_iter = 1000 # Max number of iterations
         self.ftol = 1.0E-5 # Accuracy of answer
         self.epsilon = sqrt(np.finfo(float).eps)
@@ -146,7 +147,7 @@ class ModelPredictiveController:
     def regenerate_bounds(self):
         bounds_k = []
         for i in xrange(self.m):
-            bounds_k.append((-self.u_max, self.u_max))
+            bounds_k.append((-self.u_max[i], self.u_max[i]))
         for i in xrange(self.n):
             bounds_k.append((-1.0E12,1.0E12))
         self.opt_bounds = []
@@ -194,9 +195,8 @@ class ModelPredictiveController:
 
     def init_q0_from_previous(self, x_d, xtra):
         # Remove initial control and loc from previous solution
-        N = self.n+self.m
-        q0 = self.q_star_prev[N:]
-        k0 = len(q0)/N
+        q0 = self.q_star_prev[self.N:]
+        k0 = len(q0)/self.N
         N_to_add = self.H - k0
         # Add the necessary number of more controls and locs to get to H tuples
         if N_to_add > 0:
@@ -213,5 +213,5 @@ class ModelPredictiveController:
                 q0 = np.concatenate([q0, self.dyn_model.predict(x_k, next_u, xtra)])
         else:
             # Remove the necessary number of more controls and locs to get to H tuples
-            q0 = q0[:N*self.H]
+            q0 = q0[:self.N*self.H]
         return np.array(q0)

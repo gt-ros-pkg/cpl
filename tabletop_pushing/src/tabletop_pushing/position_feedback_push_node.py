@@ -556,8 +556,9 @@ class PositionFeedbackPushNode:
                 dyn_model = SVRPushDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
                                             self.mpc_input_space_dim, base_file_string)
 
+            U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
-                                                  self.mpc_u_max, self.mpc_delta_t)
+                                                  U_max, self.mpc_delta_t)
 
             # Create target trajectory to goal pose
             self.trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
