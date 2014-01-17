@@ -124,6 +124,7 @@
 #define BUFFER_AND_WRITE 1
 #define FORCE_BEFORE_AND_AFTER_VIZ 1
 // #define DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY 1
+#define GET_SHAPE_DESCRIPTORS_EVERY_FRAME 1
 
 using boost::shared_ptr;
 
@@ -634,8 +635,11 @@ class TabletopPushingPerceptionNode
 
         // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
         tracker_state.header.seq = feedback_control_count_++;
-        // ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, tracker_state);
         // TODO: Publish sd in feedback if desired
+#ifdef GET_SHAPE_DESCRIPTORS_EVERY_FRAME
+        ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, tracker_state);
+        tracker_state.shape_descriptor.assign(sd.begin(), sd.end());
+#endif // GET_SHAPE_DESCRIPTORS_EVERY_FRAME
         as_.publishFeedback(tracker_state);
 
 #ifdef PROFILE_CB_TIME

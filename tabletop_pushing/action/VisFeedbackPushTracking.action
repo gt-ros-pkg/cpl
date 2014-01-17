@@ -22,3 +22,4 @@ bool no_detection
 string controller_name
 string proxy_name
 string behavior_primitive
+float64[] shape_descriptor

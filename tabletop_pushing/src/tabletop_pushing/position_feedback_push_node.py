@@ -669,13 +669,12 @@ class PositionFeedbackPushNode:
 
         if self.use_learn_io:
             if _BUFFER_DATA:
-                self.learn_io.buffer_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                          update_twist.twist, update_twist.header.stamp.to_sec(),
-                                          cur_ee_pose.pose, feedback.header.seq, feedback.z)
+                log_data = self.learn_io.buffer_line
             else:
-                self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                         update_twist.twist, update_twist.header.stamp.to_sec(),
-                                         cur_ee_pose.pose, feedback.header.seq, feedback.z)
+                log_data = self.learn_io.write_line
+            log_data(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                      update_twist.twist, update_twist.header.stamp.to_sec(),
+                                      cur_ee_pose.pose, feedback.header.seq, feedback.z, feedback.shape_descriptor)
 
         if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,
@@ -1020,7 +1019,7 @@ class PositionFeedbackPushNode:
 
         # TODO: get 'xtra' passed in from vis feedback
         # Feature vector for the dynamics model
-        xtra = []
+        xtra = [feedback.shape_descriptor]
         x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
                          ee_pose.pose.position.x, ee_pose.pose.position.y])
         q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)

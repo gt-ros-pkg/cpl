@@ -110,7 +110,8 @@ class PushTrial:
                 'push_time: ' + str(self.push_time))
 
 class ControlTimeStep:
-    def __init__(self, x=None, z=None, x_dot=None, x_desired=None, theta0=None, u=None, t=None, ee=None, seq=None):
+    def __init__(self, x=None, z=None, x_dot=None, x_desired=None, theta0=None, u=None, t=None, ee=None, seq=None,
+                 shape_descriptor = []):
         if x is not None:
             self.x = x
         else:
@@ -147,6 +148,7 @@ class ControlTimeStep:
             self.seq = seq
         else:
             self.seq = 0
+        self.shape_descriptor = shape_descriptor
 
 class PushCtrlTrial:
     def __init__(self):
@@ -295,19 +297,19 @@ class ControlAnalysisIO:
         self.data_in = None
         self.data_buffer = []
 
-    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
+    def write_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z, shape_descriptor = []):
         if self.data_out is None:
             rospy.logerr('Attempting to write to file that has not been opened.')
             return
-        data_line = self.generate_line(x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z)
+        data_line = self.generate_line(x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z, shape_descriptor)
         self.data_out.write(data_line)
         self.data_out.flush()
 
-    def buffer_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
-        data_line = self.generate_line(x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z)
+    def buffer_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z, shape_descriptor = []):
+        data_line = self.generate_line(x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z, shape_descriptor)
         self.data_buffer.append(data_line)
 
-    def generate_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z):
+    def generate_line(self, x, x_dot, x_desired, theta0, u, time, hand_pose, seq, z, shape_descriptor = []):
         data_line = str(x.x)+' '+str(x.y)+' '+str(x.theta)+' '+\
             str(x_dot.x)+' '+str(x_dot.y)+' '+str(x_dot.theta)+' '+\
             str(x_desired.x)+' '+str(x_desired.y)+' '+str(x_desired.theta)+' '+\
@@ -315,7 +317,11 @@ class ControlAnalysisIO:
             str(u.angular.x)+' '+str(u.angular.y)+' '+str(u.angular.z)+' '+str(time)+' '+\
             str(hand_pose.position.x)+' '+str(hand_pose.position.y)+' '+str(hand_pose.position.z)+' '+\
             str(hand_pose.orientation.x)+' '+str(hand_pose.orientation.y)+' '+\
-            str(hand_pose.orientation.z)+' '+str(hand_pose.orientation.w)+' '+' '+str(seq)+' '+ str(z)+'\n'
+            str(hand_pose.orientation.z)+' '+str(hand_pose.orientation.w)+' '+' '+str(seq)+' '+ str(z)
+        if len(shape_descriptor) > 0:
+            for d in shape_descriptor:
+                data_line += ' ' + str(d)
+        data_line += '\n'
         return data_line
 
     def write_buffer_to_disk(self):
@@ -366,9 +372,13 @@ class ControlAnalysisIO:
         if len(data) > 25:
             z = data[25]
         else:
-            seq = 0
             z = 0
-        cts = ControlTimeStep(x, z, x_dot, x_desired, theta0, u, t, ee, seq)
+        if len(data) > 26:
+            shape_descriptor = [float(d) for d in data[25:]]
+        else:
+            shape_descriptor = []
+
+        cts = ControlTimeStep(x, z, x_dot, x_desired, theta0, u, t, ee, seq, shape_descriptor)
         return cts
 
     def read_in_data_file(self, file_name):
