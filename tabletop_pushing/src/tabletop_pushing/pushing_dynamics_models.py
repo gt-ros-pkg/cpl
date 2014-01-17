@@ -437,8 +437,7 @@ class SVRPushDynamics:
                     k_sv = self.rbf_kernel(z_k, v, gamma)
                     alpha_gamma = self.rbf_deriv_prefixes[i][l]
                     for j in xrange(self.p):
-                        v_j = v[j]
-                        J_targets_d_feats[i, j] += alpha_gamma*k_sv*(z_k[j] - v_j)
+                        J_targets_d_feats[i, j] += alpha_gamma*k_sv*(z_k[j] - v[j])
 
             elif self.kernel_types[i] == 'POLYNOMIAL':
                 k = svm_model.param.coef0
@@ -447,15 +446,12 @@ class SVRPushDynamics:
                 alphas = svm_model.get_sv_coef()
                 for l, v in enumerate(svs):
                     alpha = alphas[l][0]
-                    c = alpha*k*gamma
+                    core = alpha*k*gamma*(gamma*np.dot(z_k, v))**(k-1)
                     for j in xrange(self.p):
-                        v_j = v[j]
-                        core = gamma*np.dot(z_k, v)
-                        core_k = core**(k-1)
-                        J_targets_d_feats[i, j] += c*v_j*core_k
+                        J_targets_d_feats[i, j] += core*v[j]
 
             elif self.kernel_types[i] == 'SIGMOID':
-                # (1-tanh(gamma*np.dot(z,v)+c0))*gamma*v_j
+                # (1-tanh(gamma*np.dot(z,v)+c0))*gamma*v[j]
                 c0 = svm_model.param.coef0
                 svs = self.full_SVs[i]
                 gamma = svm_model.param.gamma
@@ -463,11 +459,7 @@ class SVRPushDynamics:
                 for l, v in enumerate(svs):
                     alpha = alphas[l][0]
                     for j in xrange(self.p):
-                        if j in v:
-                            v_j = v[j]
-                        else:
-                            v_j = 0.
-                        J_targets_d_feats[i, j] += (1-tanh(gamma*np.dot(z_k, v)+c0))*gamma*v_j
+                        J_targets_d_feats[i, j] += (1-tanh(gamma*np.dot(z_k, v)+c0))*gamma*v[j]
             elif self.kernel_types[i] == 'PRECOMPUTED':
                 # TODO: User needs to supply a function to be called here
                 pass

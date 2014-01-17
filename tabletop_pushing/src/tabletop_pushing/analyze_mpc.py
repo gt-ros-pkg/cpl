@@ -762,11 +762,11 @@ def test_svm_new(base_dir_name):
                                    feature_names = feature_names,
                                    target_names = target_names,
                                    xtra_names = xtra_names,
-                                   kernel_type='RBF')
+                                   kernel_type='POLYNOMIAL')
     # Do Learning
     kernel_params = {}
     for i in xrange(len(target_names)):
-        kernel_params[i] = '-g 0.05'
+        kernel_params[i] = '-g 0.05 -r 2'
     svr_dynamics.learn_model(train_X, train_Y, kernel_params)
 
     # Test saving and loading
@@ -853,7 +853,8 @@ def test_svm_new(base_dir_name):
 
     x_1_hat = svr_dynamics2.predict(x_k, u_k)
     print 'x^[1]', x_1_hat
-    print 'J', svr_dynamics2.jacobian(x_k, u_k)
+    J = svr_dynamics2.jacobian(x_k, u_k)
+    print 'J:\n', J
     return svr_dynamics2
 
 def test_mpc(base_dir_name):
