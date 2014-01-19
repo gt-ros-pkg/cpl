@@ -53,10 +53,10 @@ class PiecewiseLinearTrajectoryGenerator:
         start_pose - Pose2D() location of start pose for trajectory
         pose_list - list of Pose2D() locations for the rest of the trajectory
         '''
-        start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
+        start_loc = np.array([start_pose.x, start_pose.y])#, start_pose.theta])
         trajectory = [start_loc]
         for i in xrange(len(pose_list)):
-            p_i = np.array([pose_list[i].x, pose_list[i].y, pose_list[i].theta])
+            p_i = np.array([pose_list[i].x, pose_list[i].y])#, pose_list[i].theta])
 
             num_steps = int(ceil(np.linalg.norm(p_i[:2] - trajectory[-1][:2])/self.max_step_size))
             num_steps = max(num_steps, self.min_num_segment_steps)
@@ -96,20 +96,20 @@ class ViaPointTrajectoryGenerator:
         num_line_steps = H/len(pose_list)
         delta_t = 1.0/num_line_steps
 
-        start_loc = np.array([start_pose.x, start_pose.y, start_pose.theta])
+        start_loc = np.array([start_pose.x, start_pose.y]) #, start_pose.theta])
         trajectory = [start_loc]
 
         # TODO: Add smooth rotational transitions
 
         for i in xrange(len(pose_list)):
             p0 = trajectory[-1]
-            p1 = np.array([pose_list[i].x, pose_list[i].y, pose_list[i].theta])
+            p1 = np.array([pose_list[i].x, pose_list[i].y])#, pose_list[i].theta])
             delta_p1 = p1 - p0
             if i < len(pose_list) - 1:
-                p2 = np.array([pose_list[i+1].x, pose_list[i+1].y, pose_list[i+1].theta])
+                p2 = np.array([pose_list[i+1].x, pose_list[i+1].y])#, pose_list[i+1].theta])
                 delta_p2 = p2 - p1
             if i > 0:
-                pn1 = np.array([pose_list[i-1].x, pose_list[i-1].y, pose_list[i-1].theta])
+                pn1 = np.array([pose_list[i-1].x, pose_list[i-1].y])#, pose_list[i-1].theta])
                 delta_p0 = p0 - pn1
 
             for j in xrange(num_line_steps):

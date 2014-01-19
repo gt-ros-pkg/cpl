@@ -185,7 +185,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     # Plot desired
     x_d = [X_d_k[0] for X_d_k in X_d]
     y_d = [X_d_k[1] for X_d_k in X_d]
-    theta_d = [X_d_k[2] for X_d_k in X_d]
+    # theta_d = [X_d_k[2] for X_d_k in X_d]
     plotter.plot(x_d, y_d, color = plan_color, label='_nolegend_')
     plotter.plot(x_d, y_d, color = plan_color, marker = 'o', label='Desired Object Path')
 
@@ -253,7 +253,7 @@ def plot_all_planned_trajectories_base(all_x_gt, all_y_gt, all_theta_gt, all_pla
             # Plot desired
             x_d = [X_d_k[0] for X_d_k in X_d]
             y_d = [X_d_k[1] for X_d_k in X_d]
-            theta_d = [X_d_k[2] for X_d_k in X_d]
+            # theta_d = [X_d_k[2] for X_d_k in X_d]
             plotter.plot(x_d, y_d, color=plan_color, ls='--')
 
         plotter.plot(x_gt, y_gt, c=gt_color, ls='-')
@@ -761,8 +761,8 @@ def test_svm_new(base_dir_name):
     svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
                                    feature_names = feature_names,
                                    target_names = target_names,
-                                   xtra_names = xtra_names,
-                                   kernel_type='RBF')
+                                   xtra_names = xtra_names)#,
+                                   #kernel_type='RBF')
     # Do Learning
     kernel_params = {}
     for i in xrange(len(target_names)):
@@ -857,10 +857,14 @@ def test_svm_new(base_dir_name):
     print 'J:\n', J
     return svr_dynamics2
 
+def test_svm_jacobians():
+    synthetic_svr_param_file_name = ''
+    svr_dynamics = SVRPushDynamics(param_file_name = synthetic_svr_param_file_name)
+
 def test_mpc(base_dir_name):
     H = 10
     u_max = [0.5, 0.5, pi*0.25]
-    sigma = 0.01
+    sigma = 0.05
     plot_output_path = '/home/thermans/sandbox/mpc_plots/with_ee/'
     # plot_output_path = ''
     xtra = []
@@ -885,20 +889,8 @@ def test_mpc(base_dir_name):
                    ee_pose.pose.orientation.z])
 
     goal_loc = Pose2D()
-    goal_loc.x = 0.75
+    goal_loc.x = 0.5
     goal_loc.y = -0.25
-
-    p1 = Pose2D()
-    p1.x = 0.5
-    p1.y = 0.0#5
-
-    p2 = Pose2D()
-    p2.x = 1.0
-    p2.y = -0.25
-
-    p4 = Pose2D()
-    p4.x = 2.5
-    p4.y = 0.0
 
     pose_list = [goal_loc]
     trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator(0.01, 2)
@@ -942,6 +934,9 @@ def test_mpc(base_dir_name):
                ee_pose.pose.position.x, ee_pose.pose.position.y, ee_pose.pose.orientation.z]
         q_star = mpc.feedbackControl(x_i, x_d_i, xtra)
         mpc.init_from_previous = True
+
+        # print 'q_star = ',q_star
+        # print 'x_d[',i,'] = ',x_d_i
 
         # Convert q_star to correct form for prediction
         u_i = q_star[:mpc.m]

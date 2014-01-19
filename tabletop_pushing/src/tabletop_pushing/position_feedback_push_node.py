@@ -563,9 +563,6 @@ class PositionFeedbackPushNode:
             # Create target trajectory to goal pose
             self.trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
                                                                            self.min_num_mpc_trajectory_steps)
-            pose_list = [goal.desired_pose]
-            self.mpc_desired_trajectory = self.trajectory_generator.generate_trajectory(request.obj_start_pose,
-                                                                                        pose_list)
         # HACK: to run the open loop stuff here
         if request.controller_name.startswith(OPEN_LOOP_SQP_PREFIX):
             # TODO: Setup reading of different models, should share code with MPC...

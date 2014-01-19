@@ -67,11 +67,8 @@ def pushMPCObjectiveFunction(q, H, n, m, x0, x_d, xtra, dyn_model):
         x_stop = x_start+x_d_length
         # Pull out x from q
         x_k_plus_1 = np.asarray(q[x_start:x_stop])
-        # print 'x_k',x_k_plus_1
-        # print 'x_d',x_d[k+1]
         # Compute sum of squared error on current trajectory time step
         cost += sum((x_k_plus_1 - x_d[k+1])**2)
-        # print 'cost[',k,'] =',cost
     return cost
 
 def pushMPCObjectiveGradient(q, H, n, m, x0, x_d, xtra, dyn_model):
