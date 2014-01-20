@@ -61,6 +61,7 @@ _OFFLINE = False
 _USE_LEARN_IO = True
 _BUFFER_DATA = True
 _SAVE_MPC_DATA = True
+_USE_SHAPE_INFO_IN_SVM = False
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
@@ -275,8 +276,8 @@ class PositionFeedbackPushNode:
         self.MPC = None
         self.trajectory_generator = None
         self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/9.)
-        self.mpc_state_space_dim = rospy.get_param('~mpc_n', 5)
-        self.mpc_input_space_dim = rospy.get_param('~mpc_m', 2)
+        self.mpc_state_space_dim = rospy.get_param('~mpc_n', 6)
+        self.mpc_input_space_dim = rospy.get_param('~mpc_m', 3)
         self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
         self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.03)
         self.mpc_u_max_angular = rospy.get_param('~mpc_max_u_angular', 0.1)
@@ -552,13 +553,11 @@ class PositionFeedbackPushNode:
                 mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
                 # NOTE: Add switch here if we get other non svm dynamics models
                 base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
-                base_file_string = base_path + mpc_suffix
-                dyn_model = SVRPushDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
-                                            self.mpc_input_space_dim, base_file_string)
+                param_file_string = base_path + mpc_suffix + '_params.txt'
+                dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
             U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
-            self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
-                                                  U_max, self.mpc_delta_t)
+            self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon, U_max)
 
             # Create target trajectory to goal pose
             self.trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
@@ -566,10 +565,11 @@ class PositionFeedbackPushNode:
         # HACK: to run the open loop stuff here
         if request.controller_name.startswith(OPEN_LOOP_SQP_PREFIX):
             # TODO: Setup reading of different models, should share code with MPC...
+            rospy.loginfo('Setting up open loop SQP controller')
             dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
                                            self.mpc_input_space_dim)
             self.SQPOpt =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
-                                                     self.mpc_u_max, self.mpc_delta_t)
+                                                     self.mpc_u_max)
             response.action_aborted = not self.open_loop_sqp_controller(goal, request, which_arm)
         else:
             rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
@@ -1011,15 +1011,18 @@ class PositionFeedbackPushNode:
         pose_list = [desired_pose]
         x_d_i = self.trajectory_generator.generate_trajectory(cur_state.x, pose_list)
 
-        self.MPC.H = min(self.MPC.H, len(x_d_i)-1)
+        self.MPC.H = min(self.mpc_lookahead_horizon, len(x_d_i)-1)
         self.MPC.regenerate_bounds()
         rospy.loginfo('MPC.H = ' + str(self.MPC.H))
 
-        # TODO: get 'xtra' passed in from vis feedback
+        # TODO: Choose if XTRA is used from SVR dynamics model flags
         # Feature vector for the dynamics model
-        xtra = [feedback.shape_descriptor]
-        x0 = np.asarray([cur_state.x.x, cur_state.x.y, cur_state.x.theta,
-                         ee_pose.pose.position.x, ee_pose.pose.position.y])
+        if _USE_SHAPE_INFO_IN_SVM:
+            xtra = cur_state.shape_descriptor
+        else:
+            xtra = []
+        x0 = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+              ee_pose.pose.position.x, ee_pose.pose.position.y, ee_pose.pose.orientation.z]
         q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)
 
         if _SAVE_MPC_DATA:
