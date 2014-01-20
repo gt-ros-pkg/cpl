@@ -516,6 +516,7 @@ class PositionFeedbackPushNode:
         goal.controller_name = request.controller_name
         goal.proxy_name = request.proxy_name
         goal.behavior_primitive = request.behavior_primitive
+        goal.open_loop_push = False
 
         # Load learned controller information if necessary
         if request.controller_name.startswith(RBF_CONTROLLER_PREFIX):
@@ -546,6 +547,11 @@ class PositionFeedbackPushNode:
                      request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER)
         if open_loop:
             # TODO: Send goal but don't block so we can record tracking data, have open_loop feedback_cb
+            rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+            goal.open_loop_push = True
+            ac.send_goal(goal)
+            rospy.loginfo('Sent goal')
+
             if request.controller_name.startswith(OPEN_LOOP_SQP_PREFIX):
                 rospy.loginfo('Setting up open loop SQP controller')
                 if request.controller_name == SQP_NAIVE_LINEAR_DYN:
@@ -568,6 +574,22 @@ class PositionFeedbackPushNode:
             elif request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER:
                 rospy.loginfo('Setting up open loop straight line controller')
                 response.action_aborted = not self.open_loop_straight_line_controller(goal, request, which_arm)
+
+            # TODO: Force abort, but check the final goal_error...
+            rospy.loginfo('Done with open loop push. Getting goal.')
+            ac.cancel_goal()
+            rospy.loginfo('Waiting for result')
+            ac.wait_for_result(rospy.Duration(5))
+            rospy.loginfo('Result received')
+            result = ac.get_result()
+            if result is not None:
+                response.action_aborted = result.aborted
+                if result.aborted:
+                    rospy.loginfo('Result aborted!')
+            else:
+                rospy.logwarn('No result received!\n')
+                response.action_aborted = True
+
         else:
             rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
             ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -807,11 +829,11 @@ class PositionFeedbackPushNode:
         if x_error > y_error:
             u.twist.linear.x = sign(x_error)*self.straight_line_u_max
             u.twist.linear.y = y_error/abs(x_error)*self.straight_line_u_max
-            push_time = x_error/abs(u.twist.linear.x)
+            push_time = abs(x_error)/abs(u.twist.linear.x)
         else:
             u.twist.linear.y = sign(y_error)*self.straight_line_u_max
             u.twist.linear.x = x_error/abs(y_error)*self.straight_line_u_max
-            push_time = y_error/abs(u.twist.linear.y)
+            push_time = abs(y_error)/abs(u.twist.linear.y)
 
         rospy.loginfo('Pushing for ' + str(push_time) + ' seconds with velocity: ['+ str(u.twist.linear.x) + ', ' +
                       str(u.twist.linear.y) + ']')

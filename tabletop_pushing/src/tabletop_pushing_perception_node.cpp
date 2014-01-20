@@ -200,7 +200,7 @@ class TabletopPushingPerceptionNode
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
       gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false),
       num_position_failures_(0), footprint_count_(0),
-      feedback_control_count_(0), feedback_control_instance_count_(0)
+      feedback_control_count_(0), feedback_control_instance_count_(0), open_loop_push_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -647,8 +647,10 @@ class TabletopPushingPerceptionNode
         publish_feedback_elapsed_time = (((double)(evaluate_goal_start_time - publish_feedback_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
 #endif
-
-        evaluateGoalAndAbortConditions(tracker_state);
+        if (!open_loop_push_)
+        {
+          evaluateGoalAndAbortConditions(tracker_state);
+        }
 
 #ifdef PROFILE_CB_TIME
         evaluate_goal_elapsed_time = (((double)(Timer::nanoTime() - evaluate_goal_start_time)) /
@@ -755,7 +757,7 @@ class TabletopPushingPerceptionNode
 #endif
   }
 
-  void evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)
+  bool evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)
   {
     // Check for goal conditions
     float x_error = tracker_goal_pose_.x - tracker_state.x.x;
@@ -773,7 +775,7 @@ class TabletopPushingPerceptionNode
       {
         abortPushingGoal("Pushing time up");
       }
-      return;
+      return false;
     }
 
     if (controller_name_ == "rotate_to_heading")
@@ -795,7 +797,7 @@ class TabletopPushingPerceptionNode
         writeBuffersToDisk();
 #endif // BUFFER_AND_WRITE
       }
-      return;
+      return true;
     }
     if (pos_error < tracker_dist_thresh_)
     {
@@ -813,7 +815,7 @@ class TabletopPushingPerceptionNode
 #ifdef BUFFER_AND_WRITE
       writeBuffersToDisk();
 #endif // BUFFER_AND_WRITE
-      return;
+      return true;
     }
 
     if (objectNotMoving(tracker_state))
@@ -839,6 +841,7 @@ class TabletopPushingPerceptionNode
         abortPushingGoal("Object is not between gripper and goal.");
       }
     }
+    return false;
   }
 
   void abortPushingGoal(std::string msg)
@@ -1937,6 +1940,7 @@ class TabletopPushingPerceptionNode
     proxy_name_ = tracker_goal->proxy_name;
     behavior_primitive_ = tracker_goal->behavior_primitive;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
+    open_loop_push_ = tracker_goal->open_loop_push;
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
     object_not_detected_count_ = 0;
@@ -1959,10 +1963,21 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerPreemptCB()
   {
-    obj_tracker_->pause();
-    ROS_INFO_STREAM("Preempted push tracker");
-    // set the action state to preempted
-    as_.setPreempted();
+    ROS_WARN_STREAM("Preempted push tracker");
+    PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
+    if (! evaluateGoalAndAbortConditions(tracker_state))
+    {
+      // set the action state to preempted
+      // ROS_INFO_STREAM("Aborting");
+      obj_tracker_->pause();
+      PushTrackerResult res;
+      res.aborted = true;
+      as_.setAborted(res);
+    }
+    else
+    {
+      // ROS_INFO_STREAM("Goal reached confirmed");
+    }
 #ifdef BUFFER_AND_WRITE
     writeBuffersToDisk();
 #endif // BUFFER_AND_WRITE
@@ -2491,6 +2506,7 @@ class TabletopPushingPerceptionNode
   int feedback_control_count_;
   int feedback_control_instance_count_;
   pcl16::PointXYZ nan_point_;
+  bool open_loop_push_;
 #ifdef DEBUG_POSE_ESTIMATION
   std::ofstream pose_est_stream_;
 #endif

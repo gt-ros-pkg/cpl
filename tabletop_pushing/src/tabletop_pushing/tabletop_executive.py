@@ -656,10 +656,10 @@ class TabletopExecutive:
                        str(analysis_res.centroid.y) + ', ' + str(analysis_res.theta)+ ')')
         rospy.loginfo('Desired (X,Y,Theta): (' + str(goal_pose.x) + ', ' +
                        str(goal_pose.y) + ', ' + str(goal_pose.theta) + ')')
-        rospy.loginfo('Error (X,Y,Theta, Hypot): (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) +
+        rospy.loginfo('Error : (' + str(fabs(goal_pose.x-analysis_res.centroid.x)) +
                       ', ' + str(fabs(goal_pose.y-analysis_res.centroid.y)) + ', ' +
-                      str(fabs(goal_pose.theta-analysis_res.theta)) + ', ' +
-                      str(hypot(goal_pose.x-analysis_res.centroid.x,goal_pose.y-analysis_res.centroid.y)) + ')\n')
+                      str(fabs(goal_pose.theta-analysis_res.theta)) + ') : ' +
+                      str(hypot(goal_pose.x-analysis_res.centroid.x,goal_pose.y-analysis_res.centroid.y)) + '\n')
         if _USE_LEARN_IO:
             self.learn_io.write_line(
                 push_vector_res.centroid, push_vector_res.theta,

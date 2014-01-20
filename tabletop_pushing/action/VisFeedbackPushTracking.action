@@ -5,6 +5,7 @@ string which_arm
 string controller_name
 string proxy_name
 string behavior_primitive
+bool open_loop_push
 ---
 # Result Definition
 std_msgs/Header header
