@@ -858,8 +858,25 @@ def test_svm_new(base_dir_name):
     return svr_dynamics2
 
 def test_svm_jacobians():
-    synthetic_svr_param_file_name = ''
+    synthetic_svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/synthetic_params.txt'
     svr_dynamics = SVRPushDynamics(param_file_name = synthetic_svr_param_file_name)
+
+    o_x = 0.0
+    o_y = 1.0
+    o_theta = 0.0
+    ee_x = 0.0
+    ee_y = -1.0
+    ee_phi = 0.0
+    u_x = 0.5
+    u_y = 0.5
+    u_phi = 0.0
+
+    x0 = np.array([o_x, o_y, o_theta, ee_x, ee_y, ee_phi ])
+    u0 = np.array([u_x, u_y, u_phi])
+    xtra = []
+    J = svr_dynamics.jacobian(x0, u0, xtra)
+    return J
+
 
 def test_mpc(base_dir_name):
     H = 10
@@ -889,8 +906,8 @@ def test_mpc(base_dir_name):
                    ee_pose.pose.orientation.z])
 
     goal_loc = Pose2D()
-    goal_loc.x = 0.5
-    goal_loc.y = -0.25
+    goal_loc.x = -0.5
+    goal_loc.y = 0.25
 
     pose_list = [goal_loc]
     trajectory_generator = ptg.PiecewiseLinearTrajectoryGenerator(0.01, 2)
@@ -910,7 +927,7 @@ def test_mpc(base_dir_name):
                                    out_path=plot_output_path, plot_ee=False)
 
     # TODO: Improve the way noise is added to make this better
-    sim_model = dyn_model # StochasticNaiveInputDynamics(dyn_model.delta_t, dyn_model.n, dyn_model.m, sigma)
+    sim_model = StochasticNaiveInputDynamics(dyn_model.delta_t, dyn_model.n, dyn_model.m, sigma)
 
     mpc =  ModelPredictiveController(dyn_model, H, u_max)
 

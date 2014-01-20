@@ -338,7 +338,7 @@ class SVRPushDynamics:
             if self.kernel_types[i] == 'LINEAR':
                 # Partial derivative is the sum of the product of the SV elements and coefficients
                 # \sum_{i=1}^{l} alpha_i*z_i^j
-                for alpha, sv in zip(alphas, svs):
+                for alpha, sv in zip(alphas, self.full_SVs[i]):
                     for j in xrange(self.p):
                         self.J_targets_d_feats[i, j] += alpha[0]*sv[j]
             elif self.kernel_types[i] == 'RBF':
@@ -512,27 +512,27 @@ class SVRPushDynamics:
                            [-st, ct]])
             # Transfrom ee to object frame
             if self.obj_frame_ee_feats:
-                ee_demeaned = np.matrix([[x_k[3]-x_k[0]],
-                                         [x_k[4]-x_k[1]]])
+                ee_demeaned = np.matrix([[x_k[self.ee_x_opt_idx] - x_k[self.obj_x_opt_idx]],
+                                         [x_k[self.ee_y_opt_idx] - x_k[self.obj_y_opt_idx]]])
                 ee_obj = np.array(R*ee_demeaned).T.ravel()
-                ee_phi_obj = subPIAngle(x_k[5] - x_k[2])
+                ee_phi_obj = subPIAngle(x_k[self.ee_phi_opt_idx] - x_k[self.obj_theta_opt_idx])
             if self.obj_frame_u_feats:
                 # transfrom u to object frame
                 u_obj = np.array(R*np.matrix(u_k[:2]).T).ravel()
 
         for feature_name in self.feature_names:
             if feature_name == dynamics_learning._OBJ_X_WORLD:
-                z.append(x_k[0])
+                z.append(x_k[self.obj_x_opt_idx])
             elif feature_name == dynamics_learning._OBJ_Y_WORLD:
-                z.append(x_k[1])
+                z.append(x_k[self.obj_y_opt_idx])
             elif feature_name == dynamics_learning._OBJ_THETA_WORLD:
-                z.append(x_k[2])
+                z.append(x_k[self.obj_theta_opt_idx])
             elif feature_name == dynamics_learning._EE_X_WORLD:
-                z.append(x_k[3])
+                z.append(x_k[self.ee_x_opt_idx])
             elif feature_name == dynamics_learning._EE_Y_WORLD:
-                z.append(x_k[4])
+                z.append(x_k[self.ee_y_opt_idx])
             elif feature_name == dynamics_learning._EE_PHI_WORLD:
-                z.append(x_k[5])
+                z.append(x_k[self.ee_phi_opt_idx])
             elif feature_name == dynamics_learning._U_X_WORLD:
                 z.append(u_k[0])
             elif feature_name == dynamics_learning._U_Y_WORLD:
