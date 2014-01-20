@@ -33,7 +33,7 @@
 
 import roslib; roslib.load_manifest('tabletop_pushing')
 import push_learning
-from push_learning import subPIAngle
+from util import subPIAngle
 import numpy as np
 import os
 import svmutil

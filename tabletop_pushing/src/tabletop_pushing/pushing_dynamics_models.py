@@ -35,7 +35,7 @@ import svmutil
 import numpy as np
 from math import sin, cos, exp, tanh
 import dynamics_learning
-from push_learning import subPIAngle
+from util import subPIAngle
 
 _PARAM_FILE_SUFFIX = '_params.txt'
 _PARAM_FEATURE_HEADER = 'FEATURE_NAMES'

@@ -41,6 +41,7 @@ import cv2
 import numpy as np
 import sys
 from math import sin, cos, pi, sqrt, fabs, atan2, hypot, acos, isnan
+from util import subPIAngle
 #from pylab import *
 import matplotlib.pyplot as plotter
 import random
@@ -57,12 +58,6 @@ _BAD_TRIAL_HEADER_LINE_USER = _BAD_TRIAL_HEADER_LINE_PREFIX + '_USER'
 _BAD_TRIAL_HEADER_LINE_PRE_FAIL = _BAD_TRIAL_HEADER_LINE_PREFIX + '_PRE_FAIL'
 _DEBUG_IO = False
 
-def subPIAngle(theta):
-    while theta < -pi:
-        theta += 2.0*pi
-    while theta > pi:
-        theta -= 2.0*pi
-    return theta
 
 def point_line_dist(pt, a, b):
     '''

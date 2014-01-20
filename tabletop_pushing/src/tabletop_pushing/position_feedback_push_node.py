@@ -56,6 +56,7 @@ from model_based_pushing_control import *
 from analyze_mpc import MPCSolutionIO, PushTrajectoryIO
 from pushing_dynamics_models import *
 from push_trajectory_generator import *
+from util import sign, subPIAngle, trigAugState
 
 _OFFLINE = False
 _USE_LEARN_IO = True
@@ -168,32 +169,6 @@ _ARM_ERROR_CODES[-33]='IK_LINK_IN_COLLISION'
 _ARM_ERROR_CODES[-34]='NO_FK_SOLUTION'
 _ARM_ERROR_CODES[-35]='KINEMATICS_STATE_IN_COLLISION'
 _ARM_ERROR_CODES[-36]='INVALID_TIMEOUT'
-
-def subPIAngle(theta):
-    while theta < -pi:
-        theta += 2.0*pi
-    while theta > pi:
-        theta -= 2.0*pi
-    return theta
-
-def sign(x):
-    if x < 0:
-        return -1
-    return 1
-
-def trigAugState(X, ndx, remove_old=False):
-    X_aug = []
-    if remove_old:
-        for i, x in enumerate(X):
-            if i in ndx:
-                continue
-            else:
-                X_aug.append(x)
-    else:
-        X_aug = X[:]
-    for i in ndx:
-        X_aug = np.append(X_aug, [sin(X[i]), cos(X[i])])
-    return np.asarray(X_aug)
 
 class PositionFeedbackPushNode:
 

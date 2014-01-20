@@ -820,10 +820,10 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object is not moving");
     }
-    else if (gripperNotMoving())
-    {
-      abortPushingGoal("Gripper is not moving");
-    }
+    // else if (gripperNotMoving())
+    // {
+    //   abortPushingGoal("Gripper is not moving");
+    // }
     else if (objectDisappeared(tracker_state))
     {
       abortPushingGoal("Object disappeared");
