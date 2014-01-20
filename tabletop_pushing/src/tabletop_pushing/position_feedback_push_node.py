@@ -238,6 +238,7 @@ class PositionFeedbackPushNode:
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
         self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.015)
+        self.straight_line_u_max = rospy.get_param('~straight_line_vel', 0.015)
 
         self.straight_v = rospy.get_param('~straight_line_goal_vel', 0.03)
 
@@ -502,7 +503,9 @@ class PositionFeedbackPushNode:
         self.goal_cb_count += 1
 
         if not _OFFLINE:
+            self.switch_to_vel_controllers()
             self.stop_moving_vel(which_arm)
+
         done_cb = None
         active_cb = None
         goal = VisFeedbackPushTrackingGoal()
@@ -546,6 +549,9 @@ class PositionFeedbackPushNode:
             self.SQPOpt =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
                                                      self.mpc_u_max)
             response.action_aborted = not self.open_loop_sqp_controller(goal, request, which_arm)
+        elif request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER:
+            rospy.loginfo('Setting up open loop straight line controller')
+            response.action_aborted = not self.open_loop_straight_line_controller(goal, request, which_arm)
         else:
             rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
             ac.send_goal(goal, done_cb, active_cb, feedback_cb)
@@ -756,11 +762,48 @@ class PositionFeedbackPushNode:
             if not _OFFLINE:
                 self.update_vel(u, which_arm)
             r.sleep()
+            self.stop_moving_vel(which_arm)
 
         return True
 
+    def open_loop_straight_line_controller(self, goal, push_request, which_arm):
+        # Get goal vector
+        x_error = goal.desired_pose.x - push_request.obj_start_pose.x
+        y_error = goal.desired_pose.y - push_request.obj_start_pose.y
+
+        # Get pushing velocity
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        if x_error > y_error:
+            u.twist.linear.x = sign(x_error)*self.straight_line_u_max
+            u.twist.linear.y = y_error/abs(x_error)*self.straight_line_u_max
+            push_time = x_error/abs(u.twist.linear.x)
+        else:
+            u.twist.linear.y = sign(y_error)*self.straight_line_u_max
+            u.twist.linear.x = x_error/abs(y_error)*self.straight_line_u_max
+            push_time = y_error/abs(u.twist.linear.y)
+
+        rospy.loginfo('Pushing for ' + str(push_time) + ' seconds with velocity: ['+ str(u.twist.linear.x) + ', ' +
+                      str(u.twist.linear.y) + ']')
+        # TODO: Log something?
+
+        # Push for required time
+        r = rospy.Rate(100)
+        timeout_at = rospy.get_time() + push_time
+        while timeout_at > rospy.get_time():
+            self.update_vel(u, which_arm)
+            r.sleep()
+
+        self.stop_moving_vel(which_arm)
+
+        return True
     #
-    # Controller functions
+    # Feedback Controller functions
     #
 
     def spinCompensationController(self, cur_state, desired_state):
@@ -1805,8 +1848,8 @@ class PositionFeedbackPushNode:
             arm_error = self.r_arm_x_err
         error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
                           arm_error.linear.z**2)
-        rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
-        rospy.loginfo('Move cart gripper error: ' + str(arm_error.linear)+'\n'+str(arm_error.angular))
+        # rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        # rospy.loginfo('Move cart gripper error: ' + str(arm_error.linear)+'\n'+str(arm_error.angular))
         return (arm_error, error_dist)
 
     def move_to_cart_pose_ik(self, pose, which_arm, pressure=1000, nsecs=2.0):
@@ -2041,7 +2084,7 @@ class PositionFeedbackPushNode:
             arm_error = self.r_arm_x_err
         error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
                           arm_error.linear.z**2)
-        rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        # rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
         return (arm_error, error_dist)
 
     def stop_moving_cart(self, which_arm):
