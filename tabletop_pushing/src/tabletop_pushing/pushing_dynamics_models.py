@@ -447,11 +447,12 @@ class SVRPushDynamics:
             elif self.kernel_types[i] == 'POLYNOMIAL':
                 k = svm_model.param.coef0
                 svs = self.full_SVs[i]
+                c0 = svm_model.param.coef0
                 gamma = svm_model.param.gamma
                 alphas = svm_model.get_sv_coef()
                 for l, v in enumerate(svs):
                     alpha = alphas[l][0]
-                    core = alpha*k*gamma*(gamma*np.dot(z_k, v))**(k-1)
+                    core = alpha*k*gamma*(gamma*np.dot(z_k, v)+c0)**(k-1)
                     for j in xrange(self.p):
                         J_targets_d_feats[i, j] += core*v[j]
 
