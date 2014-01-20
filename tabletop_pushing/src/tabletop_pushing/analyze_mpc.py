@@ -761,8 +761,8 @@ def test_svm_new(base_dir_name):
     svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
                                    feature_names = feature_names,
                                    target_names = target_names,
-                                   xtra_names = xtra_names)#,
-                                   #kernel_type='RBF')
+                                   xtra_names = xtra_names,
+                                   kernel_type='LINEAR')
     # Do Learning
     kernel_params = {}
     for i in xrange(len(target_names)):
