@@ -642,7 +642,7 @@ class TabletopExecutive:
                      which_arm, push_time, push_vector_res, goal_pose, object_id,
                      precondition_method=CENTROID_PUSH_PRECONDITION):
         push_angle = push_vector_res.push.push_angle
-        analysis_res = self.request_learning_analysis()
+        analysis_res = self.request_learning_analysis(goal_pose)
         rospy.loginfo('Done getting analysis response.')
         rospy.loginfo('Primitive: ' + str(behavior_primitive))
         rospy.loginfo('Controller: ' + str(controller_name))
@@ -710,10 +710,11 @@ class TabletopExecutive:
             rospy.logwarn("Service did not process request: %s"%str(e))
             return None
 
-    def request_learning_analysis(self):
+    def request_learning_analysis(self, goal_pose):
         push_vector_req = LearnPushRequest()
         push_vector_req.initialize = False
         push_vector_req.analyze_previous = True
+        push_vector_req.goal_pose = goal_pose
         rospy.loginfo("Calling learning push vector service")
         try:
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)

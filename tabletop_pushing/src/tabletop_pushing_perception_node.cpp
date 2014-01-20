@@ -909,6 +909,18 @@ class TabletopPushingPerceptionNode
           ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
           ROS_INFO_STREAM("Press 's' to swap orientation. Any other key to continue.");
 #ifdef FORCE_BEFORE_AND_AFTER_VIZ
+          PointStamped start_point;
+          start_point.header.frame_id = workspace_frame_;
+          start_point.point.x = cur_state.x.x;
+          start_point.point.y = cur_state.x.y;
+          start_point.point.z = cur_state.z;
+          PointStamped end_point;
+          end_point.header.frame_id = workspace_frame_;
+          end_point.point.x = req.goal_pose.x;
+          end_point.point.y = req.goal_pose.y;
+          end_point.point.z = start_point.point.z;
+
+          displayPushVector(cur_color_frame_, start_point, end_point, "final_vector", false, true);
           ROS_INFO_STREAM("Waiting for key press...");
           char key_press = cv::waitKey(-1);
 #else // FORCE_BEFORE_AND_AFTER_VIZ
@@ -932,6 +944,10 @@ class TabletopPushingPerceptionNode
             key_press = 'a';
 #endif // FORCE_BEFORE_AND_AFTER_VIZ
           }
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+          cv::destroyWindow("Object State");
+          cv::destroyWindow("final_vector");
+#endif
         }
         else // Get pose only
         {
@@ -2146,7 +2162,7 @@ class TabletopPushingPerceptionNode
   }
 
   void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
-                         std::string display_name="goal_vector", bool force_no_write=false)
+                         std::string display_name="goal_vector", bool force_no_write=false, bool force_display = false)
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
@@ -2159,7 +2175,7 @@ class TabletopPushingPerceptionNode
     cv::line(disp_img, img_start_point, img_end_point, kuler_green);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
     cv::circle(disp_img, img_end_point, 4, kuler_green);
-    if (use_displays_)
+    if (use_displays_ || force_display)
     {
       cv::imshow(display_name, disp_img);
     }
