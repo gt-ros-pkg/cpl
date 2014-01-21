@@ -122,7 +122,7 @@ class SVRPushDynamics:
     _KERNEL_TYPES = {'LINEAR': 0, 'POLYNOMIAL': 1, 'RBF': 2, 'SIGMOID': 3, 'PRECOMPUTED':4}
     _KERNEL_NAMES = dict((v,k) for k,v in _KERNEL_TYPES.items())
 
-    def __init__(self, delta_t = 1.0, n = 5, m = 2,
+    def __init__(self, delta_t = 1.0, n = 6, m = 3,
                  param_file_name = '', epsilons = None, kernel_type = None,
                  feature_names = [], target_names = [], xtra_names = []):
         '''
@@ -323,8 +323,7 @@ class SVRPushDynamics:
         # Setup static deltas d targets (currently none)
         J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
 
-        # TODO: Need to figure out kernel SVM stuff
-        # TODO: Setup jacobain of learned targets w.r.t. features
+        # Setup jacobain of learned targets w.r.t. features
         self.J_targets_d_feats = np.matrix(np.zeros((self.n, self.p)))
         self.rbf_deriv_prefixes = {}
         self.full_SVs = {}
