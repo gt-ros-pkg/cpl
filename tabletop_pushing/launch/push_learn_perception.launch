@@ -102,5 +102,8 @@
     <param name="feature_point_ratio_test_thresh" value="0.85" type="double"/>
     <param name="brief_descriptor_byte_size" value="16" type="int"/>
     <param name="tracker_segment_search_radius" value="0.25" type="double"/>
+
+    <param name="shape_dynamics_db_path" value="/u/thermans/data/shape_dynamics_db/shape_db.txt" type="string"/>
+
   </node>
 </launch>

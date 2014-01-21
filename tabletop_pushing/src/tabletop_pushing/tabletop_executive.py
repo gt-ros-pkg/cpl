@@ -107,6 +107,7 @@ class TabletopExecutive:
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.learn_file_base = rospy.get_param('push_learn_file_base_path', '/u/thermans/data/new/aff_learn_out_')
         self.learning_dynamics = False
+        self.compare_shape_for_dynamics = False
 
         # Setup service proxies
         if not _OFFLINE:
@@ -312,7 +313,7 @@ class TabletopExecutive:
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
                                                              proxy_name, behavior_primitive,
                                                              learn_start_loc=False)
-
+            rospy.loginfo('Best matching models: ' + str(push_vec_res.dynamics_model_names))
             if push_vec_res is None:
                 return None
             elif push_vec_res == 'quit':
@@ -703,6 +704,7 @@ class TabletopExecutive:
         push_vector_req.start_loc_param_path=start_loc_param_path
         push_vector_req.previous_position_worked = position_worked
         push_vector_req.dynamics_learning = self.learning_dynamics
+        push_vector_req.compare_shape_for_dynamics = self.compare_shape_for_dynamics
         try:
             rospy.loginfo("Calling feedback push start service")
             push_vector_res = self.learning_push_vector_proxy(push_vector_req)
@@ -1157,10 +1159,12 @@ if __name__ == '__main__':
     use_singulation = False
     use_learning = True
     learning_dynamics = True
+    compare_shape_for_dynamics = True
     use_guided = True
     max_pushes = 500
     node = TabletopExecutive(use_singulation, use_learning)
     node.learning_dynamics = learning_dynamics
+    node.compare_shape_for_dynamics = compare_shape_for_dynamics
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     elif learn_start_loc:

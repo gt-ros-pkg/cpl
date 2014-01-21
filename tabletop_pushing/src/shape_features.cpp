@@ -1508,6 +1508,12 @@ ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_leng
   return train_feats;
 }
 
+double compareShapeDescriptors(ShapeDescriptor& a, ShapeDescriptor& b)
+{
+
+  return 0.0;
+}
+
 cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length,
                           double gamma_local, double gamma_global, double mixture_weight)
 {

@@ -181,6 +181,21 @@ class ScoredIdxComparison
   bool descend_;
 };
 
+struct DynScore
+{
+  std::string dyn_name;
+  double score;
+};
+
+class DynScoreComparison
+{
+ public:
+  bool operator() (const DynScore& lhs, const DynScore& rhs) const
+  {
+    return lhs.score < rhs.score;
+  }
+};
+
 class TabletopPushingPerceptionNode
 {
  public:
@@ -325,6 +340,10 @@ class TabletopPushingPerceptionNode
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
 
+    // Shape comparison dynamics parameters
+    n_private_.param("shape_dynamics_db_path", shape_dynamics_db_path_, std::string("./shape_db.txt"));
+    n_private_.param("num_shape_dynamics_models_to_return", shape_dyn_k_, 5);
+
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
 #endif // DEBUG_POSE_ESTIMATION
@@ -424,8 +443,6 @@ class TabletopPushingPerceptionNode
 
     // Transform point cloud into the correct frame and convert to PCL struct
     pcl16::fromROSMsg(*cloud_msg, cur_point_cloud_);
-    // TODO: Speed this up by not waiting...
-    // (i.e. get new transform, use for whole time, assuming head is not moving)
     tf_->waitForTransform(workspace_frame_, cloud_msg->header.frame_id, cloud_msg->header.stamp,
                           ros::Duration(0.5));
     pcl16_ros::transformPointCloud(workspace_frame_, cur_point_cloud_, cur_point_cloud_, *tf_);
@@ -501,48 +518,6 @@ class TabletopPushingPerceptionNode
       update_tracks_elapsed_time = (((double)(copy_tracks_start_time - update_tracks_start_time)) /
                                     Timer::NANOSECONDS_PER_SECOND);
 #endif
-#ifdef VISUALIZE_CONTACT_PT
-      ProtoObject cur_contact_obj = obj_tracker_->getMostRecentObject();
-      // TODO: Move this into the tracker or somewhere better
-      XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_contact_obj, hull_alpha_);
-
-      // Visualize hull_cloud;
-      // NOTE: Get this point with tf for offline use
-      geometry_msgs::PointStamped hand_pt_ros;
-      geometry_msgs::PointStamped base_point;
-      base_point.point.x = 0.0;
-      base_point.point.y = 0.0;
-      base_point.point.z = 0.0;
-      base_point.header.frame_id = "l_gripper_tool_frame";
-      tf_->transformPoint(workspace_frame_, base_point, hand_pt_ros);
-      pcl16::PointXYZ hand_pt;
-      hand_pt.x = hand_pt_ros.point.x;
-      hand_pt.y = hand_pt_ros.point.y;
-      hand_pt.z = hand_pt_ros.point.z;
-      geometry_msgs::PointStamped forward_pt_ros;
-      geometry_msgs::PointStamped base_point_forward;
-      base_point_forward.point.x = 0.01;
-      base_point_forward.point.y = 0.0;
-      base_point_forward.point.z = 0.0;
-      base_point_forward.header.frame_id = "l_gripper_tool_frame";
-      tf_->transformPoint(workspace_frame_, base_point_forward, forward_pt_ros);
-      pcl16::PointXYZ forward_pt;
-      forward_pt.x = forward_pt_ros.point.x;
-      forward_pt.y = forward_pt_ros.point.y;
-      forward_pt.z = forward_pt_ros.point.z;
-
-      cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectContactLocation(hull_cloud, tracker_state,
-                                                                                hand_pt, forward_pt);
-      cv::imshow("obj footprint", hull_cloud_viz);
-      // std::stringstream input_out_name;
-      // input_out_name << base_output_path_ << "input" << footprint_count_ << ".png";
-      // cv::imwrite(input_out_name.str(), cur_color_frame_);
-      // std::stringstream footprint_out_name;
-      // footprint_out_name << base_output_path_ << "footprint" << footprint_count_++ << ".png";
-      // cv::imwrite(footprint_out_name.str(), hull_cloud_viz);
-
-#endif // VISUALIZE_CONTACT_PT
-
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
@@ -608,7 +583,6 @@ class TabletopPushingPerceptionNode
 
           if (feedback_control_count_ == 0)
           {
-            // TODO: Look this up once and only save once...
             tf::StampedTransform workspace_to_cam_t;
             tf_->lookupTransform(camera_frame_, workspace_frame_, ros::Time(0), workspace_to_cam_t);
             std::stringstream workspace_to_cam_name, cam_info_name;
@@ -635,7 +609,7 @@ class TabletopPushingPerceptionNode
 
         // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
         tracker_state.header.seq = feedback_control_count_++;
-        // TODO: Publish sd in feedback if desired
+        // Publish sd in feedback if desired
 #ifdef GET_SHAPE_DESCRIPTORS_EVERY_FRAME
         ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, tracker_state);
         tracker_state.shape_descriptor.assign(sd.begin(), sd.end());
@@ -931,7 +905,6 @@ class TabletopPushingPerceptionNode
 #endif // FORCE_BEFORE_AND_AFTER_VIZ
           while (key_press == 's')
           {
-            // TODO: Is this correct?
             force_swap_ = !obj_tracker_->getSwapState();
             startTracking(cur_state, force_swap_);
             ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
@@ -1172,6 +1145,12 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Extracting shape descriptor for learning.");
         ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, cur_state);
         res.shape_descriptor.assign(sd.begin(), sd.end());
+        if (req.compare_shape_for_dynamics)
+        {
+          // Compare to shape descriptors for known models and return best K matching dynamics model names
+          std::vector<std::string> best_k_models = getBestShapeDynamicsMatches(sd);
+          res.dynamics_model_names.assign(best_k_models.begin(), best_k_models.end());
+        }
       }
     }
     // Visualize push vector
@@ -1230,13 +1209,11 @@ class TabletopPushingPerceptionNode
     }
     // Get shape features and associated locations
     ShapeLocations locs = tabletop_pushing::extractObjectShapeContext(cur_obj, use_center_pointing_shape_context_);
-    // tabletop_pushing::extractObjectShapeContext(cur_obj, !use_center_pointing_shape_context_);
 
     // Choose location index from features and history
     int loc_idx = 0;
     if (start_loc_history_.size() == 0)
     {
-      // TODO: Improve this to find a more unique / prototypical point?
       loc_idx = rand() % locs.size();
     }
     else
@@ -1595,7 +1572,6 @@ class TabletopPushingPerceptionNode
   ShapeLocation chooseRandomPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool rotate_push)
   {
     // Get features for all of the boundary locations
-    // TODO: Set these values somewhere else
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                                 gripper_spread_, hull_alpha_,
@@ -1669,6 +1645,55 @@ class TabletopPushingPerceptionNode
     return tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
                                                                 boundary_loc_idx, gripper_spread_,
                                                                 hull_alpha_, point_cloud_hist_res_);
+  }
+
+  std::vector<std::string> getBestShapeDynamicsMatches(ShapeDescriptor& sd)
+  {
+    // TODO: Iterate through file name and shape pairs in db, compare to each
+    std::ifstream shape_file(shape_dynamics_db_path_.c_str());
+    std::priority_queue<DynScore, std::vector<DynScore>, DynScoreComparison> pq;
+    while(shape_file.good())
+    {
+      std::string line;
+      std::getline(shape_file, line);
+      if (line.size() < 1)
+      {
+        break;
+      }
+      std::stringstream line_stream;
+      line_stream << line;
+      // Get descriptor and file name from line
+      DynScore dyn;
+      ShapeDescriptor cur_db_sd;
+      std::getline(line_stream, dyn.dyn_name, ':');
+      ROS_WARN_STREAM("Reading shape descriptor for dyn_model: " << dyn.dyn_name);
+      while (line_stream.good())
+      {
+        double x;
+        line_stream >> x;
+        cur_db_sd.push_back(x);
+      }
+      // ROS_WARN_STREAM("Descriptor has length " << cur_db_sd.size());
+
+      dyn.score = tabletop_pushing::compareShapeDescriptors(sd, cur_db_sd);
+
+      ROS_WARN_STREAM("Descriptor match score is " << dyn.score << "\n");
+      std::stringstream db_str;
+      for (int i = 0; i < cur_db_sd.size(); ++i)
+      {
+        db_str << " " << cur_db_sd[i];
+      }
+      // ROS_INFO_STREAM("sd:" << db_str.str() << "\n");
+      pq.push(dyn);
+    }
+    // Return match list of up to K best matching model name(s)
+    std::vector<std::string> best_k;
+    for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
+    {
+      best_k.push_back(pq.top().dyn_name);
+      pq.pop();
+    }
+    return best_k;
   }
 
   std::vector<pcl16::PointXYZ> findAxisAlignedBoundingBox(PushTrackerState& cur_state, ProtoObject& cur_obj)
@@ -2520,7 +2545,8 @@ class TabletopPushingPerceptionNode
   std::vector<std::string> workspace_transform_name_buffer_;
   std::vector<std::string> cam_info_name_buffer_;
 #endif
-
+  std::string shape_dynamics_db_path_;
+  int shape_dyn_k_;
 };
 
 int main(int argc, char ** argv)
