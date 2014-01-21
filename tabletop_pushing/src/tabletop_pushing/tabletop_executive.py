@@ -89,7 +89,7 @@ class TabletopExecutive:
         self.gripper_pull_offset_dist = rospy.get_param('~gripper_push_offset_dist', 0.05)
         self.gripper_pull_start_z = rospy.get_param('~gripper_push_start_z', -0.29)
 
-        self.max_restart_limit = rospy.get_param('~max_restart_limit', 2)
+        self.max_restart_limit = rospy.get_param('~max_restart_limit', 0)
 
         self.min_new_pose_dist = rospy.get_param('~min_new_pose_dist', 0.2)
         self.min_workspace_x = rospy.get_param('~min_workspace_x', 0.475)
@@ -271,6 +271,8 @@ class TabletopExecutive:
                         if res == 'quit':
                             rospy.loginfo('Quiting on user request')
                             return False
+                        elif res is None:
+                            return False
         return True
 
     def explore_push(self, behavior_primitive, controller_name, proxy_name, object_id,
@@ -313,11 +315,13 @@ class TabletopExecutive:
             push_vec_res = self.get_feedback_push_start_pose(goal_pose, controller_name,
                                                              proxy_name, behavior_primitive,
                                                              learn_start_loc=False)
-            rospy.loginfo('Best matching models: ' + str(push_vec_res.dynamics_model_names))
             if push_vec_res is None:
+                rospy.logerror('Failed to get learning push response!')
                 return None
             elif push_vec_res == 'quit':
                 return push_vec_res
+
+            rospy.loginfo('Best matching models: ' + str(push_vec_res.dynamics_model_names))
 
             if input_arm is None:
                 which_arm = self.choose_arm(push_vec_res.push, controller_name)
@@ -1210,6 +1214,7 @@ if __name__ == '__main__':
                     if not clean_exploration:
                         rospy.loginfo('Not clean end to pushing stuff')
                         running = False
+                        break
         node.finish_learning()
     else:
         print 'Nothing to do. Bye bye!'
