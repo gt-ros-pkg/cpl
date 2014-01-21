@@ -1510,8 +1510,8 @@ ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_leng
 
 double compareShapeDescriptors(ShapeDescriptor& a, ShapeDescriptor& b)
 {
-
-  return 0.0;
+  // TODO: Do we want to use chi-squared instead?
+  return shapeFeatureSquaredEuclideanDist(a, b);
 }
 
 cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length,

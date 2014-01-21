@@ -1159,9 +1159,10 @@ if __name__ == '__main__':
     use_singulation = False
     use_learning = True
     learning_dynamics = True
-    compare_shape_for_dynamics = True
+    compare_shape_for_dynamics = False
     use_guided = True
     max_pushes = 500
+
     node = TabletopExecutive(use_singulation, use_learning)
     node.learning_dynamics = learning_dynamics
     node.compare_shape_for_dynamics = compare_shape_for_dynamics

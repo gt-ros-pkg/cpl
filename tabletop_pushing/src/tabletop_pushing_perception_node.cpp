@@ -192,7 +192,7 @@ class DynScoreComparison
  public:
   bool operator() (const DynScore& lhs, const DynScore& rhs) const
   {
-    return lhs.score < rhs.score;
+    return lhs.score > rhs.score;
   }
 };
 
@@ -796,10 +796,10 @@ class TabletopPushingPerceptionNode
     {
       abortPushingGoal("Object is not moving");
     }
-    // else if (gripperNotMoving())
-    // {
-    //   abortPushingGoal("Gripper is not moving");
-    // }
+    else if (gripperNotMoving())
+    {
+      abortPushingGoal("Gripper is not moving");
+    }
     else if (objectDisappeared(tracker_state))
     {
       abortPushingGoal("Object disappeared");
@@ -1666,7 +1666,7 @@ class TabletopPushingPerceptionNode
       DynScore dyn;
       ShapeDescriptor cur_db_sd;
       std::getline(line_stream, dyn.dyn_name, ':');
-      ROS_WARN_STREAM("Reading shape descriptor for dyn_model: " << dyn.dyn_name);
+      // ROS_WARN_STREAM("Reading shape descriptor for dyn_model: " << dyn.dyn_name);
       while (line_stream.good())
       {
         double x;
@@ -1677,7 +1677,7 @@ class TabletopPushingPerceptionNode
 
       dyn.score = tabletop_pushing::compareShapeDescriptors(sd, cur_db_sd);
 
-      ROS_WARN_STREAM("Descriptor match score is " << dyn.score << "\n");
+      // ROS_WARN_STREAM("Descriptor match score is " << dyn.score << "\n");
       std::stringstream db_str;
       for (int i = 0; i < cur_db_sd.size(); ++i)
       {
