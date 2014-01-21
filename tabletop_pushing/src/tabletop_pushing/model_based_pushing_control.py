@@ -121,7 +121,7 @@ def pushMPCConstraintsGradients(q, H, n, m, x0, x_d, xtra, dyn_model):
     return J
 
 class ModelPredictiveController:
-    def __init__(self, model, H = 5, u_max = [], iprint_level=1):
+    def __init__(self, model, H = 5, u_max = [], iprint_level=1, ftol=1.0E-4):
         '''
         model - prediction function for use inside the optimizer
         H - the lookahead horizon for MPC
@@ -136,7 +136,7 @@ class ModelPredictiveController:
         self.u_max = u_max
         self.delta_t = model.delta_t
         self.max_iter = 100 # Max number of iterations
-        self.ftol = 1.0E-3 # Accuracy of answer
+        self.ftol = ftol # Accuracy of answer
         self.epsilon = sqrt(np.finfo(float).eps)
         self.opt_options = {'iter':self.max_iter,
                             'acc':self.ftol,

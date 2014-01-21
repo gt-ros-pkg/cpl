@@ -564,7 +564,7 @@ class PositionFeedbackPushNode:
 
                 U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
                 self.SQPOpt =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
-                                                         U_max, iprint_level=2)
+                                                         U_max, iprint_level=2, ftol=1.0E-3)
                 rospy.loginfo('Calling controller')
                 response.action_aborted = not self.open_loop_sqp_controller(goal, request, which_arm, ac)
             elif request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER:
@@ -750,11 +750,10 @@ class PositionFeedbackPushNode:
 
         # Get push plan using SQP via MPC class
         control_tape = []
-        q_super_star = np.asarray([])
         self.SQPOpt.H = len(x_d)-1
         self.SQPOpt.regenerate_bounds()
+        rospy.loginfo('Solving for trajectory of length ' + str(len(x_d)))
         q_star = self.SQPOpt.feedbackControl(x0, x_d)
-        q_super_star = np.concatenate((q_super_star, q_star))
 
         # Loop through the plan converting the SQP results into twist messages
         [x_star, u_star] = get_x_u_from_q(q_star, x0, self.SQPOpt.H, self.SQPOpt.n, self.SQPOpt.m)
@@ -776,10 +775,10 @@ class PositionFeedbackPushNode:
         if _SAVE_MPC_DATA:
             if _BUFFER_DATA:
                 self.target_trajectory_io.buffer_line(0, x_d)
-                self.mpc_q_star_io.buffer_line(0, q_super_star)
+                self.mpc_q_star_io.buffer_line(0, q_star)
             else:
                 self.target_trajectory_io.write_line(0, x_d)
-                self.mpc_q_star_io.write_line(0, q_super_star)
+                self.mpc_q_star_io.write_line(0, q_star)
 
         # Send goal information to save visuale data
         rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
