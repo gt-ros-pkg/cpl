@@ -1010,8 +1010,8 @@ def test_mpc(base_dir_name):
 
 def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Fixed parameters
-    n = 5
-    m = 2
+    n = 6
+    m = 3
     u_max = 0.03
 
     # Get derived names from aff file name
@@ -1143,6 +1143,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
         p.wait()
 
 if __name__ == '__main__':
-    # analyze_mpc_trial_data(sys.argv[1])
+    analyze_mpc_trial_data(sys.argv[1])
     # test_svm_stuff(sys.argv[1])
-    test_mpc()
+    # test_mpc()
