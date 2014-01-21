@@ -1160,6 +1160,7 @@ if __name__ == '__main__':
     use_learning = True
     learning_dynamics = True
     compare_shape_for_dynamics = False
+    num_trials_per_object = 10
     use_guided = True
     max_pushes = 500
 
@@ -1201,13 +1202,14 @@ if __name__ == '__main__':
             if quit_code(code_in):
                 running = False
             else:
-                node.start_loc_use_fixed_goal = False
-                rospy.loginfo('Running push exploration')
-                previous_id = code_in
-                clean_exploration = node.run_push_exploration(object_id=code_in)
-                if not clean_exploration:
-                    rospy.loginfo('Not clean end to pushing stuff')
-                    running = False
+                for i in xrange(num_trials_per_object):
+                    node.start_loc_use_fixed_goal = False
+                    previous_id = code_in
+                    rospy.loginfo('Running push exploration round ' + str(i) + ' for object ' + previous_id)
+                    clean_exploration = node.run_push_exploration(object_id=code_in)
+                    if not clean_exploration:
+                        rospy.loginfo('Not clean end to pushing stuff')
+                        running = False
         node.finish_learning()
     else:
         print 'Nothing to do. Bye bye!'
