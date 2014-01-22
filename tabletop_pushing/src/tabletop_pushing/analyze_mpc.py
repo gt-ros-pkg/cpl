@@ -882,7 +882,7 @@ def test_mpc(base_dir_name):
     H = 10
     u_max = [0.5, 0.5, pi*0.25]
     sigma = 0.05
-    plot_output_path = '/home/thermans/sandbox/mpc_plots/with_ee/'
+    plot_output_path = '/home/thermans/sandbox/mpc_plots/LINEAR/'
     # plot_output_path = ''
     xtra = []
     plot_all_t = True

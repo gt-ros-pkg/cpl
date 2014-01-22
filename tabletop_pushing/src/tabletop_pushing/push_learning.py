@@ -504,6 +504,8 @@ class CombinedPushLearnControlIO:
         Y = []
         X = []
         for line in lines:
+            if len(line) < 1:
+                continue
             y = float(line.pop(0))
             Y.append(y)
             x = []
@@ -1670,6 +1672,8 @@ def read_example_file(file_name, max_idx=1):
     Y = []
     X = []
     for line in lines:
+        if len(line) < 1:
+            continue
         y = float(line.pop(0))
         Y.append(y)
         x = []
