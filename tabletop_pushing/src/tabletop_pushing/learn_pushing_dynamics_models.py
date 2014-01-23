@@ -2,6 +2,7 @@ import roslib
 from pushing_dynamics_models import *
 import dynamics_learning
 import numpy as np
+import os
 
 def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                 delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
@@ -121,7 +122,7 @@ def build_results_table(error_means_all, error_sds_all, error_diffs_all,
         sds_out_file.write(overall_sds_line)
         sds_out_file.close()
 
-def compare_obj_class_results():
+def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = True):
     all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
                    'camcorder', 'glad', 'salt', 'batteries', 'mug',
                    'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
@@ -139,11 +140,28 @@ def compare_obj_class_results():
     base_example_dir_name = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/single_obj/'
     for hold_out_class in hold_out_classes:
 
-        test_classes = all_classes[:]
-        test_classes.remove(hold_out_class)
-        model_param_file_name = base_svr_path + 'single_obj_' + hold_out_class + '_params.txt'
-        # TODO: Setup an output path
-        table_out_path = '/u/thermans/sandbox/'
+        if test_singel_obj_model:
+            test_classes = all_classes[:]
+            test_classes.remove(hold_out_class)
+        else:
+            test_classes = [hold_out_class]
+        if kernel_type is not None and kernel_type != 'LINEAR':
+            if test_singel_obj_model:
+                model_param_file_name = base_svr_path + kernel_type + '_single_obj_' + hold_out_class + '_params.txt'
+                table_out_path = '/u/thermans/sandbox/single_objs/' + kernel_type +'/'
+            else:
+                model_param_file_name = base_svr_path + kernel_type + '_hold_out_' + hold_out_class + '_params.txt'
+                table_out_path = '/u/thermans/sandbox/hold_out_models/' + kernel_type +'/'
+        else:
+            if test_singel_obj_model:
+                model_param_file_name = base_svr_path + 'single_obj_' + hold_out_class + '_params.txt'
+                table_out_path = '/u/thermans/sandbox/single_objs/'
+            else:
+                model_param_file_name = base_svr_path + 'hold_out_' + hold_out_class + '_params.txt'
+                table_out_path = '/u/thermans/sandbox/hold_out_models/'
+        if not os.path.exists(table_out_path):
+            os.mkdir(table_out_path)
+
         # Test against object files for each of the held out objects independently
         Y_hat_all = []
         Y_gt_all = []
@@ -151,7 +169,10 @@ def compare_obj_class_results():
         error_sds_all = []
         error_diffs_all = []
         for test_obj in test_classes:
-            print '\nTesting for object', test_obj, 'with model trained on', hold_out_class
+            if test_singel_obj_model:
+                print '\nTesting for object', test_obj, 'with model trained on', hold_out_class
+            else:
+                print '\nTesting for object', test_obj, 'with model trained on other classes'
             test_obj_example_base_name = base_example_dir_name + 'objs_' + test_obj
             (Y_hat, Y_gt) = test_svr_offline(model_param_file_name, test_obj_example_base_name)
             # Analyze output
@@ -161,21 +182,20 @@ def compare_obj_class_results():
             error_means_all.append(error_means)
             error_sds_all.append(error_sds)
             error_diffs_all.append(error_diffs)
-        # TODO: Build table for data and save table to disk
+        # Build table for data and save table to disk
         build_results_table(error_means_all, error_sds_all, error_diffs_all,
                            target_names, test_classes, hold_out_class,
                            table_out_path)
 
-def setup_leave_one_out_and_single_class_models():
+def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR'):
     all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
                    'camcorder', 'glad', 'salt', 'batteries', 'mug',
                    'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
 
     # HACK: Test first
-    train_classes = all_classes[2:]
+    train_classes = all_classes[:]
 
     # SVR options
-    kernel_type = 'RBF'
     delta_t = 1./9.
     n = 6
     m = 3
