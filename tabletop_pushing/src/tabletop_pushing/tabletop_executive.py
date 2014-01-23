@@ -321,7 +321,15 @@ class TabletopExecutive:
             elif push_vec_res == 'quit':
                 return push_vec_res
 
-            rospy.loginfo('Best matching models: ' + str(push_vec_res.dynamics_model_names))
+            if len(push_vec_res.dynamics_model_names) > 0:
+                rospy.loginfo('Best matching models: ' + str(push_vec_res.dynamics_model_names))
+                if controller_name.startswith(MPC_CONTROLLER_PREFIX):
+                    controller_name = MPC_CONTROLLER_PREFIX + push_vec_res.dynamics_model_names[0]
+                elif controller_name.startswith(OPEN_LOOP_SQP_PREFIX):
+                    controller_name = OPEN_LOOP_SQP_PREFIX + push_vec_res.dynamics_model_names[0]
+                else:
+                    ropsy.logwarn('Not using a model based controller, can\'t use model.')
+                rospy.loginfo('Now using controller: ' + controller_name)
 
             if input_arm is None:
                 which_arm = self.choose_arm(push_vec_res.push, controller_name)
@@ -1163,7 +1171,7 @@ if __name__ == '__main__':
     use_singulation = False
     use_learning = True
     learning_dynamics = True
-    compare_shape_for_dynamics = False
+    compare_shape_for_dynamics = True
     num_trials_per_object = 10
     use_guided = True
     max_pushes = 500
