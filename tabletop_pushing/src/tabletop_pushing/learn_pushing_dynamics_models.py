@@ -145,20 +145,12 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
             test_classes.remove(hold_out_class)
         else:
             test_classes = [hold_out_class]
-        if kernel_type is not None and kernel_type != 'LINEAR':
-            if test_singel_obj_model:
-                model_param_file_name = base_svr_path + kernel_type + '_single_obj_' + hold_out_class + '_params.txt'
-                table_out_path = '/u/thermans/sandbox/single_objs/' + kernel_type +'/'
-            else:
-                model_param_file_name = base_svr_path + kernel_type + '_hold_out_' + hold_out_class + '_params.txt'
-                table_out_path = '/u/thermans/sandbox/hold_out_models/' + kernel_type +'/'
+        if test_singel_obj_model:
+            model_param_file_name = base_svr_path + kernel_type + '_single_obj_' + hold_out_class + '_params.txt'
+            table_out_path = '/u/thermans/sandbox/single_objs/' + kernel_type +'/'
         else:
-            if test_singel_obj_model:
-                model_param_file_name = base_svr_path + 'single_obj_' + hold_out_class + '_params.txt'
-                table_out_path = '/u/thermans/sandbox/single_objs/'
-            else:
-                model_param_file_name = base_svr_path + 'hold_out_' + hold_out_class + '_params.txt'
-                table_out_path = '/u/thermans/sandbox/hold_out_models/'
+            model_param_file_name = base_svr_path + kernel_type + '_hold_out_' + hold_out_class + '_params.txt'
+            table_out_path = '/u/thermans/sandbox/hold_out_models/' + kernel_type +'/'
         if not os.path.exists(table_out_path):
             os.mkdir(table_out_path)
 
@@ -191,8 +183,6 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR'):
     all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
                    'camcorder', 'glad', 'salt', 'batteries', 'mug',
                    'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
-
-    # HACK: Test first
     train_classes = all_classes[:]
 
     # SVR options
@@ -214,13 +204,13 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR'):
     xtra_names = []
     epsilons = []
     for i in xrange(len(target_names)):
-        epsilons.append(1e-4)
+        epsilons.append(1e-3)
     kernel_params = {}
     for i in xrange(len(target_names)):
         kernel_params[i] = '-g 0.05 -r 2'
 
     # Train and save models
-    base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
+    base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/SVR_DYN/epsilon_e3/'
     example_in_dir = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
     base_example_hold_out_dir_name = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/single_obj/'
     base_example_single_obj_dir_name = base_example_hold_out_dir_name
