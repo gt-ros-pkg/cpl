@@ -228,7 +228,7 @@ def write_dynamics_learning_trial_files(X, Y, out_file_base_name):
             Y_i.append(y[i])
         target_name = _TARGET_NAMES[i]
         out_file_name = out_file_base_name + '_' + target_name + '.txt'
-        print 'Writing:', out_file_name
+        # print 'Writing:', out_file_name
         push_learning.write_example_file(out_file_name, X, Y_i)
 
 def write_dynamics_learning_example_files(X, Y, out_file_base_name):
@@ -238,7 +238,7 @@ def write_dynamics_learning_example_files(X, Y, out_file_base_name):
             Y_i.append(y[i])
         target_name = _TARGET_NAMES[i]
         out_file_name = out_file_base_name + '_' + target_name + '.txt'
-        print 'Writing:', out_file_name
+        # print 'Writing:', out_file_name
         push_learning.write_example_file(out_file_name, X, Y_i)
 
 def read_dynamics_learning_example_files(in_file_base_name):
@@ -249,7 +249,7 @@ def read_dynamics_learning_example_files(in_file_base_name):
     for key in _TARGET_NAMES.keys():
         name = _TARGET_NAMES[key]
         file_name = in_file_base_name + '_' + name + '.txt'
-        print 'Reading:', file_name
+        # print 'Reading:', file_name
         (X_i, Y_i) = push_learning.read_example_file(file_name, max_idx = max_feat_idx)
         X = X_i
         Y[name] = Y_i
@@ -340,7 +340,7 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
         validate_file_name = validate_file_base_name + name
         train_file_name = train_file_base_name + name
 
-        print 'Writing:', train_file_name
+        # print 'Writing:', train_file_name
         train_file = file(train_file_name, 'w')
         for class_id in train_classes:
             class_file_name = in_dir + class_id + name
@@ -348,10 +348,10 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
             lines_in = file_in.readlines()
             file_in.close()
             for line in lines_in:
-                train_file.write(line+'\n')
+                train_file.write(line)
         train_file.close()
 
-        print 'Writing:', validate_file_name
+        # print 'Writing:', validate_file_name
         validate_file = file(validate_file_name, 'w')
         for class_id in hold_out_classes:
             class_file_name = in_dir + class_id + name
@@ -359,7 +359,7 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
             lines_in = file_in.readlines()
             file_in.close()
             for line in lines_in:
-                validate_file.write(line+'\n')
+                validate_file.write(line)
         validate_file.close()
 
 def split_aff_files_train_validate_percent(in_dirs, out_dir, train_percent=0.7):

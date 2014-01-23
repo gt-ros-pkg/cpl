@@ -240,9 +240,6 @@ class SVRPushDynamics:
 
         self.u_phi_feat_idx = self.feature_names.index(dynamics_learning._U_PHI_WORLD)
 
-        # TODO: Do we need to do something here?
-        # if self.use_naive_ee_model:
-
         self.build_jacobian()
 
     def learn_model(self, X_all, Y_all, kernel_params = {}):
@@ -257,7 +254,6 @@ class SVRPushDynamics:
         for i, Y_i in enumerate(Y):
             print 'Learning for target:', self.target_names[i]
             param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_types[i]]) + ' -p ' + str(self.epsilons[i])
-            # TODO: test this out
             if i in kernel_params:
                 param_string += ' ' + kernel_params[i]
             # print 'Parameters', param_string
@@ -334,7 +330,7 @@ class SVRPushDynamics:
             svs_sparse = svm_model.get_SV()
             svs = self.make_svs_dense(svs_sparse)
             self.full_SVs[i] = svs
-            print 'svm[',i, '] has kernel type', self._KERNEL_NAMES[svm_model.param.kernel_type]
+            # print 'svm[',i, '] has kernel type', self._KERNEL_NAMES[svm_model.param.kernel_type]
             if self.kernel_types[i] == 'LINEAR':
                 # Partial derivative is the sum of the product of the SV elements and coefficients
                 # \sum_{i=1}^{l} alpha_i*z_i^j
@@ -829,9 +825,6 @@ class GPPushDynamics:
 
         self.u_phi_feat_idx = self.feature_names.index(dynamics_learning._U_PHI_WORLD)
 
-        # TODO: Do we need to do something here?
-        # if self.use_naive_ee_model:
-
         self.build_jacobian()
 
     def learn_model(self, X_all, Y_all, kernel_params = {}):
@@ -846,7 +839,6 @@ class GPPushDynamics:
         for i, Y_i in enumerate(Y):
             print 'Learning for target:', self.target_names[i]
             param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_types[i]]) + ' -p ' + str(self.epsilons[i])
-            # TODO: test this out
             if i in kernel_params:
                 param_string += ' ' + kernel_params[i]
             # print 'Parameters', param_string
