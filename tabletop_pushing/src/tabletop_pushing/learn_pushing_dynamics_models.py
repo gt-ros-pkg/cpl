@@ -5,7 +5,8 @@ import numpy as np
 
 def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                 delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
-                                kernel_type='LINEAR'):
+                                kernel_type='LINEAR',
+                                kernel_params = {}):
     # Read data from disk
     print 'Reading training file:', train_file_base_name
     (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
@@ -20,7 +21,7 @@ def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                    xtra_names = xtra_names,
                                    kernel_type = kernel_type)
     # Train and save model
-    svr_dynamics.learn_model(train_X, train_Y)
+    svr_dynamics.learn_model(train_X, train_Y, kernel_params)
     print 'Saving model to:', svr_output_path
     svr_dynamics.save_models(svr_output_path)
     return svr_dynamics
@@ -174,7 +175,7 @@ def setup_leave_one_out_and_single_class_models():
     train_classes = all_classes[2:]
 
     # SVR options
-    kernel_type = 'LINEAR'
+    kernel_type = 'RBF'
     delta_t = 1./9.
     n = 6
     m = 3
@@ -194,6 +195,9 @@ def setup_leave_one_out_and_single_class_models():
     epsilons = []
     for i in xrange(len(target_names)):
         epsilons.append(1e-4)
+    kernel_params = {}
+    for i in xrange(len(target_names)):
+        kernel_params[i] = '-g 0.05 -r 2'
 
     # Train and save models
     base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
@@ -206,28 +210,30 @@ def setup_leave_one_out_and_single_class_models():
         hold_out_classes.remove(obj_class)
 
         print 'Creating holdout files for object:', obj_class
-        dynamics_learning.create_train_and_validate_obj_class_splits(example_in_dir,
-                                                                     base_example_hold_out_dir_name,
-                                                                     hold_out_classes)
+        # dynamics_learning.create_train_and_validate_obj_class_splits(example_in_dir,
+        #                                                              base_example_hold_out_dir_name,
+        #                                                              hold_out_classes)
         # Train model with obj class as only left out class
         hold_out_str = ''
         for hold_out_class in hold_out_classes:
             hold_out_str += '_' + hold_out_class
 
         hold_out_train_file_base_name = base_example_hold_out_dir_name + 'objs' + hold_out_str
-        svr_hold_out_output_path = base_svr_path + 'hold_out_' + obj_class
+        svr_hold_out_output_path = base_svr_path + kernel_type + '_hold_out_' + obj_class
 
         train_and_save_svr_dynamics(hold_out_train_file_base_name, svr_hold_out_output_path,
                                     delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
-                                    kernel_type='LINEAR')
+                                    kernel_type = kernel_type,
+                                    kernel_params = kernel_params)
 
         # Train model with obj class as only training class
         single_obj_train_file_base_name = base_example_single_obj_dir_name + 'objs_' + obj_class
-        svr_single_obj_output_path = base_svr_path + 'single_obj_' + obj_class
+        svr_single_obj_output_path = base_svr_path + kernel_type + '_single_obj_' + obj_class
 
         train_and_save_svr_dynamics(single_obj_train_file_base_name, svr_single_obj_output_path,
                                     delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
-                                    kernel_type='LINEAR')
+                                    kernel_type = kernel_type,
+                                    kernel_params = kernel_params)
 
 def train_shape_clusters():
     # TODO: Get object classes based on shape similarity
