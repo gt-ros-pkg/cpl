@@ -103,7 +103,11 @@ double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a,
 
 void clusterShapeFeatures(ShapeLocations& locs, int k, std::vector<int>& cluster_ids,
                           cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter,
-                          int num_retries = 5);
+                          int num_retries = 5, bool normalize = true);
+
+void clusterShapeFeatures(cpl_visual_features::ShapeDescriptors& sds, int k, std::vector<int>& cluster_ids,
+                          cpl_visual_features::ShapeDescriptors& centers, double min_err_change, int max_iter,
+                          int num_retries = 5, bool normalize = true);
 
 int closestShapeFeatureCluster(cpl_visual_features::ShapeDescriptor& descriptor,
                                cpl_visual_features::ShapeDescriptors& centers, double& min_dist);

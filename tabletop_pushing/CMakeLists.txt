@@ -103,4 +103,6 @@ target_link_libraries(render_saved_data ${OpenCV_LIBRARIES})
 target_link_libraries(render_saved_data point_cloud_segmentation)
 target_link_libraries(render_saved_data shape_features)
 
+rosbuild_add_executable(build_shape_db src/build_shape_db.cpp)
+target_link_libraries(build_shape_db shape_features)
 # rosbuild_add_executable(pca_test src/pca_test.cpp)

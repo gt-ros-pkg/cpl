@@ -196,6 +196,8 @@ class DynScoreComparison
   }
 };
 
+typedef std::priority_queue<DynScore, std::vector<DynScore>, DynScoreComparison> DynScorePQ;
+
 class TabletopPushingPerceptionNode
 {
  public:
@@ -343,6 +345,7 @@ class TabletopPushingPerceptionNode
     // Shape comparison dynamics parameters
     n_private_.param("shape_dynamics_db_path", shape_dynamics_db_path_, std::string("./shape_db.txt"));
     n_private_.param("num_shape_dynamics_models_to_return", shape_dyn_k_, 5);
+    n_private_.param("use_chi_squared_shape_dist", use_chi_squared_shape_dist_, false);
 
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
@@ -1148,8 +1151,33 @@ class TabletopPushingPerceptionNode
         if (req.compare_shape_for_dynamics)
         {
           // Compare to shape descriptors for known models and return best K matching dynamics model names
-          std::vector<std::string> best_k_models = getBestShapeDynamicsMatches(sd);
-          res.dynamics_model_names.assign(best_k_models.begin(), best_k_models.end());
+          DynScorePQ pq_0 = getBestShapeDynamicsMatches(sd);
+          // Return match list of up to K best matching model name(s)
+
+          // TOOD: Get descriptor at cur_state +/- m_pi
+          PushTrackerState cur_state_180;
+          cur_state_180.x = cur_state.x;
+          cur_state_180.x.theta = subPIAngle(cur_state.x.theta + M_PI);
+          ShapeDescriptor sd_180 = getDominantOrientationShapeDescriptor(cur_obj, cur_state_180);
+          DynScorePQ pq_180 = getBestShapeDynamicsMatches(sd_180);
+
+          // TODO: Compare pq and pq_180;
+          DynScorePQ pq;
+          if (pq_0.top().score < pq_180.top().score)
+          {
+            pq = pq_0;
+          }
+          else
+          {
+            pq = pq_180;
+          }
+          std::vector<std::string> best_k;
+          for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
+          {
+            best_k.push_back(pq.top().dyn_name);
+            pq.pop();
+          }
+          res.dynamics_model_names.assign(best_k.begin(), best_k.end());
         }
       }
     }
@@ -1647,11 +1675,11 @@ class TabletopPushingPerceptionNode
                                                                 hull_alpha_, point_cloud_hist_res_);
   }
 
-  std::vector<std::string> getBestShapeDynamicsMatches(ShapeDescriptor& sd)
+  DynScorePQ getBestShapeDynamicsMatches(ShapeDescriptor& sd)
   {
-    // TODO: Iterate through file name and shape pairs in db, compare to each
+    // Iterate through file name and shape pairs in db, compare to each
     std::ifstream shape_file(shape_dynamics_db_path_.c_str());
-    std::priority_queue<DynScore, std::vector<DynScore>, DynScoreComparison> pq;
+    DynScorePQ pq;
     while(shape_file.good())
     {
       std::string line;
@@ -1674,8 +1702,15 @@ class TabletopPushingPerceptionNode
         cur_db_sd.push_back(x);
       }
       // ROS_WARN_STREAM("Descriptor has length " << cur_db_sd.size());
-
-      dyn.score = tabletop_pushing::compareShapeDescriptors(sd, cur_db_sd);
+      if (use_chi_squared_shape_dist_)
+      {
+        dyn.score = tabletop_pushing::shapeFeatureChiSquareDist(sd, cur_db_sd);
+      }
+      else
+      {
+        // TODO: Hellinger distnace....
+        dyn.score = tabletop_pushing::shapeFeatureSquaredEuclideanDist(sd, cur_db_sd);
+      }
 
       // ROS_WARN_STREAM("Descriptor match score is " << dyn.score << "\n");
       std::stringstream db_str;
@@ -1686,14 +1721,7 @@ class TabletopPushingPerceptionNode
       // ROS_INFO_STREAM("sd:" << db_str.str() << "\n");
       pq.push(dyn);
     }
-    // Return match list of up to K best matching model name(s)
-    std::vector<std::string> best_k;
-    for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
-    {
-      best_k.push_back(pq.top().dyn_name);
-      pq.pop();
-    }
-    return best_k;
+    return pq;
   }
 
   std::vector<pcl16::PointXYZ> findAxisAlignedBoundingBox(PushTrackerState& cur_state, ProtoObject& cur_obj)
@@ -2547,6 +2575,7 @@ class TabletopPushingPerceptionNode
 #endif
   std::string shape_dynamics_db_path_;
   int shape_dyn_k_;
+  bool use_chi_squared_shape_dist_;
 };
 
 int main(int argc, char ** argv)

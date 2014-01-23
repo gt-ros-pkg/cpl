@@ -1395,27 +1395,43 @@ double shapeFeatureSquaredEuclideanDist(ShapeDescriptor& a, ShapeDescriptor& b)
 }
 
 void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<int>& cluster_ids, ShapeDescriptors& centers,
-                          double min_err_change, int max_iter, int num_retries)
+                          double min_err_change, int max_iter, int num_retries, bool normalize)
 {
-  cv::Mat samples(locs.size(), locs[0].descriptor_.size(), CV_64FC1);
+  ShapeDescriptors sds;
+  for (unsigned int i = 0; i < locs.size(); ++i)
+  {
+    sds.push_back(locs[i].descriptor_);
+  }
+  clusterShapeFeatures(sds, num_clusters, cluster_ids, centers, min_err_change, max_iter, num_retries, normalize);
+}
+
+void clusterShapeFeatures(ShapeDescriptors& sds, int num_clusters, std::vector<int>& cluster_ids,
+                          ShapeDescriptors& centers,
+                          double min_err_change, int max_iter, int num_retries, bool normalize)
+
+{
+  cv::Mat samples(sds.size(), sds[0].size(), CV_64FC1);
   for (int r = 0; r < samples.rows; ++r)
   {
     // NOTE: Normalize features here
     double feature_sum = 0;
     for (int c = 0; c < samples.cols; ++c)
     {
-      samples.at<double>(r,c) = locs[r].descriptor_[c];
+      samples.at<double>(r,c) = sds[r][c];
       feature_sum += samples.at<double>(r,c);
     }
-    if (feature_sum == 0)
+    if (normalize)
     {
-      continue;
-    }
-    for (int c = 0; c < samples.cols; ++c)
-    {
-      samples.at<double>(r,c) /= feature_sum;
-      // NOTE: Use Hellinger distance for comparison
-      samples.at<double>(r,c) = sqrt(samples.at<double>(r,c));
+      if (feature_sum == 0)
+      {
+        continue;
+      }
+      for (int c = 0; c < samples.cols; ++c)
+      {
+        samples.at<double>(r,c) /= feature_sum;
+        // NOTE: Use Hellinger distance for comparison
+        samples.at<double>(r,c) = sqrt(samples.at<double>(r,c));
+      }
     }
   }
   cv::TermCriteria term_crit(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, max_iter, min_err_change);
