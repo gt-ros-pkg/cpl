@@ -135,7 +135,7 @@ class ModelPredictiveController:
         self.N = self.n + self.m
         self.u_max = u_max
         self.delta_t = model.delta_t
-        self.max_iter = 100 # Max number of iterations
+        self.max_iter = 10 # Max number of iterations
         self.ftol = ftol # Accuracy of answer
         self.epsilon = sqrt(np.finfo(float).eps)
         self.opt_options = {'iter':self.max_iter,
