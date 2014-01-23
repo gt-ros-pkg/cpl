@@ -106,8 +106,12 @@ _FEAT_INDICES = {_OBJ_X_WORLD:0,
                  _U_X_OBJ:15,
                  _U_Y_OBJ:16}
 
-_XTRA_INDICES = {_SHAPE_LOCAL: [17, 18],
-                 _SHAPE_GLOBAL:[19, 20]}
+_LOCAL_SHAPE_START = 0
+_LOCAL_SHAPE_LEN = 36
+_GLOBAL_SHAPE_START = _LOCAL_SHAPE_START + _LOCAL_SHAPE_LEN
+_GLOBAL_SHAPE_LEN = 60
+_XTRA_INDICES = {_SHAPE_LOCAL: [_LOCAL_SHAPE_START, _GLOBAL_SHAPE_START],
+                 _SHAPE_GLOBAL:[_GLOBAL_SHAPE_START, _GLOBAL_SHAPE_START+_GLOBAL_SHAPE_LEN]}
 
 # Get inverse dictionaries for quick name lookups
 _FEAT_NAMES = dict((v,k) for k,v in _FEAT_INDICES.items())
@@ -221,6 +225,12 @@ def convert_push_trial_to_feat_vectors(trial):
         Y.append(y_t)
     return (Z, Y)
 
+def convert_push_trial_to_shape_features(trial):
+    shape_feature = trial.trial_start.shape_descriptor
+    shape_local = [float(x) for x in shape_feature[_LOCAL_SHAPE_START : _LOCAL_SHAPE_START + _LOCAL_SHAPE_LEN] ]
+    shape_global = [float(x) for x in shape_feature[_GLOBAL_SHAPE_START : _GLOBAL_SHAPE_START + _GLOBAL_SHAPE_LEN] ]
+    return (shape_local, shape_global)
+
 def write_dynamics_learning_trial_files(X, Y, out_file_base_name):
     for i in xrange(len(Y[0])):
         Y_i = []
@@ -254,6 +264,46 @@ def read_dynamics_learning_example_files(in_file_base_name):
         X = X_i
         Y[name] = Y_i
     return (X, Y)
+
+def write_shape_files(out_file_base_name, shape_locals, shape_globals):
+    local_name = out_file_base_name + '_shape_local.txt'
+    global_name = out_file_base_name + '_shape_global.txt'
+    combined_name = out_file_base_name + '_shape_combined.txt'
+
+    local_strs = []
+    global_strs = []
+
+    # Convert descriptors to strings for writing
+    for xl in shape_locals:
+        local_str = ''
+        for x in xl:
+            local_str += str(x) + ' '
+        local_strs.append(local_str)
+
+    for xg in shape_globals:
+        global_str = ''
+        for x in xg:
+            global_str += str(x) + ' '
+        global_strs.append(global_str)
+
+    # Write local file
+    local_file = file(local_name, 'w')
+    for s in local_strs:
+        local_file.write(s+'\n')
+    local_file.close()
+
+    # Write global file
+    global_file = file(global_name, 'w')
+    for s in global_strs:
+        global_file.write(s+'\n')
+    global_file.close()
+
+    # Write comibined file
+    combined_file = file(combined_name, 'w')
+    for l, g in zip(local_strs, global_strs):
+        combined_file.write(l + g + '\n')
+    combined_file.close()
+
 
 def read_aff_files(directory_list):
     plio = push_learning.CombinedPushLearnControlIO()
@@ -302,6 +352,44 @@ def create_object_class_svm_files(directory_list, base_out_dir):
             obj_Xs.extend(X)
             obj_Ys.extend(Y)
         write_dynamics_learning_example_files(obj_Xs, obj_Ys, out_file_base_name)
+
+def create_object_class_shape_files(directory_list, base_out_dir):
+    '''
+    directory_list - list of directories to get aff files from
+    '''
+    push_trials = read_aff_files(directory_list)
+
+    object_classes = {}
+    for i, trial in enumerate(push_trials):
+        obj_id = trial.trial_start.object_id
+        if obj_id in object_classes:
+            object_classes[obj_id].append(i)
+        else:
+            object_classes[obj_id] = [i]
+
+    print 'Object classes:', object_classes.keys()
+
+    if base_out_dir[-1] != '/':
+        base_out_dir += '/'
+
+    for obj_id in object_classes:
+        out_dir = base_out_dir + 'object_classes/'
+        if not os.path.exists(out_dir):
+            os.mkdir(out_dir)
+        out_file_base_name = out_dir + obj_id
+        print 'object_classes[',obj_id,'] =', object_classes[obj_id]
+        print 'out_file_base_name:', out_file_base_name
+        shape_locals = []
+        shape_globals = []
+
+        for i, t_idx in enumerate(object_classes[obj_id]):
+            (shape_local, shape_global) = convert_push_trial_to_shape_features(push_trials[t_idx])
+            shape_locals.append(shape_local)
+            shape_globals.append(shape_global)
+
+        # Write to file
+        write_shape_files(out_file_base_name, shape_locals, shape_globals)
+
 
 def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes):
     class_file_names = os.listdir(in_dir)

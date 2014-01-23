@@ -179,7 +179,7 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
                            target_names, test_classes, hold_out_class,
                            table_out_path)
 
-def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR'):
+def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_train_and_validate_data = False):
     all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
                    'camcorder', 'glad', 'salt', 'batteries', 'mug',
                    'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
@@ -219,10 +219,11 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR'):
         hold_out_classes = all_classes[:]
         hold_out_classes.remove(obj_class)
 
-        print 'Creating holdout files for object:', obj_class
-        # dynamics_learning.create_train_and_validate_obj_class_splits(example_in_dir,
-        #                                                              base_example_hold_out_dir_name,
-        #                                                              hold_out_classes)
+        if build_train_and_validate_data:
+            print 'Creating holdout files for object:', obj_class
+            dynamics_learning.create_train_and_validate_obj_class_splits(example_in_dir,
+                                                                         base_example_hold_out_dir_name,
+                                                                         hold_out_classes)
         # Train model with obj class as only left out class
         hold_out_str = ''
         for hold_out_class in hold_out_classes:
