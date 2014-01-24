@@ -328,7 +328,7 @@ class TabletopExecutive:
                 elif controller_name.startswith(OPEN_LOOP_SQP_PREFIX):
                     controller_name = OPEN_LOOP_SQP_PREFIX + push_vec_res.dynamics_model_names[0]
                 else:
-                    ropsy.logwarn('Not using a model based controller, can\'t use model.')
+                    rospy.logwarn('Not using a model based controller, can\'t use model.')
                 rospy.loginfo('Now using controller: ' + controller_name)
 
             if input_arm is None:

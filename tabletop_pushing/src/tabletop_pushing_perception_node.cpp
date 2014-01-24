@@ -343,7 +343,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
 
     // Shape comparison dynamics parameters
-    n_private_.param("shape_dynamics_db_path", shape_dynamics_db_path_, std::string("./shape_db.txt"));
+    n_private_.param("shape_dynamics_db", shape_dynamics_db_name_, std::string("./shape_db.txt"));
     n_private_.param("num_shape_dynamics_models_to_return", shape_dyn_k_, 5);
     n_private_.param("use_chi_squared_shape_dist", use_chi_squared_shape_dist_, false);
 
@@ -1170,6 +1170,7 @@ class TabletopPushingPerceptionNode
           else
           {
             pq = pq_180;
+            // TODO: swap current heading orientation
           }
           std::vector<std::string> best_k;
           for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
@@ -1678,7 +1679,10 @@ class TabletopPushingPerceptionNode
   DynScorePQ getBestShapeDynamicsMatches(ShapeDescriptor& sd)
   {
     // Iterate through file name and shape pairs in db, compare to each
-    std::ifstream shape_file(shape_dynamics_db_path_.c_str());
+    std::stringstream shape_dynamics_db_path;
+    shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << "/cfg/shape_dbs/" << shape_dynamics_db_name_;
+    // TODO: Combined vs local vs global...
+    std::ifstream shape_file(shape_dynamics_db_path.str().c_str());
     DynScorePQ pq;
     while(shape_file.good())
     {
@@ -2573,7 +2577,7 @@ class TabletopPushingPerceptionNode
   std::vector<std::string> workspace_transform_name_buffer_;
   std::vector<std::string> cam_info_name_buffer_;
 #endif
-  std::string shape_dynamics_db_path_;
+  std::string shape_dynamics_db_name_;
   int shape_dyn_k_;
   bool use_chi_squared_shape_dist_;
 };
