@@ -4,6 +4,11 @@ import dynamics_learning
 import numpy as np
 import os
 import subprocess
+import random
+
+_ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
+               'camcorder', 'glad', 'salt', 'batteries', 'mug',
+               'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
 
 def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                 delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
@@ -124,9 +129,6 @@ def build_results_table(error_means_all, error_sds_all, error_diffs_all,
         sds_out_file.close()
 
 def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = True):
-    all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
-                   'camcorder', 'glad', 'salt', 'batteries', 'mug',
-                   'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
     target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
                     dynamics_learning._DELTA_OBJ_Y_OBJ,
                     dynamics_learning._DELTA_OBJ_THETA_WORLD,
@@ -134,7 +136,7 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
                     dynamics_learning._DELTA_EE_Y_OBJ,
                     dynamics_learning._DELTA_EE_PHI_WORLD]
 
-    hold_out_classes = all_classes[:]
+    hold_out_classes = _ALL_CLASSES[:]
 
     # Go through all objects
     base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
@@ -142,7 +144,7 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
     for hold_out_class in hold_out_classes:
 
         if test_singel_obj_model:
-            test_classes = all_classes[:]
+            test_classes = _ALL_CLASSES[:]
             test_classes.remove(hold_out_class)
         else:
             test_classes = [hold_out_class]
@@ -181,10 +183,7 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
                            table_out_path)
 
 def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_train_and_validate_data = False):
-    all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
-                   'camcorder', 'glad', 'salt', 'batteries', 'mug',
-                   'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
-    train_classes = all_classes[:]
+    train_classes = _ALL_CLASSES[:]
 
     # SVR options
     delta_t = 1./9.
@@ -217,7 +216,7 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_tr
     base_example_single_obj_dir_name = base_example_hold_out_dir_name
 
     for obj_class in train_classes:
-        hold_out_classes = all_classes[:]
+        hold_out_classes = _ALL_CLASSES[:]
         hold_out_classes.remove(obj_class)
 
         if build_train_and_validate_data:
@@ -258,14 +257,10 @@ def build_shape_db(output_path, dynamics_model_name, shape_path, num_clusters):
     p.wait()
 
 def build_object_class_shape_dbs(kernel_type='LINEAR'):
-    all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
-                   'camcorder', 'glad', 'salt', 'batteries', 'mug',
-                   'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
-
     example_in_dir = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
     base_shape_db_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/shape_dbs/'
-    for obj_class in all_classes:
-        hold_out_classes = all_classes[:]
+    for obj_class in _ALL_CLASSES:
+        hold_out_classes = _ALL_CLASSES[:]
         hold_out_classes.remove(obj_class)
 
         # Cluster local, global, and combined shape variables and write to each of the hold out object shape_db_files
@@ -284,12 +279,20 @@ def build_object_class_shape_dbs(kernel_type='LINEAR'):
             build_shape_db(global_output_db_file, dynamics_model_name, global_shape_path, num_clusters)
             build_shape_db(combined_output_db_file, dynamics_model_name, combined_shape_path, num_clusters)
 
-
-
 def train_shape_clusters():
     # TODO: Get object classes based on shape similarity
+    # TODO: Build models based on these combined inputs
     pass
 
-def train_random_object_clusters():
-    # TODO: Get object classes based on shape similarity
-    pass
+def build_random_object_class_clusters(num_clusters=5):
+    class_labels = {}
+    for i in xrange(num_clusters):
+        class_labels[i] = []
+    for obj_class in _ALL_CLASSES:
+        rand_idx = random.randint(0, num_clusters-1)
+        class_labels[rand_idx].append(obj_class)
+
+    for (key, value) in class_labels.items():
+        print 'Cluster', key, 'has objects', value
+
+    # TODO: Build models based on these combined inputs
