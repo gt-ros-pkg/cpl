@@ -442,14 +442,14 @@ int main(int argc, char** argv)
       cv::Mat obj_state_img = trackerDisplay(cur_base_img, cur_state, cur_obj, workspace_to_camera, cam_info);
 
       // Display & write desired output to disk
-      cv::imshow("Cur state", obj_state_img);
-      cv::imshow("Contact pt  image", hull_cloud_viz);
+      // cv::imshow("Cur state", obj_state_img);
+      // cv::imshow("Contact pt  image", hull_cloud_viz);
       std::stringstream state_out_name, contact_pt_name;
       state_out_name << out_file_path << "state_" << feedback_idx << "_" << j << ".png";
       contact_pt_name << out_file_path << "contact_pt_" << feedback_idx << "_" << j << ".png";
       cv::imwrite(state_out_name.str(), obj_state_img);
       cv::imwrite(contact_pt_name.str(), hull_cloud_viz);
-      cv::waitKey(wait_time);
+      // cv::waitKey(wait_time);
     }
   }
 
