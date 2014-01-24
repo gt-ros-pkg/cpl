@@ -279,10 +279,35 @@ def build_object_class_shape_dbs(kernel_type='LINEAR'):
             build_shape_db(global_output_db_file, dynamics_model_name, global_shape_path, num_clusters)
             build_shape_db(combined_output_db_file, dynamics_model_name, combined_shape_path, num_clusters)
 
-def train_shape_clusters():
-    # TODO: Get object classes based on shape similarity
+def cluster_shape_exemplars(obj_classes,
+                            output_path, base_input_path, num_clusters, shape_suffix = '_shape_combined.txt'):
+    build_shape_db_exec = '../../bin/build_shape_db'
+    cmd = [build_shape_db_exec, output_path, base_input_path, str(num_clusters), shape_suffix]
+    cmd.extend(obj_classes)
+    cmd_str = ''
+    for c in cmd:
+        cmd_str += c + ' '
+    print cmd_str
+    p = subprocess.Popen(cmd)
+    p.wait()
+
+    class_labels = {}
+    return class_labels
+
+def train_shape_clusters(num_clusters=5):
+    # TODO: Make tehse parameters, so higher level functions can run this one
+    obj_classes = _ALL_CLASSES[:]
+    shape_suffix = '_shape_combined.txt'
+
+    output_path = '/u/thermans/sandbox/shape_centers.txt'
+    base_input_path = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
+
+    class_labels = cluster_shape_exemplars(obj_classes, output_path, base_input_path, num_clusters,
+                                           shape_suffix)
+
     # TODO: Build models based on these combined inputs
-    pass
+    for (key, value) in class_labels.items():
+        print 'Cluster', key, 'has objects', value
 
 def build_random_object_class_clusters(num_clusters=5):
     class_labels = {}
