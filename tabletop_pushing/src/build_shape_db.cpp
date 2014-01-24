@@ -49,9 +49,13 @@ ShapeDescriptors readShapeDescriptors(std::string shape_path)
     {
       double x;
       line_stream >> x;
-      cur_sd.push_back(x);
+      if (line_stream.good())
+      {
+        cur_sd.push_back(x);
+      }
     }
     sds.push_back(cur_sd);
+    // ROS_INFO_STREAM("cur_sd.size() = " << cur_sd.size());
   }
   ROS_INFO_STREAM("Read in " << sds.size() << " shape descriptors");
   return sds;

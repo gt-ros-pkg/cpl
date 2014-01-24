@@ -3,6 +3,7 @@ from pushing_dynamics_models import *
 import dynamics_learning
 import numpy as np
 import os
+import subprocess
 
 def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                 delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
@@ -245,6 +246,45 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_tr
                                     delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
                                     kernel_type = kernel_type,
                                     kernel_params = kernel_params)
+
+def build_shape_db(output_path, dynamics_model_name, shape_path, num_clusters):
+    build_shape_db_exec = '../../bin/build_shape_db'
+    cmd = [build_shape_db_exec, output_path, dynamics_model_name, shape_path, str(num_clusters)]
+    cmd_str = ''
+    for c in cmd:
+        cmd_str += c + ' '
+    print cmd_str
+    p = subprocess.Popen(cmd)
+    p.wait()
+
+def build_object_class_shape_dbs(kernel_type='LINEAR'):
+    all_classes = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
+                   'camcorder', 'glad', 'salt', 'batteries', 'mug',
+                   'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
+
+    example_in_dir = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
+    base_shape_db_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/shape_dbs/'
+    for obj_class in all_classes:
+        hold_out_classes = all_classes[:]
+        hold_out_classes.remove(obj_class)
+
+        # Cluster local, global, and combined shape variables and write to each of the hold out object shape_db_files
+        dynamics_model_name = kernel_type + '_single_obj_' + obj_class
+        local_shape_path = example_in_dir + obj_class + '_shape_local.txt'
+        global_shape_path = example_in_dir + obj_class + '_shape_global.txt'
+        combined_shape_path = example_in_dir + obj_class + '_shape_combined.txt'
+        num_clusters = 3
+
+        for hold_out_class in hold_out_classes:
+            local_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_local.txt'
+            global_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_global.txt'
+            combined_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_combined.txt'
+
+            build_shape_db(local_output_db_file, dynamics_model_name, local_shape_path, num_clusters)
+            build_shape_db(global_output_db_file, dynamics_model_name, global_shape_path, num_clusters)
+            build_shape_db(combined_output_db_file, dynamics_model_name, combined_shape_path, num_clusters)
+
+
 
 def train_shape_clusters():
     # TODO: Get object classes based on shape similarity
