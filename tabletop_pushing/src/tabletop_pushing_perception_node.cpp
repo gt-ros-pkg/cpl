@@ -349,7 +349,8 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_local_only_shape_desc", local_only_sd_, false);
     n_private_.param("use_global_only_shape_desc", global_only_sd_, false);
     n_private_.param("local_sd_length", local_sd_length_, 36);
-    n_private_.param("normalzie_sd", normalzie_sd_, true);
+    n_private_.param("normalzie_sd_comparisons", normalzie_sd_, true);
+    n_private_.param("binarize_sd", binarize_sd_, true);
 
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
@@ -1689,7 +1690,7 @@ class TabletopPushingPerceptionNode
 #endif // DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY
     return tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
                                                                 boundary_loc_idx, gripper_spread_,
-                                                                hull_alpha_, point_cloud_hist_res_);
+                                                                hull_alpha_, point_cloud_hist_res_, binarize_sd_);
   }
 
   DynScorePQ getBestShapeDynamicsMatches(ShapeDescriptor& sd_in)
@@ -2622,6 +2623,7 @@ class TabletopPushingPerceptionNode
   bool global_only_sd_;
   int local_sd_length_;
   bool normalzie_sd_;
+  bool binarize_sd_;
 };
 
 int main(int argc, char ** argv)

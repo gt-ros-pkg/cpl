@@ -941,14 +941,14 @@ class PositionFeedbackPushNode:
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
         u.twist.angular.z = 0.0
-        if x_error > y_error:
+        if fabs(x_error) > fabs(y_error):
             u.twist.linear.x = sign(x_error)*self.straight_line_u_max
-            u.twist.linear.y = y_error/abs(x_error)*self.straight_line_u_max
-            push_time = abs(x_error)/abs(u.twist.linear.x)
+            u.twist.linear.y = y_error/fabs(x_error)*self.straight_line_u_max
+            push_time = fabs(x_error)/fabs(u.twist.linear.x)
         else:
             u.twist.linear.y = sign(y_error)*self.straight_line_u_max
-            u.twist.linear.x = x_error/abs(y_error)*self.straight_line_u_max
-            push_time = abs(y_error)/abs(u.twist.linear.y)
+            u.twist.linear.x = x_error/fabs(y_error)*self.straight_line_u_max
+            push_time = fabs(y_error)/fabs(u.twist.linear.y)
 
         rospy.loginfo('Pushing for ' + str(push_time) + ' seconds with velocity: ['+ str(u.twist.linear.x) + ', ' +
                       str(u.twist.linear.y) + ']')
