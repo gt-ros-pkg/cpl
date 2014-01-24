@@ -1057,9 +1057,10 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     print 'Plotting batch trajectories'
     plot_tracks(plio.push_trials, out_path = analysis_dir, show_plot = False)
 
-    plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
-                                  suffix = '-headings', show_headings = True)
-    plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
+    if len(trajs) > 0:
+        plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
+                                      suffix = '-headings', show_headings = True)
+        plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
 
     # Plot actual controls
     plot_all_controls(plio.push_trials, u_max, out_path = analysis_dir, show_plot = False)
