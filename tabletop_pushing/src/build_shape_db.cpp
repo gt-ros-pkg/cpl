@@ -181,6 +181,8 @@ int mainBuildShpaeBasedObjectClusters(int argc, char** argv)
     // Build exemplar from the path
     ShapeDescriptors exemplar = getModelCentroids(obj_class_path.str(), 1);
     class_exemplars.push_back(exemplar[0]);
+    // Write exemplars for each object class to disk
+    writeModelToShapeDBFile(output_path, obj_name, exemplar);
   }
 
   std::vector<int> cluster_ids;
@@ -203,6 +205,8 @@ int mainBuildShpaeBasedObjectClusters(int argc, char** argv)
   }
 
   // Write resulting centers and labels to disk
+  // Write center as well, with the long name, then parse accordingly in python and rebuild shape_dbs with
+  // controller names
   writeExemplarsToShapeDBFile(output_path, center_names,  centers);
   return 0;
 }
