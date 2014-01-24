@@ -1120,13 +1120,13 @@ ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur
 
 ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                     double sample_spread, double hull_alpha,
-                                                    double hist_res)
+                                                    double hist_res, bool binarzie_and_normalize)
 {
   ShapeDescriptors descs;
   for (unsigned int i = 0; i < hull.size(); ++i)
   {
     ShapeDescriptor d = extractLocalAndGlobalShapeFeatures(hull, cur_obj, hull[i], i, sample_spread, hull_alpha,
-                                                           hist_res);
+                                                           hist_res, binarzie_and_normalize);
     descs.push_back(d);
   }
   return descs;
@@ -1134,10 +1134,19 @@ ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoOb
 
 ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                    pcl16::PointXYZ sample_pt, int sample_pt_idx,
-                                                   double sample_spread, double hull_alpha, double hist_res)
+                                                   double sample_spread, double hull_alpha, double hist_res,
+                                                   bool binarzie_and_normalize)
 {
   // ROS_INFO_STREAM("Local");
   ShapeDescriptor local_raw = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
+  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+  if (! binarize_and_normalize)
+  {
+    // TODO: Downsample local_raw first? (Probably yes...)
+    local_raw.insert(local.end(), global.begin(), global.end());
+    return local_raw;
+  }
+
   // Binarize local histogram
   for (unsigned int i = 0; i < local_raw.size(); ++i)
   {
@@ -1224,7 +1233,7 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   // ROS_INFO_STREAM("Local raw size: " << local_raw.size());
 
   // ROS_INFO_STREAM("Global");
-  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+
   // Binarize global histogram then L1 normalize
   double global_sum = 0.0;
   for (unsigned int i = 0; i < global.size(); ++i)
