@@ -1135,7 +1135,7 @@ ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoOb
 ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                    pcl16::PointXYZ sample_pt, int sample_pt_idx,
                                                    double sample_spread, double hull_alpha, double hist_res,
-                                                   bool binarzie_and_normalize)
+                                                   bool binarize_and_normalize)
 {
   // ROS_INFO_STREAM("Local");
   ShapeDescriptor local_raw = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
@@ -1143,7 +1143,7 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   if (! binarize_and_normalize)
   {
     // TODO: Downsample local_raw first? (Probably yes...)
-    local_raw.insert(local.end(), global.begin(), global.end());
+    local_raw.insert(local_raw.end(), global.begin(), global.end());
     return local_raw;
   }
 
@@ -1472,16 +1472,7 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
 {
   int min_idx = -1;
   min_dist = FLT_MAX;
-  ShapeDescriptor normalized(descriptor);
-  double feature_sum = 0;
-  for (int i = 0; i < normalized.size(); ++i)
-  {
-    feature_sum += normalized[i];
-  }
-  for (int i = 0; i < normalized.size(); ++i)
-  {
-    normalized[i] = sqrt(normalized[i]/feature_sum);
-  }
+  ShapeDescriptor normalized = hellingerNormalizeShapeDescriptor(descriptor);
   for (int c = 0; c < centers.size(); ++c)
   {
     double c_dist = (shapeFeatureSquaredEuclideanDist(normalized, centers[c]));
@@ -1492,6 +1483,21 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
     }
   }
   return min_idx;
+}
+
+ShapeDescriptor hellingerNormalizeShapeDescriptor(ShapeDescriptor& sd_in)
+{
+  ShapeDescriptor normalized(sd_in);
+  double feature_sum = 0;
+  for (int i = 0; i < normalized.size(); ++i)
+  {
+    feature_sum += normalized[i];
+  }
+  for (int i = 0; i < normalized.size(); ++i)
+  {
+    normalized[i] = sqrt(normalized[i]/feature_sum);
+  }
+  return normalized;
 }
 
 ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_length)

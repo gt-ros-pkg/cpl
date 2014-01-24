@@ -349,6 +349,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_local_only_shape_desc", local_only_sd_, false);
     n_private_.param("use_global_only_shape_desc", global_only_sd_, false);
     n_private_.param("local_sd_length", local_sd_length_, 36);
+    n_private_.param("normalzie_sd", normalzie_sd_, true);
 
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
@@ -1696,20 +1697,29 @@ class TabletopPushingPerceptionNode
     // Iterate through file name and shape pairs in db, compare to each
     std::stringstream shape_dynamics_db_path;
     shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << "/cfg/shape_dbs/" << shape_dynamics_db_name_;
-    ShapeDescriptor sd;
+    ShapeDescriptor sd_feats;
     if (local_only_sd_)
     {
-      sd.assign(sd_in.begin(), sd_in.begin() + local_sd_length_);
+      sd_feats.assign(sd_in.begin(), sd_in.begin() + local_sd_length_);
     }
     else if(global_only_sd_)
     {
-      sd.assign(sd_in.begin() + local_sd_length_, sd_in.end());
+      sd_feats.assign(sd_in.begin() + local_sd_length_, sd_in.end());
     }
     else // Combined
     {
-      sd = sd_in;
+      sd_feats = sd_in;
     }
-    ROS_INFO_STREAM("Shape descriptor has length: " << sd.size());
+    ROS_INFO_STREAM("Shape descriptor has length: " << sd_feats.size());
+    ShapeDescriptor sd;
+    if (normalzie_sd_)
+    {
+      sd = tabletop_pushing::hellingerNormalizeShapeDescriptor(sd_feats);
+    }
+    else
+    {
+      sd = sd_feats;
+    }
 
     std::ifstream shape_file(shape_dynamics_db_path.str().c_str());
     DynScorePQ pq;
@@ -1741,7 +1751,6 @@ class TabletopPushingPerceptionNode
       }
       else
       {
-        // TODO: Hellinger distnace....
         dyn.score = tabletop_pushing::shapeFeatureSquaredEuclideanDist(sd, cur_db_sd);
       }
 
@@ -2612,6 +2621,7 @@ class TabletopPushingPerceptionNode
   bool local_only_sd_;
   bool global_only_sd_;
   int local_sd_length_;
+  bool normalzie_sd_;
 };
 
 int main(int argc, char ** argv)

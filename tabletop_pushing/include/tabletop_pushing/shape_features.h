@@ -100,6 +100,8 @@ cv::Mat computeShapeFeatureAffinityMatrix(ShapeLocations& locs, bool use_center 
 double shapeFeatureChiSquareDist(cpl_visual_features::ShapeDescriptor& a,
                                  cpl_visual_features::ShapeDescriptor& b, double gamma=0.0);
 
+cpl_visual_features::ShapeDescriptor hellingerNormalizeShapeDescriptor(cpl_visual_features::ShapeDescriptor& sd_in);
+
 double shapeFeatureSquaredEuclideanDist(cpl_visual_features::ShapeDescriptor& a,
                                         cpl_visual_features::ShapeDescriptor& b);
 
