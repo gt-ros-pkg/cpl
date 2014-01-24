@@ -346,6 +346,9 @@ class TabletopPushingPerceptionNode
     n_private_.param("shape_dynamics_db", shape_dynamics_db_name_, std::string("./shape_db.txt"));
     n_private_.param("num_shape_dynamics_models_to_return", shape_dyn_k_, 5);
     n_private_.param("use_chi_squared_shape_dist", use_chi_squared_shape_dist_, false);
+    n_private_.param("use_local_only_shape_desc", local_only_sd_, false);
+    n_private_.param("use_global_only_shape_desc", global_only_sd_, false);
+    n_private_.param("local_sd_length", local_sd_length_, 36);
 
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
@@ -1154,14 +1157,14 @@ class TabletopPushingPerceptionNode
           DynScorePQ pq_0 = getBestShapeDynamicsMatches(sd);
           // Return match list of up to K best matching model name(s)
 
-          // TOOD: Get descriptor at cur_state +/- m_pi
+          // Get descriptor at cur_state +/- m_pi
           PushTrackerState cur_state_180;
           cur_state_180.x = cur_state.x;
           cur_state_180.x.theta = subPIAngle(cur_state.x.theta + M_PI);
           ShapeDescriptor sd_180 = getDominantOrientationShapeDescriptor(cur_obj, cur_state_180);
           DynScorePQ pq_180 = getBestShapeDynamicsMatches(sd_180);
 
-          // TODO: Compare pq and pq_180;
+          // Compare pq and pq_180;
           DynScorePQ pq;
           if (pq_0.top().score < pq_180.top().score)
           {
@@ -1170,7 +1173,19 @@ class TabletopPushingPerceptionNode
           else
           {
             pq = pq_180;
-            // TODO: swap current heading orientation
+            // Force swap and redisplay
+            force_swap_ = !force_swap_;
+            obj_tracker_->toggleSwap();
+            startTracking(cur_state, force_swap_);
+            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+            res.shape_descriptor.assign(sd_180.begin(), sd_180.end());
+            ROS_WARN_STREAM("Swapped theta because of better shape match: " << cur_state.x.theta);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+            ROS_INFO_STREAM("Press any key to continue");
+            cv::waitKey();
+            cv::destroyWindow("Init State");
+            cv::destroyWindow("Object State");
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
           }
           std::vector<std::string> best_k;
           for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
@@ -1676,12 +1691,26 @@ class TabletopPushingPerceptionNode
                                                                 hull_alpha_, point_cloud_hist_res_);
   }
 
-  DynScorePQ getBestShapeDynamicsMatches(ShapeDescriptor& sd)
+  DynScorePQ getBestShapeDynamicsMatches(ShapeDescriptor& sd_in)
   {
     // Iterate through file name and shape pairs in db, compare to each
     std::stringstream shape_dynamics_db_path;
     shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << "/cfg/shape_dbs/" << shape_dynamics_db_name_;
-    // TODO: Combined vs local vs global...
+    ShapeDescriptor sd;
+    if (local_only_sd_)
+    {
+      sd.assign(sd_in.begin(), sd_in.begin() + local_sd_length_);
+    }
+    else if(global_only_sd_)
+    {
+      sd.assign(sd_in.begin() + local_sd_length_, sd_in.end());
+    }
+    else // Combined
+    {
+      sd = sd_in;
+    }
+    ROS_INFO_STREAM("Shape descriptor has length: " << sd.size());
+
     std::ifstream shape_file(shape_dynamics_db_path.str().c_str());
     DynScorePQ pq;
     while(shape_file.good())
@@ -2580,6 +2609,9 @@ class TabletopPushingPerceptionNode
   std::string shape_dynamics_db_name_;
   int shape_dyn_k_;
   bool use_chi_squared_shape_dist_;
+  bool local_only_sd_;
+  bool global_only_sd_;
+  int local_sd_length_;
 };
 
 int main(int argc, char ** argv)
