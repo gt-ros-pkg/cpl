@@ -1410,15 +1410,15 @@ void clusterShapeFeatures(ShapeDescriptors& sds, int num_clusters, std::vector<i
                           double min_err_change, int max_iter, int num_retries, bool normalize)
 
 {
-  cv::Mat samples(sds.size(), sds[0].size(), CV_64FC1);
+  cv::Mat samples(sds.size(), sds[0].size(), CV_32FC1);
   for (int r = 0; r < samples.rows; ++r)
   {
     // NOTE: Normalize features here
     double feature_sum = 0;
     for (int c = 0; c < samples.cols; ++c)
     {
-      samples.at<double>(r,c) = sds[r][c];
-      feature_sum += samples.at<double>(r,c);
+      samples.at<float>(r,c) = sds[r][c];
+      feature_sum += samples.at<float>(r,c);
     }
     if (normalize)
     {
@@ -1428,12 +1428,13 @@ void clusterShapeFeatures(ShapeDescriptors& sds, int num_clusters, std::vector<i
       }
       for (int c = 0; c < samples.cols; ++c)
       {
-        samples.at<double>(r,c) /= feature_sum;
+        samples.at<float>(r,c) /= feature_sum;
         // NOTE: Use Hellinger distance for comparison
-        samples.at<double>(r,c) = sqrt(samples.at<double>(r,c));
+        samples.at<float>(r,c) = sqrt(samples.at<float>(r,c));
       }
     }
   }
+  ROS_INFO_STREAM("samples has size: (" << samples.rows << ", " << samples.cols << ")");
   cv::TermCriteria term_crit(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, max_iter, min_err_change);
   // cv::Mat labels;
   cv::Mat centers_cv;
@@ -1444,7 +1445,7 @@ void clusterShapeFeatures(ShapeDescriptors& sds, int num_clusters, std::vector<i
     ShapeDescriptor s(centers_cv.cols, 0);
     for (int c = 0; c < centers_cv.cols; ++c)
     {
-      s[c] = centers_cv.at<double>(r,c);
+      s[c] = centers_cv.at<float>(r,c);
     }
     centers.push_back(s);
   }

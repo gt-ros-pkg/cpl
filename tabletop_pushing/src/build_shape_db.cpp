@@ -53,6 +53,7 @@ ShapeDescriptors readShapeDescriptors(std::string shape_path)
     }
     sds.push_back(cur_sd);
   }
+  ROS_INFO_STREAM("Read in " << sds.size() << " shape descriptors");
   return sds;
 }
 
@@ -101,8 +102,9 @@ int main(int argc, char** argv)
   // Read in file housing shape features
   std::string dynamics_model_shape_dir(argv[3]);
 
-  int num_clusters(atoi(argv[4]));
-
+  int num_clusters = atoi(argv[4]);
+  ROS_INFO_STREAM("num_clusters = " << num_clusters);
+  
   // Read in shape descriptors associated with the building of the model
   ShapeDescriptors sds = getModelCentroids(dynamics_model_shape_dir, num_clusters);
   writeModelToShapeDBFile(output_path, dynamics_model_name, sds);
