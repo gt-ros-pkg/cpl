@@ -49,6 +49,7 @@ import dynamics_learning
 import subprocess
 import os
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from util import subPIAngle
 
 _KULER_RED = (178./255, 18./255, 18./255)
 _KULER_YELLOW = (1., 252./255, 25./255)
@@ -1007,6 +1008,29 @@ def test_mpc(base_dir_name):
     # U_init = mpc.get_U_init(x0, x_d)
     # q0 = mpc.get_q0(x0, U_init, xtra)
     # plot_desired_vs_controlled(q0, x_d, x0, n, m, show_plot=True, suffix='-q0', opt_path=plot_output_path)
+
+def get_trial_errors(trial):
+    # Get final position error
+    goal_pose = trial.trial_end.goal_pose
+    final_pose = trial.trial_end.final_centroid
+    position_error = hypot(final_pose.y - goal_pose.y, final_pose.x - goal_pose.x)
+    # Get final heading change
+    delta_theta = subPIAngle(trial.trial_end.final_orientation - trial.trial_end.init_orientation)
+    # TODO: Get push time
+    push_time = 0.0
+    # Get push distance (avarge time by this)
+    push_dist = hypot(final_pose.y - trial.trial_end.init_centroid.y,
+                      final_pose.x - trial.trial_end.init_centroid.x)
+    # TODO: Trajectory error (score from Humanoids work)
+    # TODO: Adapt to curved trajectories too...
+    trajectory_error = 0.0
+    return (position_error, delata_theta, push_time, push_dist, trajectory_error)
+
+def analyze_trials_aggregate(push_trials):
+    trial_results = []
+    for trial in push_trials:
+        trial_results.append(get_trial_errors(trial))
+    # TOOD: Get stats from this
 
 def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Fixed parameters
