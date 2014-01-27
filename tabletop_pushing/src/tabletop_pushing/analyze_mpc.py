@@ -35,7 +35,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped, Pose2D
 from tabletop_pushing.srv import *
 from tabletop_pushing.msg import *
-from math import copysign, pi, sqrt, isnan
+from math import copysign, pi, sqrt, isnan, hypot, fabs
 from numpy import finfo
 import numpy as np
 import scipy.optimize as opt
@@ -1015,22 +1015,106 @@ def get_trial_errors(trial):
     final_pose = trial.trial_end.final_centroid
     position_error = hypot(final_pose.y - goal_pose.y, final_pose.x - goal_pose.x)
     # Get final heading change
-    delta_theta = subPIAngle(trial.trial_end.final_orientation - trial.trial_end.init_orientation)
-    # TODO: Get push time
-    push_time = 0.0
+    delta_theta = fabs(subPIAngle(trial.trial_end.final_orientation - trial.trial_end.init_orientation))
+    # Get push time
+    push_time = trial.trial_end.push_time - trial.trial_start.push_time
     # Get push distance (avarge time by this)
     push_dist = hypot(final_pose.y - trial.trial_end.init_centroid.y,
                       final_pose.x - trial.trial_end.init_centroid.x)
     # TODO: Trajectory error (score from Humanoids work)
     # TODO: Adapt to curved trajectories too...
     trajectory_error = 0.0
-    return (position_error, delata_theta, push_time, push_dist, trajectory_error)
+    print 'Push time', push_time
+    print 'Push dist', push_dist
+    print 'Final error', position_error
+    print 'Delta theta', delta_theta
+    print 'Avg velocity', push_dist/push_time
+    print ''
+    return {'position_error':position_error, 'delta_theta':delta_theta,
+            'push_time':push_time, 'push_dist':push_dist, 'trajectory_error':trajectory_error,
+            'avg_vel':push_dist/push_time}
 
-def analyze_trials_aggregate(push_trials):
-    trial_results = []
-    for trial in push_trials:
-        trial_results.append(get_trial_errors(trial))
-    # TOOD: Get stats from this
+def write_stats_line(file_handle, stats):
+    header_str = '# mean std_dev min Q1 median q3 max [sub2 sub5]\n'
+    out_str = str(stats['mean']) + ' ' + str(stats['std_dev'])
+    out_str += ' '+str(stats['min'])+' '+str(stats['Q1'])+' '+str(stats['median'])+ ' '+str(stats['Q3'])+' '+str(stats['max'])
+    if 'sub2' in stats:
+        out_str += ' ' + str(stats['sub2']) + ' ' + str(stats['sub5'])
+    out_str += '\n'
+    print header_str
+    print out_str
+    file_handle.write(header_str)
+    file_handle.write(out_str)
+
+def get_summary_stats(data_in, get_sub=False):
+    data = np.array(data_in)
+    res = {}
+    res['mean'] = np.mean(data)
+    res['std_dev'] = np.sqrt(np.var(data))
+    Qs = np.percentile(data, [25,50,75])
+    res['Q1'] = Qs[0]
+    res['median'] = Qs[1]
+    res['Q3'] = Qs[2]
+    res['min'] = np.min(data)
+    res['max'] = np.max(data)
+    if get_sub:
+        # Num trials within 2.0 cm of goal
+        res['sub2'] = sum(data < 0.02)
+        # Num within 5.0 cm
+        res['sub5'] = sum(data < 0.05)
+    return res
+
+def analyze_pushing_trials(aff_file_names, out_file_name, obj_name='', append=False):
+    plio = push_learning.CombinedPushLearnControlIO()
+    for aff_file in aff_file_names:
+        plio.read_in_data_file(aff_file, True)
+
+    position_errors = []
+    push_times = []
+    push_dists = []
+    delta_thetas = []
+    traj_errors = []
+    avg_velocities = []
+    for trial in plio.push_trials:
+        res = get_trial_errors(trial)
+        position_errors.append(res['position_error'])
+        push_times.append(res['push_time'])
+        push_dists.append(res['push_dist'])
+        delta_thetas.append(res['delta_theta'])
+        avg_velocities.append(res['avg_vel'])
+        traj_errors.append(res['trajectory_error'])
+
+    io_code = 'w'
+    if append:
+        io_code = 'a'
+    out_file = file(out_file_name, io_code)
+    if len(obj_name) > 0:
+        out_file.write('# ' + obj_name + '\n')
+
+    # Get stats from the results and write to disk
+    pos_error_stats = get_summary_stats(position_errors, True)
+    out_file.write('# Position error\n')
+    write_stats_line(out_file, pos_error_stats)
+
+    push_time_stats = get_summary_stats(push_times)
+    out_file.write('# Push time\n')
+    write_stats_line(out_file, push_time_stats)
+
+    push_dist_stats = get_summary_stats(push_dists)
+    out_file.write('# Push dist\n')
+    write_stats_line(out_file, push_dist_stats)
+
+    delta_theta_stats = get_summary_stats(delta_thetas)
+    out_file.write('# delta theta\n')
+    write_stats_line(out_file, delta_theta_stats)
+
+    avg_vel_stats = get_summary_stats(avg_velocities)
+    out_file.write('# avg velocities\n')
+    write_stats_line(out_file, avg_vel_stats)
+
+    out_file.close()
+
+    return pos_error_stats
 
 def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     # Fixed parameters
