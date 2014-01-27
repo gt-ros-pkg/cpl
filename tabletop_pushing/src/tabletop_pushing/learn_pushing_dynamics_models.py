@@ -291,6 +291,7 @@ def cluster_shape_exemplars(obj_classes,
     p = subprocess.Popen(cmd)
     p.wait()
 
+    # TODO: Parse center names from file
     class_labels = {}
     return class_labels
 
@@ -309,6 +310,8 @@ def train_shape_clusters(num_clusters=5):
     for (key, value) in class_labels.items():
         print 'Cluster', key, 'has objects', value
 
+    # TODO: Build new shape db files form outputs
+
 def build_random_object_class_clusters(num_clusters=5):
     class_labels = {}
     for i in xrange(num_clusters):
@@ -321,3 +324,5 @@ def build_random_object_class_clusters(num_clusters=5):
         print 'Cluster', key, 'has objects', value
 
     # TODO: Build models based on these combined inputs
+
+    # TODO: Build new shape db files form outputs
