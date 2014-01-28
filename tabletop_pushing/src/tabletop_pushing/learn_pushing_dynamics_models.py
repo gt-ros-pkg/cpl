@@ -370,13 +370,15 @@ def train_shape_clusters(obj_classes, base_input_path,
 def write_rand_shape_db_file(class_labels, output_path):
     out_file = file(output_path, 'w')
     for (key, value) in class_labels.items():
+        obj_str = 'objs'
         for obj_class in value:
-            out_str = obj_class + ':' + str(key) + '\n'
-            print out_str
-            out_file.writeline(out_str)
+            obj_str += '_' + obj_class
+        out_str = obj_str + ':' + str(key)
+        print out_str
+        out_file.write(out_str+'\n')
     out_file.close()
 
-def build_random_object_class_clusters(obj_classes, shape_db_output_path, num_clusters=5):
+def train_random_object_class_clusters(obj_classes, shape_db_output_path, num_clusters = 5):
     class_labels = {}
     for i in xrange(num_clusters):
         class_labels[i] = []
@@ -384,20 +386,25 @@ def build_random_object_class_clusters(obj_classes, shape_db_output_path, num_cl
         rand_idx = random.randint(0, num_clusters-1)
         class_labels[rand_idx].append(obj_class)
 
-    # TODO: Build new shape db files form outputs
+    # Build new shape db files form outputs
     write_rand_shape_db_file(class_labels, shape_db_output_path)
 
     for (key, value) in class_labels.items():
         print 'Cluster', key, 'has objects', value
         train_clustered_obj_model(value)
 
-
-def train_hold_out_shape_clusters(num_clusters = 5):
-    obj_classes = _ALL_CLASSES[:]
+def train_hold_out_shape_clusters(num_clusters = 5, use_rand = False):
+    obj_classes = ['bear'] # _ALL_CLASSES[:]
     base_input_path = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
     base_output_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/shape_dbs/'
+
     for obj_class in obj_classes:
         hold_out_classes = _ALL_CLASSES[:]
         hold_out_classes.remove(obj_class)
-        output_path = base_output_path + 'shape_cluster/hold_out_' + obj_class + '_global.txt'
-        train_shape_clusters(hold_out_classes, base_input_path, output_path, num_clusters)
+
+        if use_rand:
+            output_path = base_output_path + 'rand0/hold_out_' + obj_class + '_global.txt'
+            train_random_object_class_clusters(hold_out_classes, output_path, num_clusters)
+        else:
+            output_path = base_output_path + 'shape_cluster/hold_out_' + obj_class + '_global.txt'
+            train_shape_clusters(hold_out_classes, base_input_path, output_path, num_clusters)

@@ -352,6 +352,7 @@ class TabletopPushingPerceptionNode
     n_private_.param("local_sd_length", local_sd_length_, 36);
     n_private_.param("normalzie_sd_comparisons", normalzie_sd_, true);
     n_private_.param("binarize_sd", binarize_sd_, true);
+    n_private_.param("use_random_shape_clusters", random_sd_clusters_, false);
 
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
@@ -1156,47 +1157,55 @@ class TabletopPushingPerceptionNode
         res.shape_descriptor.assign(sd.begin(), sd.end());
         if (req.compare_shape_for_dynamics)
         {
-          // Compare to shape descriptors for known models and return best K matching dynamics model names
-          DynScorePQ pq_0 = getBestShapeDynamicsMatches(sd);
-          // Return match list of up to K best matching model name(s)
-
-          // Get descriptor at cur_state +/- m_pi
-          PushTrackerState cur_state_180;
-          cur_state_180.x = cur_state.x;
-          cur_state_180.x.theta = subPIAngle(cur_state.x.theta + M_PI);
-          ShapeDescriptor sd_180 = getDominantOrientationShapeDescriptor(cur_obj, cur_state_180);
-          DynScorePQ pq_180 = getBestShapeDynamicsMatches(sd_180);
-
-          // Compare pq and pq_180;
-          DynScorePQ pq;
-          if (pq_0.top().score < pq_180.top().score)
+          if ( random_sd_clusters_)
           {
-            pq = pq_0;
+            std::vector<std::string> best_k = getBestRandomShapeMatch();
+            res.dynamics_model_names.assign(best_k.begin(), best_k.end());
           }
           else
           {
-            pq = pq_180;
-            // Force swap and redisplay
-            force_swap_ = !force_swap_;
-            obj_tracker_->toggleSwap();
-            startTracking(cur_state, force_swap_);
-            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
-            res.shape_descriptor.assign(sd_180.begin(), sd_180.end());
-            ROS_WARN_STREAM("Swapped theta because of better shape match: " << cur_state.x.theta);
+            // Compare to shape descriptors for known models and return best K matching dynamics model names
+            DynScorePQ pq_0 = getBestShapeDynamicsMatches(sd);
+            // Return match list of up to K best matching model name(s)
+
+            // Get descriptor at cur_state +/- m_pi
+            PushTrackerState cur_state_180;
+            cur_state_180.x = cur_state.x;
+            cur_state_180.x.theta = subPIAngle(cur_state.x.theta + M_PI);
+            ShapeDescriptor sd_180 = getDominantOrientationShapeDescriptor(cur_obj, cur_state_180);
+            DynScorePQ pq_180 = getBestShapeDynamicsMatches(sd_180);
+
+            // Compare pq and pq_180;
+            DynScorePQ pq;
+            if (pq_0.top().score < pq_180.top().score)
+            {
+              pq = pq_0;
+            }
+            else
+            {
+              pq = pq_180;
+              // Force swap and redisplay
+              force_swap_ = !force_swap_;
+              obj_tracker_->toggleSwap();
+              startTracking(cur_state, force_swap_);
+              obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+              res.shape_descriptor.assign(sd_180.begin(), sd_180.end());
+              ROS_WARN_STREAM("Swapped theta because of better shape match: " << cur_state.x.theta);
 #ifdef FORCE_BEFORE_AND_AFTER_VIZ
-            ROS_INFO_STREAM("Press any key to continue");
-            cv::waitKey();
-            cv::destroyWindow("Init State");
-            cv::destroyWindow("Object State");
+              ROS_INFO_STREAM("Press any key to continue");
+              cv::waitKey();
+              cv::destroyWindow("Init State");
+              cv::destroyWindow("Object State");
 #endif // FORCE_BEFORE_AND_AFTER_VIZ
+            }
+            std::vector<std::string> best_k;
+            for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
+            {
+              best_k.push_back(pq.top().dyn_name);
+              pq.pop();
+            }
+            res.dynamics_model_names.assign(best_k.begin(), best_k.end());
           }
-          std::vector<std::string> best_k;
-          for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
-          {
-            best_k.push_back(pq.top().dyn_name);
-            pq.pop();
-          }
-          res.dynamics_model_names.assign(best_k.begin(), best_k.end());
         }
       }
     }
@@ -1700,6 +1709,7 @@ class TabletopPushingPerceptionNode
     std::stringstream shape_dynamics_db_path;
     shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << shape_dynamics_db_base_path_
                            << shape_dynamics_db_name_;
+
     ShapeDescriptor sd_feats;
     if (local_only_sd_)
     {
@@ -1760,6 +1770,46 @@ class TabletopPushingPerceptionNode
       pq.push(dyn);
     }
     return pq;
+  }
+
+  std::vector<std::string> getBestRandomShapeMatch()
+  {
+    std::stringstream shape_dynamics_db_path;
+    shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << shape_dynamics_db_base_path_
+                           << shape_dynamics_db_name_;
+
+    std::ifstream shape_file(shape_dynamics_db_path.str().c_str());
+    int max_k = 0;
+    std::vector<std::string> dyn_models;
+
+    while(shape_file.good())
+    {
+      std::string line;
+      std::getline(shape_file, line);
+      if (line.size() < 1)
+      {
+        break;
+      }
+      std::stringstream line_stream;
+      line_stream << line;
+      // Get descriptor and file name from line
+      std::string dyn_name;
+      std::getline(line_stream, dyn_name, ':');
+      dyn_models.push_back(dyn_name);
+      // Get cluster number
+      int x;
+      line_stream >> x;
+      ROS_INFO_STREAM("Dyn model " << dyn_name << " has cluster ID: " << x);
+      if (x  > max_k)
+      {
+        max_k = x;
+      }
+    }
+
+    int rand_idx = rand() % max_k;
+    std::vector<std::string> best_k;
+    best_k.push_back(dyn_models[rand_idx]);
+    return best_k;
   }
 
   std::vector<pcl16::PointXYZ> findAxisAlignedBoundingBox(PushTrackerState& cur_state, ProtoObject& cur_obj)
@@ -2619,6 +2669,7 @@ class TabletopPushingPerceptionNode
   int local_sd_length_;
   bool normalzie_sd_;
   bool binarize_sd_;
+  bool random_sd_clusters_;
 };
 
 int main(int argc, char ** argv)

@@ -108,5 +108,6 @@
     <param name="use_global_only_shape_desc" value="true" type="bool"/>
     <param name="normalize_sd_comparison" value="true" type="bool"/>
     <param name="binarize_sd" value="true" type="bool"/>
+    <param name="use_random_shape_clusters" value="false" type="bool"/>
   </node>
 </launch>
