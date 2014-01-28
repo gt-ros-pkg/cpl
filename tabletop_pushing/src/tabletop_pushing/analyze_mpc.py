@@ -1035,11 +1035,11 @@ def get_trial_errors(trial):
             'avg_vel':push_dist/push_time}
 
 def write_stats_line(file_handle, stats):
-    header_str = '# mean std_dev min Q1 median q3 max [sub2 sub5]\n'
+    header_str = '# mean std_dev min Q1 median q3 max [sub2 sub5 total]\n'
     out_str = str(stats['mean']) + ' ' + str(stats['std_dev'])
     out_str += ' '+str(stats['min'])+' '+str(stats['Q1'])+' '+str(stats['median'])+ ' '+str(stats['Q3'])+' '+str(stats['max'])
     if 'sub2' in stats:
-        out_str += ' ' + str(stats['sub2']) + ' ' + str(stats['sub5'])
+        out_str += ' ' + str(stats['sub2']) + ' ' + str(stats['sub5'] + ' ' str(stats['total']))
     out_str += '\n'
     print header_str
     print out_str
@@ -1062,6 +1062,7 @@ def get_summary_stats(data_in, get_sub=False):
         res['sub2'] = sum(data < 0.02)
         # Num within 5.0 cm
         res['sub5'] = sum(data < 0.05)
+        res['total'] = len(data_in)
     return res
 
 def analyze_pushing_trials(aff_file_names, out_file_name, obj_name='', append=False):
@@ -1179,6 +1180,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
         if q_star[0] == 0:
             trial_idx += 1
         try:
+            # TODO: This is not available for open_loop sqp stuff, need to fix that situation...
             x0_state = plio.push_trials[trial_idx].trial_trajectory[q_star[0]]
         except IndexError:
             print 'Error trying to read trial', trial_idx, 'trajectory step', q_star[0]
