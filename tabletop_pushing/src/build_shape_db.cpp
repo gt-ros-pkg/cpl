@@ -150,7 +150,7 @@ int mainBuildShapeDBFromSingleObjectFile(int argc, char** argv)
   return 0;
 }
 
-int mainBuildShpaeBasedObjectClusters(int argc, char** argv)
+int mainBuildShapeBasedObjectClusters(int argc, char** argv)
 {
   int obj_class_start_idx = 6;
   if (argc < obj_class_start_idx)
@@ -227,6 +227,6 @@ int main(int argc, char** argv)
   else
   {
 
-    return mainBuildShpaeBasedObjectClusters(argc, argv);
+    return mainBuildShapeBasedObjectClusters(argc, argv);
   }
 }

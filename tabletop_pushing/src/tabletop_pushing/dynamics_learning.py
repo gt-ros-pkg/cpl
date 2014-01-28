@@ -402,7 +402,8 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
             continue
         class_id = f.split('_DELTA')[0]
         target_name = f[len(class_id):]
-        target_names[target_name] = target_name
+        if len(target_name) > 0:
+            target_names[target_name] = target_name
         if class_id in hold_out_classes:
             pass
         else:
@@ -423,6 +424,7 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
 
     train_file_base_name = out_dir + train_str
     validate_file_base_name = out_dir + hold_out_str
+
     # Write new files grouping hold out files into validate set and others into train
     for name in target_names.keys():
         validate_file_name = validate_file_base_name + name
@@ -449,6 +451,44 @@ def create_train_and_validate_obj_class_splits(in_dir, out_dir, hold_out_classes
             for line in lines_in:
                 validate_file.write(line)
         validate_file.close()
+
+def create_multi_obj_class_example_file(in_dir, out_dir, train_classes):
+    if out_dir[-1] != '/':
+        out_dir += '/'
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+    class_file_names = os.listdir(in_dir)
+    target_names = {}
+
+    for f in class_file_names:
+        if os.path.isdir(in_dir+f):
+            continue
+        class_id = f.split('_DELTA')[0]
+        target_name = f[len(class_id):]
+        if len(target_name) > 0:
+            target_names[target_name] = target_name
+
+    train_str = 'objs'
+    for obj_class in train_classes:
+        train_str += '_' + obj_class
+
+    train_file_base_name = out_dir + train_str
+
+    # Write new files grouping hold out files into validate set and others into train
+    for name in target_names.keys():
+        train_file_name = train_file_base_name + name
+
+        # print 'Writing:', train_file_name
+        train_file = file(train_file_name, 'w')
+        for class_id in train_classes:
+            class_file_name = in_dir + class_id + name
+            file_in = file(class_file_name, 'r')
+            lines_in = file_in.readlines()
+            file_in.close()
+            for line in lines_in:
+                train_file.write(line)
+        train_file.close()
+    return train_file_base_name
 
 def split_aff_files_train_validate_percent(in_dirs, out_dir, train_percent=0.7):
     push_trials = read_aff_files(in_dirs)

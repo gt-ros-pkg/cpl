@@ -280,14 +280,65 @@ def build_object_class_shape_dbs(kernel_type='LINEAR'):
             build_shape_db(global_output_db_file, dynamics_model_name, global_shape_path, num_clusters)
             # build_shape_db(combined_output_db_file, dynamics_model_name, combined_shape_path, num_clusters)
 
+def train_clustered_obj_model(obj_classes, kernel_type='LINEAR'):
+    print 'obj_classes', obj_classes
+    base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/SVR_DYN/epsilon_e3/'
+    example_in_dir = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
+    out_dir_name = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/single_obj/'
+    build_train_and_validate_data = True
+
+    # SVR options
+    delta_t = 1./9.
+    n = 6
+    m = 3
+    target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
+                    dynamics_learning._DELTA_OBJ_Y_OBJ,
+                    dynamics_learning._DELTA_OBJ_THETA_WORLD,
+                    dynamics_learning._DELTA_EE_X_OBJ,
+                    dynamics_learning._DELTA_EE_Y_OBJ,
+                    dynamics_learning._DELTA_EE_PHI_WORLD]
+    feature_names = [dynamics_learning._EE_X_OBJ,
+                     dynamics_learning._EE_Y_OBJ,
+                     dynamics_learning._EE_PHI_OBJ,
+                     dynamics_learning._U_X_OBJ,
+                     dynamics_learning._U_Y_OBJ,
+                     dynamics_learning._U_PHI_WORLD]
+    xtra_names = []
+    epsilons = []
+    for i in xrange(len(target_names)):
+        epsilons.append(1e-3)
+    kernel_params = {}
+    for i in xrange(len(target_names)):
+        kernel_params[i] = '-g 0.05 -r 2'
+
+    print 'Building example file for objects:', obj_classes
+    train_file_base_name = dynamics_learning.create_multi_obj_class_example_file(example_in_dir, out_dir_name,
+                                                                                 obj_classes)
+
+    # Train model with obj class as only left out class
+
+    svr_output_path = base_svr_path + 'objs'
+    for obj_class in obj_classes:
+        svr_output_path += '_' + obj_class
+    train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
+                                delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
+                                kernel_type = kernel_type,
+                                kernel_params = kernel_params)
+
+
 def parse_object_cluster_shape_db_file(file_path, obj_classes):
     cluster_file = file(file_path, 'r')
     cluster_names = [s.split(':')[0] for s in cluster_file.readlines()]
     cluster_file.close()
     class_labels = {}
-    for name in cluster_names:
-        print name
-    # TODO: return clusters
+    for i, name in enumerate(cluster_names):
+        class_labels[i] = []
+        # print name
+
+    for obj_name in obj_classes:
+        for i, cluster_name in enumerate(cluster_names):
+            if obj_name in cluster_name:
+                class_labels[i].append(obj_name)
     return class_labels
 
 def cluster_shape_exemplars(obj_classes,
@@ -303,27 +354,18 @@ def cluster_shape_exemplars(obj_classes,
     p = subprocess.Popen(cmd)
     p.wait()
 
-    # TODO: Parse center names from file
-
     class_labels = parse_object_cluster_shape_db_file(output_path, obj_classes)
     return class_labels
 
-def train_shape_clusters(num_clusters=5):
-    # TODO: Make these parameters, so higher level functions can run this one
-    obj_classes = _ALL_CLASSES[:]
-    shape_suffix = '_shape_global.txt'
-
-    output_path = '/u/thermans/sandbox/shape_centers.txt'
-    base_input_path = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
-
+def train_shape_clusters(obj_classes, base_input_path,
+                         output_path, num_clusters=5, shape_suffix = '_shape_global.txt'):
+    # Make these parameters, so higher level functions can run this one
     class_labels = cluster_shape_exemplars(obj_classes, output_path, base_input_path, num_clusters,
                                            shape_suffix)
-
-    # TODO: Build models based on these combined inputs
+    # Build models based on these combined inputs
     for (key, value) in class_labels.items():
         print 'Cluster', key, 'has objects', value
-
-    # TODO: Build new shape db files form outputs
+        train_clustered_obj_model(value)
 
 def build_random_object_class_clusters(num_clusters=5):
     class_labels = {}
@@ -335,7 +377,15 @@ def build_random_object_class_clusters(num_clusters=5):
 
     for (key, value) in class_labels.items():
         print 'Cluster', key, 'has objects', value
+        train_clustered_obj_model(value)
+        # TODO: Build new shape db files form outputs
 
-    # TODO: Build models based on these combined inputs
-
-    # TODO: Build new shape db files form outputs
+def train_hold_out_shape_clusters(num_clusters = 5):
+    obj_classes = _ALL_CLASSES[:]
+    base_input_path = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
+    base_output_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/shape_dbs/'
+    for obj_class in obj_classes:
+        hold_out_classes = _ALL_CLASSES[:]
+        hold_out_classes.remove(obj_class)
+        output_path = base_output_path + 'shape_cluster/hold_out_' + obj_class + '_global.txt'
+        train_shape_clusters(hold_out_classes, base_input_path, output_path, num_clusters)
