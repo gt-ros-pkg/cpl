@@ -248,7 +248,8 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_tr
 
 def build_shape_db(output_path, dynamics_model_name, shape_path, num_clusters):
     build_shape_db_exec = '../../bin/build_shape_db'
-    cmd = [build_shape_db_exec, output_path, dynamics_model_name, shape_path, str(num_clusters)]
+    run_switch = str(1)
+    cmd = [build_shape_db_exec, run_switch, output_path, dynamics_model_name, shape_path, str(num_clusters)]
     cmd_str = ''
     for c in cmd:
         cmd_str += c + ' '
@@ -265,24 +266,35 @@ def build_object_class_shape_dbs(kernel_type='LINEAR'):
 
         # Cluster local, global, and combined shape variables and write to each of the hold out object shape_db_files
         dynamics_model_name = kernel_type + '_single_obj_' + obj_class
-        local_shape_path = example_in_dir + obj_class + '_shape_local.txt'
+        # local_shape_path = example_in_dir + obj_class + '_shape_local.txt'
         global_shape_path = example_in_dir + obj_class + '_shape_global.txt'
-        combined_shape_path = example_in_dir + obj_class + '_shape_combined.txt'
-        num_clusters = 3
+        # combined_shape_path = example_in_dir + obj_class + '_shape_combined.txt'
+        num_clusters = 1
 
         for hold_out_class in hold_out_classes:
-            local_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_local.txt'
+            # local_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_local.txt'
             global_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_global.txt'
-            combined_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_combined.txt'
+            # combined_output_db_file = base_shape_db_path + 'hold_out_' + hold_out_class + '_combined.txt'
 
-            build_shape_db(local_output_db_file, dynamics_model_name, local_shape_path, num_clusters)
+            # build_shape_db(local_output_db_file, dynamics_model_name, local_shape_path, num_clusters)
             build_shape_db(global_output_db_file, dynamics_model_name, global_shape_path, num_clusters)
-            build_shape_db(combined_output_db_file, dynamics_model_name, combined_shape_path, num_clusters)
+            # build_shape_db(combined_output_db_file, dynamics_model_name, combined_shape_path, num_clusters)
+
+def parse_object_cluster_shape_db_file(file_path, obj_classes):
+    cluster_file = file(file_path, 'r')
+    cluster_names = [s.split(':')[0] for s in cluster_file.readlines()]
+    cluster_file.close()
+    class_labels = {}
+    for name in cluster_names:
+        print name
+    # TODO: return clusters
+    return class_labels
 
 def cluster_shape_exemplars(obj_classes,
                             output_path, base_input_path, num_clusters, shape_suffix = '_shape_combined.txt'):
     build_shape_db_exec = '../../bin/build_shape_db'
-    cmd = [build_shape_db_exec, output_path, base_input_path, str(num_clusters), shape_suffix]
+    run_switch = str(0)
+    cmd = [build_shape_db_exec, run_switch, output_path, base_input_path, str(num_clusters), shape_suffix]
     cmd.extend(obj_classes)
     cmd_str = ''
     for c in cmd:
@@ -292,13 +304,14 @@ def cluster_shape_exemplars(obj_classes,
     p.wait()
 
     # TODO: Parse center names from file
-    class_labels = {}
+
+    class_labels = parse_object_cluster_shape_db_file(output_path, obj_classes)
     return class_labels
 
 def train_shape_clusters(num_clusters=5):
-    # TODO: Make tehse parameters, so higher level functions can run this one
+    # TODO: Make these parameters, so higher level functions can run this one
     obj_classes = _ALL_CLASSES[:]
-    shape_suffix = '_shape_combined.txt'
+    shape_suffix = '_shape_global.txt'
 
     output_path = '/u/thermans/sandbox/shape_centers.txt'
     base_input_path = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'

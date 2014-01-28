@@ -113,35 +113,35 @@ void writeModelToShapeDBFile(std::string file_path, std::string dyn_name, ShapeD
 void writeExemplarsToShapeDBFile(std::string file_path, std::vector<std::string> exemplar_names,
                                  ShapeDescriptors& exemplars)
 {
-  // std::ofstream shape_file(file_path.c_str(), std::ofstream::out | std::ofstream::app);
+  std::ofstream shape_file(file_path.c_str()); //, std::ofstream::out | std::ofstream::app);
   ROS_INFO_STREAM("Writing examplers to file " << file_path);
   for (int i = 0; i < exemplars.size(); ++i)
   {
     ROS_INFO_STREAM("Writing exemplar for " << exemplar_names[i]);
-    // writeShapeDBLine(exemplar_names[i], exemplars[i], shape_file);
+    writeShapeDBLine(exemplar_names[i], exemplars[i], shape_file);
   }
-  // shape_file.close();
+  shape_file.close();
 }
 
 
 int mainBuildShapeDBFromSingleObjectFile(int argc, char** argv)
 {
-  if (argc < 5 || argc > 6)
+  if (argc < 6 || argc > 7)
   {
-    ROS_ERROR_STREAM("Usage: " << argv[0] << " output_path dynamics_model_name shape_path num_clusters");
+    ROS_ERROR_STREAM("Usage: " << argv[0] << " switch output_path dynamics_model_name shape_path num_clusters");
     return -1;
   }
 
   // Read in ouptut path name
-  std::string output_path(argv[1]);
+  std::string output_path(argv[2]);
 
   // Read in dynamics model name
-  std::string dynamics_model_name(argv[2]);
+  std::string dynamics_model_name(argv[3]);
 
   // Read in file housing shape features
-  std::string dynamics_model_shape_dir(argv[3]);
+  std::string dynamics_model_shape_dir(argv[4]);
 
-  int num_clusters = atoi(argv[4]);
+  int num_clusters = atoi(argv[5]);
   ROS_INFO_STREAM("num_clusters = " << num_clusters);
 
   // Read in shape descriptors associated with the building of the model
@@ -152,17 +152,18 @@ int mainBuildShapeDBFromSingleObjectFile(int argc, char** argv)
 
 int mainBuildShpaeBasedObjectClusters(int argc, char** argv)
 {
-  int obj_class_start_idx = 5;
+  int obj_class_start_idx = 6;
   if (argc < obj_class_start_idx)
   {
+    ROS_ERROR_STREAM("need at least " << obj_class_start_idx << " number of params got " << argc);
     ROS_ERROR_STREAM("Usage: " << argv[0] <<
-                     " output_path base_input_path num_clsuters shape_suffix obj_name0 [obj_name1, ...]");
+                     " switch output_path base_input_path num_clsuters shape_suffix obj_name0 [obj_name1, ...]");
     return -1;
   }
-  std::string output_path(argv[1]);
-  std::string base_path(argv[2]);
-  int num_clusters = atoi(argv[3]);
-  std::string shape_suffix(argv[4]);
+  std::string output_path(argv[2]);
+  std::string base_path(argv[3]);
+  int num_clusters = atoi(argv[4]);
+  std::string shape_suffix(argv[5]);
 
   ROS_INFO_STREAM("num_clusters = " << num_clusters);
 
@@ -182,7 +183,7 @@ int mainBuildShpaeBasedObjectClusters(int argc, char** argv)
     ShapeDescriptors exemplar = getModelCentroids(obj_class_path.str(), 1);
     class_exemplars.push_back(exemplar[0]);
     // Write exemplars for each object class to disk
-    writeModelToShapeDBFile(output_path, obj_name, exemplar);
+    // writeModelToShapeDBFile(output_path, obj_name, exemplar);
   }
 
   std::vector<int> cluster_ids;
@@ -217,6 +218,15 @@ int main(int argc, char** argv)
   srand(seed);
   ROS_INFO_STREAM("Rand seed is: " << seed);
   // HACK:
-  // return mainBuildShapeDBFromSingleObjectFile(argc, argv);
-  return mainBuildShpaeBasedObjectClusters(argc, argv);
+  int run_switch = atoi(argv[1]);
+  ROS_INFO_STREAM("Run_switch: " << run_switch);
+  if (run_switch)
+  {
+    return mainBuildShapeDBFromSingleObjectFile(argc, argv);
+  }
+  else
+  {
+
+    return mainBuildShpaeBasedObjectClusters(argc, argv);
+  }
 }
