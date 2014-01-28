@@ -768,7 +768,10 @@ class PositionFeedbackPushNode:
             u.twist.linear.z = 0.0
             u.twist.angular.x = 0.0
             u.twist.angular.y = 0.0
-            u.twist.angular.z = max( min(u_phi, self.mpc_u_max_angular), -self.mpc_u_max_angular)
+            if push_request.controller_name == SQP_NAIVE_LINEAR_DYN:
+                u.twist.angular.z = 0.0
+            else:
+                u.twist.angular.z = max( min(u_phi, self.mpc_u_max_angular), -self.mpc_u_max_angular)
             control_tape.append(u)
 
         # TODO: Setup data logging here
@@ -1229,7 +1232,10 @@ class PositionFeedbackPushNode:
         u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0
-        u.twist.angular.z = max( min(q_star[2], self.mpc_u_max_angular), -self.mpc_u_max_angular)
+        if cur_state.controller_name == MPC_NAIVE_LINEAR_DYN:
+            u.twist.angular.z = 0.0
+        else:
+            u.twist.angular.z = max( min(q_star[2], self.mpc_u_max_angular), -self.mpc_u_max_angular)
         return u
     #
     # Post behavior functions
