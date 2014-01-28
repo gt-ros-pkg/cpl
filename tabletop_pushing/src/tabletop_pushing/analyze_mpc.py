@@ -1039,7 +1039,7 @@ def write_stats_line(file_handle, stats):
     out_str = str(stats['mean']) + ' ' + str(stats['std_dev'])
     out_str += ' '+str(stats['min'])+' '+str(stats['Q1'])+' '+str(stats['median'])+ ' '+str(stats['Q3'])+' '+str(stats['max'])
     if 'sub2' in stats:
-        out_str += ' ' + str(stats['sub2']) + ' ' + str(stats['sub5'] + ' ' str(stats['total']))
+        out_str += ' ' + str(stats['sub2']) + ' ' + str(stats['sub5']) + ' ' + str(stats['total'])
     out_str += '\n'
     print header_str
     print out_str
