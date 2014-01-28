@@ -6,7 +6,7 @@ import os
 import subprocess
 import random
 
-_ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
+_ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush', 'soap_box',
                'camcorder', 'glad', 'salt', 'batteries', 'mug',
                'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
 
