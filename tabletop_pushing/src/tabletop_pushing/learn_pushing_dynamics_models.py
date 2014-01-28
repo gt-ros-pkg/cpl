@@ -394,7 +394,7 @@ def train_random_object_class_clusters(obj_classes, shape_db_output_path, num_cl
         train_clustered_obj_model(value)
 
 def train_hold_out_shape_clusters(num_clusters = 5, use_rand = False):
-    obj_classes = ['bear'] # _ALL_CLASSES[:]
+    obj_classes = _ALL_CLASSES[:]
     base_input_path = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
     base_output_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/shape_dbs/'
 
