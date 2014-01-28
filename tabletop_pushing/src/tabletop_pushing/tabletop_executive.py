@@ -108,6 +108,7 @@ class TabletopExecutive:
         self.learn_file_base = rospy.get_param('push_learn_file_base_path', '/u/thermans/data/new/aff_learn_out_')
         self.learning_dynamics = False
         self.compare_shape_for_dynamics = False
+        self.check_model_performance = False
 
         # Setup service proxies
         if not _OFFLINE:
@@ -804,6 +805,7 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        push_req.check_model_performance = self.check_model_performance
 
         if behavior_primitive == OPEN_OVERHEAD_PUSH:
             push_req.open_gripper = True
@@ -866,6 +868,7 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        push_req.check_model_performance = self.check_model_performance
         if _USE_LEARN_IO:
             push_req.learn_out_file_name = self.learn_out_file_name
 
@@ -940,6 +943,7 @@ class TabletopExecutive:
         push_req.start_point.point = push_vector.start_point
         push_req.open_gripper = open_gripper
         push_req.goal_pose = goal_pose
+        push_req.check_model_performance = self.check_model_performance
         if _USE_LEARN_IO:
             push_req.learn_out_file_name = self.learn_out_file_name
 
@@ -1172,6 +1176,7 @@ if __name__ == '__main__':
     use_learning = True
     learning_dynamics = True
     compare_shape_for_dynamics = False
+    check_model_performance = True
     num_trials_per_object = 10
     use_guided = True
     max_pushes = 500
@@ -1179,6 +1184,7 @@ if __name__ == '__main__':
     node = TabletopExecutive(use_singulation, use_learning)
     node.learning_dynamics = learning_dynamics
     node.compare_shape_for_dynamics = compare_shape_for_dynamics
+    node.check_model_performance = check_model_performance
     if use_singulation:
         node.run_singulation(max_pushes, use_guided)
     elif learn_start_loc:

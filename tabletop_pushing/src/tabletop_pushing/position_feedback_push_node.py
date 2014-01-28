@@ -262,6 +262,11 @@ class PositionFeedbackPushNode:
         self.mpc_max_step_size = rospy.get_param('~mpc_max_step_size', 0.01)
         self.open_loop_segment_length = rospy.get_param('~sqp_open_loop_segment_length', 50)
         self.svr_base_path = rospy.get_param('~svr_base_path', '/cfg/SVR_DYN/')
+        # Model performance analysis
+        self.models_to_check_db = rospy.get_param('~model_checker_db_file_path', 'cfg/shape_db/shapes.txt')
+        self.trajectory_to_check = []
+        self.model_checker = None
+        self.check_model_performance = False
 
         # Set joint gains
         self.arm_mode = None
@@ -482,6 +487,11 @@ class PositionFeedbackPushNode:
             self.mpc_q_star_io = MPCSolutionIO()
             self.mpc_q_star_io.open_out_file(mpc_file_name)
 
+        if request.check_model_performance:
+            self.check_model_performance = True
+            self.model_checker = ModelPerformanceChecker(self.models_to_check_db, self.svr_base_path)
+            self.trajectory_to_check = []
+
         if request.left_arm:
             which_arm = 'l'
         else:
@@ -601,6 +611,13 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Result received')
             result = ac.get_result()
             response.action_aborted = result.aborted
+
+        if request.check_model_performance:
+            (best_model, ranked_models) = self.model_checker.choose_best_model(self.trajectory_to_check)
+            self.check_model_performance = False
+            # return the best model
+            response.best_model = best_model
+            # TODO: save ranked to disk
 
         # Cleanup and save data
         if not _OFFLINE:
@@ -1222,6 +1239,13 @@ class PositionFeedbackPushNode:
             else:
                 self.target_trajectory_io.write_line(k0, x_d_i)
                 self.mpc_q_star_io.write_line(k0, q_star)
+
+        if self.check_model_performance:
+            u_k = [max( min(q_star[0], self.mpc_u_max), -self.mpc_u_max),
+                   max( min(q_star[1], self.mpc_u_max), -self.mpc_u_max),
+                   max( min(q_star[2], self.mpc_u_max_angular), -self.mpc_u_max_angular)]
+            self.trajectory_to_check.append((x0, u_k))
+
         # Use previous to initialize at next time step
         self.MPC.init_from_previous = True
 

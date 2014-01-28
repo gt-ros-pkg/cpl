@@ -10,7 +10,9 @@ bool right_arm
 bool high_arm_init
 bool open_gripper
 string learn_out_file_name
+bool check_model_performance
 ---
 geometry_msgs/Pose2D goal_error
 bool action_aborted
 bool failed_pre_position
+string best_model

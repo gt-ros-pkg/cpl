@@ -1233,3 +1233,60 @@ class GPPushDynamics:
             elif parsing_targets:
                 self.target_names.append(l.rstrip())
             # NOTE: Add any other necessary parameters here
+
+class ModelPerformanceChecker:
+    def __init__(self, models_file_name, svr_base_path):
+        self.dyn_models = []
+        self.model_names = self.load_model_names_from_disk(models_file_name)
+        for name in model_names:
+            base_name = svr_base_path + name + '_params.txt'
+            new_model = SVRPushDynamics(param_file_name = name)
+            self.dyn_models.append(new_model)
+
+    def load_model_names_from_disk(self, models_file_name):
+        model_file = file(model_file_name, 'r')
+        model_names = [line.split(':')[0] for line in model_file.readlines()]
+        model_file.close()
+        return model_names
+
+    def check_model_score(self, test_model, trajectory):
+        '''
+        Return a scalar score measuring how predictive the test_model is of the observed trajectory
+        '''
+        if len(trajectory) < 1:
+            return None
+        X_gt = []
+        X_hat = []
+        for i, step in enumerate(trajectory):
+            # Get control and state of object
+            u_k = step[0]
+            x_k = step[1]
+            X_hat.append(test_model.predict(x_k, u_k))
+            # Add to X_gt for previous time step
+            if i > 0:
+                X_gt.append(X_k)
+        score = 0
+        for i in xrange(len(X_gt)):
+            x_gt = X_gt[i]
+            x_hat = X_hat[i]
+            score += self.score_step(x_hat, x_gt)
+        return (score/len(trajectory))
+
+    def choose_best_model(self, trial_trajectory):
+        '''
+        Iterate through the loaded models for the given test_trajectory, return the best and the scores for all models
+        '''
+        scored_models = {}
+        for model, model_name in zip(self.dyn_models, self.model_names):
+            score = self.check_model_score(model, trial_trajectory)
+            if score in scored_models:
+                scored_models[score].append(model_name)
+            else:
+                scored_models[score] = model_name
+
+        return (scored_models[min(scored_models.keys())], scored_models)
+
+    def score_step(self, x_hat, x_gt):
+        # TODO: Scale the radians? sin(theta), cos(theta)
+        # TODO: Just use position variables?
+        return np.linalg.norm(x_hat - x_gt)

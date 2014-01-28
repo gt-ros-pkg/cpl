@@ -9,6 +9,7 @@ import random
 _ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush', 'soap_box',
                'camcorder', 'glad', 'salt', 'batteries', 'mug',
                'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
+_TEST_CLASSES = ['bear', 'glad', 'soap_box', 'bowl', 'shampoo', 'large_brush']
 
 def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                 delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
@@ -404,8 +405,20 @@ def train_hold_out_shape_clusters(num_clusters = 5, use_rand = False):
         hold_out_classes.remove(obj_class)
 
         if use_rand:
-            output_path = base_output_path + 'rand0/hold_out_' + obj_class + '_global.txt'
+            output_path = base_output_path + 'rand2/hold_out_' + obj_class + '_global.txt'
             train_random_object_class_clusters(hold_out_classes, output_path, num_clusters)
         else:
             output_path = base_output_path + 'shape_cluster/hold_out_' + obj_class + '_global.txt'
             train_shape_clusters(hold_out_classes, base_input_path, output_path, num_clusters)
+
+def learn_incremental_dynamics_models():
+    obj_classes = _TEST_CLASSES
+    base_output_path = roslib.packages.get_pkg_dir('tabletop_pushing') + '/cfg/SVR_DYN/incremental/'
+    # TODO: Build incrememntal example files
+    # TODO: Setup naming stuff
+    num_trials = 0
+    for obj_class in obj_classes:
+        for i in num_trials:
+            # TODO: train model with i trials
+            output_path = base_output_path + 'single_obj_' + obj_class + '_' + i
+
