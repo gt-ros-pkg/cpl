@@ -228,3 +228,46 @@ class ModelPredictiveController:
             # Remove the necessary number of more controls and locs to get to H tuples
             q0 = q0[:self.N*self.H]
         return np.array(q0)
+
+class ModelPerformanceChecker:
+    def __init__(self, model_names):
+        self.dyn_models = []
+        self.model_names = model_names[:]
+        for name in model_names:
+            # TODO: load model here
+            new_model = None
+            self.dyn_models.append(new_model)
+
+    def check_model_score(self, test_model, tajectory):
+        '''
+        Return a scalar score measuring how predictive the test_model is of the observed trajectory
+        '''
+        score = 0
+        for step in trajectory:
+            # TODO: Get control and state of object
+            u_k = []
+            x_k = []
+            x_hat = test_model.predict(u_k, x_k)
+            # TODO: Get next state ground truth
+            x_gt = []
+            score += self.score_step(x_hat, x_gt)
+        return score
+
+    def choose_best_model(self, trial_trajectory):
+        '''
+        Iterate through the loaded models for the given test_trajectory, return the best and the scores for all models
+        '''
+        scored_models = {}
+        for model, model_name in zip(self.dyn_models, self.model_names):
+            score = self.check_model_score(model, trial_trajectory)
+            if score in scored_models:
+                scored_models[score].append(model_name)
+            else:
+                scored_models[score] = model_name
+
+        return (scored_models[min(scored_models.keys())], scored_models)
+
+    def score_step(self, x_hat, x_gt):
+        # TODO: Scale the radians? sin(theta), cos(theta)
+        # TODO: Just use position variables?
+        return np.linalg.norm(x_hat - x_gt)
