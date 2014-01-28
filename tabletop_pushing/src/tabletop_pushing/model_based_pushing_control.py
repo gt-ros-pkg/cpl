@@ -238,7 +238,7 @@ class ModelPerformanceChecker:
             new_model = None
             self.dyn_models.append(new_model)
 
-    def check_model_score(self, test_model, tajectory):
+    def check_model_score(self, test_model, trajectory):
         '''
         Return a scalar score measuring how predictive the test_model is of the observed trajectory
         '''
@@ -249,7 +249,7 @@ class ModelPerformanceChecker:
             # TODO: Get control and state of object
             u_k = []
             x_k = []
-            x_hat = test_model.predict(u_k, x_k)
+            x_hat = test_model.predict(x_k, u_k)
             # TODO: Get next state ground truth
             x_gt = []
             score += self.score_step(x_hat, x_gt)
