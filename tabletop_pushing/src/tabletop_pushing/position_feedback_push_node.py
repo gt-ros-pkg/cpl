@@ -261,6 +261,7 @@ class PositionFeedbackPushNode:
         self.min_num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 2)
         self.mpc_max_step_size = rospy.get_param('~mpc_max_step_size', 0.01)
         self.open_loop_segment_length = rospy.get_param('~sqp_open_loop_segment_length', 50)
+        self.svr_base_path = rospy.get_param('~svr_base_path', '/cfg/SVR_DYN/')
 
         # Set joint gains
         self.arm_mode = None
@@ -532,7 +533,7 @@ class PositionFeedbackPushNode:
             else:
                 mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
                 # NOTE: Add switch here if we get other non svm dynamics models
-                base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
+                base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
                 param_file_string = base_path + mpc_suffix + '_params.txt'
                 dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
@@ -557,7 +558,7 @@ class PositionFeedbackPushNode:
                 else:
                     sqp_suffix = goal.controller_name[len(OPEN_LOOP_SQP_PREFIX):]
                     # NOTE: Add switch here if we get other non svm dynamics models
-                    base_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
+                    base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
                     param_file_string = base_path + sqp_suffix + '_params.txt'
                     rospy.loginfo('Loading dynamics model: ' + param_file_string)
                     dyn_model = SVRPushDynamics(param_file_name = param_file_string)
