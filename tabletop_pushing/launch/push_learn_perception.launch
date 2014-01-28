@@ -104,10 +104,9 @@
     <param name="tracker_segment_search_radius" value="0.25" type="double"/>
 
     <param name="shape_dynamics_db" value="hold_out_bear_global.txt" type="string"/>
-    <param name="use_chi_squared_shape_dist" value="false" type="bool"/>
     <param name="use_local_only_shape_desc" value="false" type="bool"/>
-    <param name="use_global_only_shape_desc" value="false" type="bool"/>
+    <param name="use_global_only_shape_desc" value="true" type="bool"/>
     <param name="normalize_sd_comparison" value="true" type="bool"/>
-    <param name="binarize_sd" value="false" type="bool"/>
+    <param name="binarize_sd" value="true" type="bool"/>
   </node>
 </launch>

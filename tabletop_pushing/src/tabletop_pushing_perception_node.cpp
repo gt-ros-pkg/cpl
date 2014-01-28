@@ -124,7 +124,7 @@
 #define BUFFER_AND_WRITE 1
 #define FORCE_BEFORE_AND_AFTER_VIZ 1
 // #define DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY 1
-#define GET_SHAPE_DESCRIPTORS_EVERY_FRAME 1
+// #define GET_SHAPE_DESCRIPTORS_EVERY_FRAME 1
 
 using boost::shared_ptr;
 
@@ -344,8 +344,9 @@ class TabletopPushingPerceptionNode
 
     // Shape comparison dynamics parameters
     n_private_.param("shape_dynamics_db", shape_dynamics_db_name_, std::string("./shape_db.txt"));
+    n_private_.param("shape_dynamics_db_base_path", shape_dynamics_db_base_path_,
+                     std::string("/cfg/shape_dbs/"));
     n_private_.param("num_shape_dynamics_models_to_return", shape_dyn_k_, 5);
-    n_private_.param("use_chi_squared_shape_dist", use_chi_squared_shape_dist_, false);
     n_private_.param("use_local_only_shape_desc", local_only_sd_, false);
     n_private_.param("use_global_only_shape_desc", global_only_sd_, false);
     n_private_.param("local_sd_length", local_sd_length_, 36);
@@ -1697,7 +1698,8 @@ class TabletopPushingPerceptionNode
   {
     // Iterate through file name and shape pairs in db, compare to each
     std::stringstream shape_dynamics_db_path;
-    shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << "/cfg/shape_dbs/" << shape_dynamics_db_name_;
+    shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << shape_dynamics_db_base_path_
+                           << shape_dynamics_db_name_;
     ShapeDescriptor sd_feats;
     if (local_only_sd_)
     {
@@ -1746,14 +1748,7 @@ class TabletopPushingPerceptionNode
         cur_db_sd.push_back(x);
       }
       // ROS_WARN_STREAM("Descriptor has length " << cur_db_sd.size());
-      if (use_chi_squared_shape_dist_)
-      {
-        dyn.score = tabletop_pushing::shapeFeatureChiSquareDist(sd, cur_db_sd);
-      }
-      else
-      {
-        dyn.score = tabletop_pushing::shapeFeatureSquaredEuclideanDist(sd, cur_db_sd);
-      }
+      dyn.score = tabletop_pushing::shapeFeatureSquaredEuclideanDist(sd, cur_db_sd);
 
       // ROS_WARN_STREAM("Descriptor match score is " << dyn.score << "\n");
       std::stringstream db_str;
@@ -2617,8 +2612,8 @@ class TabletopPushingPerceptionNode
   std::vector<std::string> cam_info_name_buffer_;
 #endif
   std::string shape_dynamics_db_name_;
+  std::string shape_dynamics_db_base_path_;
   int shape_dyn_k_;
-  bool use_chi_squared_shape_dist_;
   bool local_only_sd_;
   bool global_only_sd_;
   int local_sd_length_;
