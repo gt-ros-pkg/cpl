@@ -1290,3 +1290,11 @@ class ModelPerformanceChecker:
         # TODO: Scale the radians? sin(theta), cos(theta)
         # TODO: Just use position variables?
         return np.linalg.norm(x_hat - x_gt)
+
+    def write_to_disk(self, ranked_models, ouput_file_name):
+        out_file = file(output_file_name, 'a')
+        out_file.write('# New Trial\n')
+        for (score, model) in ranked_models.items():
+            print model, ':', str(score)
+            out_file.write(str(score) + ':' + str(model))
+        out_file.close()

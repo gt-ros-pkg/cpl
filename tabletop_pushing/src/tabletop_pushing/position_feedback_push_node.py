@@ -264,6 +264,7 @@ class PositionFeedbackPushNode:
         self.svr_base_path = rospy.get_param('~svr_base_path', '/cfg/SVR_DYN/')
         # Model performance analysis
         self.models_to_check_db = rospy.get_param('~model_checker_db_file_path', 'cfg/shape_db/shapes.txt')
+        self.model_checker_output_path = rospy.get_param('~model_checker_output_path', 'cfg')
         self.trajectory_to_check = []
         self.model_checker = None
         self.check_model_performance = False
@@ -617,7 +618,11 @@ class PositionFeedbackPushNode:
             self.check_model_performance = False
             # return the best model
             response.best_model = best_model
-            # TODO: save ranked to disk
+            # save ranked to disk
+            if not os.path.exists(self.model_checker_output_path):
+                os.mkdir(self.model_checker_output_path)
+            output_file_name = self.model_checker_output_path + self.models_to_check_db.split('/')[-1]
+            model_checker.write_to_disk(ranked_models, ouput_file_name)
 
         # Cleanup and save data
         if not _OFFLINE:
