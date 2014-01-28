@@ -373,9 +373,10 @@ def write_rand_shape_db_file(class_labels, output_path):
         obj_str = 'objs'
         for obj_class in value:
             obj_str += '_' + obj_class
-        out_str = obj_str + ':' + str(key)
-        print out_str
-        out_file.write(out_str+'\n')
+        if len(value) > 0:
+            out_str = obj_str + ':' + str(key)
+            print out_str
+            out_file.write(out_str+'\n')
     out_file.close()
 
 def train_random_object_class_clusters(obj_classes, shape_db_output_path, num_clusters = 5):
