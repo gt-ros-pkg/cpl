@@ -367,18 +367,30 @@ def train_shape_clusters(obj_classes, base_input_path,
         print 'Cluster', key, 'has objects', value
         train_clustered_obj_model(value)
 
-def build_random_object_class_clusters(num_clusters=5):
+def write_rand_shape_db_file(class_labels, output_path):
+    out_file = file(output_path, 'w')
+    for (key, value) in class_labels.items():
+        for obj_class in value:
+            out_str = obj_class + ':' + str(key) + '\n'
+            print out_str
+            out_file.writeline(out_str)
+    out_file.close()
+
+def build_random_object_class_clusters(obj_classes, shape_db_output_path, num_clusters=5):
     class_labels = {}
     for i in xrange(num_clusters):
         class_labels[i] = []
-    for obj_class in _ALL_CLASSES:
+    for obj_class in obj_classes:
         rand_idx = random.randint(0, num_clusters-1)
         class_labels[rand_idx].append(obj_class)
+
+    # TODO: Build new shape db files form outputs
+    write_rand_shape_db_file(class_labels, shape_db_output_path)
 
     for (key, value) in class_labels.items():
         print 'Cluster', key, 'has objects', value
         train_clustered_obj_model(value)
-        # TODO: Build new shape db files form outputs
+
 
 def train_hold_out_shape_clusters(num_clusters = 5):
     obj_classes = _ALL_CLASSES[:]
