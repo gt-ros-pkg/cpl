@@ -243,6 +243,8 @@ class ModelPerformanceChecker:
         Return a scalar score measuring how predictive the test_model is of the observed trajectory
         '''
         score = 0
+        if len(trajectory) < 1:
+            return None
         for step in trajectory:
             # TODO: Get control and state of object
             u_k = []
@@ -251,7 +253,7 @@ class ModelPerformanceChecker:
             # TODO: Get next state ground truth
             x_gt = []
             score += self.score_step(x_hat, x_gt)
-        return score
+        return (score/len(trajectory))
 
     def choose_best_model(self, trial_trajectory):
         '''
