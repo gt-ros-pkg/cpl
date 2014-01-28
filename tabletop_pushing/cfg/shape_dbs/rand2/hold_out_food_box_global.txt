@@ -1,0 +1,5 @@
+objs_large_brush_salt_large_vitamins_plate_water_bottle:0
+objs_mug_bowl:1
+objs_bear_glad_batteries:2
+objs_phone_camcorder:3
+objs_soap_box_shampoo:4
