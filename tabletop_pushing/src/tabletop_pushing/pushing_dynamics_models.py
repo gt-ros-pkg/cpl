@@ -1238,12 +1238,12 @@ class ModelPerformanceChecker:
     def __init__(self, models_file_name, svr_base_path):
         self.dyn_models = []
         self.model_names = self.load_model_names_from_disk(models_file_name)
-        for name in model_names:
-            base_name = svr_base_path + name + '_params.txt'
-            new_model = SVRPushDynamics(param_file_name = name)
+        for name in self.model_names:
+            param_file_name = svr_base_path + name + '_params.txt'
+            new_model = SVRPushDynamics(param_file_name = param_file_name)
             self.dyn_models.append(new_model)
 
-    def load_model_names_from_disk(self, models_file_name):
+    def load_model_names_from_disk(self, model_file_name):
         model_file = file(model_file_name, 'r')
         model_names = [line.split(':')[0] for line in model_file.readlines()]
         model_file.close()
@@ -1259,12 +1259,12 @@ class ModelPerformanceChecker:
         X_hat = []
         for i, step in enumerate(trajectory):
             # Get control and state of object
-            u_k = step[0]
-            x_k = step[1]
+            x_k = step[0]
+            u_k = step[1]
             X_hat.append(test_model.predict(x_k, u_k))
             # Add to X_gt for previous time step
             if i > 0:
-                X_gt.append(X_k)
+                X_gt.append(x_k)
         score = 0
         for i in xrange(len(X_gt)):
             x_gt = X_gt[i]
@@ -1291,10 +1291,11 @@ class ModelPerformanceChecker:
         # TODO: Just use position variables?
         return np.linalg.norm(x_hat - x_gt)
 
-    def write_to_disk(self, ranked_models, ouput_file_name):
+    def write_to_disk(self, ranked_models, output_file_name, used_model_score, used_model_name):
         out_file = file(output_file_name, 'a')
         out_file.write('# New Trial\n')
+        out_file.write(str(used_model_score) +':' + used_model_name + '\n')
         for (score, model) in ranked_models.items():
             print model, ':', str(score)
-            out_file.write(str(score) + ':' + str(model))
+            out_file.write(str(score) + ':' + str(model) + '\n')
         out_file.close()

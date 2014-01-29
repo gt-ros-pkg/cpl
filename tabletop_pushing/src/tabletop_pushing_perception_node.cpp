@@ -1809,6 +1809,7 @@ class TabletopPushingPerceptionNode
     int rand_idx = rand() % max_k;
     std::vector<std::string> best_k;
     best_k.push_back(dyn_models[rand_idx]);
+    ROS_INFO_STREAM("Chose dyn model: " << best_k[0]);
     return best_k;
   }
 

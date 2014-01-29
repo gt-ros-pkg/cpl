@@ -16,3 +16,5 @@ geometry_msgs/Pose2D goal_error
 bool action_aborted
 bool failed_pre_position
 string best_model
+float64 best_model_score
+float64 used_model_score

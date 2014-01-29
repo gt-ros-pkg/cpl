@@ -51,6 +51,7 @@ from math import sin, cos, pi, fabs, sqrt, atan2
 from push_learning import ControlAnalysisIO
 import rbf_control
 import sys
+import os
 from push_primitives import *
 from model_based_pushing_control import *
 from analyze_mpc import MPCSolutionIO, PushTrajectoryIO
@@ -266,7 +267,6 @@ class PositionFeedbackPushNode:
         self.models_to_check_db = rospy.get_param('~model_checker_db_file_path', 'cfg/shape_db/shapes.txt')
         self.model_checker_output_path = rospy.get_param('~model_checker_output_path', 'cfg')
         self.trajectory_to_check = []
-        self.model_checker = None
         self.check_model_performance = False
 
         # Set joint gains
@@ -490,7 +490,7 @@ class PositionFeedbackPushNode:
 
         if request.check_model_performance:
             self.check_model_performance = True
-            self.model_checker = ModelPerformanceChecker(self.models_to_check_db, self.svr_base_path)
+            self.used_model_name = None
             self.trajectory_to_check = []
 
         if request.left_arm:
@@ -543,6 +543,7 @@ class PositionFeedbackPushNode:
                                                self.mpc_input_space_dim)
             else:
                 mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
+                self.used_model_name = mpc_suffix
                 # NOTE: Add switch here if we get other non svm dynamics models
                 base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
                 param_file_string = base_path + mpc_suffix + '_params.txt'
@@ -571,6 +572,7 @@ class PositionFeedbackPushNode:
                     # NOTE: Add switch here if we get other non svm dynamics models
                     base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
                     param_file_string = base_path + sqp_suffix + '_params.txt'
+                    self.used_model_name = sqp_suffix
                     rospy.loginfo('Loading dynamics model: ' + param_file_string)
                     dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
@@ -614,15 +616,25 @@ class PositionFeedbackPushNode:
             response.action_aborted = result.aborted
 
         if request.check_model_performance:
-            (best_model, ranked_models) = self.model_checker.choose_best_model(self.trajectory_to_check)
+            base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
+            rospy.loginfo('base_path: ' + base_path)
+            model_db_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.models_to_check_db
+            model_checker = ModelPerformanceChecker(model_db_path, base_path)
+
+            (best_model, ranked_models) = model_checker.choose_best_model(self.trajectory_to_check)
             self.check_model_performance = False
             # return the best model
             response.best_model = best_model
+            response.best_model_score = min(ranked_models.keys())
+            response.used_model_score = model_checker.check_model_score(self.MPC.dyn_model, self.trajectory_to_check)
             # save ranked to disk
             if not os.path.exists(self.model_checker_output_path):
                 os.mkdir(self.model_checker_output_path)
             output_file_name = self.model_checker_output_path + self.models_to_check_db.split('/')[-1]
-            model_checker.write_to_disk(ranked_models, ouput_file_name)
+            if self.used_model_name is None:
+                self.used_model_name = request.controller_name
+            model_checker.write_to_disk(ranked_models, output_file_name, response.used_model_score,
+                                        self.used_model_name)
 
         # Cleanup and save data
         if not _OFFLINE:

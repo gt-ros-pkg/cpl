@@ -349,6 +349,10 @@ class TabletopExecutive:
                                               push_vec_res, goal_pose,
                                               controller_name, proxy_name)
             push_time = time.time() - start_time
+            if self.check_model_performance:
+                rospy.loginfo('Most predictive model: ' + push_res.best_model + ' with score ' +
+                              str(push_res.best_model_score))
+                rospy.loginfo('Used model scored: ' + str(push_res.used_model_score))
             if push_res.failed_pre_position:
                 rospy.loginfo('Writing trial bad line because of failed hand placement')
                 if _USE_LEARN_IO:
@@ -1175,7 +1179,7 @@ if __name__ == '__main__':
     use_singulation = False
     use_learning = True
     learning_dynamics = True
-    compare_shape_for_dynamics = False
+    compare_shape_for_dynamics = True
     check_model_performance = True
     num_trials_per_object = 10
     use_guided = True
