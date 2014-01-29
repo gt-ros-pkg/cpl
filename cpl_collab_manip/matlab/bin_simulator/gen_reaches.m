@@ -51,11 +51,11 @@ while 1
             new_action.time = reach_final_mid_times(i_rch-1) + humplan.durs_step(i_rch-1);
             new_action.type = 2;
             humacts(end+1) = new_action;
-            last_action = action_template;
-            last_action.type = 0;
-            last_action.time = inf;
-            humacts(end+1) = last_action;
         end
+        last_action = action_template;
+        last_action.type = 0;
+        last_action.time = inf;
+        humacts(end+1) = last_action;
         break
     end
 
@@ -63,6 +63,13 @@ while 1
 
     if i_avail{bin_ind} > numel(binavail{bin_ind})
         % no longer available, wait forever
+        if reach_final_mid_times(i_rch-1) + humplan.durs_step(i_rch-1) > humacts(end).time
+            % add the last assembly time
+            new_action = action_template;
+            new_action.time = reach_final_mid_times(i_rch-1) + humplan.durs_step(i_rch-1);
+            new_action.type = 2;
+            humacts(end+1) = new_action;
+        end
         new_action = action_template;
         new_action.time = inf;
         new_action.type = 3;

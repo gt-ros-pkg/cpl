@@ -5,6 +5,11 @@ both_sum_sq_waits = cell(2,2);
 both_max_waits = cell(2,2);
 both_wait_periods = cell(2,2);
 both_failed_reaches = cell(2,2);
+both_sum_waits_mat = [];
+both_sum_sq_waits_mat = [];
+both_max_waits_mat = [];
+both_wait_periods_mat = [];
+both_failed_reaches_mat = [];
 
 for conf_ind = 1:2
     for detect_ind = 1:2
@@ -30,4 +35,26 @@ for conf_ind = 1:2
     end
 end
 
+cond_order = [1, 1; 2, 1; 2, 2; 1, 2]';
+for cond_ind = 1:4
+    both_sum_waits_mat(cond_ind,:) = both_sum_waits{cond_order(1,cond_ind),cond_order(2,cond_ind)};
+    both_sum_sq_waits_mat(cond_ind,:) = both_sum_sq_waits{cond_order(1,cond_ind),cond_order(2,cond_ind)};
+    both_max_waits_mat(cond_ind,:) = both_max_waits{cond_order(1,cond_ind),cond_order(2,cond_ind)};
+    both_wait_periods_mat(cond_ind,:) = both_wait_periods{cond_order(1,cond_ind),cond_order(2,cond_ind)};
+    both_failed_reaches_mat(cond_ind,:) = both_failed_reaches{cond_order(1,cond_ind),cond_order(2,cond_ind)};
+end
 
+x_boxplot_labels = {'{RD, HC}', '{RD, LC}', '{UD, LC}', '{UD, HC}'};
+figure(44)
+subplot(1,2,1)
+boxplot(both_sum_waits_mat', 'whisker', inf);
+AX = gca;
+set(AX, 'XTick', (1:4));
+set(AX, 'XTickLabel', x_boxplot_labels);
+set(get(AX, 'YLabel'), 'String', 'Total Wait Time (s)');
+subplot(1,2,2)
+boxplot(both_sum_sq_waits_mat', 'whisker', inf);
+AX = gca;
+set(AX, 'XTick', (1:4));
+set(AX, 'XTickLabel', x_boxplot_labels);
+set(get(AX, 'YLabel'), 'String', 'Sum Squared Wait Time (s^2)');

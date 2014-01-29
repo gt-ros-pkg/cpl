@@ -16,4 +16,5 @@ AX = gca;
 set(AX,'YTick',(1:num_bins)-0.5);
 set(AX,'YTickLabel',ylabels);
 set(AX,'YGrid','off');
+set(get(AX, 'YLabel'), 'String', 'Bin Reach Detections');
 set(AX,'XGrid','on');

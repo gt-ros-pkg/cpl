@@ -38,7 +38,7 @@ end
 
 if for_humanoids
     text(nowtimesec+0.5, numbins-0.2, sprintf('Now'));
-    set(gca, 'FontWeight', 'demi');
+    %set(gca, 'FontWeight', 'demi');
 end
 plot([nowtimesec, nowtimesec], [0, numbins], 'g');
 
@@ -52,5 +52,6 @@ AX = gca;
 set(AX,'YTick',(1:numbins)-0.5);
 set(AX,'YTickLabel',ylabels);
 set(AX,'XTickLabel','');
+set(get(AX, 'YLabel'), 'String', 'Bin Demand Distributions');
 set(AX,'YGrid','off');
 set(AX,'XGrid','on');

@@ -1,16 +1,5 @@
-function [action, best_plan] = multistep(probs, slot_states, bin_names, ...
-                                         nowtimesec, rate, ...
-                                         robacts, humacts, ws_slots, ...
-                                         lastrminds, ...
-                                         debug, detections_sorted, extra_info)
-
-if 1
-    bin_names{1} = 'A';
-    for i = 1:3
-        bin_names{2*i} = sprintf('B%d',i+1);
-        bin_names{2*i+1} = sprintf('C%d',i+1);
-    end
-end
+function [action, best_plan, bin_relevances] = multistep(probs, slot_states, ...
+                                         nowtimesec, rate, lastrminds)
 
 planning_params
 
@@ -67,12 +56,8 @@ planning_params
 % history.waiting_times{end+1} = waiting_times;
 
 % optimizer printout verbosity
-if debug
-    display_arg = 'off';
-    %display_arg = 'final-detailed';
-else
-    display_arg = 'off';
-end
+display_arg = 'off';
+%display_arg = 'final-detailed';
 % opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals);
 % opt_options = optimset('Algorithm', 'active-set', 'FinDiffRelStep', 1, 'MaxFunEvals', opt_fun_evals, ...
 % opt_options = optimset('Algorithm', 'interior-point', 'MaxFunEvals', opt_fun_evals, ...
@@ -141,23 +126,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if exit_early
-    if debug
-        figure(101)
-        clf
-        subplot_tight(3,1,1,[.02,0.1]);
-        visualize_bin_activity([], [], bin_names, ...
-                               [], slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, robacts, humacts, ws_slots, extra_info);
-
-        subplot_tight(3,1,2,[.02,0.1]);
-        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time, extra_info);
-
-        subplot_tight(3,1,3,[.05,0.1]);
-        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
-        
-        pause(0.05)
-    end
+    best_plan = [];
     return
 end
 
@@ -261,33 +230,6 @@ for i = 1:size(deliv_seqs,1)
     % if action  < 0, remove bin "action"
     actions(i) = plan_action(plan, action_starts, nowtimesec, planning_cycle);
 
-    if debug && i==1
-        figure(101)
-        clf
-        subplot_tight(3,1,1,[.02,0.1]);
-        visualize_bin_activity(plan, [action_starts', action_ends'], bin_names, ...
-                               [], slot_states, numbins, rate, ...
-                               nowtimesec, t, max_time, robacts, humacts, ws_slots, extra_info);
-
-        subplot_tight(3,1,2,[.02,0.1]);
-        visualize_bin_probs(t, numbins, probs, bin_names, bin_relevances, ...
-                            nowtimesec, nowtimeind, max_time, extra_info);
-        
-        subplot_tight(3,1,3,[.05,0.1]);
-        visualize_detections(t, detections_sorted, max_time, numbins, nowtimesec, bin_names);
-
-        % if actions(i) == 0
-        %     action_name = 'WAIT';
-        % elseif actions(i) > 0
-        %     action_name = sprintf('DELIVER %s', bin_names{actions(i)});
-        % else
-        %     action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
-        % end
-        % title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
-        % pause(0.05)
-        
-        
-    end
 end
 
 plan_costs = nan*zeros(size(all_plans_sorted,1)*2,size(all_plans_sorted,2)+1);
@@ -300,12 +242,3 @@ plan_costs
 
 action = actions(1);
 best_plan = [all_plans_sorted(1,:)', all_action_starts(1,:)', all_action_ends(1,:)'];
-
-% history.actions_sorted{end+1} = actions;
-% history.all_plans_sorted{end+1} = all_plans_sorted;
-% history.all_action_starts{end+1} = all_action_starts;
-% history.all_action_ends{end+1} = all_action_ends;
-% history.costs_sorted{end+1} = costs_sorted;
-% history.all_costs_split{end+1} = all_costs_split;
-% history.is_delivered{end+1} = is_delivered;
-% history.bin_relevances{end+1} = bin_relevances;

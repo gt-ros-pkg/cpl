@@ -1,6 +1,7 @@
-function [] = visualize_bin_activity(bin_seq, times, bin_names, history, ...
-                                     slot_states, numbins, rate, tnow, t, maxtime, ...
+function [] = visualize_bin_activity(best_plan, bin_names, N, rate, nowtimesec, max_time, ...
                                      robacts, humacts, ws_slots, for_humanoids)
+numbins = numel(bin_names);
+
 bar_width = 100/numbins;
 hold on
 
@@ -11,9 +12,9 @@ hold on
 for i = 1:numel(humacts)
     if humacts(i).type == 3 
         start_time = max(0, humacts(i-1).time);
-        end_time = min(tnow, humacts(i).time);
+        end_time = min(nowtimesec, humacts(i).time);
         bin_ind = humacts(i).bin_ind;
-        if start_time > tnow
+        if start_time > nowtimesec
             break
         end
 
@@ -53,42 +54,45 @@ for act_ind = 2:numel(robacts)
     plot([start_time, end_time], [yval, yval], color,'LineWidth',bar_width*0.8);
 
     if for_humanoids
-        text(max(start_time-1,1), yval+0.6, show_text);
+        text(max(start_time-1,1), yval+0.45, show_text);
     end
 end
 
-for i = 1:size(times,1)
-    bin = abs(bin_seq(i));
-    isrm = bin_seq(i) < 0;
+for i = 1:size(best_plan,1)
+    bin_action = best_plan(i,1);
+    act_start = best_plan(i,2);
+    act_end = best_plan(i,3);
+    bin = abs(bin_action);
+    isrm = bin_action < 0;
     bin_ind = bin;
     yval = numbins-(bin_ind-1);
     if isrm
         color = 'r';        
         %if latest_rmv_bins(bin_ind)<0 || ...
-         %   abs(latest_rmv_bins(bin_ind)-times(i,1))>20 
-        if times(i,1) >tnow+0.3   
-            show_text = 'Remove';%strcat('Remove', num2str(tnow), '&', num2str(times(i,1)));
+         %   abs(latest_rmv_bins(bin_ind)-act_start)>20 
+        if act_start >nowtimesec+0.3   
+            show_text = 'Remove';%strcat('Remove', num2str(nowtimesec), '&', num2str(act_start));
         else
-            show_text = '';%num2str(abs(latest_rmv_bins(bin_ind)-times(i,1)));%'taken care of';
+            show_text = '';%num2str(abs(latest_rmv_bins(bin_ind)-act_start));%'taken care of';
         end
     else
         color = 'b';
         %if latest_add_bins(bin_ind)<0 && ...
-         %   abs(latest_add_bins(bin_ind)-times(i,1))>20 
-        if times(i,1) > tnow+0.3
-            show_text = 'Deliver';%strcat('Remove', num2str(tnow), '&', num2str(times(i,1)));%'Deliver';
+         %   abs(latest_add_bins(bin_ind)-act_start)>20 
+        if act_start > nowtimesec+0.3
+            show_text = 'Deliver';%strcat('Remove', num2str(nowtimesec), '&', num2str(act_start));%'Deliver';
         else
-            show_text = '';%num2str(abs(latest_add_bins(bin_ind)-times(i,1)));%'taken care of';
+            show_text = '';%num2str(abs(latest_add_bins(bin_ind)-act_start));%'taken care of';
         end
     end
 
-    plot([times(i,1), times(i,2)], [yval, yval],color,'LineWidth',bar_width*0.8);
-    % plot([times(i,1), times(i,2)], [yval, yval],color,'LineWidth',bar_width*0.8);
+    plot([act_start, act_end], [yval, yval],color,'LineWidth',bar_width*0.8);
+    % plot([act_start, act_end], [yval, yval],color,'LineWidth',bar_width*0.8);
     if for_humanoids
-        text(max(times(i,1)-1,1), max(yval+0.8,1), show_text);
+        text(max(act_start-1,1), max(yval+0.8,1), show_text);
     end
 end
-plot([tnow, tnow], [0, numbins+1], 'g');
+plot([nowtimesec, nowtimesec], [0, numbins+1], 'g');
     
 % for hist_ind = 1:numel(history.nowtimesec_inf)
 %     for bin_id = history.ws_bins(hist_ind,:)
@@ -111,7 +115,7 @@ if ~for_humanoids
        ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
     end
 else    
-    text(tnow+0.5, numbins+0.6, sprintf('Now'));
+    text(nowtimesec+0.5, numbins+0.6, sprintf('Now'));
     for i = 1:numbins
        ylabels{i} = sprintf('Bin %s', bin_names{numbins-i+1});
        % ylabels{i} = sprintf('Bin %d', numbins-i+1);
@@ -119,11 +123,11 @@ else
 end
 
 AX = gca;
-%maxtime = max(times(:));
-axis([0, maxtime, 0, numbins+1])
+axis([0, max_time, 0, numbins+1])
 set(AX,'YTick',(1:numbins));
 set(AX,'YTickLabel',ylabels);
-set(AX,'XTickLabel','');
+set(get(AX, 'XLabel'), 'String', 'Time (s)');
+set(get(AX, 'YLabel'), 'String', 'Robot Action Schedule');
 box on;
 grid on;
 hold off;

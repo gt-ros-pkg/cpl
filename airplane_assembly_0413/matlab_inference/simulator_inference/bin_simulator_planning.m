@@ -1,11 +1,11 @@
 function [next_action] = bin_simulator_planning(bin_distributions, nowtimeind, ...
                                                 bins_cur_avail, lastrminds, ...
                                                 robacts, humacts, ws_slots, ...
+                                                bin_names, ...
                                                 detection_raw_result, rate, debug, extra_info)
 
 probs       = {};
 slot_states = [];
-bin_names   = {};
 nowtimesec  = nowtimeind / rate; % multistep arg 4
 
 bin_id_map = ones(1,length(bin_distributions));
@@ -14,10 +14,6 @@ for i=1:length(bin_distributions)
     % multistep arg 1
     probs{i,1} = bin_distributions(i).bin_needed;
     probs{i,2} = bin_distributions(i).bin_nolonger_needed;
-    
-    % multistep arg 3
-    bin_names{i} = [binid2name(bin_distributions(i).bin_id) ...
-                    '(id ' num2str(bin_distributions(i).bin_id) ')'];
     
     bin_id = bin_distributions(i).bin_id;
     bin_id_map(i) = bin_id;

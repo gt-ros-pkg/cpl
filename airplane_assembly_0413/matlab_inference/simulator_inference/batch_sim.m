@@ -8,10 +8,17 @@ if 1
     tailat_acts = {'tail_at1', 'tail_at2', 'tail_at3', 'tail_at4', 'tail_at5', 'tail_at6'};
     tailh_acts = {'tail_h1', 'tail_h2', 'tail_h3', 'tail_h4', 'tail_h5', 'tail_h6'};
     bin_id_order = [3, 11, 10, 12, 7, 14, 13];
+
+    bin_names = {};
+    bin_names{1} = 'A';
+    for i = 1:3
+        bin_names{2*i} = sprintf('B%d',i+1);
+        bin_names{2*i+1} = sprintf('C%d',i+1);
+    end
 end
 
-start_seed = 11;
-num_runs = 10;
+start_seed = 26;
+num_runs = 5;
 % batch_results = cell(2,2,2);
 for run_ind = 1:num_runs
     for conf_ind = 1:2

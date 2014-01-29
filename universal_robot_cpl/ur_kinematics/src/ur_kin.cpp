@@ -76,21 +76,23 @@ namespace ur_kinematics {
       }
       else {
         double arccos = acos(d4 / sqrt(R)) ;
-        double arctan = atan2(-B, A);
-        double pos = arccos + arctan;
-        double neg = -arccos + arctan;
+        double arctan = atan2(-A, -B);
+        double pos = arccos + arctan + PI/2.0;
+        double neg = -arccos + arctan + PI/2.0;
         if(fabs(pos) < ZERO_THRESH)
           pos = 0.0;
         if(fabs(neg) < ZERO_THRESH)
           neg = 0.0;
-        if(pos >= 0.0)
-          q1[0] = pos;
-        else
-          q1[0] = 2.0*PI + pos;
-        if(neg >= 0.0)
-          q1[1] = neg; 
-        else
-          q1[1] = 2.0*PI + neg;
+        q1[0] = pos;
+        q1[1] = neg;
+        while(q1[0] < 0.0)
+          q1[0] += 2.0*PI;
+        while(q1[0] >= 2.0*PI)
+          q1[0] -= 2.0*PI;
+        while(q1[1] < 0.0)
+          q1[1] += 2.0*PI;
+        while(q1[1] >= 2.0*PI)
+          q1[1] -= 2.0*PI;
       }
     }
     ////////////////////////////////////////////////////////////////////////////////
@@ -187,7 +189,7 @@ using namespace ur_kinematics;
 
 int main(int argc, char* argv[])
 {
-  double q[6] = {0.0, 0.0, 1.0, 0.0, 1.0, 0.0};
+  double q[6] = {2.8, 0.2, 1.0, 0.3, 1.0, 0.0};
   double* T = new double[16];
   forward(q, T);
   for(int i=0;i<4;i++) {
@@ -198,6 +200,8 @@ int main(int argc, char* argv[])
   double q_sols[8*6];
   int num_sols;
   num_sols = inverse(T, q_sols);
+  printf("Actual:\n%1.6f %1.6f %1.6f %1.6f %1.6f %1.6f\nSols:\n", 
+      q[0], q[1], q[2], q[3], q[4], q[5]);
   for(int i=0;i<num_sols;i++) 
     printf("%1.6f %1.6f %1.6f %1.6f %1.6f %1.6f\n", 
        q_sols[i*6+0], q_sols[i*6+1], q_sols[i*6+2], q_sols[i*6+3], q_sols[i*6+4], q_sols[i*6+5]);

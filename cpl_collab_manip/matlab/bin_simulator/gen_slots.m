@@ -9,6 +9,9 @@ row2_off = 0.9;
 row3_offx = 0.9;
 row3_offy = 1.1;
 row3_offr = -pi/4.0;
+row4_offx = 1.2;
+row4_offy = 0.9;
+row4_offr = -pi/4.0;
 
 slot_template = struct('row', -1, 'center', df_reach_off, 'reach_loc', df_reach_off, ...
                        'task_frame', df_reach_off);
@@ -32,6 +35,12 @@ row_nums_cell = num2cell(3*ones(1,4));
 row3_center = homo2d(row3_offx, row3_offy, row3_offr);
 row_centers_cell = get_row_slots(4, df_table_width, df_bin_width, row3_center);
 [slots(8:11).center] = row_centers_cell{:};
+
+row_nums_cell = num2cell(4*ones(1,4));
+[slots(12:15).row] = row_nums_cell{:};
+row4_center = homo2d(row4_offx, row4_offy, row4_offr);
+row_centers_cell = get_row_slots(4, df_table_width, df_bin_width, row4_center);
+[slots(12:15).center] = row_centers_cell{:};
 
 for i = 1:numel(slots)
     reach_loc = slots(i).center * df_reach_off;

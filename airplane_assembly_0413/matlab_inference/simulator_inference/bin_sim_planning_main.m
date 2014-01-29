@@ -3,10 +3,8 @@
 %init_for_s % 3 tasks
 % init_for_linear_chain_7;
 % init_for_linear_chain_robot;
-init_for_iros_workshop_2chains_task
-
-m = gen_inference_net(MODEL_PATH);
-m.bin_req = bin_req;
+% init_for_iros_workshop_2chains_task
+% init_for_icra_complex_task
 
 % initialze simulator
 init_simulator
@@ -161,10 +159,52 @@ while nowtimeind < m.params.T
 
     bin_distributions = extract_bin_requirement_distributions(m);
     ws_slots = find([slots.row] == 1);
-    next_action = bin_simulator_planning(bin_distributions, nowtimeind, ws_bins, ...
-                                         lastrminds, robacts, humacts, ws_slots, ...
-                                         detection_raw_result, rate, ...
-                                         debug_planning, ~viz_extra_info);
+
+    probs       = {};
+    slot_states = [];
+    bin_id_map = ones(1,length(bin_distributions));
+    for i=1:length(bin_distributions)
+        
+        % multistep arg 1
+        probs{i,1} = bin_distributions(i).bin_needed;
+        probs{i,2} = bin_distributions(i).bin_nolonger_needed;
+        
+        bin_id = bin_distributions(i).bin_id;
+        bin_id_map(i) = bin_id;
+        detections_sorted(i,:) = detection_raw_result(bin_id,:);
+
+        % TODO
+        condition_no = ~any(bin_id == ws_bins); % true if bin not in ws
+
+        if ~condition_no
+            % multistep arg 2
+            slot_states(end+1) = i;
+        end
+    end
+
+    slot_states(end+1:numel(ws_slots)) = 0;
+
+    [next_action, best_plan, bin_relevances] = multistep(probs, slot_states, nowtimesec, rate, ...
+                                                         lastrminds);
+    if next_action ~= 0
+        next_action = sign(next_action)*bin_id_map(abs(next_action));
+    end
+
+    if debug_planning
+        vis_plan_probs_det(best_plan, probs, bin_relevances, detections_sorted, ...
+                           bin_names, rate, nowtimesec, ...
+                           robacts, humacts, ws_slots, extra_info);
+        % if actions(i) == 0
+        %     action_name = 'WAIT';
+        % elseif actions(i) > 0
+        %     action_name = sprintf('DELIVER %s', bin_names{actions(i)});
+        % else
+        %     action_name = sprintf('REMOVE %s', bin_names{-actions(i)});
+        % end
+        % title(sprintf('Cost: %.1f | Action: %s', cost, action_name))
+        % pause(0.05)
+    end
+
     % update robplan sequence with new action
     robplan.times(end+1) = nowtimesec;
     if next_action ~= 0
@@ -180,6 +220,7 @@ while nowtimeind < m.params.T
     end
 
     if create_movie
+        pause(1)
         if planning_ind <= movie_frames
             planning_movie(:,planning_ind) = getframe(fig_planning, winsize);
             planning_ind = planning_ind + 1;
@@ -194,4 +235,10 @@ while nowtimeind < m.params.T
     end
 end
 
+if 0
+    figure(102)
+    clf
+    visualize_bin_activity([], bin_names, numel(probs{1,1}), rate, ...
+                           inf, 160, robacts, humacts, ws_slots, 1);
+end
 wait_stats = fluency_measures(humacts)
