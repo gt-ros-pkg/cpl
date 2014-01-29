@@ -1,0 +1,17 @@
+<launch>
+    <arg name="kinect_camera_name" default="camera"/>
+    <arg name="high_res" default="false"/>
+
+    <!-- RGB-D Assembler Node -->
+      <node name="rgbd_assembler_kinect" type="rgbd_assembler_kinect"
+            pkg="arm_mapping" output="screen" respawn="false">
+        <param if="$(arg high_res)" name="image_topic" value="/$(arg kinect_camera_name)/depth_registered/points_image"/>
+        <param unless="$(arg high_res)" name="image_topic" value="/$(arg kinect_camera_name)/rgb/image_color"/>
+        <param name="disparity_image_topic" value="/$(arg kinect_camera_name)/depth/disparity"/>
+        <param name="camera_info_topic" value="/$(arg kinect_camera_name)/depth/camera_info"/>
+        <param name="point_cloud_topic" value="/$(arg kinect_camera_name)/depth_registered/points"/>
+		<param name="use_disparity_image" value="false"/>
+      </node>
+
+    
+</launch>
