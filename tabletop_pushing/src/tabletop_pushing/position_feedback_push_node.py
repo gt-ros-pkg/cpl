@@ -624,7 +624,7 @@ class PositionFeedbackPushNode:
             (best_model, ranked_models) = model_checker.choose_best_model(self.trajectory_to_check)
             self.check_model_performance = False
             # return the best model
-            response.best_model = best_model
+            response.best_model = str(best_model)
             response.best_model_score = min(ranked_models.keys())
             response.used_model_score = model_checker.check_model_score(self.MPC.dyn_model, self.trajectory_to_check)
             # save ranked to disk

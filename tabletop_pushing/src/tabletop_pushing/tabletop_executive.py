@@ -317,7 +317,7 @@ class TabletopExecutive:
                                                              proxy_name, behavior_primitive,
                                                              learn_start_loc=False)
             if push_vec_res is None:
-                rospy.logerror('Failed to get learning push response!')
+                rospy.logerr('Failed to get learning push response!')
                 return None
             elif push_vec_res == 'quit':
                 return push_vec_res

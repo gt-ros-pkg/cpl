@@ -1254,7 +1254,7 @@ class ModelPerformanceChecker:
         Return a scalar score measuring how predictive the test_model is of the observed trajectory
         '''
         if len(trajectory) < 1:
-            return None
+            return 0.0
         X_gt = []
         X_hat = []
         for i, step in enumerate(trajectory):

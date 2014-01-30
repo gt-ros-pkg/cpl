@@ -42,7 +42,7 @@
       <param name="min_num_mpc_trajectory_steps" type="int" value="2"/>
       <param name="mpc_max_step_size" type="double" value="0.0025"/>
       <param name="svr_base_path" type="string" value="/cfg/SVR_DYN/epsilon_e3/"/>
-      <param name="model_checker_db_file_path" type="string" value="/cfg/shape_dbs/shape_cluster/hold_out_bear_global.txt"/>
+      <param name="model_checker_db_file_path" type="string" value="/cfg/shape_dbs/hold_out_shampoo_global.txt"/>
       <param name="model_checker_output_path" type="string" value="/u/thermans/data/new/model_checker/"/>
     </node>
 </launch>
