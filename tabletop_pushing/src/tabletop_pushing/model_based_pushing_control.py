@@ -31,7 +31,7 @@
 #  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 
-from math import sqrt
+from math import sqrt, fabs
 import numpy as np
 import scipy.optimize as opt
 from util import sign
@@ -182,11 +182,11 @@ class ModelPredictiveController:
         x_error = x_d[-1][0] - x0[0]
         y_error = x_d[-1][1] - x0[1]
 
-        if x_error > y_error:
-            u_x = min(sign(x_error)*self.u_max[0], x_error/len(x_d)*(1.0/self.delta_t))
+        if fabs(x_error) > fabs(y_error):
+            u_x = sign(x_error)*self.u_max[0]
             u_y = y_error/abs(x_error)*self.u_max[0]
         else:
-            u_y = min(sign(y_error)*self.u_max[1], y_error/len(x_d)*(1.0/self.delta_t))
+            u_y = sign(y_error)*self.u_max[1]
             u_x = x_error/abs(y_error)*self.u_max[1]
         u_theta = 0.0
         for k in xrange(self.H):

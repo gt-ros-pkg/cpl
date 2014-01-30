@@ -1271,6 +1271,10 @@ class PositionFeedbackPushNode:
         u.header.stamp = rospy.Time.now()
         u.twist.linear.x = max( min(q_star[0], self.mpc_u_max), -self.mpc_u_max)
         u.twist.linear.y = max( min(q_star[1], self.mpc_u_max), -self.mpc_u_max)
+        if fabs(u.twist.linear.x) < 0.001:
+            u.twist.linear.x = 0.0
+        if fabs(u.twist.linear.y) < 0.001:
+            u.twist.linear.y = 0.0
         u.twist.linear.z = 0.0
         u.twist.angular.x = 0.0
         u.twist.angular.y = 0.0

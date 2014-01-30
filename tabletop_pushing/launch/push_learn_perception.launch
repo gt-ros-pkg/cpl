@@ -83,7 +83,7 @@
     <param name="max_object_gripper_dist" value="0.25" type="double"/>
     <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
     <param name="object_not_moving_thresh" value="0.005" type="double"/>
-    <param name="gripper_not_moving_count_limit" value="50" type="int"/>
+    <param name="gripper_not_moving_count_limit" value="15" type="int"/>
     <param name="object_not_moving_count_limit" value="10" type="int"/>
     <param name="object_not_detected_count_limit" value="5" type="int"/>
     <param name="object_too_far_count_limit" value="5" type="int"/>
@@ -103,7 +103,7 @@
     <param name="brief_descriptor_byte_size" value="16" type="int"/>
     <param name="tracker_segment_search_radius" value="0.25" type="double"/>
 
-    <param name="shape_dynamics_db" value="hold_out_shampoo_global.txt" type="string"/>
+    <param name="shape_dynamics_db" value="hold_out_glad_global.txt" type="string"/>
     <param name="use_local_only_shape_desc" value="false" type="bool"/>
     <param name="use_global_only_shape_desc" value="true" type="bool"/>
     <param name="normalize_sd_comparison" value="true" type="bool"/>
