@@ -322,7 +322,7 @@ class TabletopExecutive:
             elif push_vec_res == 'quit':
                 return push_vec_res
 
-            if len(push_vec_res.dynamics_model_names) > 0:
+            if self.compare_shape_for_dynamics and len(push_vec_res.dynamics_model_names) > 0:
                 rospy.loginfo('Best matching models: ' + str(push_vec_res.dynamics_model_names))
                 if controller_name.startswith(MPC_CONTROLLER_PREFIX):
                     controller_name = MPC_CONTROLLER_PREFIX + push_vec_res.dynamics_model_names[0]

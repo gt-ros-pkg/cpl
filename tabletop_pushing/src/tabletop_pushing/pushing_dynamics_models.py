@@ -1280,7 +1280,11 @@ class ModelPerformanceChecker:
         for model, model_name in zip(self.dyn_models, self.model_names):
             score = self.check_model_score(model, trial_trajectory)
             if score in scored_models:
-                scored_models[score].append(model_name)
+                cur_model = scored_models[score]
+                if type(cur_model) is list:
+                    scored_models[score].append(model_name)
+                else:
+                    scored_models[score] = [cur_model, model_name]
             else:
                 scored_models[score] = model_name
 

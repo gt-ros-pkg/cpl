@@ -1187,7 +1187,7 @@ class TabletopPushingPerceptionNode
               // Force swap and redisplay
               force_swap_ = !force_swap_;
               obj_tracker_->toggleSwap();
-              startTracking(cur_state, force_swap_);
+              // startTracking(cur_state, force_swap_);
               obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
               res.shape_descriptor.assign(sd_180.begin(), sd_180.end());
               ROS_WARN_STREAM("Swapped theta because of better shape match: " << cur_state.x.theta);
