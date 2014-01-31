@@ -64,7 +64,7 @@ _USE_LEARN_IO = True
 _BUFFER_DATA = True
 _SAVE_MPC_DATA = True
 _USE_SHAPE_INFO_IN_SVM = False
-_FORCE_SINGLE_SQP_SOLVE = True
+_FORCE_SINGLE_SQP_SOLVE = False
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
