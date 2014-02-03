@@ -36,16 +36,47 @@ def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
     svr_dynamics.save_models(svr_output_path)
     return svr_dynamics
 
+def get_stats_for_diffs(error_i):
+    error_stats = []
+    # Mean and Standard deviation
+    error_stats.append(np.mean(error_i))
+    error_stats.append(np.sqrt(np.var(error_i)))
+
+    # Ordinal stuff
+    error_stats.append(np.min(error_i))
+    [q1, median, q3] = np.percentile(error_i, [25, 50, 75])
+    error_stats.append(q1)
+    error_stats.append(median)
+    error_stats.append(q3)
+    error_stats.append(np.max(error_i))
+
+    return error_stats
+
 def analyze_pred_vs_gt(Y_hat, Y_gt):
     Y_errors = []
     error_means = []
     error_sds = []
+    error_mins = []
+    error_q1s = []
+    error_medians = []
+    error_q3s = []
+    error_maxes = []
+
     for Y_hat_i, Y_gt_i in zip(Y_hat, Y_gt):
         error_i = np.abs(np.array(Y_hat_i) - np.array(Y_gt_i))
         Y_errors.append(error_i)
-        error_means.append(np.mean(error_i))
-        error_sds.append(np.sqrt(np.var(error_i)))
-    return (error_means, error_sds, Y_errors)
+        # Get stats and add to specific lists
+        error_i_stats = get_stats_for_diffs(error_i)
+        error_means.append(error_i_stats.pop(0))
+        error_sds.append(error_i_stats.pop(0))
+        error_mins.append(error_i_stats.pop(0))
+        error_q1s.append(error_i_stats.pop(0))
+        error_medians.append(error_i_stats.pop(0))
+        error_q3s.append(error_i_stats.pop(0))
+        error_maxes.append(error_i_stats.pop(0))
+
+    return (error_means, error_sds, Y_errors,
+            error_mins, error_q1s, error_medians, error_q3s, error_maxes)
 
 def test_svr_offline(model_param_file_name, test_data_example_base_name):
     svr_dynamics = SVRPushDynamics(param_file_name = model_param_file_name)
@@ -54,28 +85,35 @@ def test_svr_offline(model_param_file_name, test_data_example_base_name):
     (Y_hat, Y_gt, _) = svr_dynamics.test_batch_data(test_X, test_Y)
     return (Y_hat, Y_gt)
 
+def build_table_line(error_stats, test_obj_name):
+    stat_str = ''
+    for stat in error_stats:
+        stat_str += str(stat) + '\t,'
+    table_stat_line = test_obj_name + '\t,' + stat_str
+    print table_stat_line
+    table_stat_line += '\n'
+    return table_stat_line
+
+def write_stat_table(stat_name, table_lines, overall_line, title_line, header_line, table_out_path):
+    table_lines.extend(overall_line)
+    out_name = table_out_path + '-' + stat_name + '.txt'
+    out_file = file(out_name, 'w')
+    if len(title_line) > 0:
+        out_file.write(title_line)
+    if len(header_line) > 0:
+        out_file.write(header_line)
+    out_file.writelines(table_lines)
+    out_file.close()
+
 def build_results_table(error_means_all, error_sds_all, error_diffs_all,
+                        error_mins_all, error_q1s_all, error_medians_all, error_q3s_all, error_maxes_all,
                         target_names, test_obj_names, hold_out_obj_name,
                         table_out_path=''):
-    # Group errors by output dimension
-    overall_errors = []
-    for i in xrange(len(target_names)):
-        overall_errors.append(np.array([]))
-        for error_diffs in error_diffs_all:
-            overall_errors[i] = np.concatenate((overall_errors[i], error_diffs[i]))
-
-    # Get mean and stand dev for each output dimension
-    overall_means = []
-    overall_sds = []
-    for overall_error in overall_errors:
-        overall_means.append(np.mean(overall_error))
-        overall_sds.append(np.sqrt(np.var(overall_error)))
-
-    title_line = '|Hold out object: ' + hold_out_obj_name +'\t|'
-    header_line = '|\t|'
+    title_line = 'Hold out object: ' + hold_out_obj_name +'\t,'
+    header_line = '\t,'
     for target_name in target_names:
-        title_line += '\t|'
-        header_line += target_name + '\t|'
+        title_line += '\t,'
+        header_line += target_name + '\t,'
 
     print title_line
     print header_line
@@ -84,55 +122,81 @@ def build_results_table(error_means_all, error_sds_all, error_diffs_all,
 
     table_mean_lines = []
     table_sds_lines = []
+    table_min_lines = []
+    table_q1_lines = []
+    table_median_lines = []
+    table_q3_lines = []
+    table_max_lines = []
 
     # Output to terminal
-    for error_means, error_sds, test_obj_name in zip(error_means_all, error_sds_all, test_obj_names):
-        mean_str = ''
-        sds_str = ''
-        for mean in error_means:
-            mean_str += str(mean) + '\t|'
-        for sd in error_sds:
-            sds_str += str(sd) + '\t|'
-        table_mean_line = '|' + test_obj_name + '\t|' + mean_str
-        table_sds_line = '|' + test_obj_name + '\t|' + sds_str
-        print table_mean_line
-        print table_sds_line
-        table_mean_line += '\n'
-        table_sds_line += '\n'
-        table_mean_lines.append(table_mean_line)
-        table_sds_lines.append(table_sds_line)
+    for error_means, test_obj_name in zip(error_means_all, test_obj_names):
+        table_mean_lines.append(build_table_line(error_means, test_obj_name))
 
-    overall_mean_line = '|Overall\t|'
-    overall_sds_line = '|Overall\t|'
-    for mean in overall_means:
-        overall_mean_line += str(mean) + '\t|'
-    for sd in overall_sds:
-        overall_sds_line += str(sd) + '\t|'
-    print overall_mean_line
-    print overall_sds_line
-    overall_mean_line += '\n'
-    overall_sds_line += '\n'
+    for error_sds, test_obj_name in zip(error_sds_all, test_obj_names):
+        table_sds_lines.append(build_table_line(error_sds, test_obj_name))
+
+    for error_mins, test_obj_name in zip(error_mins_all, test_obj_names):
+        table_min_lines.append(build_table_line(error_mins, test_obj_name))
+
+    for error_q1s, test_obj_name in zip(error_q1s_all, test_obj_names):
+        table_q1_lines.append(build_table_line(error_q1s, test_obj_name))
+
+    for error_medians, test_obj_name in zip(error_medians_all, test_obj_names):
+        table_median_lines.append(build_table_line(error_medians, test_obj_name))
+
+    for error_q3s, test_obj_name in zip(error_q3s_all, test_obj_names):
+        table_q3_lines.append(build_table_line(error_q3s, test_obj_name))
+
+    for error_maxes, test_obj_name in zip(error_maxes_all, test_obj_names):
+        table_max_lines.append(build_table_line(error_maxes, test_obj_name))
+
+    # Get mean and stand dev for each output dimension
+    overall_means = []
+    overall_sds = []
+    overall_mins = []
+    overall_q1s = []
+    overall_medians = []
+    overall_q3s = []
+    overall_maxes = []
+
+    # Group errors by output dimension
+    overall_errors = []
+    for i in xrange(len(target_names)):
+        overall_errors.append(np.array([]))
+        for error_diffs in error_diffs_all:
+            overall_errors[i] = np.concatenate((overall_errors[i], error_diffs[i]))
+
+    for overall_error in overall_errors:
+        overall_stats = get_stats_for_diffs(overall_error)
+        overall_means.append(overall_stats.pop(0))
+        overall_sds.append(overall_stats.pop(0))
+        overall_mins.append(overall_stats.pop(0))
+        overall_q1s.append(overall_stats.pop(0))
+        overall_medians.append(overall_stats.pop(0))
+        overall_q3s.append(overall_stats.pop(0))
+        overall_maxes.append(overall_stats.pop(0))
+
+    overall_mean_line = build_table_line(overall_means, 'Overall')
+    overall_sds_line = build_table_line(overall_sds, 'Overall')
+    overall_min_line = build_table_line(overall_mins, 'Overall')
+    overall_q1_line = build_table_line(overall_q1s, 'Overall')
+    overall_median_line = build_table_line(overall_medians, 'Overall')
+    overall_q3_line = build_table_line(overall_q3s, 'Overall')
+    overall_max_line = build_table_line(overall_maxes, 'Overall')
 
     # Output to disk
     if len(table_out_path) > 0:
         if not os.path.exists(table_out_path):
             os.mkdir(table_out_path)
+        table_out_path += hold_out_obj_name
+        write_stat_table('means', table_mean_lines, overall_mean_line, title_line, header_line, table_out_path)
+        write_stat_table('sds', table_sds_lines, overall_sds_line, title_line, header_line, table_out_path)
 
-        mean_out_name = table_out_path + hold_out_obj_name + '-means.txt'
-        mean_out_file = file(mean_out_name, 'w')
-        mean_out_file.write(title_line)
-        mean_out_file.write(header_line)
-        mean_out_file.writelines(table_mean_lines)
-        mean_out_file.write(overall_mean_line)
-        mean_out_file.close()
-
-        sds_out_name = table_out_path + hold_out_obj_name + '-sds.txt'
-        sds_out_file = file(sds_out_name, 'w')
-        sds_out_file.write(title_line)
-        sds_out_file.write(header_line)
-        sds_out_file.writelines(table_sds_lines)
-        sds_out_file.write(overall_sds_line)
-        sds_out_file.close()
+        write_stat_table('mins', table_min_lines, overall_min_line, title_line, header_line, table_out_path)
+        write_stat_table('q1s', table_q1_lines, overall_q1_line, title_line, header_line, table_out_path)
+        write_stat_table('medians', table_median_lines, overall_median_line, title_line, header_line, table_out_path)
+        write_stat_table('q3s', table_q3_lines, overall_q3_line, title_line, header_line, table_out_path)
+        write_stat_table('maxes', table_max_lines, overall_max_line, title_line, header_line, table_out_path)
 
 def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = True):
     target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
@@ -169,6 +233,12 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
         error_means_all = []
         error_sds_all = []
         error_diffs_all = []
+        error_mins_all = []
+        error_q1s_all = []
+        error_medians_all = []
+        error_q3s_all = []
+        error_maxes_all = []
+
         for test_obj in test_classes:
             if test_singel_obj_model:
                 print '\nTesting for object', test_obj, 'with model trained on', hold_out_class
@@ -177,7 +247,8 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
             test_obj_example_base_name = base_example_dir_name + 'objs_' + test_obj
             (Y_hat, Y_gt) = test_svr_offline(model_param_file_name, test_obj_example_base_name)
             # Analyze output
-            (error_means, error_sds, error_diffs) = analyze_pred_vs_gt(Y_hat, Y_gt)
+            (error_means, error_sds, error_diffs,
+             error_mins, error_q1s, error_medians, error_q3s, error_maxes) = analyze_pred_vs_gt(Y_hat, Y_gt)
             Y_hat_all.append(Y_hat)
             Y_gt_all.append(Y_gt)
             error_means_all.append(error_means)
@@ -185,8 +256,9 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
             error_diffs_all.append(error_diffs)
         # Build table for data and save table to disk
         build_results_table(error_means_all, error_sds_all, error_diffs_all,
-                           target_names, test_classes, hold_out_class,
-                           table_out_path)
+                            error_mins_all, error_q1s_all, error_medians_all, error_q3s_all, error_maxes_all,
+                            target_names, test_classes, hold_out_class,
+                            table_out_path)
 
 def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_train_and_validate_data = False):
     train_classes = _ALL_CLASSES[:]
@@ -494,6 +566,13 @@ def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/therma
     error_means_all = []
     error_sds_all = []
     error_diffs_all = []
+    error_mins_all = []
+    error_q1s_all = []
+    error_medians_all = []
+    error_q3s_all = []
+    error_maxes_all = []
+
+    all_errors = {}
 
     for aff_file_name in aff_file_names:
         plio = push_learning.CombinedPushLearnControlIO()
@@ -502,14 +581,22 @@ def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/therma
         (Y_hat, Y_gt) = naive_model_trial_predictions(plio.push_trials)
 
         # Analyze output
-        (error_means, error_sds, error_diffs) = analyze_pred_vs_gt(Y_hat, Y_gt)
+        (error_means, error_sds, error_diffs,
+         error_mins, error_q1s, error_medians, error_q3s, error_maxes) = analyze_pred_vs_gt(Y_hat, Y_gt)
 
         Y_hat_all.append(Y_hat)
         Y_gt_all.append(Y_gt)
+
         error_means_all.append(error_means)
         error_sds_all.append(error_sds)
         error_diffs_all.append(error_diffs)
+        error_mins_all.append(error_mins)
+        error_q1s_all.append(error_q1s)
+        error_medians_all.append(error_medians)
+        error_q3s_all.append(error_q3s)
+        error_maxes_all.append(error_maxes)
 
     # Build table for data and save table to disk
     build_results_table(error_means_all, error_sds_all, error_diffs_all,
-                       target_names, test_classes, 'Naive', table_out_path)
+                        error_mins_all, error_q1s_all, error_medians_all, error_q3s_all, error_maxes_all,
+                        target_names, test_classes, 'Naive', table_out_path)
