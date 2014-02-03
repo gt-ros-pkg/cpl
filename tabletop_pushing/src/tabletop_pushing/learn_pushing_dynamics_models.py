@@ -7,6 +7,7 @@ import numpy as np
 import os
 import subprocess
 import random
+import util
 
 _ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush', 'soap_box',
                'camcorder', 'glad', 'salt', 'batteries', 'mug',
@@ -52,7 +53,11 @@ def get_stats_for_diffs(error_i):
 
     return error_stats
 
-def analyze_pred_vs_gt(Y_hat, Y_gt):
+def analyze_pred_vs_gt(Y_hat, Y_gt, Angulars=[]):
+    if len(Angulars) == 0:
+        for i in xrange(len(Y_hat)):
+            Angulars.append(False)
+
     Y_errors = []
     error_means = []
     error_sds = []
@@ -62,8 +67,10 @@ def analyze_pred_vs_gt(Y_hat, Y_gt):
     error_q3s = []
     error_maxes = []
 
-    for Y_hat_i, Y_gt_i in zip(Y_hat, Y_gt):
+    for Y_hat_i, Y_gt_i, is_angular in zip(Y_hat, Y_gt, Angulars):
         error_i = np.abs(np.array(Y_hat_i) - np.array(Y_gt_i))
+        if is_angular:
+            error_i = util.subPIDiffNP(np.array(Y_hat_i), np.array(Y_gt_i))
         Y_errors.append(error_i)
         # Get stats and add to specific lists
         error_i_stats = get_stats_for_diffs(error_i)
@@ -96,7 +103,7 @@ def build_table_line(error_stats, test_obj_name):
 
 def write_stat_table(stat_name, table_lines, overall_line, title_line, header_line, table_out_path):
     table_lines.extend(overall_line)
-    out_name = table_out_path + '-' + stat_name + '.txt'
+    out_name = table_out_path + '-' + stat_name + '.csv'
     out_file = file(out_name, 'w')
     if len(title_line) > 0:
         out_file.write(title_line)
@@ -561,6 +568,8 @@ def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/therma
                     'EE Y World',
                     'EE Phi World']
 
+    Angular = [False, False, True, False, False, True]
+
     Y_hat_all = []
     Y_gt_all = []
     error_means_all = []
@@ -582,7 +591,7 @@ def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/therma
 
         # Analyze output
         (error_means, error_sds, error_diffs,
-         error_mins, error_q1s, error_medians, error_q3s, error_maxes) = analyze_pred_vs_gt(Y_hat, Y_gt)
+         error_mins, error_q1s, error_medians, error_q3s, error_maxes) = analyze_pred_vs_gt(Y_hat, Y_gt, Angular)
 
         Y_hat_all.append(Y_hat)
         Y_gt_all.append(Y_gt)
