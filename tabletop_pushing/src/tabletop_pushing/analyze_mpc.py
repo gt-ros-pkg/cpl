@@ -1117,7 +1117,7 @@ def analyze_pushing_trials(aff_file_names, out_file_name, obj_name='', append=Fa
 
     return pos_error_stats
 
-def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
+def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans=False):
     # Fixed parameters
     n = 6
     m = 3
@@ -1129,6 +1129,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     aff_dir_path = aff_file_name[:-len(aff_file_name.split('/')[-1])]
 
     # Create output directories to store analysis
+    # TODO: Move this to '~/sandbox/aff_file_name-analysis...'
     analysis_dir = aff_file_name[:-4]+'-analysis/'
     render_out_dir = analysis_dir + 'tracking/'
     traj_out_dir = analysis_dir + 'planning/'
@@ -1160,6 +1161,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
                                               suffix = '_' + str(i))
             plot_predicted_vs_observed_tracks(Y, Y_hat, X, out_path = anlaysis_dir, show_plot = False,
                                               suffix = '_' + str(i))
+            plotter.close()
 
     # Plot all desired trajectories on a single plot
     # Plot actual trajectory (over desired path(s)?)
@@ -1169,41 +1171,49 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False):
     if len(trajs) > 0:
         plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False,
                                       suffix = '-headings', show_headings = True)
+        plotter.close()
         plot_all_planned_trajectories(trajs, plio.push_trials, out_path = analysis_dir, show_plot = False)
+        plotter.close()
 
     # Plot actual controls
     plot_all_controls(plio.push_trials, u_max, out_path = analysis_dir, show_plot = False)
+    plotter.close()
 
     print 'Plotting individual trajectories'
     trial_idx = -1
-    for traj, q_star in zip(trajs, q_stars):
-        if q_star[0] == 0:
-            trial_idx += 1
-        try:
-            # TODO: This is not available for open_loop sqp stuff, need to fix that situation...
-            x0_state = plio.push_trials[trial_idx].trial_trajectory[q_star[0]]
-        except IndexError:
-            print 'Error trying to read trial', trial_idx, 'trajectory step', q_star[0]
-            continue
 
-        x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
-                       x0_state.ee.position.x, x0_state.ee.position.y])
+    if plot_all_plans:
+        for traj, q_star in zip(trajs, q_stars):
+            if q_star[0] == 0:
+                trial_idx += 1
+            try:
+                # TODO: This is not available for open_loop sqp stuff, need to fix that situation...
+                x0_state = plio.push_trials[trial_idx].trial_trajectory[q_star[0]]
+            except IndexError:
+                print 'Error trying to read trial', trial_idx, 'trajectory step', q_star[0]
+                continue
 
-        print 'Plotting trial', trial_idx, ':', q_star[0]
-        plot_suffix = '-'+str(trial_idx)+'-q_star['+str(q_star[0])+']'
-        plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False,
-                                   suffix=plot_suffix, out_path=traj_out_dir)
-        plot_controls(q_star[1], x0, n, m, u_max, show_plot=False, suffix=plot_suffix, out_path=traj_out_dir)
+            x0 = np.array([x0_state.x.x, x0_state.x.y, x0_state.x.theta,
+                           x0_state.ee.position.x, x0_state.ee.position.y])
 
-        # Plot with history
-        plot_suffix += '-history'
-        plot_desired_vs_controlled_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]+1],
-                                                q_star[1], traj[1], n, m, show_plot = False,
-                                                suffix = plot_suffix, out_path = traj_out_dir)
+            print 'Plotting trial', trial_idx, ':', q_star[0]
+            plot_suffix = '-'+str(trial_idx)+'-q_star['+str(q_star[0])+']'
+            plot_desired_vs_controlled(q_star[1], traj[1], x0, n, m, show_plot=False,
+                                       suffix=plot_suffix, out_path=traj_out_dir)
+            plot_controls(q_star[1], x0, n, m, u_max, show_plot=False, suffix=plot_suffix, out_path=traj_out_dir)
 
-        plot_controls_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]],
-                                   q_star[1], x0, n, m, u_max, show_plot=False,
-                                   suffix=plot_suffix, out_path=traj_out_dir)
+            # Plot with history
+            plot_suffix += '-history'
+            plot_desired_vs_controlled_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]+1],
+                                                    q_star[1], traj[1], n, m, show_plot = False,
+                                                    suffix = plot_suffix, out_path = traj_out_dir)
+
+            plot_controls_with_history(plio.push_trials[trial_idx].trial_trajectory[:q_star[0]],
+                                       q_star[1], x0, n, m, u_max, show_plot=False,
+                                       suffix=plot_suffix, out_path=traj_out_dir)
+            plotter.close()
+    else:
+        # TODO: Just plot the final trajectory for each trial
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'
