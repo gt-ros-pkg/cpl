@@ -500,14 +500,9 @@ def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/therma
         plio.read_in_data_file(aff_file_name)
 
         (Y_hat, Y_gt) = naive_model_trial_predictions(plio.push_trials)
-        print 'len(Y_hat)', len(Y_hat)
-        print 'len(Y_gt)', len(Y_gt)
 
         # Analyze output
         (error_means, error_sds, error_diffs) = analyze_pred_vs_gt(Y_hat, Y_gt)
-        print 'len(error_means)',len(error_means)
-        print 'len(error_sds)',len(error_sds)
-        print 'len(error_diffs)',len(error_diffs)
 
         Y_hat_all.append(Y_hat)
         Y_gt_all.append(Y_gt)
