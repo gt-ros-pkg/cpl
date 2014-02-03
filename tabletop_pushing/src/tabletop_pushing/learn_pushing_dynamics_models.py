@@ -205,7 +205,7 @@ def build_results_table(error_means_all, error_sds_all, error_diffs_all,
         write_stat_table('q3s', table_q3_lines, overall_q3_line, title_line, header_line, table_out_path)
         write_stat_table('maxes', table_max_lines, overall_max_line, title_line, header_line, table_out_path)
 
-def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = True):
+def compare_obj_class_results(kernel_type = 'LINEAR', test_single_obj_model = True):
     target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
                     dynamics_learning._DELTA_OBJ_Y_OBJ,
                     dynamics_learning._DELTA_OBJ_THETA_WORLD,
@@ -216,16 +216,16 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
     hold_out_classes = _ALL_CLASSES[:]
 
     # Go through all objects
-    base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/'
+    base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/epsilon_e3/'
     base_example_dir_name = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/single_obj/'
     for hold_out_class in hold_out_classes:
 
-        if test_singel_obj_model:
+        if test_single_obj_model:
             test_classes = _ALL_CLASSES[:]
-            test_classes.remove(hold_out_class)
+            # test_classes.remove(hold_out_class)
         else:
             test_classes = [hold_out_class]
-        if test_singel_obj_model:
+        if test_single_obj_model:
             model_param_file_name = base_svr_path + kernel_type + '_single_obj_' + hold_out_class + '_params.txt'
             table_out_path = '/u/thermans/sandbox/single_objs/' + kernel_type +'/'
         else:
@@ -247,7 +247,7 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
         error_maxes_all = []
 
         for test_obj in test_classes:
-            if test_singel_obj_model:
+            if test_single_obj_model:
                 print '\nTesting for object', test_obj, 'with model trained on', hold_out_class
             else:
                 print '\nTesting for object', test_obj, 'with model trained on other classes'
@@ -261,6 +261,12 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
             error_means_all.append(error_means)
             error_sds_all.append(error_sds)
             error_diffs_all.append(error_diffs)
+            error_mins_all.append(error_mins)
+            error_q1s_all.append(error_q1s)
+            error_medians_all.append(error_medians)
+            error_q3s_all.append(error_q3s)
+            error_maxes_all.append(error_maxes)
+
         # Build table for data and save table to disk
         build_results_table(error_means_all, error_sds_all, error_diffs_all,
                             error_mins_all, error_q1s_all, error_medians_all, error_q3s_all, error_maxes_all,

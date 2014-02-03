@@ -676,59 +676,6 @@ def plot_predicted_vs_observed_deltas(gt_all, pred_all, suffix = '', out_path = 
     if show_plot:
         plotter.show()
 
-def test_svm_stuff(aff_file_name=None):
-    delta_t = 1./9.
-    n = 5
-    m = 2
-    use_obj_frame = False
-    base_path = '/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/SVR_DYN/'
-    output_paths = []
-    epsilons = [1e-5, 1e-5, 1e-5]
-    plio = push_learning.CombinedPushLearnControlIO()
-    if aff_file_name is not None:
-        base_file_string = base_path + 'test_svm_stuff'
-        plio.read_in_data_file(aff_file_name)
-
-        svm_dynamics = SVRPushDynamics(delta_t, n, m, object_frame_feats=use_obj_frame, epsilons=epsilons)
-        svm_dynamics.learn_model(plio.push_trials)
-        base_file_string = svm_dynamics.save_models(base_file_string)
-    else:
-        base_file_string = '/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/SVR_DYN/test_svm_stuff_LINEAR_linearEE_worldFrame'
-
-    svm_dynamics2 = SVRPushDynamics(delta_t, n, m, base_file_string)
-
-    test_pose = VisFeedbackPushTrackingFeedback()
-    test_pose.x.x = 0.2
-    test_pose.x.y = 0.0
-    test_pose.x.theta = 0#pi*0.5
-    test_ee = PoseStamped()
-    test_ee.pose.position.x = test_pose.x.x - 0.2
-    test_ee.pose.position.y = test_pose.x.y - 0.4
-    test_u = TwistStamped()
-    test_u.twist.linear.x = 0.3
-    test_u.twist.linear.y = 0.3
-
-    test_x_k = np.array([test_pose.x.x, test_pose.x.y, test_pose.x.theta,
-                         test_ee.pose.position.x, test_ee.pose.position.y])
-    test_u_k = np.array([test_u.twist.linear.x, test_u.twist.linear.y])
-
-    next_state = svm_dynamics2.predict(test_x_k, test_u_k)
-    gradient = svm_dynamics2.jacobian(test_x_k, test_u_k)
-
-    print 'test_state.x:\n', test_x_k, test_u_k
-    print 'next_state.x:\n', next_state
-    print 'Jacobian:\n', gradient
-
-    plot_out_path = '/home/thermans/sandbox/dynamics/'
-    for i, trial in enumerate(plio.push_trials):
-        (Y_hat, Y, X) = svm_dynamics2.test_batch_data(trial)
-        plot_predicted_vs_observed_deltas(Y, Y_hat, out_path = plot_out_path, show_plot = False,
-                                          suffix = ' '+str(i) )
-        plot_predicted_vs_observed_tracks(Y, Y_hat, X, show_plot = False, out_path = plot_out_path,
-                                          suffix = ' '+str(i) )
-    # print 'Jacobian', svm_dynamics2.J
-    return svm_dynamics2
-
 def test_svm_new(base_dir_name):
     target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
                     dynamics_learning._DELTA_OBJ_Y_OBJ,
@@ -746,8 +693,8 @@ def test_svm_new(base_dir_name):
 
     xtra_names = []
 
-    train_file_base_name = base_dir_name + 'train'
-    val_file_base_name = base_dir_name + 'validate'
+    train_file_base_name = base_dir_name + 'bear'
+    val_file_base_name = base_dir_name + 'bear'
 
     # Read data from disk
     (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
@@ -759,15 +706,19 @@ def test_svm_new(base_dir_name):
     n = 6
     m = 3
 
-    svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
-                                   feature_names = feature_names,
-                                   target_names = target_names,
-                                   xtra_names = xtra_names,
-                                   kernel_type='LINEAR')
+    old_svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
+                                       feature_names = feature_names,
+                                       target_names = target_names,
+                                       xtra_names = xtra_names,
+                                       kernel_type='LINEAR')
+
+    svr_dynamics = SVRWithNaiveLinearPushDynamics(delta_t, n, m, epsilons=epsilons)
+
     # Do Learning
     kernel_params = {}
     for i in xrange(len(target_names)):
         kernel_params[i] = '-g 0.05 -r 2'
+    old_svr_dynamics.learn_model(train_X, train_Y, kernel_params)
     svr_dynamics.learn_model(train_X, train_Y, kernel_params)
 
     # Test saving and loading
@@ -775,7 +726,8 @@ def test_svm_new(base_dir_name):
     svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
     svr_dynamics.save_models(svr_base_output_path)
 
-    svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
+    svr_dynamics2 = SVRWithNaiveLinearPushDynamics(delta_t, n, m, param_file_name = svr_param_file_name)
+    # svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
 
     # Do verification on training set
     (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
@@ -1214,6 +1166,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans
             plotter.close()
     else:
         # TODO: Just plot the final trajectory for each trial
+        pass
 
     # Run render data script
     render_bin_name = roslib.packages.get_pkg_dir('tabletop_pushing')+'/bin/render_saved_data'

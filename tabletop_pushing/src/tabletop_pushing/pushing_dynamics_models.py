@@ -35,7 +35,7 @@ import svmutil
 import numpy as np
 from math import sin, cos, exp, tanh
 import dynamics_learning
-from util import subPIAngle
+from util import subPIAngle, subPIDiff
 from sklearn.gaussian_process import GaussianProcess
 
 _PARAM_FILE_SUFFIX = '_params.txt'
@@ -187,6 +187,13 @@ class SVRPushDynamics:
         self.obj_frame_ee_targets = (dynamics_learning._DELTA_EE_X_OBJ in self.target_names or
                                      dynamics_learning._DELTA_EE_Y_OBJ in self.target_names)
 
+        self.learning_errors = (dynamics_learning._ERR_OBJ_X_OBJ in self.target_names or
+                                dynamics_learning._ERR_OBJ_Y_OBJ in self.target_names or
+                                dynamics_learning._ERR_OBJ_THETA in self.target_names or
+                                dynamics_learning._ERR_EE_X_OBJ in self.target_names or
+                                dynamics_learning._ERR_EE_Y_OBJ in self.target_names or
+                                dynamics_learning._ERR_EE_PHI in self.target_names)
+
         # Optimization vector variables [Fixed outside of scope here]
         self.obj_x_opt_idx = 0
         self.obj_y_opt_idx = 1
@@ -202,11 +209,12 @@ class SVRPushDynamics:
         if self.obj_frame_obj_targets:
             self.obj_x_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_X_OBJ)
             self.obj_y_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_Y_OBJ)
-        else:
+        elif not self.learning_errors:
             self.obj_x_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_X_WORLD)
             self.obj_y_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_Y_WORLD)
 
-        self.obj_theta_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_THETA_WORLD)
+        if not self.learning_errors:
+            self.obj_theta_target_idx = self.target_names.index(dynamics_learning._DELTA_OBJ_THETA_WORLD)
 
         if self.obj_frame_ee_targets:
             self.ee_x_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_OBJ)
@@ -216,7 +224,7 @@ class SVRPushDynamics:
             self.ee_x_target_idx = 3
             self.ee_y_target_idx = 4
             self.ee_phi_target_idx = 5
-        else:
+        elif not self.learning_errors:
             self.ee_x_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_X_WORLD)
             self.ee_y_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_Y_WORLD)
             self.ee_phi_target_idx = self.target_names.index(dynamics_learning._DELTA_EE_PHI_WORLD)
@@ -257,6 +265,9 @@ class SVRPushDynamics:
             if i in kernel_params:
                 param_string += ' ' + kernel_params[i]
             # print 'Parameters', param_string
+            print 'type(Y_i)', type(Y_i)
+            print 'type(X)', type(X)
+            print 'type(param_string)', type(param_string)
             svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
         self.build_jacobian()
@@ -287,6 +298,10 @@ class SVRPushDynamics:
         for i, svm_model in enumerate(self.svm_models):
             [delta_i, _, _] = svmutil.svm_predict(y, z, svm_model, '-q')
             deltas.append(delta_i[0])
+
+        if self.learning_errors:
+            # Dont need to transform the predictions, the outer predictor will
+            return np.array(deltas)
 
         return np.array(self.transform_svm_results_to_opt_vector(x_k, u_k, deltas))
 
@@ -564,6 +579,7 @@ class SVRPushDynamics:
         return z
 
     def transform_svm_results_to_opt_vector(self, x_k, u_k, deltas):
+        # TODO: Setup error function transform here...
         obj_x_val = 0.0
         obj_y_val = 0.0
         obj_theta_val = 0.0
@@ -718,6 +734,159 @@ class SVRPushDynamics:
             full_SVs.append(v_full)
         return full_SVs
 
+class SVRWithNaiveLinearPushDynamics:
+    def __init__(self, delta_t, n, m, epsilons = None, param_file_name = ''):
+        '''
+        delta_t - the (average) time between time steps
+        n - number of state space dimensions
+        m - number of control space dimensions
+        param_file_name - base path and file name for parameter file
+        epsilons - list of epislon values for the epislon insensitive loss function (training only)
+        '''
+        kernel_type = 'LINEAR'
+        # TODO: Do we need to make new target names for error functions
+        target_names = [dynamics_learning._ERR_OBJ_X_OBJ,
+                        dynamics_learning._ERR_OBJ_Y_OBJ,
+                        dynamics_learning._ERR_OBJ_THETA,
+                        dynamics_learning._ERR_EE_X_OBJ,
+                        dynamics_learning._ERR_EE_Y_OBJ,
+                        dynamics_learning._ERR_EE_PHI]
+        feature_names = [dynamics_learning._EE_X_OBJ,
+                         dynamics_learning._EE_Y_OBJ,
+                         dynamics_learning._EE_PHI_OBJ,
+                         dynamics_learning._U_X_OBJ,
+                         dynamics_learning._U_Y_OBJ,
+                         dynamics_learning._U_PHI_WORLD]
+        xtra_names = []
+
+        # Build our two predictors
+        self.svr_error_dynamics = None
+        if len(param_file_name) > 0:
+            self.svr_error_dynamics = SVRPushDynamics(param_file_name = param_file_name)
+        else:
+            self.svr_error_dynamics = SVRPushDynamics(delta_t, n, m,
+                                                      epsilons = epsilons,
+                                                      feature_names = feature_names,
+                                                      target_names = target_names,
+                                                      xtra_names = xtra_names, kernel_type = kernel_type)
+        self.naive_dynamics = NaiveInputDynamics(delta_t, n, m)
+
+    def get_naive_inputs_from_training_data(self, X_all):
+        X = []
+        U = []
+        for x_raw in X_all:
+            X.append(np.array([x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._OBJ_X_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._OBJ_Y_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._OBJ_THETA_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._EE_X_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._EE_Y_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._EE_PHI_WORLD] ]]))
+            U.append(np.array([x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._U_X_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._U_Y_WORLD] ],
+                               x_raw[ dynamics_learning._FEAT_INDICES[dynamics_learning._U_PHI_WORLD] ]]))
+        return (X, U)
+
+    def transform_naive_prediction_to_obj_frame(self, x_1, x_0):
+        # Get vector of x1 from x0 and roate the coordinates into the object frame
+        x_1_demeaned = np.matrix([[ x_1[0] - x_0[0] ],
+                                  [ x_1[1] - x_0[1] ]])
+        st = sin(x_0[2])
+        ct = cos(x_0[2])
+        R = np.matrix([[ ct, st],
+                       [-st, ct]])
+        x_1_obj = np.array(R*x_1_demeaned).T.ravel()
+        delta_obj_x_obj = x_1_obj[0]
+        delta_obj_y_obj = x_1_obj[1]
+        delta_obj_theta_obj = subPIDiff(x_1[2], x_0[2])
+
+        # Get ee vector and rotate into obj frame coordinates
+        ee_0_demeaned = np.matrix([[x_0[3] - x_0[0]],
+                                   [x_0[4] - x_0[1]]])
+        ee_1_demeaned = np.matrix([[x_1[3] - x_0[0]],
+                                   [x_1[4] - x_0[1]]])
+        ee_0_obj = np.array(R*ee_0_demeaned).T.ravel()
+        ee_1_obj = np.array(R*ee_1_demeaned).T.ravel()
+        ee_delta_X = ee_1_obj - ee_0_obj
+        delta_ee_x_obj = ee_delta_X[0]
+        delta_ee_y_obj = ee_delta_X[1]
+
+        delta_ee_phi_obj = subPIDiff(x_1[5], x_0[5])
+
+        return np.array([delta_obj_x_obj,
+                         delta_obj_y_obj,
+                         delta_obj_theta_obj,
+                         delta_ee_x_obj,
+                         delta_ee_y_obj,
+                         delta_ee_phi_obj])
+
+    def learn_model(self, X_all, Y_all_raw, kernel_params = {}):
+        # Generate linear predictions from X_all data
+        (Xs, Us) = self.get_naive_inputs_from_training_data(X_all)
+        Y_hat_naive = {dynamics_learning._DELTA_OBJ_X_OBJ : [],
+                       dynamics_learning._DELTA_OBJ_Y_OBJ : [],
+                       dynamics_learning._DELTA_OBJ_THETA_WORLD : [],
+                       dynamics_learning._DELTA_EE_X_OBJ : [],
+                       dynamics_learning._DELTA_EE_Y_OBJ : [],
+                       dynamics_learning._DELTA_EE_PHI_WORLD : [] }
+        for x_k, u_k in zip(Xs, Us):
+            y_hat_naive_k = self.naive_dynamics.predict(x_k, u_k)
+
+            # Transform linear predictions into object frame
+            y_hat_naive_obj_k = self.transform_naive_prediction_to_obj_frame(y_hat_naive_k,
+                                                                             x_k)
+            Y_hat_naive[dynamics_learning._DELTA_OBJ_X_OBJ].append(y_hat_naive_obj_k[0])
+            Y_hat_naive[dynamics_learning._DELTA_OBJ_Y_OBJ].append(y_hat_naive_obj_k[1])
+            Y_hat_naive[dynamics_learning._DELTA_OBJ_THETA_WORLD].append(y_hat_naive_obj_k[2])
+            Y_hat_naive[dynamics_learning._DELTA_EE_X_OBJ].append(y_hat_naive_obj_k[3])
+            Y_hat_naive[dynamics_learning._DELTA_EE_Y_OBJ].append(y_hat_naive_obj_k[4])
+            Y_hat_naive[dynamics_learning._DELTA_EE_PHI_WORLD].append(y_hat_naive_obj_k[5])
+
+        # Remove linear predictions from Y_all_raw to Y_all_cleaned
+        Y_all_clean = {}
+        Y_all_clean[dynamics_learning._ERR_OBJ_X_OBJ] = (
+            np.array(Y_all_raw[dynamics_learning._DELTA_OBJ_X_OBJ]) -
+            np.array(Y_hat_naive[dynamics_learning._DELTA_OBJ_X_OBJ]) )
+        Y_all_clean[dynamics_learning._ERR_OBJ_Y_OBJ] = (
+            np.array(Y_all_raw[dynamics_learning._DELTA_OBJ_Y_OBJ]) -
+            np.array(Y_hat_naive[dynamics_learning._DELTA_OBJ_Y_OBJ]) )
+        Y_all_clean[dynamics_learning._ERR_OBJ_THETA] = (
+            np.array(Y_all_raw[dynamics_learning._DELTA_OBJ_THETA_WORLD]) -
+            np.array(Y_hat_naive[dynamics_learning._DELTA_OBJ_THETA_WORLD]) )
+        Y_all_clean[dynamics_learning._ERR_EE_X_OBJ] = (
+            np.array(Y_all_raw[dynamics_learning._DELTA_EE_X_OBJ]) -
+            np.array(Y_hat_naive[dynamics_learning._DELTA_EE_X_OBJ]) )
+        Y_all_clean[dynamics_learning._ERR_EE_Y_OBJ] = (
+            np.array(Y_all_raw[dynamics_learning._DELTA_EE_Y_OBJ]) -
+            np.array(Y_hat_naive[dynamics_learning._DELTA_EE_Y_OBJ]) )
+        Y_all_clean[dynamics_learning._ERR_EE_PHI] = (
+            np.array(Y_all_raw[dynamics_learning._DELTA_EE_PHI_WORLD]) -
+            np.array(Y_hat_naive[dynamics_learning._DELTA_EE_PHI_WORLD]) )
+        for key, value in Y_all_clean.items():
+            Y_all_clean[key] = value.tolist()
+        # Train svr models on Y_all_clean
+        self.svr_error_dynamics.learn_model(X_all, Y_all_clean, kernel_params)
+
+    def predict(self, x_k, u_k, xtra=[]):
+        y_hat_naive = self.naive_dynamics.predict(x_k, u_k)
+        # TODO: Do we need to transform anything here? (Hopefully not, svr should handle it all)
+        y_hat_error = self.svr_error_dynamics.predict(x_k, u_k, xtra)
+        y_hat = y_hat_naive + y_hat_error
+
+        return y_hat
+
+    def jacobian(self, x_k, u_k, xtra=[]):
+        # TODO: Make sure SVR jacobian works correctly for the given targets and such
+        return self.naive_dynamics.jacobian(x_k, u_k) + self.svr_error_dynamics.jacobian(x_k, u_k, xtra)
+
+    def test_batch_data(self, X_all, Y_all):
+        # TODO: Set this up for testing of the new dynamics model shit
+        pass
+
+    def save_models(self, output_file_base_string):
+        self.svr_error_dynamics.save_models(output_file_base_string)
+
+    def load_models(self, param_file_name):
+        self.svr_error_dynamics.load_models(param_file_name)
 
 class GPPushDynamics:
     def __init__(self, delta_t = 1.0, n = 6, m = 3,
