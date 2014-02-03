@@ -20,7 +20,7 @@ def subPIDiff(a, b):
 def subPIDiffNP(a, b):
     diff = np.zeros(len(a))
     for i, (a_i, b_i) in enumerate(zip(a,b)):
-        diff[i] = abs(subPIAngle(subPIAngle(a_i) - subPIAngle(b_i)))
+        diff[i] = subPIAngle(subPIAngle(a_i) - subPIAngle(b_i))
     return diff
 
 def trigAugState(X, ndx, remove_old=False):

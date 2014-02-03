@@ -70,7 +70,7 @@ def analyze_pred_vs_gt(Y_hat, Y_gt, Angulars=[]):
     for Y_hat_i, Y_gt_i, is_angular in zip(Y_hat, Y_gt, Angulars):
         error_i = np.abs(np.array(Y_hat_i) - np.array(Y_gt_i))
         if is_angular:
-            error_i = util.subPIDiffNP(np.array(Y_hat_i), np.array(Y_gt_i))
+            error_i = np.abs(util.subPIDiffNP(np.array(Y_hat_i), np.array(Y_gt_i)))
         Y_errors.append(error_i)
         # Get stats and add to specific lists
         error_i_stats = get_stats_for_diffs(error_i)
@@ -506,6 +506,39 @@ def learn_incremental_dynamics_models():
             # TODO: train model with i trials
             output_path = base_output_path + 'single_obj_' + obj_class + '_' + i
 
+def transform_target_into_obj_frame(x_1, x_0):
+    # Get vector of x1 from x0 and roate the coordinates into the object frame
+    x_1_demeaned = np.matrix([[ x_1[0] - x_0[0] ],
+                              [ x_1[1] - x_0[1] ]])
+    st = sin(x_0[2])
+    ct = cos(x_0[2])
+    R = np.matrix([[ ct, st],
+                   [-st, ct]])
+    x_1_obj = np.array(R*x_1_demeaned).T.ravel()
+    delta_obj_x_obj = x_1_obj[0]
+    delta_obj_y_obj = x_1_obj[1]
+    delta_obj_theta_obj = util.subPIDiff(x_1[2], x_0[2])
+
+    # Get ee vector and rotate into obj frame coordinates
+    ee_0_demeaned = np.matrix([[x_0[3] - x_0[0]],
+                               [x_0[4] - x_0[1]]])
+    ee_1_demeaned = np.matrix([[x_1[3] - x_0[0]],
+                               [x_1[4] - x_0[1]]])
+    ee_0_obj = np.array(R*ee_0_demeaned).T.ravel()
+    ee_1_obj = np.array(R*ee_1_demeaned).T.ravel()
+    ee_delta_X = ee_1_obj - ee_0_obj
+    delta_ee_x_obj = ee_delta_X[0]
+    delta_ee_y_obj = ee_delta_X[1]
+
+    delta_ee_phi_obj = util.subPIDiff(x_1[5], x_0[5])
+
+    return np.array([delta_obj_x_obj,
+                     delta_obj_y_obj,
+                     delta_obj_theta_obj,
+                     delta_ee_x_obj,
+                     delta_ee_y_obj,
+                     delta_ee_phi_obj])
+
 def naive_model_trial_predictions(push_trials):
     n = 6
     m = 3
@@ -515,6 +548,8 @@ def naive_model_trial_predictions(push_trials):
     for i in xrange(n):
         Y_hat.append([])
         Y_gt.append([])
+
+    X_gt = []
 
     for i, trial in enumerate(push_trials):
         for j, step in enumerate(trial.trial_trajectory):
@@ -528,11 +563,15 @@ def naive_model_trial_predictions(push_trials):
             y_hat = dynamics.predict(x, u)
 
             if j < len(trial.trial_trajectory) - 1:
+                delta_y_hat_obj = transform_target_into_obj_frame(y_hat, x)
                 for k in xrange(n):
-                    Y_hat[k].append(y_hat[k])
+                    Y_hat[k].append(delta_y_hat_obj[k])
             if j > 0:
+                delta_y_gt_obj = transform_target_into_obj_frame(x, x_prev)
                 for k in xrange(n):
-                    Y_gt[k].append(x[k])
+                    Y_gt[k].append(delta_y_gt_obj[k])
+            # Update previous
+            x_prev = x[:]
     return (Y_hat, Y_gt)
 
 def get_aff_file_names(directory):
@@ -543,7 +582,6 @@ def get_aff_file_names(directory):
             continue
         aff_files.append(directory + '/' + f)
     return aff_files
-
 
 def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/thermans/sandbox/naive_linear/'):
     test_classes = _ALL_CLASSES[:]
@@ -587,7 +625,7 @@ def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/therma
         plio = push_learning.CombinedPushLearnControlIO()
         plio.read_in_data_file(aff_file_name)
 
-        (Y_hat, Y_gt) = naive_model_trial_predictions(plio.push_trials)
+        (Y_gt, Y_hat) = naive_model_trial_predictions(plio.push_trials)
 
         # Analyze output
         (error_means, error_sds, error_diffs,
