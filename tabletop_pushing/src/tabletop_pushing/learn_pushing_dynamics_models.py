@@ -456,12 +456,31 @@ def naive_model_trial_predictions(push_trials):
                     Y_gt[k].append(x[k])
     return (Y_hat, Y_gt)
 
-def analyze_naive_model_predicitons(aff_file_name_in):
+def get_aff_file_names(directory):
+    all_files = os.listdir(directory)
+    aff_files = []
+    for f in all_files:
+        if not (f.startswith('aff_learn_out') and not '-' in f):
+            continue
+        aff_files.append(directory + '/' + f)
+    return aff_files
+
+
+def analyze_naive_model_predicitons(base_input_path, table_out_path = '/u/thermans/sandbox/naive_linear/'):
+    test_classes = _ALL_CLASSES[:]
+
     # TODO: Run through different test classes
     # TODO: Get aff_file_name from directories
-    table_out_path = '/u/thermans/sandbox/naive_linear/'
-    test_classes = ['bear']# _ALL_CLASSES[:]
-    aff_file_names = [aff_file_name_in]
+    obj_dirs = os.listdir(base_input_path)
+    aff_file_names = []
+    for test_class in test_classes:
+        for obj_dir in obj_dirs:
+            if obj_dir.startswith(test_class):
+                dir_aff_files = get_aff_file_names(base_input_path+obj_dir)
+                aff_file_names.extend(dir_aff_files)
+    # print 'Found aff files:'
+    # for aff_file_name in aff_file_names:
+    #     print aff_file_name
 
     target_names = ['Object X World',
                     'Object Y World',
