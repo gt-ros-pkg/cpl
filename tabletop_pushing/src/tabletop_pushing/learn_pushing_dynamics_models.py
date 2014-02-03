@@ -1,5 +1,7 @@
-import roslib
+import roslib; roslib.load_manifest('tabletop_pushing')
+import tf
 from pushing_dynamics_models import *
+import push_learning
 import dynamics_learning
 import numpy as np
 import os
@@ -113,6 +115,9 @@ def build_results_table(error_means_all, error_sds_all, error_diffs_all,
 
     # Output to disk
     if len(table_out_path) > 0:
+        if not os.path.exists(table_out_path):
+            os.mkdir(table_out_path)
+
         mean_out_name = table_out_path + hold_out_obj_name + '-means.txt'
         mean_out_file = file(mean_out_name, 'w')
         mean_out_file.write(title_line)
@@ -174,7 +179,7 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_singel_obj_model = Tr
             # Analyze output
             (error_means, error_sds, error_diffs) = analyze_pred_vs_gt(Y_hat, Y_gt)
             Y_hat_all.append(Y_hat)
-            Y_gt_all.append(Y_hat)
+            Y_gt_all.append(Y_gt)
             error_means_all.append(error_means)
             error_sds_all.append(error_sds)
             error_diffs_all.append(error_diffs)
@@ -422,3 +427,75 @@ def learn_incremental_dynamics_models():
             # TODO: train model with i trials
             output_path = base_output_path + 'single_obj_' + obj_class + '_' + i
 
+def naive_model_trial_predictions(push_trials):
+    n = 6
+    m = 3
+    dynamics = NaiveInputDynamics(1./9., n, m)
+    Y_hat = []
+    Y_gt = []
+    for i in xrange(n):
+        Y_hat.append([])
+        Y_gt.append([])
+
+    for i, trial in enumerate(push_trials):
+        for j, step in enumerate(trial.trial_trajectory):
+            [_, _, ee_phi] = tf.transformations.euler_from_quaternion(np.array([step.ee.orientation.x,
+                                                                                step.ee.orientation.y,
+                                                                                step.ee.orientation.z,
+                                                                                step.ee.orientation.w]))
+            x = np.array([step.x.x, step.x.y, step.x.theta,
+                          step.ee.position.x, step.ee.position.y, ee_phi])
+            u = np.array([step.u.linear.x, step.u.linear.y, step.u.angular.z])
+            y_hat = dynamics.predict(x, u)
+
+            if j < len(trial.trial_trajectory) - 1:
+                for k in xrange(n):
+                    Y_hat[k].append(y_hat[k])
+            if j > 0:
+                for k in xrange(n):
+                    Y_gt[k].append(x[k])
+    return (Y_hat, Y_gt)
+
+def analyze_naive_model_predicitons(aff_file_name_in):
+    # TODO: Run through different test classes
+    # TODO: Get aff_file_name from directories
+    table_out_path = '/u/thermans/sandbox/naive_linear/'
+    test_classes = ['bear']# _ALL_CLASSES[:]
+    aff_file_names = [aff_file_name_in]
+
+    target_names = ['Object X World',
+                    'Object Y World',
+                    'Object Theta World',
+                    'EE X World',
+                    'EE Y World',
+                    'EE Phi World']
+
+    Y_hat_all = []
+    Y_gt_all = []
+    error_means_all = []
+    error_sds_all = []
+    error_diffs_all = []
+
+    for aff_file_name in aff_file_names:
+        plio = push_learning.CombinedPushLearnControlIO()
+        plio.read_in_data_file(aff_file_name)
+
+        (Y_hat, Y_gt) = naive_model_trial_predictions(plio.push_trials)
+        print 'len(Y_hat)', len(Y_hat)
+        print 'len(Y_gt)', len(Y_gt)
+
+        # Analyze output
+        (error_means, error_sds, error_diffs) = analyze_pred_vs_gt(Y_hat, Y_gt)
+        print 'len(error_means)',len(error_means)
+        print 'len(error_sds)',len(error_sds)
+        print 'len(error_diffs)',len(error_diffs)
+
+        Y_hat_all.append(Y_hat)
+        Y_gt_all.append(Y_gt)
+        error_means_all.append(error_means)
+        error_sds_all.append(error_sds)
+        error_diffs_all.append(error_diffs)
+
+    # Build table for data and save table to disk
+    build_results_table(error_means_all, error_sds_all, error_diffs_all,
+                       target_names, test_classes, 'Naive', table_out_path)
