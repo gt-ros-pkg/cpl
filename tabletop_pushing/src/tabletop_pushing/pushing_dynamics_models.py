@@ -1048,10 +1048,7 @@ class GPPushDynamics:
             dY = 0.5 + 1.0 * np.random.random(Y_i.shape)
             gp = GaussianProcess(corr = 'squared_exponential', theta0 = 0.1, thetaL = 0.01, thetaU = 1,
                                  random_start = 100)
-            print Y_i.shape
-            print X.shape
-            # gp.fit(X, Y_i)
-            # print 'Parameters', param_string
+            gp.fit(X, Y_i)
             self.GPs.append(gp)
         # self.build_jacobian()
 
@@ -1228,12 +1225,33 @@ class GPPushDynamics:
             # TODO: Append XTRA Features
             X.append(np.array(x_subset))
         X = np.atleast_2d(X)
-
         Y = []
-
         # Select target sets based on requested target names
         for name in self.target_names:
-            Y.append(np.array(Y_all[name]).ravel())
+            Y.append(np.array(Y_all[name]).ravel() )
+
+        # Make sure no input features are identical...
+        print 'Checking for data matches'
+        identical_count = 0
+        matched = {}
+        for i in xrange(X.shape[0]):
+            a = X[i,:]
+            for j in range(i+1, X.shape[0]):
+                b = X[j,:]
+                if np.sum(np.abs(a - b)) == 0:
+                    identical_count += 1
+                    # Add to the dict, but don't duplicate ids
+                    matched[j] = j
+        print 'Found', identical_count, 'matches between ', X.shape[0], 'items'
+        # Sort to remove in descending order to clobber from the lists without needing to renumber
+        to_remove = matched.keys()
+        to_remove.sort(reverse = True)
+        for t in to_remove:
+            X = np.delete(X, (t), axis=0)
+            for i in xrange(len(Y)):
+                Y[i] = np.delete(Y[i], (t), axis=0)
+
+        # Put stuff in numpy objects for learning
         return (X, Y)
 
     def transform_opt_vector_to_feat_vector(self, x_k, u_k, xtra=[]):
