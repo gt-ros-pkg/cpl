@@ -265,9 +265,6 @@ class SVRPushDynamics:
             if i in kernel_params:
                 param_string += ' ' + kernel_params[i]
             # print 'Parameters', param_string
-            print 'type(Y_i)', type(Y_i)
-            print 'type(X)', type(X)
-            print 'type(param_string)', type(param_string)
             svm_model = svmutil.svm_train(Y_i, X, param_string)
             self.svm_models.append(svm_model)
         self.build_jacobian()
@@ -745,12 +742,12 @@ class SVRWithNaiveLinearPushDynamics:
         '''
         kernel_type = 'LINEAR'
         # TODO: Do we need to make new target names for error functions
-        target_names = [dynamics_learning._ERR_OBJ_X_OBJ,
-                        dynamics_learning._ERR_OBJ_Y_OBJ,
-                        dynamics_learning._ERR_OBJ_THETA,
-                        dynamics_learning._ERR_EE_X_OBJ,
-                        dynamics_learning._ERR_EE_Y_OBJ,
-                        dynamics_learning._ERR_EE_PHI]
+        err_target_names = [dynamics_learning._ERR_OBJ_X_OBJ,
+                            dynamics_learning._ERR_OBJ_Y_OBJ,
+                            dynamics_learning._ERR_OBJ_THETA,
+                            dynamics_learning._ERR_EE_X_OBJ,
+                            dynamics_learning._ERR_EE_Y_OBJ,
+                            dynamics_learning._ERR_EE_PHI]
         feature_names = [dynamics_learning._EE_X_OBJ,
                          dynamics_learning._EE_Y_OBJ,
                          dynamics_learning._EE_PHI_OBJ,
@@ -758,6 +755,12 @@ class SVRWithNaiveLinearPushDynamics:
                          dynamics_learning._U_Y_OBJ,
                          dynamics_learning._U_PHI_WORLD]
         xtra_names = []
+        self.target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
+                             dynamics_learning._DELTA_OBJ_Y_OBJ,
+                             dynamics_learning._DELTA_OBJ_THETA_WORLD,
+                             dynamics_learning._DELTA_EE_X_OBJ,
+                             dynamics_learning._DELTA_EE_Y_OBJ,
+                             dynamics_learning._DELTA_EE_PHI_WORLD]
 
         # Build our two predictors
         self.svr_error_dynamics = None
@@ -767,7 +770,7 @@ class SVRWithNaiveLinearPushDynamics:
             self.svr_error_dynamics = SVRPushDynamics(delta_t, n, m,
                                                       epsilons = epsilons,
                                                       feature_names = feature_names,
-                                                      target_names = target_names,
+                                                      target_names = err_target_names,
                                                       xtra_names = xtra_names, kernel_type = kernel_type)
         self.naive_dynamics = NaiveInputDynamics(delta_t, n, m)
 
@@ -819,27 +822,24 @@ class SVRWithNaiveLinearPushDynamics:
                          delta_ee_y_obj,
                          delta_ee_phi_obj])
 
-    def learn_model(self, X_all, Y_all_raw, kernel_params = {}):
-        # Generate linear predictions from X_all data
-        (Xs, Us) = self.get_naive_inputs_from_training_data(X_all)
+    def build_y_hat_naive_dict(self, Y_hat_naive_in):
         Y_hat_naive = {dynamics_learning._DELTA_OBJ_X_OBJ : [],
                        dynamics_learning._DELTA_OBJ_Y_OBJ : [],
                        dynamics_learning._DELTA_OBJ_THETA_WORLD : [],
                        dynamics_learning._DELTA_EE_X_OBJ : [],
                        dynamics_learning._DELTA_EE_Y_OBJ : [],
                        dynamics_learning._DELTA_EE_PHI_WORLD : [] }
-        for x_k, u_k in zip(Xs, Us):
-            y_hat_naive_k = self.naive_dynamics.predict(x_k, u_k)
+        for y_hat_k in Y_hat_naive_in:
+            Y_hat_naive[dynamics_learning._DELTA_OBJ_X_OBJ].append(y_hat_k[0])
+            Y_hat_naive[dynamics_learning._DELTA_OBJ_Y_OBJ].append(y_hat_k[1])
+            Y_hat_naive[dynamics_learning._DELTA_OBJ_THETA_WORLD].append(y_hat_k[2])
+            Y_hat_naive[dynamics_learning._DELTA_EE_X_OBJ].append(y_hat_k[3])
+            Y_hat_naive[dynamics_learning._DELTA_EE_Y_OBJ].append(y_hat_k[4])
+            Y_hat_naive[dynamics_learning._DELTA_EE_PHI_WORLD].append(y_hat_k[5])
+        return Y_hat_naive
 
-            # Transform linear predictions into object frame
-            y_hat_naive_obj_k = self.transform_naive_prediction_to_obj_frame(y_hat_naive_k,
-                                                                             x_k)
-            Y_hat_naive[dynamics_learning._DELTA_OBJ_X_OBJ].append(y_hat_naive_obj_k[0])
-            Y_hat_naive[dynamics_learning._DELTA_OBJ_Y_OBJ].append(y_hat_naive_obj_k[1])
-            Y_hat_naive[dynamics_learning._DELTA_OBJ_THETA_WORLD].append(y_hat_naive_obj_k[2])
-            Y_hat_naive[dynamics_learning._DELTA_EE_X_OBJ].append(y_hat_naive_obj_k[3])
-            Y_hat_naive[dynamics_learning._DELTA_EE_Y_OBJ].append(y_hat_naive_obj_k[4])
-            Y_hat_naive[dynamics_learning._DELTA_EE_PHI_WORLD].append(y_hat_naive_obj_k[5])
+    def remove_naive_predictions_from_targets(self, Y_hat_naive_in, Y_all_raw):
+        Y_hat_naive = self.build_y_hat_naive_dict(Y_hat_naive_in)
 
         # Remove linear predictions from Y_all_raw to Y_all_cleaned
         Y_all_clean = {}
@@ -863,24 +863,69 @@ class SVRWithNaiveLinearPushDynamics:
             np.array(Y_hat_naive[dynamics_learning._DELTA_EE_PHI_WORLD]) )
         for key, value in Y_all_clean.items():
             Y_all_clean[key] = value.tolist()
+        return Y_all_clean
+
+    def learn_model(self, X_all, Y_all_raw, kernel_params = {}):
+        # Generate linear predictions from X_all data
+        (Xs, Us) = self.get_naive_inputs_from_training_data(X_all)
+        Y_hat_naive = []
+        for x_k, u_k in zip(Xs, Us):
+            y_hat_naive_k = self.naive_dynamics.predict(x_k, u_k)
+
+            # Transform linear predictions into object frame
+            y_hat_naive_obj_k = self.transform_naive_prediction_to_obj_frame(y_hat_naive_k, x_k)
+            Y_hat_naive.append(y_hat_naive_obj_k)
+
         # Train svr models on Y_all_clean
+        Y_all_clean = self.remove_naive_predictions_from_targets(Y_hat_naive, Y_all_raw)
         self.svr_error_dynamics.learn_model(X_all, Y_all_clean, kernel_params)
+
+    def test_batch_data(self, X_all, Y_all):
+        # Get naive predictions
+        (Xs, Us) = self.get_naive_inputs_from_training_data(X_all)
+        Y_hat_naive_inst = []
+        for x_k, u_k in zip(Xs, Us):
+            y_hat_naive_k = self.naive_dynamics.predict(x_k, u_k)
+
+            # Transform linear predictions into object frame
+            y_hat_naive_obj_k = self.transform_naive_prediction_to_obj_frame(y_hat_naive_k, x_k)
+            Y_hat_naive_inst.append(y_hat_naive_obj_k)
+
+        # Train svr models on Y_all_clean
+        Y_all_clean = self.remove_naive_predictions_from_targets(Y_hat_naive_inst, Y_all)
+        (Y_hat_err, Y_out_err, X_err) = self.svr_error_dynamics.test_batch_data(X_all, Y_all_clean)
+
+        # Combine the estimators results together
+        Y_hat = []
+        # Get dict of naive results for easy combination
+        Y_hat_naive_obj = []
+        for i in xrange(len(Y_hat_naive_inst[0])):
+            Y_hat_naive_obj.append([])
+        for y_hat_k in Y_hat_naive_inst:
+            for i in xrange(len(y_hat_k)):
+                Y_hat_naive_obj[i].append(y_hat_k[i])
+        for i in xrange(len(Y_hat_naive_obj)):
+            Y_hat.append(np.array(Y_hat_naive_obj[i])+np.array(Y_hat_err[i]))
+            Y_hat[i] = Y_hat[i].tolist()
+
+        # Reorganize Y_gt_out
+        Y_gt_out = [] # Needs to be object frame gt
+        for target_name in self.target_names:
+            Y_gt_out.append(Y_all[target_name])
+        return (Y_hat, Y_gt_out, X_err)
 
     def predict(self, x_k, u_k, xtra=[]):
         y_hat_naive = self.naive_dynamics.predict(x_k, u_k)
-        # TODO: Do we need to transform anything here? (Hopefully not, svr should handle it all)
         y_hat_error = self.svr_error_dynamics.predict(x_k, u_k, xtra)
         y_hat = y_hat_naive + y_hat_error
-
+        # print 'y_hat_naive', y_hat_naive
+        # print 'y_hat_error', y_hat_error
+        # print 'y_hat', y_hat
         return y_hat
 
     def jacobian(self, x_k, u_k, xtra=[]):
         # TODO: Make sure SVR jacobian works correctly for the given targets and such
         return self.naive_dynamics.jacobian(x_k, u_k) + self.svr_error_dynamics.jacobian(x_k, u_k, xtra)
-
-    def test_batch_data(self, X_all, Y_all):
-        # TODO: Set this up for testing of the new dynamics model shit
-        pass
 
     def save_models(self, output_file_base_string):
         self.svr_error_dynamics.save_models(output_file_base_string)

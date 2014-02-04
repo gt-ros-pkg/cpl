@@ -718,7 +718,7 @@ def test_svm_new(base_dir_name):
     kernel_params = {}
     for i in xrange(len(target_names)):
         kernel_params[i] = '-g 0.05 -r 2'
-    old_svr_dynamics.learn_model(train_X, train_Y, kernel_params)
+    # old_svr_dynamics.learn_model(train_X, train_Y, kernel_params)
     svr_dynamics.learn_model(train_X, train_Y, kernel_params)
 
     # Test saving and loading
@@ -741,11 +741,11 @@ def test_svm_new(base_dir_name):
 
     # Visualize training and validation results
     plot_out_path = '/home/thermans/sandbox/dynamics/'
-    # plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
-    #                                   suffix = ' '+'train' )
+    plot_predicted_vs_observed_deltas(Y_gt_train, Y_hat_train, out_path = plot_out_path, show_plot = True,
+                                      suffix = ' '+'train' )
 
-    # plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
-    #                                   suffix = ' '+'val' )
+    plot_predicted_vs_observed_deltas(Y_gt, Y_hat, out_path = plot_out_path, show_plot = True,
+                                      suffix = ' '+'val' )
     # TODO: Make this work, need trial based data
     # plot_predicted_vs_observed_tracks(Y_gt, Y_hat, X, show_plot = False, out_path = plot_out_path,
     #                                   suffix = ' '+'val' )
@@ -799,10 +799,10 @@ def test_svm_new(base_dir_name):
     deltas = x_1 - x_k
     print 'u[0]', u_k
     print 'x[0]', x_k
-    print 'feats:', svr_dynamics2.transform_opt_vector_to_feat_vector(x_k, u_k, [])
+    print 'feats:', svr_dynamics2.svr_error_dynamics.transform_opt_vector_to_feat_vector(x_k, u_k, [])
     print 'deltas',deltas
     print 'x[1]', x_1
-    print 'opts:', svr_dynamics2.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+    print 'opts:', svr_dynamics2.svr_error_dynamics.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
 
     x_1_hat = svr_dynamics2.predict(x_k, u_k)
     print 'x^[1]', x_1_hat
