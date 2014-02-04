@@ -10,3 +10,10 @@ _*.py
 *Goal.msg
 *.pyc
 */CMakeFiles/*
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_DELTA_EE_PHI_WORLD.model
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_DELTA_EE_X_OBJ.model
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_DELTA_EE_Y_OBJ.model
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_DELTA_OBJ_THETA_WORLD.model
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_DELTA_OBJ_X_OBJ.model
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_DELTA_OBJ_Y_OBJ.model
+/tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_single_obj_large_brush0_params.txt
