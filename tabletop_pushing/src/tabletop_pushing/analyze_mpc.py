@@ -742,8 +742,6 @@ def test_svm_new(base_dir_name, use_gp = False):
 
     if use_gp:
         gp_dynamics2 = GPPushDynamics(param_file_name = gp_param_file_name)
-        return gp_dynamics, gp_dynamics2
-        # TODO: compare gp and gp2 parameters here
         (Y_hat_train, Y_gt_train, X_train) = gp_dynamics.test_batch_data(train_X, train_Y)
     else:
         svr_dynamics2 = SVRWithNaiveLinearPushDynamics(delta_t, n, m, param_file_name = svr_param_file_name)
@@ -825,7 +823,7 @@ def test_svm_new(base_dir_name, use_gp = False):
     print 'deltas',deltas
     print 'x[1]', x_1
     if use_gp:
-        print 'opts:', gp_dynamics2.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+        print 'opts:', gp_dynamics2.transform_gp_results_to_opt_vector(x_k, u_k, deltas)
     else:
         print 'opts:', svr_dynamics2.svr_error_dynamics.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
 

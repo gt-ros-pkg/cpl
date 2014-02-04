@@ -1034,11 +1034,11 @@ class GPPushDynamics:
 
         self.u_phi_feat_idx = self.feature_names.index(dynamics_learning._U_PHI_WORLD)
 
-        # self.build_jacobian()
+        self.build_jacobian()
 
     def learn_model(self, X_all, Y_all):
         '''
-        Learns SVMs to predict dynamics given the input data
+        Learns GPs to predict dynamics given the input data
         X_all - batch list of features
         Y_all - batch list of targets
         '''
@@ -1054,7 +1054,7 @@ class GPPushDynamics:
                                  random_start = 10, nugget = nugget)
             gp.fit(X, Y_i)
             self.GPs.append(gp)
-        # self.build_jacobian()
+        self.build_jacobian()
 
     def test_batch_data(self, X_all, Y_all):
         (X, Y_out) = self.select_feature_data_and_targets(X_all, Y_all)
@@ -1072,7 +1072,7 @@ class GPPushDynamics:
         Predict the next state given current state estimates and control input
         x_k - current state estimate (ndarray)
         u_k - current control to evaluate (ndarray)
-        xtra - other features for SVM
+        xtra - other features for GP
         '''
         # TODO: Each row of a numpy matrix is a feature to predict
         z = np.atleast_2d([self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)])
@@ -1084,14 +1084,14 @@ class GPPushDynamics:
             delta_i = gp.predict(z)
             deltas.append(delta_i[0])
 
-        return np.array(self.transform_svm_results_to_opt_vector(x_k, u_k, deltas))
+        return np.array(self.transform_gp_results_to_opt_vector(x_k, u_k, deltas))
 
     def jacobian(self, x_k, u_k, xtra=[]):
         '''
         Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
         x_k - current state estimate (ndarray)
         u_k - current control to evaluate (ndarray)
-        xtra - other features for SVM
+        xtra - other features for GP
         '''
         if self.jacobian_needs_updates:
             return self.update_jacobian(x_k, u_k, xtra)
@@ -1117,6 +1117,7 @@ class GPPushDynamics:
         J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
 
         # TODO: Setup jacobain of learned targets w.r.t. features
+        self.J_targets_d_feats = np.matrix(np.zeros((self.n, self.p)))
 
         # Setup static feature d opts (currently none)
         J_feats_d_opts = np.matrix(np.eye(self.p, self.n+self.m))
@@ -1133,7 +1134,7 @@ class GPPushDynamics:
         Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
         x_k - current state estimate (ndarray)
         u_k - current control to evaluate (ndarray)
-        xtra - other features for SVM
+        xtra - other features for GP
         '''
         # NOTE: Being lazy and assuming a specific order of features here...
         st = sin(x_k[self.obj_theta_opt_idx])
@@ -1418,7 +1419,7 @@ class GPPushDynamics:
 
     def write_param_file(self, param_file_name):
         '''
-        Write necessary parameters not stored in the SVM model file
+        Write necessary parameters not stored in the GP model file
         '''
         param_file = file(param_file_name, 'w')
         param_file.write(str(self.delta_t)+'\n')
@@ -1436,9 +1437,9 @@ class GPPushDynamics:
 
     def parse_param_file(self, param_file_name):
         '''
-        Parse necessary parameters not stored in the SVM model file
+        Parse necessary parameters not stored in the GP model file
         '''
-        print 'Loading SVRDynamics parameter file:', param_file_name
+        print 'Loading GPDynamics parameter file:', param_file_name
         param_file = file(param_file_name, 'r')
         lines = param_file.readlines()
 
