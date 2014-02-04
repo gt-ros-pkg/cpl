@@ -318,7 +318,10 @@ class SVRPushDynamics:
         '''
         Setup the basic structure of the jacobian for faster computation at each iteration
         '''
-        self.J_base = np.matrix(np.eye(self.n, self.n+self.m))
+        if self.learning_errors:
+            self.J_base = np.zeros((self.n, self.n+self.m))
+        else:
+            self.J_base = np.matrix(np.eye(self.n, self.n+self.m))
         self.J_delta_d_targets = np.matrix(np.zeros((self.n, self.n)))
         self.jacobian_needs_updates = False
 
@@ -1045,9 +1048,10 @@ class GPPushDynamics:
             print 'Learning for target:', self.target_names[i]
             # TODO: Setup parameters to send in here
             # TODO: Setup nugget...
+            nugget = 0.0025
             dY = 0.5 + 1.0 * np.random.random(Y_i.shape)
             gp = GaussianProcess(corr = 'squared_exponential', theta0 = 0.1, thetaL = 0.01, thetaU = 1,
-                                 random_start = 100)
+                                 random_start = 10, nugget = nugget)
             gp.fit(X, Y_i)
             self.GPs.append(gp)
         # self.build_jacobian()
