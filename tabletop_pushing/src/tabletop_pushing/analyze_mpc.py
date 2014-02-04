@@ -676,7 +676,7 @@ def plot_predicted_vs_observed_deltas(gt_all, pred_all, suffix = '', out_path = 
     if show_plot:
         plotter.show()
 
-def test_svm_new(base_dir_name):
+def test_svm_new(base_dir_name, use_gp = False):
     target_names = [dynamics_learning._DELTA_OBJ_X_OBJ,
                     dynamics_learning._DELTA_OBJ_Y_OBJ,
                     dynamics_learning._DELTA_OBJ_THETA_WORLD,
@@ -693,8 +693,8 @@ def test_svm_new(base_dir_name):
 
     xtra_names = []
 
-    train_file_base_name = base_dir_name + 'bear'
-    val_file_base_name = base_dir_name + 'bear'
+    train_file_base_name = base_dir_name + 'food_box'
+    val_file_base_name = base_dir_name + 'food_box'
 
     # Read data from disk
     (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
@@ -706,38 +706,57 @@ def test_svm_new(base_dir_name):
     n = 6
     m = 3
 
-    old_svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
-                                       feature_names = feature_names,
-                                       target_names = target_names,
-                                       xtra_names = xtra_names,
-                                       kernel_type='LINEAR')
+    if use_gp:
+        gp_dynamics = GPPushDynamics(delta_t, n, m,
+                                     feature_names = feature_names,
+                                     target_names = target_names,
+                                     xtra_names = xtra_names)
+    else:
+        old_svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
+                                           feature_names = feature_names,
+                                           target_names = target_names,
+                                           xtra_names = xtra_names,
+                                           kernel_type='LINEAR')
 
-    svr_dynamics = SVRWithNaiveLinearPushDynamics(delta_t, n, m, epsilons=epsilons)
+        svr_dynamics = SVRWithNaiveLinearPushDynamics(delta_t, n, m, epsilons=epsilons)
 
     # Do Learning
-    kernel_params = {}
-    for i in xrange(len(target_names)):
-        kernel_params[i] = '-g 0.05 -r 2'
-    # old_svr_dynamics.learn_model(train_X, train_Y, kernel_params)
-    svr_dynamics.learn_model(train_X, train_Y, kernel_params)
+    if use_gp:
+        gp_dynamics.learn_model(train_X, train_Y)
+    else:
+        kernel_params = {}
+        for i in xrange(len(target_names)):
+            kernel_params[i] = '-g 0.05 -r 2'
+        old_svr_dynamics.learn_model(train_X, train_Y, kernel_params)
+        svr_dynamics.learn_model(train_X, train_Y, kernel_params)
 
     # Test saving and loading
-    svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
-    svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
-    svr_dynamics.save_models(svr_base_output_path)
+    if use_gp:
+        gp_base_output_path = '/home/thermans/sandbox/dynamics/GP_DYN/shitty'
+        gp_param_file_name = '/home/thermans/sandbox/dynamics/GP_DYN/shitty_params.txt'
+        gp_dynamics.save_models(gp_base_output_path)
+    else:
+        svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
+        svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
+        svr_dynamics.save_models(svr_base_output_path)
 
-    svr_dynamics2 = SVRWithNaiveLinearPushDynamics(delta_t, n, m, param_file_name = svr_param_file_name)
-    # svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
-
-    # Do verification on training set
-    (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
+    if use_gp:
+        gp_dynamics2 = GPPushDynamics(param_file_name = gp_param_file_name)
+        return gp_dynamics, gp_dynamics2
+        # TODO: compare gp and gp2 parameters here
+        (Y_hat_train, Y_gt_train, X_train) = gp_dynamics.test_batch_data(train_X, train_Y)
+    else:
+        svr_dynamics2 = SVRWithNaiveLinearPushDynamics(delta_t, n, m, param_file_name = svr_param_file_name)
+        # svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
+        # Do verification on training set
+        (Y_hat_train, Y_gt_train, X_train) = svr_dynamics.test_batch_data(train_X, train_Y)
 
     # Do Testing on validation set
     (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
-    (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
-
-    # print 'svr_dynamics', svr_dynamics.kernel_types, svr_dynamics.feature_names, svr_dynamics.target_names, svr_dynamics.delta_t, svr_dynamics.n, svr_dynamics.m
-    # print 'svr_dynamics2', svr_dynamics2.kernel_types, svr_dynamics2.feature_names, svr_dynamics2.target_names, svr_dynamics2.delta_t, svr_dynamics2.n, svr_dynamics2.m
+    if use_gp:
+        (Y_hat, Y_gt, X) = gp_dynamics.test_batch_data(val_X, val_Y)
+    else:
+        (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
 
     # Visualize training and validation results
     plot_out_path = '/home/thermans/sandbox/dynamics/'
@@ -799,16 +818,31 @@ def test_svm_new(base_dir_name):
     deltas = x_1 - x_k
     print 'u[0]', u_k
     print 'x[0]', x_k
-    print 'feats:', svr_dynamics2.svr_error_dynamics.transform_opt_vector_to_feat_vector(x_k, u_k, [])
+    if use_gp:
+        print 'feats:', gp_dynamics2.transform_opt_vector_to_feat_vector(x_k, u_k, [])
+    else:
+        print 'feats:', svr_dynamics2.svr_error_dynamics.transform_opt_vector_to_feat_vector(x_k, u_k, [])
     print 'deltas',deltas
     print 'x[1]', x_1
-    print 'opts:', svr_dynamics2.svr_error_dynamics.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+    if use_gp:
+        print 'opts:', gp_dynamics2.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
+    else:
+        print 'opts:', svr_dynamics2.svr_error_dynamics.transform_svm_results_to_opt_vector(x_k, u_k, deltas)
 
-    x_1_hat = svr_dynamics2.predict(x_k, u_k)
+    if use_gp:
+        x_1_hat = gp_dynamics2.predict(x_k, u_k)
+    else:
+        x_1_hat = svr_dynamics2.predict(x_k, u_k)
     print 'x^[1]', x_1_hat
-    J = svr_dynamics2.jacobian(x_k, u_k)
+    if use_gp:
+        J = gp_dynamics2.jacobian(x_k, u_k)
+    else:
+        J = svr_dynamics2.jacobian(x_k, u_k)
     print 'J:\n', J
-    return svr_dynamics2
+    if use_gp:
+        return gp_dynamics2
+    else:
+        return svr_dynamics2
 
 def test_svm_jacobians():
     synthetic_svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/synthetic_params.txt'

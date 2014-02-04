@@ -37,6 +37,7 @@ from math import sin, cos, exp, tanh
 import dynamics_learning
 from util import subPIAngle, subPIDiff
 from sklearn.gaussian_process import GaussianProcess
+from sklearn.externals import joblib
 
 _PARAM_FILE_SUFFIX = '_params.txt'
 _PARAM_FEATURE_HEADER = 'FEATURE_NAMES'
@@ -960,15 +961,6 @@ class GPPushDynamics:
             self.target_names = target_names
             learned_out_dims = len(target_names)
 
-
-            # Setup loss function paramters
-            if epsilons is not None:
-                self.epsilons = epsilons
-            else:
-                self.epsilons = []
-                for i in xrange(learned_out_dims):
-                    self.epsilons.append(1e-6)
-
         # Set secondary parameters
         self.p = len(self.feature_names)
         self.obj_frame_ee_feats = (dynamics_learning._EE_X_OBJ in self.feature_names or
@@ -1039,32 +1031,35 @@ class GPPushDynamics:
 
         self.u_phi_feat_idx = self.feature_names.index(dynamics_learning._U_PHI_WORLD)
 
-        self.build_jacobian()
+        # self.build_jacobian()
 
-    def learn_model(self, X_all, Y_all, kernel_params = {}):
+    def learn_model(self, X_all, Y_all):
         '''
         Learns SVMs to predict dynamics given the input data
         X_all - batch list of features
         Y_all - batch list of targets
-        kernel_params - user specified dictionary of kernel specific parameters
         '''
         (X, Y) = self.select_feature_data_and_targets(X_all, Y_all)
 
         for i, Y_i in enumerate(Y):
             print 'Learning for target:', self.target_names[i]
-            param_string = '-s 3 -t ' + str(self._KERNEL_TYPES[self.kernel_types[i]]) + ' -p ' + str(self.epsilons[i])
-            if i in kernel_params:
-                param_string += ' ' + kernel_params[i]
+            # TODO: Setup parameters to send in here
+            # TODO: Setup nugget...
+            dY = 0.5 + 1.0 * np.random.random(Y_i.shape)
+            gp = GaussianProcess(corr = 'squared_exponential', theta0 = 0.1, thetaL = 0.01, thetaU = 1,
+                                 random_start = 100)
+            print Y_i.shape
+            print X.shape
+            # gp.fit(X, Y_i)
             # print 'Parameters', param_string
-            svm_model = svmutil.svm_train(Y_i, X, param_string)
-            self.svm_models.append(svm_model)
-        self.build_jacobian()
+            self.GPs.append(gp)
+        # self.build_jacobian()
 
     def test_batch_data(self, X_all, Y_all):
         (X, Y_out) = self.select_feature_data_and_targets(X_all, Y_all)
         Y_hat = []
-        for Y_i, svm_model in zip(Y_out, self.svm_models):
-            [Y_hat_i, _, _] = svmutil.svm_predict(Y_i, X, svm_model, '-q')
+        for Y_i, gp in zip(Y_out, self.GPs):
+            Y_hat_i = gp.predict(X)
             Y_hat.append(Y_hat_i)
         return (Y_hat, Y_out, X)
 
@@ -1078,7 +1073,8 @@ class GPPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for SVM
         '''
-        z = [self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)]
+        # TODO: Each row of a numpy matrix is a feature to predict
+        z = np.atleast_2d([self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)])
         y = [0]
 
         deltas = []
@@ -1230,13 +1226,14 @@ class GPPushDynamics:
                 feat_idx = dynamics_learning._FEAT_INDICES[feat]
                 x_subset.append(x_raw[feat_idx])
             # TODO: Append XTRA Features
-            X.append(x_subset)
+            X.append(np.array(x_subset))
+        X = np.atleast_2d(X)
 
         Y = []
 
         # Select target sets based on requested target names
         for name in self.target_names:
-            Y.append(Y_all[name])
+            Y.append(np.array(Y_all[name]).ravel())
         return (X, Y)
 
     def transform_opt_vector_to_feat_vector(self, x_k, u_k, xtra=[]):
@@ -1303,7 +1300,7 @@ class GPPushDynamics:
         z.extend(xtra)
         return z
 
-    def transform_svm_results_to_opt_vector(self, x_k, u_k, deltas):
+    def transform_gp_results_to_opt_vector(self, x_k, u_k, deltas):
         obj_x_val = 0.0
         obj_y_val = 0.0
         obj_theta_val = 0.0
@@ -1362,41 +1359,40 @@ class GPPushDynamics:
         return [obj_x_val, obj_y_val, obj_theta_val, ee_x_val, ee_y_val, ee_phi_val]
 
     #
-    # Kernel Functions
-    #
-    def rbf_kernel(self, z, v, gamma):
-        d = z - v
-        return exp(-gamma*sum(d*d))
-
-    #
     # I/O Functions
     #
     def save_models(self, output_file_base_string):
         '''
-        Write svm models to disk
+        Write GP models to disk
         output_file_base_string - base path and naming prefix for saving learning model and parameters
         '''
         param_file_name = output_file_base_string+_PARAM_FILE_SUFFIX
         print 'Writing param_file:', param_file_name
         self.write_param_file(param_file_name)
 
-        for model, target_name in zip(self.svm_models, self.target_names):
+        for gp, target_name in zip(self.GPs, self.target_names):
             file_name = output_file_base_string + '_' + target_name + '.model'
-            print 'Saving svm model file:', file_name
-            svmutil.svm_save_model(file_name, model)
+            self.write_gp_model_file(gp, file_name)
 
     def load_models(self, param_file_name):
         '''
-        Load parameters and previously learned SVM models
+        Load parameters and previously learned GP models
         '''
         input_base_string = param_file_name[:-len(_PARAM_FILE_SUFFIX)]
         self.parse_param_file(param_file_name)
         for target_name in self.target_names:
-            svm_file_name = input_base_string + '_' + target_name + '.model'
-            print 'Loading file:', svm_file_name
-            model = svmutil.svm_load_model(svm_file_name)
-            self.svm_models.append(model)
-            self.kernel_types.append(self._KERNEL_NAMES[model.param.kernel_type])
+            gp_file_name = input_base_string + '_' + target_name + '.model'
+            model = self.read_gp_model_file(gp_file_name)
+            self.GPs.append(model)
+
+    def write_gp_model_file(self, gp, gp_file_name):
+        print 'Saving GP model file:', gp_file_name
+        joblib.dump(gp, gp_file_name, compress=9)
+
+    def read_gp_model_file(self, gp_file_name):
+        print 'Loading file:', gp_file_name
+        gp = joblib.load(gp_file_name)
+        return gp
 
     def write_param_file(self, param_file_name):
         '''
