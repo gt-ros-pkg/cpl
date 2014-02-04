@@ -341,7 +341,7 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_tr
     if _LEARN_SVR_ERR_DYNAMICS:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/err_dyn/'
     elif _LEARN_GP_DYNAMICS:
-        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/gp_dyn/'
+        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/GP_DYN/'
     else:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/epsilon_e3/'
     example_in_dir = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
@@ -362,13 +362,13 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_tr
         for hold_out_class in hold_out_classes:
             hold_out_str += '_' + hold_out_class
 
-        hold_out_train_file_base_name = base_example_hold_out_dir_name + 'objs' + hold_out_str
-        svr_hold_out_output_path = base_svr_path + kernel_type + '_hold_out_' + obj_class
+        # hold_out_train_file_base_name = base_example_hold_out_dir_name + 'objs' + hold_out_str
+        # svr_hold_out_output_path = base_svr_path + kernel_type + '_hold_out_' + obj_class
 
-        train_and_save_svr_dynamics(hold_out_train_file_base_name, svr_hold_out_output_path,
-                                    delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
-                                    kernel_type = kernel_type,
-                                    kernel_params = kernel_params)
+        # train_and_save_svr_dynamics(hold_out_train_file_base_name, svr_hold_out_output_path,
+        #                             delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
+        #                             kernel_type = kernel_type,
+        #                             kernel_params = kernel_params)
 
         # Train model with obj class as only training class
         single_obj_train_file_base_name = base_example_single_obj_dir_name + 'objs_' + obj_class
@@ -418,7 +418,7 @@ def train_clustered_obj_model(obj_classes, kernel_type='LINEAR'):
     if _LEARN_SVR_ERR_DYNAMICS:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/err_dyn/'
     elif _LEARN_GP_DYNAMICS:
-        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/gp_dyn/'
+        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/GP_DYN/'
     else:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/epsilon_e3/'
 

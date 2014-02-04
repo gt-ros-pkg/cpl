@@ -939,7 +939,8 @@ class SVRWithNaiveLinearPushDynamics:
 
 class GPPushDynamics:
     def __init__(self, delta_t = 1.0, n = 6, m = 3,
-                 param_file_name = '', feature_names = [], target_names = [], xtra_names = []):
+                 param_file_name = '', feature_names = [], target_names = [], xtra_names = [],
+                 mean_fnc = 'constant'):
         '''
         delta_t - the (average) time between time steps
         n - number of state space dimensions
@@ -954,6 +955,7 @@ class GPPushDynamics:
         self.feature_names = []
         self.target_names = []
         self.jacobian_needs_updates = False
+        self.mean_fnc = mean_fnc
 
         # Get settings from disk if a file base is specified
         if len(param_file_name) > 0:
@@ -1047,11 +1049,12 @@ class GPPushDynamics:
         for i, Y_i in enumerate(Y):
             print 'Learning for target:', self.target_names[i]
             # TODO: Setup parameters to send in here
+            # TODO: Send in mean_fnc
             # TODO: Setup nugget...
             nugget = 0.0025
             dY = 0.5 + 1.0 * np.random.random(Y_i.shape)
             gp = GaussianProcess(corr = 'squared_exponential', theta0 = 0.1, thetaL = 0.01, thetaU = 1,
-                                 random_start = 10, nugget = nugget)
+                                 random_start = 10, nugget = nugget, regr = self.mean_fnc)
             gp.fit(X, Y_i)
             self.GPs.append(gp)
         self.build_jacobian()
