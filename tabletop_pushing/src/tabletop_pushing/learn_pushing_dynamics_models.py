@@ -15,6 +15,7 @@ _ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush0', 'soap_box',
 _TEST_CLASSES = ['bear', 'glad', 'soap_box', 'bowl', 'shampoo', 'large_brush']
 
 _LEARN_SVR_ERR_DYNAMICS = False
+_LEARN_GP_DYNAMICS = True
 
 def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
                                 delta_t, n, m, epsilons, feature_names, target_names, xtra_names,
@@ -30,14 +31,22 @@ def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
     # Build model class
     if _LEARN_SVR_ERR_DYNAMICS:
         svr_dynamics = SVRWithNaiveLinearPushDynamics(delta_t, n, m, epsilons=epsilons)
+        svr_dynamics.learn_model(train_X, train_Y, kernel_params)
+    elif _LEARN_GP_DYNAMICS:
+        svr_dynamics = GPPushDynamics(delta_t, n, m,
+                                      feature_names = feature_names,
+                                      target_names = target_names,
+                                      xtra_names = xtra_names)
+        svr_dynamics.learn_model(train_X, train_Y)
     else:
         svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
                                        feature_names = feature_names,
                                        target_names = target_names,
                                        xtra_names = xtra_names,
                                        kernel_type = kernel_type)
-    # Train and save model
-    svr_dynamics.learn_model(train_X, train_Y, kernel_params)
+        # Train and save model
+        svr_dynamics.learn_model(train_X, train_Y, kernel_params)
+
     print 'Saving model to:', svr_output_path
     svr_dynamics.save_models(svr_output_path)
     return svr_dynamics
@@ -91,11 +100,13 @@ def analyze_pred_vs_gt(Y_hat, Y_gt, Angulars=[]):
             error_mins, error_q1s, error_medians, error_q3s, error_maxes)
 
 def test_svr_offline(model_param_file_name, test_data_example_base_name):
+    delta_t = 1./9.
+    n = 6
+    m = 3
     if _LEARN_SVR_ERR_DYNAMICS:
-        delta_t = 1./9.
-        n = 6
-        m = 3
         svr_dynamics = SVRWithNaiveLinearPushDynamics(delta_t, n, m, param_file_name = model_param_file_name)
+    elif _LEARN_GP_DYNAMICS:
+        svr_dynamics = GPPushDynamics(param_file_name = model_param_file_name)
     else:
         svr_dynamics = SVRPushDynamics(param_file_name = model_param_file_name)
     (test_X, test_Y) = dynamics_learning.read_dynamics_learning_example_files(test_data_example_base_name)
@@ -229,6 +240,8 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_single_obj_model = Tr
     # Go through all objects
     if _LEARN_SVR_ERR_DYNAMICS:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/err_dyn/'
+    elif _LEARN_GP_DYNAMICS:
+        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/GP_DYN/'
     else:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/epsilon_e3/'
     base_example_dir_name = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/single_obj/'
@@ -243,12 +256,16 @@ def compare_obj_class_results(kernel_type = 'LINEAR', test_single_obj_model = Tr
             model_param_file_name = base_svr_path + kernel_type + '_single_obj_' + hold_out_class + '_params.txt'
             if _LEARN_SVR_ERR_DYNAMICS:
                 table_out_path = '/u/thermans/sandbox/single_objs/err_dyn/'
+            elif _LEARN_GP_DYNAMICS:
+                table_out_path = '/u/thermans/sandbox/single_objs/gp_dyn/'
             else:
                 table_out_path = '/u/thermans/sandbox/single_objs/' + kernel_type +'/'
         else:
             model_param_file_name = base_svr_path + kernel_type + '_hold_out_' + hold_out_class + '_params.txt'
             if _LEARN_SVR_ERR_DYNAMICS:
                 table_out_path = '/u/thermans/sandbox/hold_out_models/err_dyn/'
+            elif _LEARN_GP_DYNAMICS:
+                table_out_path = '/u/thermans/sandbox/hold_out_models/gp_dyn/'
             else:
                 table_out_path = '/u/thermans/sandbox/hold_out_models/' + kernel_type +'/'
         if not os.path.exists(table_out_path):
@@ -323,6 +340,8 @@ def setup_leave_one_out_and_single_class_models(kernel_type = 'LINEAR', build_tr
     # Train and save models
     if _LEARN_SVR_ERR_DYNAMICS:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/err_dyn/'
+    elif _LEARN_GP_DYNAMICS:
+        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/gp_dyn/'
     else:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/epsilon_e3/'
     example_in_dir = '/u/thermans/Dropbox/Data/rss2014/training/object_classes/'
@@ -398,6 +417,8 @@ def train_clustered_obj_model(obj_classes, kernel_type='LINEAR'):
     print 'obj_classes', obj_classes
     if _LEARN_SVR_ERR_DYNAMICS:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/err_dyn/'
+    elif _LEARN_GP_DYNAMICS:
+        base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/gp_dyn/'
     else:
         base_svr_path = roslib.packages.get_pkg_dir('tabletop_pushing')+'/cfg/SVR_DYN/epsilon_e3/'
 
