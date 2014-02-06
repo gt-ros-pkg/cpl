@@ -41,10 +41,12 @@
       <param name="mpc_H" type="int" value="10"/>
       <param name="min_num_mpc_trajectory_steps" type="int" value="2"/>
       <param name="mpc_max_step_size" type="double" value="0.0025"/>
-      <param name="svr_base_path" type="string" value="/cfg/GP_DYN/"/>
+      <param name="svr_base_path" type="string" value="/cfg/SVR_DYN/"/>
+      <!-- <param name="svr_base_path" type="string" value="/cfg/GP_DYN/"/> -->
+      <!-- <param name="svr_base_path" type="string" value="/cfg/SVR_DYN/err_dyn/"/> -->
       <param name="model_checker_db_file_path" type="string" value="/cfg/shape_dbs/hold_out_bear_global.txt"/>
       <param name="model_checker_output_path" type="string" value="/u/thermans/data/new/model_checker/"/>
       <param name="use_error_dynamics" type="bool" value="false"/>
-      <param name="use_gp_dynamics" type="bool" value="true"/>
+      <param name="use_gp_dynamics" type="bool" value="false"/>
     </node>
 </launch>

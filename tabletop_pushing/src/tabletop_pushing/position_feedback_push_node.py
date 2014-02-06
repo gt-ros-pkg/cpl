@@ -270,6 +270,8 @@ class PositionFeedbackPushNode:
         self.check_model_performance = False
         self.use_err_dynamics = rospy.get_param('~use_error_dynamics', False)
         self.use_gp_dynamics = rospy.get_param('~use_gp_dynamics', False)
+        self.sqp_max_iter = rospy.get_param('~sqp_max_iter', 50)
+        self.mpc_max_iter = rospy.get_param('~mpc_max_iter', 10)
 
         # Set joint gains
         self.arm_mode = None
@@ -563,7 +565,8 @@ class PositionFeedbackPushNode:
                     dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
             U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
-            self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon, U_max)
+            self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon, U_max,
+                                                  max_iter = self.mpc_max_iter)
 
             # Create target trajectory to goal pose
             self.trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
@@ -587,11 +590,23 @@ class PositionFeedbackPushNode:
                     param_file_string = base_path + sqp_suffix + '_params.txt'
                     self.used_model_name = sqp_suffix
                     rospy.loginfo('Loading dynamics model: ' + param_file_string)
-                    dyn_model = SVRPushDynamics(param_file_name = param_file_string)
+                    if self.use_err_dynamics:
+                        dyn_model = SVRWithNaiveLinearPushDynamics(self.mpc_delta_t,
+                                                                   self.mpc_state_space_dim,
+                                                                   self.mpc_input_space_dim,
+                                                                   param_file_name = param_file_string)
+                    elif self.use_gp_dynamics:
+                        dyn_model = GPPushDynamics(self.mpc_delta_t,
+                                                   self.mpc_state_space_dim,
+                                                   self.mpc_input_space_dim,
+                                                   param_file_name = param_file_string)
+                    else:
+                        dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
                 U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
                 self.SQPOpt =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
-                                                         U_max, iprint_level=2, ftol=1.0E-3)
+                                                         U_max, iprint_level=2, ftol=1.0E-3,
+                                                         max_iter = self.sqp_max_iter)
                 rospy.loginfo('Calling controller')
                 response.action_aborted = not self.open_loop_sqp_controller(goal, request, which_arm, ac)
             elif request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER:
