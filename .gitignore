@@ -24,3 +24,4 @@ _*.py
 /tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_hold_out_large_brush0_DELTA_OBJ_X_OBJ.model
 /tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_hold_out_large_brush0_DELTA_OBJ_Y_OBJ.model
 /tabletop_pushing/cfg/SVR_DYN/epsilon_e3/LINEAR_hold_out_large_brush0_params.txt
+/tabletop_pushing/cfg/GP_DYN/*
