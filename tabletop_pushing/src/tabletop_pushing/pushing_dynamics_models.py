@@ -744,6 +744,10 @@ class SVRWithNaiveLinearPushDynamics:
         param_file_name - base path and file name for parameter file
         epsilons - list of epislon values for the epislon insensitive loss function (training only)
         '''
+        self.delta_t = delta_t
+        self.n = n
+        self.m = m
+
         kernel_type = 'LINEAR'
         # TODO: Do we need to make new target names for error functions
         err_target_names = [dynamics_learning._ERR_OBJ_X_OBJ,

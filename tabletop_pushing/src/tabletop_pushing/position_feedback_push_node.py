@@ -268,6 +268,8 @@ class PositionFeedbackPushNode:
         self.model_checker_output_path = rospy.get_param('~model_checker_output_path', 'cfg')
         self.trajectory_to_check = []
         self.check_model_performance = False
+        self.use_err_dynamics = rospy.get_param('~use_error_dynamics', False)
+        self.use_gp_dynamics = rospy.get_param('~use_gp_dynamics', False)
 
         # Set joint gains
         self.arm_mode = None
@@ -547,7 +549,18 @@ class PositionFeedbackPushNode:
                 # NOTE: Add switch here if we get other non svm dynamics models
                 base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
                 param_file_string = base_path + mpc_suffix + '_params.txt'
-                dyn_model = SVRPushDynamics(param_file_name = param_file_string)
+                if self.use_err_dynamics:
+                    dyn_model = SVRWithNaiveLinearPushDynamics(self.mpc_delta_t,
+                                                               self.mpc_state_space_dim,
+                                                               self.mpc_input_space_dim,
+                                                               param_file_name = param_file_string)
+                elif self.use_gp_dynamics:
+                    dyn_model = GPPushDynamics(self.mpc_delta_t,
+                                               self.mpc_state_space_dim,
+                                               self.mpc_input_space_dim,
+                                               param_file_name = param_file_string)
+                else:
+                    dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
             U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
             self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon, U_max)

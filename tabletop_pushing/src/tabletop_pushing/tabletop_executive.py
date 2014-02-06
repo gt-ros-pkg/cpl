@@ -1179,9 +1179,9 @@ if __name__ == '__main__':
     use_singulation = False
     use_learning = True
     learning_dynamics = True
-    compare_shape_for_dynamics = True
-    check_model_performance = True
-    num_trials_per_object = 10
+    compare_shape_for_dynamics = False
+    check_model_performance = False
+    num_trials_per_object = 5
     use_guided = True
     max_pushes = 500
 
