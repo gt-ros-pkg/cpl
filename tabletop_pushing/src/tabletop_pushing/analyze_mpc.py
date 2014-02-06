@@ -694,7 +694,7 @@ def test_svm_new(base_dir_name, use_gp = False):
     xtra_names = []
 
     train_file_base_name = base_dir_name + 'food_box'
-    val_file_base_name = base_dir_name + 'food_box'
+    val_file_base_name = base_dir_name + 'bear'
 
     # Read data from disk
     (train_X, train_Y) = dynamics_learning.read_dynamics_learning_example_files(train_file_base_name)
@@ -710,7 +710,8 @@ def test_svm_new(base_dir_name, use_gp = False):
         gp_dynamics = GPPushDynamics(delta_t, n, m,
                                      feature_names = feature_names,
                                      target_names = target_names,
-                                     xtra_names = xtra_names)
+                                     xtra_names = xtra_names,
+                                     mean_fnc = 'constant')
     else:
         old_svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,
                                            feature_names = feature_names,
@@ -722,7 +723,8 @@ def test_svm_new(base_dir_name, use_gp = False):
 
     # Do Learning
     if use_gp:
-        gp_dynamics.learn_model(train_X, train_Y)
+        # gp_dynamics.learn_model(train_X, train_Y)
+        print 'Not learning'
     else:
         kernel_params = {}
         for i in xrange(len(target_names)):
@@ -734,7 +736,7 @@ def test_svm_new(base_dir_name, use_gp = False):
     if use_gp:
         gp_base_output_path = '/home/thermans/sandbox/dynamics/GP_DYN/shitty'
         gp_param_file_name = '/home/thermans/sandbox/dynamics/GP_DYN/shitty_params.txt'
-        gp_dynamics.save_models(gp_base_output_path)
+        # gp_dynamics.save_models(gp_base_output_path)
     else:
         svr_base_output_path = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty'
         svr_param_file_name = '/home/thermans/sandbox/dynamics/SVR_FILES/shitty_params.txt'
@@ -742,7 +744,7 @@ def test_svm_new(base_dir_name, use_gp = False):
 
     if use_gp:
         gp_dynamics2 = GPPushDynamics(param_file_name = gp_param_file_name)
-        (Y_hat_train, Y_gt_train, X_train) = gp_dynamics.test_batch_data(train_X, train_Y)
+        (Y_hat_train, Y_gt_train, X_train) = gp_dynamics2.test_batch_data(train_X, train_Y)
     else:
         svr_dynamics2 = SVRWithNaiveLinearPushDynamics(delta_t, n, m, param_file_name = svr_param_file_name)
         # svr_dynamics2 = SVRPushDynamics(param_file_name = svr_param_file_name)
@@ -752,7 +754,7 @@ def test_svm_new(base_dir_name, use_gp = False):
     # Do Testing on validation set
     (val_X, val_Y) = dynamics_learning.read_dynamics_learning_example_files(val_file_base_name)
     if use_gp:
-        (Y_hat, Y_gt, X) = gp_dynamics.test_batch_data(val_X, val_Y)
+        (Y_hat, Y_gt, X) = gp_dynamics2.test_batch_data(val_X, val_Y)
     else:
         (Y_hat, Y_gt, X) = svr_dynamics.test_batch_data(val_X, val_Y)
 

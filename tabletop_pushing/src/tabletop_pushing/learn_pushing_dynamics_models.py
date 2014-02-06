@@ -36,7 +36,8 @@ def train_and_save_svr_dynamics(train_file_base_name, svr_output_path,
         svr_dynamics = GPPushDynamics(delta_t, n, m,
                                       feature_names = feature_names,
                                       target_names = target_names,
-                                      xtra_names = xtra_names)
+                                      xtra_names = xtra_names,
+                                      mean_fnc = kernel_type)
         svr_dynamics.learn_model(train_X, train_Y)
     else:
         svr_dynamics = SVRPushDynamics(delta_t, n, m, epsilons=epsilons,

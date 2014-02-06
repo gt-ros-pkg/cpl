@@ -1056,7 +1056,6 @@ class GPPushDynamics:
             # TODO: Send in mean_fnc
             # TODO: Setup nugget...
             nugget = 0.0025
-            dY = 0.5 + 1.0 * np.random.random(Y_i.shape)
             gp = GaussianProcess(corr = 'squared_exponential', theta0 = 0.1, thetaL = 0.01, thetaU = 1,
                                  random_start = 10, nugget = nugget, regr = self.mean_fnc)
             gp.fit(X, Y_i)
