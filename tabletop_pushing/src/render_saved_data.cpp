@@ -112,6 +112,44 @@ class PushTrial
   ControlTrajectory obj_trajectory;
 };
 
+#define XY_RES 0.00075
+
+inline int worldLocToIdx(double val, double min_val, double max_val)
+{
+  return round((val-min_val)/XY_RES);
+}
+
+inline int objLocToIdx(double val, double min_val, double max_val)
+{
+  return round((val-min_val)/XY_RES);
+}
+
+cv::Point worldPtToImgPt(pcl16::PointXYZ world_pt, double min_x, double max_x,
+                         double min_y, double max_y)
+{
+  cv::Point img_pt(worldLocToIdx(world_pt.x, min_x, max_x),
+                   worldLocToIdx(world_pt.y, min_y, max_y));
+  return img_pt;
+}
+
+pcl16::PointXYZ worldPointInObjectFrame(pcl16::PointXYZ world_pt, PushTrackerState& cur_state)
+{
+  // Center on object frame
+  pcl16::PointXYZ shifted_pt;
+  shifted_pt.x = world_pt.x - cur_state.x.x;
+  shifted_pt.y = world_pt.y - cur_state.x.y;
+  shifted_pt.z = world_pt.z - cur_state.z;
+  double ct = cos(cur_state.x.theta);
+  double st = sin(cur_state.x.theta);
+  // Rotate into correct frame
+  pcl16::PointXYZ obj_pt;
+  obj_pt.x =  ct*shifted_pt.x + st*shifted_pt.y;
+  obj_pt.y = -st*shifted_pt.x + ct*shifted_pt.y;
+  obj_pt.z = shifted_pt.z; // NOTE: Currently assume 2D motion
+  return obj_pt;
+}
+
+
 //
 // I/O Functions
 //
@@ -342,6 +380,29 @@ PushTrackerState generateStateFromData(ControlTimeStep& cts, PushTrial& trial)
   return state;
 }
 
+PushTrackerState generateStartStateFromData(PushTrial& trial)
+{
+  PushTrackerState state;
+  state.header.frame_id = "/torso_lift_link"; // TODO: get this correctly from disk
+  // state.header.stamp = ros::Time(trial.t);
+  state.header.seq = 0;
+  state.x.x = trial.init_loc.x;
+  state.x.y = trial.init_loc.y;
+  state.x.theta = trial.init_theta;
+  state.z = trial.init_loc.z;
+  state.x_dot.x = 0;
+  state.x_dot.y = 0;
+  state.x_dot.theta = 0;
+  state.init_x.x = trial.init_loc.x;
+  state.init_x.y = trial.init_loc.y;
+  state.init_x.theta = trial.init_theta;
+  state.no_detection = false; // TODO: Get this from disk?
+  state.controller_name = trial.controller;
+  state.proxy_name = trial.proxy;
+  state.behavior_primitive = trial.primitive;
+  return state;
+}
+
 ProtoObject generateObjectFromState(XYZPointCloud& obj_cloud)
 {
   ProtoObject obj;
@@ -370,10 +431,167 @@ cv::Mat projectHandIntoBoundaryImage(ControlTimeStep& cts, PushTrackerState& cur
   return visualizeObjectContactLocation(hull_cloud, cur_state, hand_pt, forward_pt);
 }
 
+
+void projectCTSOntoObjectBoundary(cv::Mat& footprint, ControlTimeStep& cts, PushTrial& trial)
+{
+  PushTrackerState cur_state = generateStateFromData(cts, trial);
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  cv::Scalar kuler_yellow(25, 252, 255);
+  cv::Scalar kuler_blue(204, 133, 20);
+  cv::Scalar kuler_black(0,0,0);
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+
+  pcl16::PointXYZ world_pt;
+  world_pt.x = cts.ee.position.x;
+  world_pt.y = cts.ee.position.y;
+  world_pt.z = cts.ee.position.z;
+  pcl16::PointXYZ obj_pt = worldPointInObjectFrame(world_pt, cur_state);
+  cv::Point img_pt(cols - objLocToIdx(obj_pt.x, min_x, max_x), objLocToIdx(obj_pt.y, min_y, max_y));
+
+  double roll, pitch, yaw;
+  tf::Quaternion q;
+  tf::quaternionMsgToTF(cts.ee.orientation, q);
+  tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+  // Add a fixed amount projection forward using the hand pose (or axis)
+  pcl16::PointXYZ forward_pt;
+  forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
+  forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;
+  forward_pt.z = cts.ee.position.z;
+  pcl16::PointXYZ forward_obj_pt = worldPointInObjectFrame(forward_pt, cur_state);
+  cv::Point forward_img_pt(cols - objLocToIdx(forward_obj_pt.x, min_x, max_x),
+                           objLocToIdx(forward_obj_pt.y, min_y, max_y));
+
+  // Create line pointing in velocity vector direction
+  pcl16::PointXYZ vector_world_pt;
+  float delta_t = 1.;
+  vector_world_pt.x = world_pt.x + cts.u.linear.x*delta_t;
+  vector_world_pt.y = world_pt.y + cts.u.linear.y*delta_t;
+  vector_world_pt.z = world_pt.z;
+  pcl16::PointXYZ vector_obj_pt = worldPointInObjectFrame(vector_world_pt, cur_state);
+  cv::Point vector_img_pt(cols - objLocToIdx(vector_obj_pt.x, min_x, max_x),
+                          objLocToIdx(vector_obj_pt.y, min_y, max_y));
+
+  // Draw shadows first
+  cv::circle(footprint, img_pt, 3, kuler_black, 5);
+  cv::line(footprint, img_pt, forward_img_pt, kuler_black, 2);
+  cv::line(footprint, img_pt, vector_img_pt, kuler_black, 2);
+  // Initial point
+  cv::circle(footprint, img_pt, 1, kuler_red, 5);
+  // EE Heading vector
+  cv::line(footprint, img_pt, forward_img_pt, kuler_red, 1);
+  // Velocity vector
+  cv::line(footprint, img_pt, vector_img_pt, kuler_green, 1);
+}
+
+
+
+int main_visualize_training_samples(int argc, char** argv)
+{
+  double boundary_hull_alpha = 0.01;
+  std::string aff_file_path(argv[1]);
+  std::string data_directory_path(argv[2]);
+  std::string out_file_path(argv[3]);
+
+  int feedback_idx = 1;
+  if (argc > 4)
+  {
+    feedback_idx = atoi(argv[4]);
+  }
+
+  int base_img_idx = 0;
+  if (argc > 5)
+  {
+    base_img_idx = atoi(argv[5]);
+  }
+
+  int wait_time = 0;
+  // Read in aff_file
+  std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
+
+  if (trials.size() < 1)
+  {
+    ROS_ERROR_STREAM("No trial data read");
+    return -1;
+  }
+
+  // Setup base point cloud image
+  // HACK: We can specify this to get a prettier image than 0
+  std::stringstream base_obj_name;
+  base_obj_name << data_directory_path << "feedback_control_obj_" << feedback_idx+base_img_idx << "_"
+                << 0 << ".pcd";
+  XYZPointCloud base_obj_cloud;
+  if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(base_obj_name.str(), base_obj_cloud) == -1) //* load the file
+  {
+    ROS_ERROR_STREAM("Couldn't read file " << base_obj_name.str());
+  }
+  ProtoObject base_obj = generateObjectFromState(base_obj_cloud);
+  XYZPointCloud base_hull_cloud = getObjectBoundarySamples(base_obj, boundary_hull_alpha);
+  PushTrial base_trial = trials[base_img_idx];
+  PushTrackerState base_state = generateStartStateFromData(base_trial);
+  cv::Mat sample_pt_cloud_combined_img = visualizeObjectBoundarySamples(base_hull_cloud, base_state);
+
+  // Go through all trials reading data associated with them
+  for (unsigned int i = 0; i < trials.size(); ++i, feedback_idx++)
+  {
+    PushTrial trial = trials[i];
+
+    // Read in workspace transform and camera parameters
+    std::stringstream trial_transform_name, trial_cam_info_name;
+    trial_transform_name << data_directory_path << "workspace_to_cam_" << feedback_idx << ".txt";
+    trial_cam_info_name << data_directory_path << "cam_info_" << feedback_idx << ".txt";
+    tf::Transform workspace_to_camera = readTFTransform(trial_transform_name.str());
+    sensor_msgs::CameraInfo cam_info = readCameraInfo(trial_cam_info_name.str());
+
+    // Read in image and point cloud for object
+    // Get associated image and object point cloud for this trial
+    std::stringstream trial_img_name, trial_obj_name;
+    trial_img_name << data_directory_path << "feedback_control_input_" << feedback_idx << "_" << 0 << ".png";
+    trial_obj_name << data_directory_path << "feedback_control_obj_" << feedback_idx << "_" << 0 << ".pcd";
+    cv::Mat trial_base_img = cv::imread(trial_img_name.str());
+    XYZPointCloud trial_obj_cloud;
+    if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(trial_obj_name.str(), trial_obj_cloud) == -1) //* load the file
+    {
+      ROS_ERROR_STREAM("Couldn't read file " << trial_obj_name.str());
+    }
+
+    // Create objects for use by standard methods
+    ProtoObject trial_obj = generateObjectFromState(trial_obj_cloud);
+    PushTrackerState trial_state = generateStartStateFromData(trial);
+    XYZPointCloud hull_cloud = getObjectBoundarySamples(trial_obj, boundary_hull_alpha);
+    cv::Mat sample_pt_cloud_img = visualizeObjectBoundarySamples(hull_cloud, trial_state);
+    // Go through each control time step in the current trial
+    for (unsigned int j = 0; j < trial.obj_trajectory.size(); ++j)
+    {
+      ControlTimeStep cts = trial.obj_trajectory[j];
+      projectCTSOntoObjectBoundary(sample_pt_cloud_img, cts, trial);
+      projectCTSOntoObjectBoundary(sample_pt_cloud_combined_img, cts, base_trial);
+    }
+    ROS_INFO_STREAM("Showing image for trial: " << i);
+    cv::imshow("Sample pt image", sample_pt_cloud_img);
+    cv::imshow("Combined Sample pt image", sample_pt_cloud_combined_img);
+    std::stringstream trial_cloud_out_name;
+    trial_cloud_out_name << out_file_path << "trial_samples_" << i << ".png";
+    cv::imwrite(trial_cloud_out_name.str(), sample_pt_cloud_img);
+    cv::waitKey(wait_time);
+  }
+  cv::imshow("Combined Sample pt image", sample_pt_cloud_combined_img);
+  std::stringstream combined_cloud_out_name;
+  combined_cloud_out_name << out_file_path << "combined_samples.png";
+  cv::imwrite(combined_cloud_out_name.str(), sample_pt_cloud_combined_img);
+  return 0;
+}
+
 /**
  * Read in the data, render the images and save to disk
  */
-int main(int argc, char** argv)
+int main_render(int argc, char** argv)
 {
 
   if (argc < 4 || argc > 6)
@@ -455,4 +673,10 @@ int main(int argc, char** argv)
 
   // TODO: Generate a corpus of training data from the CTS examples
   return 0;
+}
+
+int main(int argc, char** argv)
+{
+  return main_visualize_training_samples(argc, argv);
+  // return main_render(argc, argv);
 }

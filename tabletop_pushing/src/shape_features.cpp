@@ -188,24 +188,30 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
 
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  cv::Scalar kuler_yellow(25, 252, 255);
+  cv::Scalar kuler_blue(204, 133, 20);
+
   cv::Point prev_img_pt, init_img_pt;
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
     cv::Point img_pt(cols - objLocToIdx(obj_pt.x, min_x, max_x), objLocToIdx(obj_pt.y, min_y, max_y));
-    cv::Scalar color(128, 0, 0);
-    cv::circle(footprint, img_pt, 1, color, 3);
+    cv::circle(footprint, img_pt, 1, kuler_blue, 3);
     if (i > 0)
     {
-      cv::line(footprint, img_pt, prev_img_pt, color, 1);
+      cv::line(footprint, img_pt, prev_img_pt, kuler_blue, 1);
     }
     else
     {
-      init_img_pt = img_pt;
+      init_img_pt.x = img_pt.x;
+      init_img_pt.y = img_pt.y;
     }
-    prev_img_pt = img_pt;
+    prev_img_pt.x = img_pt.x;
+    prev_img_pt.y = img_pt.y;
   }
-  cv::line(footprint, prev_img_pt, init_img_pt, cv::Scalar(0,128,0),1);
+  cv::line(footprint, prev_img_pt, init_img_pt, kuler_blue,1);
   return footprint;
 }
 
