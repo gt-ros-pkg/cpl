@@ -37,7 +37,9 @@ from math import sin, cos, exp, tanh
 import dynamics_learning
 from util import subPIAngle, subPIDiff
 from sklearn.gaussian_process import GaussianProcess
+from sklearn.gaussian_process.correlation_models import squared_exponential
 from sklearn.externals import joblib
+from sklearn.metrics.pairwise import manhattan_distances
 
 _PARAM_FILE_SUFFIX = '_params.txt'
 _PARAM_FEATURE_HEADER = 'FEATURE_NAMES'
@@ -1099,9 +1101,74 @@ class GPPushDynamics:
         u_k - current control to evaluate (ndarray)
         xtra - other features for GP
         '''
-        if self.jacobian_needs_updates:
-            return self.update_jacobian(x_k, u_k, xtra)
-        return self.J
+        # NOTE: Being lazy and assuming a specific order of features here...
+        st = sin(x_k[self.obj_theta_opt_idx])
+        ct = cos(x_k[self.obj_theta_opt_idx])
+
+        # Update derivative of opt deltas w.r.t. learned targets
+        J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
+        J_delta_d_targets[self.obj_x_opt_idx, self.obj_x_target_idx] = ct # d/do_x^o[o_x^w]
+        J_delta_d_targets[self.obj_x_opt_idx, self.obj_y_target_idx] = -st # d/do_y^o[o_x^w]
+        J_delta_d_targets[self.obj_y_opt_idx, self.obj_x_target_idx] = st # d/do_x^o[o_y^w]
+        J_delta_d_targets[self.obj_y_opt_idx, self.obj_y_target_idx] = ct # d/do_y^o[o_y^w]
+
+        J_delta_d_targets[self.ee_x_opt_idx, self.ee_x_target_idx] = ct # d/dee_x^o[ee_x^w]
+        J_delta_d_targets[self.ee_x_opt_idx, self.ee_y_target_idx] = -st # d/dee_y^o[ee_x^w]
+        J_delta_d_targets[self.ee_y_opt_idx, self.ee_x_target_idx] = st # d/dee_x^o[ee_y^w]
+        J_delta_d_targets[self.ee_y_opt_idx, self.ee_y_target_idx] = ct # d/dee_y^o[ee_y^w]
+
+        # Update derivatives of features w.r.t. decision variables
+        J_feats_d_opts = np.matrix(np.zeros((self.p, self.n+self.m)))
+        x_ee_demeaned = x_k[self.ee_x_opt_idx] - x_k[self.obj_x_opt_idx]
+        y_ee_demeaned = x_k[self.ee_y_opt_idx] - x_k[self.obj_y_opt_idx]
+
+        J_feats_d_opts[self.ee_x_feat_idx, self.obj_x_opt_idx] = -ct # d/dx[ee_x^o]
+        J_feats_d_opts[self.ee_x_feat_idx, self.obj_y_opt_idx] = -st # d/dy[ee_x^o]
+        J_feats_d_opts[self.ee_x_feat_idx,
+                       self.obj_theta_opt_idx] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[ee_x^o]
+        J_feats_d_opts[self.ee_x_feat_idx, self.ee_x_opt_idx] =  ct # d/dee_x[ee_x^o]
+        J_feats_d_opts[self.ee_x_feat_idx, self.ee_y_opt_idx] =  st # d/dee_y[ee_x^o]
+
+        J_feats_d_opts[self.ee_y_feat_idx, self.obj_x_opt_idx] =  st # d/dx[ee_y^o]
+        J_feats_d_opts[self.ee_y_feat_idx, self.obj_y_opt_idx] = -ct # d/dy[ee_y^o]
+        J_feats_d_opts[self.ee_y_feat_idx,
+                       self.obj_theta_opt_idx] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[ee_y^o]
+        J_feats_d_opts[self.ee_y_feat_idx, self.ee_x_opt_idx] = -st # d/dx_ee[ee_y^o]
+        J_feats_d_opts[self.ee_y_feat_idx, self.ee_y_opt_idx] =  ct # d/dy_ee[ee_y^o]
+
+        # Setup ee_phi partials
+        J_feats_d_opts[self.ee_phi_feat_idx, self.ee_phi_opt_idx] = 1.0 # d/dee_phi^w[ee_phi^o]
+        J_feats_d_opts[self.ee_phi_feat_idx, self.obj_theta_opt_idx] =  -1.0 # d/dtheta[ee_phi^o]
+
+
+        J_feats_d_opts[self.u_x_feat_idx, self.obj_theta_opt_idx] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
+        J_feats_d_opts[self.u_x_feat_idx, self.u_x_opt_idx] = ct # d/du_x[u_x]
+        J_feats_d_opts[self.u_x_feat_idx, self.u_y_opt_idx] = st # d/du_y[u_x]
+
+        J_feats_d_opts[self.u_y_feat_idx, self.obj_theta_opt_idx] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
+        J_feats_d_opts[self.u_y_feat_idx, self.u_x_opt_idx] = -st # d/du_x[u_y]
+        J_feats_d_opts[self.u_y_feat_idx, self.u_y_opt_idx] =  ct # d/du_y[u_y]
+        # Setup derivates of u_phi
+        J_feats_d_opts[self.u_phi_feat_idx, self.u_phi_opt_idx] = 1.
+
+        # Needed for kernel derivative evaluation
+        z_k = self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)
+
+        J_targets_d_feats = np.matrix(np.zeros((self.n, self.p)))
+        # Update derivatives of targets w.r.t feature variables
+        dx = manhattan_distances(z_k, Y = self.GPs[0].X, sum_over_features = False)
+        r_d_z = np.sum(self.GPs[0].X - z_k, axis = 0)
+        for i, gp in enumerate(self.GPs):
+            r = squared_exponential(gp.theta_, dx).reshape(1, -1)
+            J_targets_d_feats[i, :] = gp.y_std*np.dot(r,gp.gamma)*2*r.size*gp.theta_*r_d_z
+
+        # Do chain rule here
+        # print 'J_base:\n', self.J_base
+        # print 'J_delta_d_targets:\n', J_delta_d_targets
+        # print 'J_targets_d_feats:\n', J_targets_d_feats
+        # print 'J_feats_d_opts:\n', J_feats_d_opts
+        J = self.J_base + J_delta_d_targets*J_targets_d_feats*J_feats_d_opts
+        return J
 
     def build_jacobian(self):
         '''
@@ -1134,89 +1201,6 @@ class GPPushDynamics:
         # print 'J_feats_d_opts:\n', J_feats_d_opts
 
         self.J = self.J_base + J_delta_d_targets*self.J_targets_d_feats*J_feats_d_opts
-
-    def update_jacobian(self, x_k, u_k, xtra=[]):
-        '''
-        Return the matrix of partial derivatives of the dynamics model w.r.t. the current state and control
-        x_k - current state estimate (ndarray)
-        u_k - current control to evaluate (ndarray)
-        xtra - other features for GP
-        '''
-        # NOTE: Being lazy and assuming a specific order of features here...
-        st = sin(x_k[self.obj_theta_opt_idx])
-        ct = cos(x_k[self.obj_theta_opt_idx])
-
-        # Update derivative of opt deltas w.r.t. learned targets
-        J_delta_d_targets = np.matrix(np.eye(self.n, self.n))
-        if self.obj_frame_obj_targets:
-            J_delta_d_targets[self.obj_x_opt_idx, self.obj_x_target_idx] = ct # d/do_x^o[o_x^w]
-            J_delta_d_targets[self.obj_x_opt_idx, self.obj_y_target_idx] = -st # d/do_y^o[o_x^w]
-            J_delta_d_targets[self.obj_y_opt_idx, self.obj_x_target_idx] = st # d/do_x^o[o_y^w]
-            J_delta_d_targets[self.obj_y_opt_idx, self.obj_y_target_idx] = ct # d/do_y^o[o_y^w]
-
-        if self.obj_frame_ee_targets:
-            J_delta_d_targets[self.ee_x_opt_idx, self.ee_x_target_idx] = ct # d/dee_x^o[ee_x^w]
-            J_delta_d_targets[self.ee_x_opt_idx, self.ee_y_target_idx] = -st # d/dee_y^o[ee_x^w]
-            J_delta_d_targets[self.ee_y_opt_idx, self.ee_x_target_idx] = st # d/dee_x^o[ee_y^w]
-            J_delta_d_targets[self.ee_y_opt_idx, self.ee_y_target_idx] = ct # d/dee_y^o[ee_y^w]
-
-        # Update derivatives of features w.r.t. decision variables
-        J_feats_d_opts = np.matrix(np.zeros((self.p, self.n+self.m)))
-        if self.obj_frame_ee_feats:
-            x_ee_demeaned = x_k[self.ee_x_opt_idx] - x_k[self.obj_x_opt_idx]
-            y_ee_demeaned = x_k[self.ee_y_opt_idx] - x_k[self.obj_y_opt_idx]
-
-            J_feats_d_opts[self.ee_x_feat_idx, self.obj_x_opt_idx] = -ct # d/dx[ee_x^o]
-            J_feats_d_opts[self.ee_x_feat_idx, self.obj_y_opt_idx] = -st # d/dy[ee_x^o]
-            J_feats_d_opts[self.ee_x_feat_idx,
-                           self.obj_theta_opt_idx] =  st*x_ee_demeaned - ct*y_ee_demeaned # d/dtheta[ee_x^o]
-            J_feats_d_opts[self.ee_x_feat_idx, self.ee_x_opt_idx] =  ct # d/dee_x[ee_x^o]
-            J_feats_d_opts[self.ee_x_feat_idx, self.ee_y_opt_idx] =  st # d/dee_y[ee_x^o]
-
-            J_feats_d_opts[self.ee_y_feat_idx, self.obj_x_opt_idx] =  st # d/dx[ee_y^o]
-            J_feats_d_opts[self.ee_y_feat_idx, self.obj_y_opt_idx] = -ct # d/dy[ee_y^o]
-            J_feats_d_opts[self.ee_y_feat_idx,
-                           self.obj_theta_opt_idx] =  ct*x_ee_demeaned + st*y_ee_demeaned # d/dtheta[ee_y^o]
-            J_feats_d_opts[self.ee_y_feat_idx, self.ee_x_opt_idx] = -st # d/dx_ee[ee_y^o]
-            J_feats_d_opts[self.ee_y_feat_idx, self.ee_y_opt_idx] =  ct # d/dy_ee[ee_y^o]
-
-            # Setup ee_phi partials
-            J_feats_d_opts[self.ee_phi_feat_idx, self.ee_phi_opt_idx] = 1.0 # d/dee_phi^w[ee_phi^o]
-            J_feats_d_opts[self.ee_phi_feat_idx, self.obj_theta_opt_idx] =  -1.0 # d/dtheta[ee_phi^o]
-        else:
-            # Identity matrix
-            J_feats_d_opts[self.ee_x_feat_idx, self.ee_x_opt_idx] = 1.
-            J_feats_d_opts[self.ee_y_feat_idx, self.ee_y_opt_idx] = 1.
-            J_feats_d_opts[self.ee_phi_feat_idx, self.ee_phi_opt_idx] = 1.
-
-        if self.obj_frame_u_feats:
-            J_feats_d_opts[self.u_x_feat_idx, self.obj_theta_opt_idx] = st*u_k[0] - ct*u_k[1] # d/dtheta[u_x]
-            J_feats_d_opts[self.u_x_feat_idx, self.u_x_opt_idx] = ct # d/du_x[u_x]
-            J_feats_d_opts[self.u_x_feat_idx, self.u_y_opt_idx] = st # d/du_y[u_x]
-
-            J_feats_d_opts[self.u_y_feat_idx, self.obj_theta_opt_idx] =  ct*u_k[0] + st*u_k[1] # d/dtheta[u_y]
-            J_feats_d_opts[self.u_y_feat_idx, self.u_x_opt_idx] = -st # d/du_x[u_y]
-            J_feats_d_opts[self.u_y_feat_idx, self.u_y_opt_idx] =  ct # d/du_y[u_y]
-        else:
-            # Identity matrix
-            J_feats_d_opts[self.u_x_feat_idx, self.u_x_opt_idx] = 1.
-            J_feats_d_opts[self.u_y_feat_idx, self.u_y_opt_idx] = 1.
-        # Setup derivates of u_phi
-        J_feats_d_opts[self.u_phi_feat_idx, self.u_phi_opt_idx] = 1.
-
-        # Needed for kernel derivative evaluation
-        z_k = self.transform_opt_vector_to_feat_vector(x_k, u_k, xtra)
-
-        J_targets_d_feats = np.matrix(np.zeros((self.n, self.p)))
-        # TODO: Update derivatives of targets w.r.t feature variables
-
-        # Do chain rule here
-        # print 'J_base:\n', self.J_base
-        # print 'J_delta_d_targets:\n', J_delta_d_targets
-        # print 'J_targets_d_feats:\n', J_targets_d_feats
-        # print 'J_feats_d_opts:\n', J_feats_d_opts
-        J = self.J_base + J_delta_d_targets*J_targets_d_feats*J_feats_d_opts
-        return J
 
     #
     # Features transforms
