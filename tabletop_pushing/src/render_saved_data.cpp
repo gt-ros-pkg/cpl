@@ -677,6 +677,6 @@ int main_render(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-  return main_visualize_training_samples(argc, argv);
-  // return main_render(argc, argv);
+  // return main_visualize_training_samples(argc, argv);
+  return main_render(argc, argv);
 }
