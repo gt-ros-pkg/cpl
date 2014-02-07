@@ -50,6 +50,7 @@ import subprocess
 import os
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from util import subPIAngle
+import learn_pushing_dynamics_models
 
 _KULER_RED = (178./255, 18./255, 18./255)
 _KULER_YELLOW = (1., 252./255, 25./255)
@@ -1249,6 +1250,24 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans
         p = subprocess.Popen([movie_render_bin_name, '-y', '-r', str(input_rate), '-i', contact_pt_movie_in_name,
                               '-r', str(output_rate), '-b', '1000k', contact_pt_movie_out_name])
         p.wait()
+
+_TEST_CLASSES = ['bear', 'glad', 'soap_box', 'bowl', 'shampoo', 'large_brush']
+_ALL_CLASSES = ['bear', 'food_box',  'phone', 'large_brush', 'soap_box',
+               'camcorder', 'glad', 'salt', 'batteries', 'mug',
+               'shampoo', 'bowl', 'large_vitamins', 'plate', 'water_bottle']
+
+def plot_bunches_of_analysis(base_input_path):
+    obj_dirs = os.listdir(base_input_path)
+    aff_file_names = []
+    for test_class in _ALL_CLASSES:
+        for obj_dir in obj_dirs:
+            if obj_dir.startswith(test_class):
+                dir_aff_files = learn_pushing_dynamics_models.get_aff_file_names(base_input_path+obj_dir)
+                aff_file_names.extend(dir_aff_files)
+                aff_file_name = dir_aff_files[0]
+                aff_file_name
+                analyze_mpc_trial_data(aff_file_name, False, False)
+
 
 if __name__ == '__main__':
     analyze_mpc_trial_data(sys.argv[1])
