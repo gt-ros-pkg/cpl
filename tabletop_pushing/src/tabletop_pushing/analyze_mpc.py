@@ -1268,6 +1268,13 @@ def plot_bunches_of_analysis(base_input_path):
                 aff_file_name
                 analyze_mpc_trial_data(aff_file_name, False, False)
 
+def plot_bunches_of_bunches_of_analysis(base_input_path):
+    mpc_dirs = os.listdir(base_input_path)
+    for mpc_dir in mpc_dirs:
+        if mpc_dir.startswith('mpc'):
+            print base_input_path+mpc_dir+'/'
+            plot_bunches_of_analysis(base_input_path+mpc_dir+'/')
+
 
 if __name__ == '__main__':
     analyze_mpc_trial_data(sys.argv[1])
