@@ -2127,8 +2127,8 @@ class TabletopPushingPerceptionNode
 
   bool objectNotMoving(PushTrackerState& tracker_state)
   {
-    if (tracker_state.x_dot.x < object_not_moving_thresh_ &&
-        tracker_state.x_dot.y < object_not_moving_thresh_)
+    if (fabs(tracker_state.x_dot.x) < object_not_moving_thresh_ &&
+        fabs(tracker_state.x_dot.y) < object_not_moving_thresh_)
     {
       ++object_not_moving_count_;
     }
@@ -2163,8 +2163,8 @@ class TabletopPushingPerceptionNode
     {
       gripper_vel = r_arm_vel_;
     }
-    if (gripper_vel.linear.x < gripper_not_moving_thresh_ &&
-        gripper_vel.linear.y < gripper_not_moving_thresh_)
+    if (fabs(gripper_vel.linear.x) < gripper_not_moving_thresh_ &&
+        fabs(gripper_vel.linear.y) < gripper_not_moving_thresh_)
     {
       ++gripper_not_moving_count_;
     }

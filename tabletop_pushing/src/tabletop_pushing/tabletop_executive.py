@@ -1196,7 +1196,7 @@ if __name__ == '__main__':
         node.run_singulation(max_pushes, use_guided)
     elif learn_start_loc:
         # Set the path to the learned parameter file here to use the learned SVM parameters
-        hold_out_objects = ['food_box'] #['soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush', 'small_brush']
+        hold_out_objects = ['soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush', 'small_brush']
         running = True
         for hold_out_object in hold_out_objects:
             if not running:
