@@ -479,7 +479,7 @@ class TabletopExecutive:
                     rospy.loginfo("Enter something to not save the previous push trial: ")
                     rlist, _, _ = select([sys.stdin], [], [], timeout)
                     if rlist:
-                        self.learn_io.write_bad_trial_line(user=True)
+                        self.learn_io.write_bad_trial_line(user_ordered=True)
                         s = sys.stdin.readline()
                         rospy.loginfo('Not saving previous trial.')
                         if s.lower().startswith('q'):
@@ -490,6 +490,9 @@ class TabletopExecutive:
                         rospy.loginfo('Not saving previous trial because of failed hand placement')
                         position_worked = False
                         # TOOD: Get the next choice, to avoid infinitely trying this one
+                        code_in = raw_input('Move object to new pose and press <Enter> to continue: ')
+                        if quit_code(code_in):
+                            return 'quit'
                     else:
                         rospy.loginfo("No input. Saving trial data")
                         self.analyze_push(behavior_primitive, controller_name, proxy_name, which_arm, push_time,
@@ -1170,12 +1173,12 @@ def get_object_id(previous_id=None):
 
 if __name__ == '__main__':
     random.seed()
-    learn_start_loc = False
+    learn_start_loc = True
     # Used for training data collection:
     # num_start_loc_sample_locs = 32
     # Used for testing data collection:
-    num_start_loc_sample_locs = 5
-    num_start_loc_pushes_per_sample = 3
+    num_start_loc_sample_locs = 1
+    num_start_loc_pushes_per_sample = 10
     use_singulation = False
     use_learning = True
     learning_dynamics = True
@@ -1193,7 +1196,7 @@ if __name__ == '__main__':
         node.run_singulation(max_pushes, use_guided)
     elif learn_start_loc:
         # Set the path to the learned parameter file here to use the learned SVM parameters
-        hold_out_objects = ['small_brush', 'soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush']
+        hold_out_objects = ['food_box'] #['soap_box', 'camcorder', 'toothpaste', 'food_box', 'large_brush', 'small_brush']
         running = True
         for hold_out_object in hold_out_objects:
             if not running:

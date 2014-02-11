@@ -1105,7 +1105,7 @@ class TabletopPushingPerceptionNode
       p.push_dist = start_loc_push_dist_;
 
       // Push for a fixed amount of time
-      timing_push_ = true;
+      timing_push_ = false; // true;
 
       // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
       // change features in the future
