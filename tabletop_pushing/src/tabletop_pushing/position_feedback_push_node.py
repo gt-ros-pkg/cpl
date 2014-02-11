@@ -1126,8 +1126,10 @@ class PositionFeedbackPushNode:
         contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
         contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
         # Compensate for spinning with wrist rotation
-        # TODO: Make switch for only overhead push?
-        contact_pt_z_angular_dot = -self.k_alignment_spin_x*cur_state.x_dot.theta
+        if cur_state.behavior_primitive == OVERHEAD_PUSH:
+            contact_pt_z_angular_dot = -self.k_alignment_spin_x*cur_state.x_dot.theta
+        else:
+            contact_pt_z_angular_dot = 0.0
         # Clip values that get too big
         u.twist.linear.x = max( min(goal_x_dot + contact_pt_x_dot, self.mpc_u_max), -self.mpc_u_max)
         u.twist.linear.y = max( min(goal_y_dot + contact_pt_y_dot, self.mpc_u_max), -self.mpc_u_max)
