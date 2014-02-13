@@ -77,32 +77,34 @@ def objectToObjectName(obj_name_raw):
     return ' '.join([obj_word.capitalize() for obj_word in obj_name_raw.split('_')])
 
 def create_box_plot_csv(input_file_names, labels, metric, output_file_name):
-    stats = {}
+    stats = []
     for file_name, label in zip(input_file_names, labels):
-        stats[label] = parse_stats_file(file_name)
+        stats.append(parse_stats_file(file_name))
 
     out_file = file(output_file_name, 'w')
-    # TODO: Parse stats into output csv
-    for label, data in stats.items():
-        # print data.items()
-        out_file.write( label + '\n')
-        obj_line = 'stat'
-        min_line = 'min'
-        q1_line = 'Q1-min'
-        med_line = 'median-Q1'
-        q3_line = 'Q3-median'
-        max_line = 'max-Q3'
-        for obj in data.keys():
+    # print data.items()
+    label_line = 'Group'
+    obj_line = 'Obj'
+    min_line = 'min'
+    q1_line = 'Q1-min'
+    med_line = 'median-Q1'
+    q3_line = 'Q3-median'
+    max_line = 'max-Q3'
+    for obj in stats[0].keys():
+        # TODO: Parse stats into output csv
+        for label, data in zip(labels, stats):
+            label_line += ', ' + label
             obj_line +=  ', '+objectToObjectName(obj)
             min_line += ', '+str(data[obj][metric]['min'])
             q1_line += ', '+str(data[obj][metric]['Q1'] - data[obj][metric]['min'])
             med_line += ', '+str(data[obj][metric]['median'] - data[obj][metric]['Q1'])
             q3_line += ', '+str(data[obj][metric]['Q3'] - data[obj][metric]['median'])
             max_line += ', '+str(data[obj][metric]['max'] - data[obj][metric]['Q3'])
-        out_file.write(obj_line+'\n')
-        out_file.write(min_line+'\n')
-        out_file.write(q1_line+'\n')
-        out_file.write(med_line+'\n')
-        out_file.write(q3_line+'\n')
-        out_file.write(max_line+'\n')
+    out_file.write(label_line+'\n')
+    out_file.write(obj_line+'\n')
+    out_file.write(min_line+'\n')
+    out_file.write(q1_line+'\n')
+    out_file.write(med_line+'\n')
+    out_file.write(q3_line+'\n')
+    out_file.write(max_line+'\n')
     out_file.close()
