@@ -90,16 +90,31 @@ def create_box_plot_csv(input_file_names, labels, metric, output_file_name):
     med_line = 'median-Q1'
     q3_line = 'Q3-median'
     max_line = 'max-Q3'
-    for obj in stats[0].keys():
-        # TODO: Parse stats into output csv
+
+    obj_keys = {}
+    for data in stats:
+        cur_keys = data.keys()
+        for key in cur_keys:
+            if key not in obj_keys:
+                obj_keys[key] = key
+
+    for obj in obj_keys:
         for label, data in zip(labels, stats):
             label_line += ', ' + label
             obj_line +=  ', '+objectToObjectName(obj)
-            min_line += ', '+str(data[obj][metric]['min'])
-            q1_line += ', '+str(data[obj][metric]['Q1'] - data[obj][metric]['min'])
-            med_line += ', '+str(data[obj][metric]['median'] - data[obj][metric]['Q1'])
-            q3_line += ', '+str(data[obj][metric]['Q3'] - data[obj][metric]['median'])
-            max_line += ', '+str(data[obj][metric]['max'] - data[obj][metric]['Q3'])
+            if obj in data and metric in data[obj]:
+                min_line += ', '+str(data[obj][metric]['min'])
+                q1_line += ', '+str(data[obj][metric]['Q1'] - data[obj][metric]['min'])
+                med_line += ', '+str(data[obj][metric]['median'] - data[obj][metric]['Q1'])
+                q3_line += ', '+str(data[obj][metric]['Q3'] - data[obj][metric]['median'])
+                max_line += ', '+str(data[obj][metric]['max'] - data[obj][metric]['Q3'])
+            else:
+                min_line += ', ' + str(0)
+                q1_line += ', ' + str(0)
+                med_line += ', ' + str(0)
+                q3_line += ', ' + str(0)
+                max_line += ', ' + str(0)
+
     out_file.write(label_line+'\n')
     out_file.write(obj_line+'\n')
     out_file.write(min_line+'\n')
@@ -108,3 +123,58 @@ def create_box_plot_csv(input_file_names, labels, metric, output_file_name):
     out_file.write(q3_line+'\n')
     out_file.write(max_line+'\n')
     out_file.close()
+
+def parse_all_together():
+    base_file_path = '/home/thermans/Dropbox/Data/push_loc_mpc/stats/'
+    metric = _POS_ERROR_METRIC
+
+    # file_names = ['centroid_overhead_rand_loc.txt', 'closed_loop_naive_model.txt', 'open_loop_model_free.txt']
+
+    # labels = ['Centroid Alignment', 'Open Loop Naive', 'MPC Naive']
+
+    # file_names = ['centroid_gripper_hold_out.txt',
+    #               'centroid_overhead_hold_out.txt',
+    #               'centroid_overhead_rand_loc.txt',
+    #               'closed_loop_naive_model.txt',
+    #               'mpc_gripper_hold_out.txt',
+    #               'mpc_hold_out.txt',
+    #               'mpc_overhead_hold_out.txt',
+    #               'mpc_rand_clusters.txt',
+    #               'mpc_single_obj_models.txt',
+    #               'open_loop_hold_out.txt',
+    #               'open_loop_model_free.txt']
+
+    # labels = ['Centroid Gripper Learned Push Loc',
+    #           'Centroid Overhead Learned Push Loc',
+    #           'Centroid Overhead Rand Loc',
+    #           'MPC Naive Overhead Rand Loc',
+    #            'MPC Naive Gripper Learned Push Loc',
+    #           'MPC SVR Single Hold Out Model',
+    #            'MPC Naive Overhead Learned Push Loc',
+    #           'MPC SVR Rand Clusters',
+    #           'MPC SVR Single Obj Models',
+    #           'Open Loop SVR Single Hold Out Model',
+    #           'Open Loop Naive Model']
+
+    file_names = ['closed_loop_naive_model.txt',
+                  'mpc_hold_out.txt',
+                  'mpc_rand_clusters.txt',
+                  'mpc_single_obj_models.txt']
+
+    labels = ['MPC Naive Overhead Rand Loc',
+              'MPC SVR Single Hold Out Model',
+              'MPC SVR Rand Clusters',
+              'MPC SVR Single Obj Models']
+
+    file_names = ['open_loop_hold_out.txt',
+                  'open_loop_model_free.txt']
+
+    labels = ['closed_loop_naive_model.txt',
+              'MPC Naive Overhead Rand Loc',
+              'Open Loop SVR Single Hold Out Model',
+              'Open Loop Naive Model']
+
+    out_file_name = base_file_path + 'open_loop_comparison.csv'
+
+    input_file_paths = [base_file_path + f for f in file_names]
+    create_box_plot_csv(input_file_paths, labels, _POS_ERROR_METRIC, out_file_name)
