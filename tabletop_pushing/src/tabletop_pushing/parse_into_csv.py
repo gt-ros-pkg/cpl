@@ -5,6 +5,8 @@ _PUSH_TIME_HEADER = '# Push time'
 _PUSH_DIST_HEADER = '# Push dist'
 _DELTA_THETA_HEADER = '# delta theta'
 _AVG_VEL_HEADER = '# avg velocities'
+_ERROR_DECREASE_HEADER = '# error decreases'
+_PERCENT_DECREASE_HEADER = '# percent decreases'
 
 _BREAKDOWN_HEADER = '# mean std_dev min Q1 median q3 max [sub2 sub5 total]'
 
@@ -13,11 +15,15 @@ _PUSH_TIME_METRIC = 'push_time'
 _PUSH_DIST_METRIC = 'push_dist'
 _DELTA_THETA_METRIC = 'delta_theta'
 _AVG_VEL_METRIC = 'avg_vel'
+_ERROR_DECREASE_MTERIC = 'error_decrease'
+_PERCENT_DECREASE_MTERIC = 'percent_decrease'
 
 _METRIC_HEADERS = {_POS_ERROR_HEADER : _POS_ERROR_METRIC,
                    _PUSH_TIME_HEADER : _PUSH_TIME_METRIC,
                    _PUSH_DIST_HEADER : _PUSH_DIST_METRIC,
                    _DELTA_THETA_HEADER : _DELTA_THETA_METRIC,
+                   _ERROR_DECREASE_HEADER : _ERROR_DECREASE_METRIC,
+                   _PERCENT_DECREASE_HEADER : _PERCENT_DECREASE_METRIC,
                    _AVG_VEL_HEADER : _AVG_VEL_METRIC}
 
 _STAT_NAMES = ['mean', 'std_dev', 'min', 'Q1', 'median', 'Q3', 'max',
@@ -169,9 +175,7 @@ def parse_all_together():
     file_names = ['open_loop_hold_out.txt',
                   'open_loop_model_free.txt']
 
-    labels = ['closed_loop_naive_model.txt',
-              'MPC Naive Overhead Rand Loc',
-              'Open Loop SVR Single Hold Out Model',
+    labels = ['Open Loop SVR Single Hold Out Model',
               'Open Loop Naive Model']
 
     out_file_name = base_file_path + 'open_loop_comparison.csv'
