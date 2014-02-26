@@ -304,6 +304,80 @@ std::vector<PushTrial> getTrialsFromFile(std::string aff_file_name)
   return trials;
 }
 
+cv::Mat visualizeObjectBoundarySamplesGlobal(XYZPointCloud& hull_cloud)
+{
+  double max_y = 0.475;
+  double min_y = -0.475;
+  double max_x = 0.75;
+  double min_x = 0.45;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  cv::Scalar kuler_yellow(25, 252, 255);
+  cv::Scalar kuler_blue(204, 133, 20);
+
+  cv::Point prev_img_pt, init_img_pt;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    cv::Point img_pt(cols - objLocToIdx(hull_cloud[i].x, min_x, max_x),
+                     objLocToIdx(hull_cloud[i].y, min_y, max_y));
+    cv::circle(footprint, img_pt, 1, kuler_blue, 3);
+    if (i > 0)
+    {
+      cv::line(footprint, img_pt, prev_img_pt, kuler_blue, 1);
+    }
+    else
+    {
+      init_img_pt.x = img_pt.x;
+      init_img_pt.y = img_pt.y;
+    }
+    prev_img_pt.x = img_pt.x;
+    prev_img_pt.y = img_pt.y;
+  }
+  cv::line(footprint, prev_img_pt, init_img_pt, kuler_blue,1);
+  return footprint;
+}
+
+void visualizeObjectBoundarySamplesGlobal(XYZPointCloud& hull_cloud, cv::Mat& footprint)
+{
+  double max_y = 0.475;
+  double min_y = -0.475;
+  double max_x = 0.75;
+  double min_x = 0.45;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+
+
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  cv::Scalar kuler_yellow(25, 252, 255);
+  cv::Scalar kuler_blue(204, 133, 20);
+
+  cv::Point prev_img_pt, init_img_pt;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    cv::Point img_pt(cols - objLocToIdx(hull_cloud[i].x, min_x, max_x),
+                     objLocToIdx(hull_cloud[i].y, min_y, max_y));
+    cv::circle(footprint, img_pt, 1, kuler_blue, 3);
+    if (i > 0)
+    {
+      cv::line(footprint, img_pt, prev_img_pt, kuler_blue, 1);
+    }
+    else
+    {
+      init_img_pt.x = img_pt.x;
+      init_img_pt.y = img_pt.y;
+    }
+    prev_img_pt.x = img_pt.x;
+    prev_img_pt.y = img_pt.y;
+  }
+  cv::line(footprint, prev_img_pt, init_img_pt, kuler_blue,1);
+}
+
+
 cv::Point projectPointIntoImage(pcl16::PointXYZ pt_in, tf::Transform t, sensor_msgs::CameraInfo cam_info,
                                 int num_downsamples=1)
 {
@@ -509,6 +583,61 @@ void projectCTSOntoObjectBoundary(cv::Mat& footprint, ControlTimeStep& cts, Push
   cv::line(footprint, img_pt, vector_img_pt, kuler_green, 1);
 }
 
+void projectCTSOntoObjectBoundaryGlobal(cv::Mat& footprint, ControlTimeStep& cts, PushTrial& trial)
+{
+  // PushTrackerState cur_state = generateStateFromData(cts, trial);
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  cv::Scalar kuler_yellow(25, 252, 255);
+  cv::Scalar kuler_blue(204, 133, 20);
+  cv::Scalar kuler_black(0,0,0);
+  double max_y = 0.475;
+  double min_y = -0.475;
+  double max_x = 0.75;
+  double min_x = 0.45;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+
+  pcl16::PointXYZ world_pt;
+  world_pt.x = cts.ee.position.x;
+  world_pt.y = cts.ee.position.y;
+  world_pt.z = cts.ee.position.z;
+  cv::Point img_pt(cols - objLocToIdx(world_pt.x, min_x, max_x), objLocToIdx(world_pt.y, min_y, max_y));
+
+  double roll, pitch, yaw;
+  tf::Quaternion q;
+  tf::quaternionMsgToTF(cts.ee.orientation, q);
+  tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+  // Add a fixed amount projection forward using the hand pose (or axis)
+  pcl16::PointXYZ forward_pt;
+  forward_pt.x = cts.ee.position.x + cos(yaw)*0.01;;
+  forward_pt.y = cts.ee.position.y + sin(yaw)*0.01;
+  forward_pt.z = cts.ee.position.z;
+  cv::Point forward_img_pt(cols - objLocToIdx(forward_pt.x, min_x, max_x),
+                           objLocToIdx(forward_pt.y, min_y, max_y));
+
+  // Create line pointing in velocity vector direction
+  pcl16::PointXYZ vector_world_pt;
+  float delta_t = 1.;
+  vector_world_pt.x = world_pt.x + cts.u.linear.x*delta_t;
+  vector_world_pt.y = world_pt.y + cts.u.linear.y*delta_t;
+  vector_world_pt.z = world_pt.z;
+  cv::Point vector_img_pt(cols - objLocToIdx(vector_world_pt.x, min_x, max_x),
+                          objLocToIdx(vector_world_pt.y, min_y, max_y));
+
+  // Draw shadows first
+  cv::circle(footprint, img_pt, 3, kuler_black, 5);
+  cv::line(footprint, img_pt, forward_img_pt, kuler_black, 2);
+  cv::line(footprint, img_pt, vector_img_pt, kuler_black, 2);
+  // Initial point
+  cv::circle(footprint, img_pt, 1, kuler_red, 5);
+  // EE Heading vector
+  cv::line(footprint, img_pt, forward_img_pt, kuler_red, 1);
+  // Velocity vector
+  cv::line(footprint, img_pt, vector_img_pt, kuler_green, 1);
+}
+
 
 
 int main_visualize_training_samples(int argc, char** argv)
@@ -650,7 +779,7 @@ int main_visualize_training_samples_global(int argc, char** argv)
   XYZPointCloud base_hull_cloud = getObjectBoundarySamples(base_obj, boundary_hull_alpha);
   PushTrial base_trial = trials[base_img_idx];
   PushTrackerState base_state = generateStartStateFromData(base_trial);
-  cv::Mat sample_pt_cloud_combined_img = visualizeObjectBoundarySamples(base_hull_cloud, base_state);
+  cv::Mat sample_pt_cloud_combined_img = visualizeObjectBoundarySamplesGlobal(base_hull_cloud);
 
   // Go through all trials reading data associated with them
   for (unsigned int i = 0; i < trials.size(); ++i, feedback_idx++)
@@ -678,15 +807,27 @@ int main_visualize_training_samples_global(int argc, char** argv)
 
     // Create objects for use by standard methods
     ProtoObject trial_obj = generateObjectFromState(trial_obj_cloud);
-    PushTrackerState trial_state = generateStartStateFromData(trial);
     XYZPointCloud hull_cloud = getObjectBoundarySamples(trial_obj, boundary_hull_alpha);
-    cv::Mat sample_pt_cloud_img = visualizeObjectBoundarySamples(hull_cloud, trial_state);
+    cv::Mat sample_pt_cloud_img = visualizeObjectBoundarySamplesGlobal(hull_cloud);
     // Go through each control time step in the current trial
     for (unsigned int j = 0; j < trial.obj_trajectory.size(); ++j)
     {
+      std::stringstream step_obj_name;
+      step_obj_name << data_directory_path << "feedback_control_obj_" << feedback_idx << "_" << j << ".pcd";
+      cv::Mat trial_base_img = cv::imread(trial_img_name.str());
+      XYZPointCloud step_obj_cloud;
+      if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(step_obj_name.str(), step_obj_cloud) == -1) //* load the file
+      {
+        ROS_ERROR_STREAM("Couldn't read file " << step_obj_name.str());
+      }
+
+      ProtoObject step_obj = generateObjectFromState(step_obj_cloud);
+      XYZPointCloud step_cloud = getObjectBoundarySamples(step_obj, boundary_hull_alpha);
+      // visualizeObjectBoundarySamplesGlobal(step_cloud, sample_pt_cloud_img);
+      // visualizeObjectBoundarySamplesGlobal(step_cloud, sample_pt_cloud_combined_img);
       ControlTimeStep cts = trial.obj_trajectory[j];
-      projectCTSOntoObjectBoundary(sample_pt_cloud_img, cts, trial);
-      projectCTSOntoObjectBoundary(sample_pt_cloud_combined_img, cts, base_trial);
+      projectCTSOntoObjectBoundaryGlobal(sample_pt_cloud_img, cts, trial);
+      projectCTSOntoObjectBoundaryGlobal(sample_pt_cloud_combined_img, cts, base_trial);
     }
     ROS_INFO_STREAM("Showing image for trial: " << i);
     cv::imshow("Sample pt image", sample_pt_cloud_img);
@@ -694,7 +835,7 @@ int main_visualize_training_samples_global(int argc, char** argv)
     std::stringstream trial_cloud_out_name;
     trial_cloud_out_name << out_file_path << "trial_samples_" << i << ".png";
     cv::imwrite(trial_cloud_out_name.str(), sample_pt_cloud_img);
-    cv::waitKey(wait_time);
+    // cv::waitKey(wait_time);
   }
   cv::imshow("Combined Sample pt image", sample_pt_cloud_combined_img);
   std::stringstream combined_cloud_out_name;
@@ -803,5 +944,6 @@ int main_render(int argc, char** argv)
 int main(int argc, char** argv)
 {
   // return main_visualize_training_samples(argc, argv);
-  return main_render(argc, argv);
+  return main_visualize_training_samples_global(argc, argv);
+  // return main_render(argc, argv);
 }
