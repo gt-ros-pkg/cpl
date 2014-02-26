@@ -1010,8 +1010,8 @@ def get_trial_errors(trial):
                       final_pose.x - trial.trial_end.init_centroid.x)
     initial_error = hypot(trial.trial_end.init_centroid.y - goal_pose.y,
                           trial.trial_end.init_centroid.x - goal_pose.x)
-    error_decrease = inital_error - position_error
-    percent_error_decrease = (inital_error - position_error)/initial_error
+    error_decrease = initial_error - position_error
+    percent_decrease = (initial_error - position_error)/initial_error
     # TODO: Trajectory error (score from Humanoids work)
     # TODO: Adapt to curved trajectories too...
     trajectory_error = 0.0
@@ -1023,7 +1023,7 @@ def get_trial_errors(trial):
     print ''
     return {'position_error':position_error, 'delta_theta':delta_theta,
             'push_time':push_time, 'push_dist':push_dist, 'trajectory_error':trajectory_error,
-            'avg_vel':push_dist/push_time, 'error_decrease':error_decrease, 'percent_decrease':percent_error_decrease}
+            'avg_vel':push_dist/push_time, 'error_decrease':error_decrease, 'percent_decrease':percent_decrease}
 
 def write_stats_line(file_handle, stats):
     header_str = '# mean std_dev min Q1 median q3 max [sub2 sub5 total]\n'
@@ -1078,7 +1078,7 @@ def analyze_pushing_trials(aff_file_names, out_file_name, obj_name='', append=Fa
         avg_velocities.append(res['avg_vel'])
         traj_errors.append(res['trajectory_error'])
         error_decreases.append(res['error_decrease'])
-        percent_decreaes.append(res['percent_decrease'])
+        percent_decreases.append(res['percent_decrease'])
     io_code = 'w'
     if append:
         io_code = 'a'

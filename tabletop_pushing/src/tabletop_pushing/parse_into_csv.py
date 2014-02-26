@@ -15,8 +15,8 @@ _PUSH_TIME_METRIC = 'push_time'
 _PUSH_DIST_METRIC = 'push_dist'
 _DELTA_THETA_METRIC = 'delta_theta'
 _AVG_VEL_METRIC = 'avg_vel'
-_ERROR_DECREASE_MTERIC = 'error_decrease'
-_PERCENT_DECREASE_MTERIC = 'percent_decrease'
+_ERROR_DECREASE_METRIC = 'error_decrease'
+_PERCENT_DECREASE_METRIC = 'percent_decrease'
 
 _METRIC_HEADERS = {_POS_ERROR_HEADER : _POS_ERROR_METRIC,
                    _PUSH_TIME_HEADER : _PUSH_TIME_METRIC,
@@ -163,22 +163,15 @@ def parse_all_together():
     #           'Open Loop Naive Model']
 
     file_names = ['closed_loop_naive_model.txt',
-                  'mpc_hold_out.txt',
-                  'mpc_rand_clusters.txt',
-                  'mpc_single_obj_models.txt']
+                  'mpc_err_dyn_hold_out.txt',
+                  'mpc_err_dyn_single_obj.txt']
 
     labels = ['MPC Naive Overhead Rand Loc',
-              'MPC SVR Single Hold Out Model',
-              'MPC SVR Rand Clusters',
-              'MPC SVR Single Obj Models']
+              'MPC Err Dyn Single Hold Out Model',
+              'MPC Err Dyn Single Obj Models']
 
-    file_names = ['open_loop_hold_out.txt',
-                  'open_loop_model_free.txt']
 
-    labels = ['Open Loop SVR Single Hold Out Model',
-              'Open Loop Naive Model']
-
-    out_file_name = base_file_path + 'open_loop_comparison.csv'
+    out_file_name = base_file_path + 'err_dyn_comparison.csv'
 
     input_file_paths = [base_file_path + f for f in file_names]
     create_box_plot_csv(input_file_paths, labels, _POS_ERROR_METRIC, out_file_name)
