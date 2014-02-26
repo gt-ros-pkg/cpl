@@ -49,7 +49,7 @@ import dynamics_learning
 import subprocess
 import os
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from util import subPIAngle
+from util import subPIAngle, subPIDiff
 import learn_pushing_dynamics_models
 
 _KULER_RED = (178./255, 18./255, 18./255)
@@ -152,6 +152,19 @@ class PushTrajectoryIO:
         in_file.close()
         return data
 
+def get_deltas(X,Y,Theta):
+    DeltaX = []
+    DeltaY = []
+    DeltaTheta = []
+    for i in xrange(len(X)-1):
+        d_x = X[i+1] - X[i]
+        d_y = Y[i+1] - Y[i]
+        d_theta = subPIDiff(Theta[i+1],Theta[i])
+        DeltaX.append(d_x)
+        DeltaY.append(d_y)
+        DeltaTheta.append(d_theta)
+
+    return (DeltaX, DeltaY, DeltaTheta)
 def plot_desired_vs_controlled_with_history(trial_traj, q_planned, X_d, n, m,
                                             show_plot = True, suffix = '', out_path = ''):
     # Convert trials into decision vector for use with the base function
@@ -189,7 +202,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     y_d = [X_d_k[1] for X_d_k in X_d]
     # theta_d = [X_d_k[2] for X_d_k in X_d]
     plotter.plot(x_d, y_d, color = plan_color, label='_nolegend_')
-    plotter.plot(x_d, y_d, color = plan_color, marker = 'o', label='Desired Object Path')
+    plotter.plot(x_d, y_d, color = plan_color, marker = 'x', label='Desired Object Path')
 
     # Plot predicted
     x_hat = [X_k[0] for X_k in X[t:]]
@@ -223,6 +236,8 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     custom_range = max(xlim_auto_range, ylim_auto_range)
     xlim_custom = (xlim_auto[0], xlim_auto[0] + custom_range)
     ylim_custom = (ylim_auto[0], ylim_auto[0] + custom_range)
+    xlim_custom = [-0.6, 0.1]
+    ylim_custom = [-0.1, 0.4]
     plotter.xlim(xlim_custom)
     plotter.ylim(ylim_custom)
 
@@ -331,6 +346,7 @@ def plot_tracks(trials, show_plot = False, suffix='', out_path=''):
     for i, trial in enumerate(trials):
         suffix_i = '_'+str(i)+suffix
         plot_track(trial, show_plot = False, suffix=suffix_i, out_path=out_path)
+        plot_track_deltas(trial, show_plot = False, suffix=suffix_i, out_path=out_path)
     if show_plot:
         plotter.show()
 
@@ -366,6 +382,36 @@ def plot_track(trial, show_plot = False, suffix='', out_path=''):
     plot_time_series(X, x_color, x_plot_title, xlabel, loc_ylabel, out_path, xloc_ylim)
     plot_time_series(Y, y_color, y_plot_title, xlabel, loc_ylabel, out_path, yloc_ylim)
     plot_time_series(Theta, theta_color, theta_plot_title, xlabel, theta_ylabel, out_path, theta_ylim)
+
+    if show_plot:
+        plotter.show()
+
+def plot_track_deltas(trial, show_plot = False, suffix='', out_path=''):
+    X = [state.x.x for state in trial.trial_trajectory]
+    Y = [state.x.y for state in trial.trial_trajectory]
+    Theta = [state.x.theta for state in trial.trial_trajectory]
+
+    DeltaX, DeltaY, DeltaTheta = get_deltas(X,Y,Theta)
+
+    x_color = _KULER_RED
+    y_color = _KULER_BLUE
+    theta_color = _KULER_GREEN
+
+    x_plot_title = 'Delta Object x-Position vs Time' + suffix
+    y_plot_title = 'Delta Object y-Position vs Time' + suffix
+    theta_plot_title = 'Delta Object Orientation vs Time' + suffix
+
+    xlabel = 'Time Step'
+    loc_ylabel = 'Location (m)'
+    theta_ylabel = 'Orientation (rad)'
+
+    xloc_ylim = (0, 1.0)
+    yloc_ylim = (-0.5, 0.5)
+    theta_ylim = (-pi, pi)
+
+    plot_time_series(DeltaX, x_color, x_plot_title, xlabel, loc_ylabel, out_path, xloc_ylim)
+    plot_time_series(DeltaY, y_color, y_plot_title, xlabel, loc_ylabel, out_path, yloc_ylim)
+    plot_time_series(DeltaTheta, theta_color, theta_plot_title, xlabel, theta_ylabel, out_path, theta_ylim)
 
     if show_plot:
         plotter.show()
@@ -902,10 +948,13 @@ def test_mpc(base_dir_name):
     # trajectory_generator = ptg.ViaPointTrajectoryGenerator()
     x_d = trajectory_generator.generate_trajectory(cur_state.x, pose_list)
     # Get learned dynamics model
-    dyn_model = test_svm_new(base_dir_name)
-    n = dyn_model.n
-    m = dyn_model.m
-    delta_t = dyn_model.delta_t
+    n = 6
+    m = 3
+    delta_t = 1./9.
+    dyn_model =  NaiveInputDynamics(delta_t, n, m)# test_svm_new(base_dir_name)
+    # n = dyn_model.n
+    # m = dyn_model.m
+    # delta_t = dyn_model.delta_t
     if test_trajectory:
         for i in xrange(len(x_d)):
             print 'x_d[',i,'] =', x_d[i]
@@ -924,7 +973,7 @@ def test_mpc(base_dir_name):
     u_gt = []
     all_x_d = []
     # TODO: Have better criteria for halting
-    for i in xrange(len(x_d)-1):
+    for i in xrange(len(x_d)+2):
         print 'Solving for iteration', i
         # Update desired trajectory
         # Recompute trajectory from current pose
@@ -954,7 +1003,7 @@ def test_mpc(base_dir_name):
             plot_controls(q_cur, x0, mpc.n, mpc.m, u_max[0], show_plot=False, suffix='-q*['+str(i)+']',
                           out_path=plot_output_path, history_start=i)
             plot_desired_vs_controlled(q_cur, x_d_i, x0, mpc.n, mpc.m, show_plot=False, suffix='-q*['+str(i)+']', t=i,
-                                       out_path=plot_output_path)
+                                       out_path=plot_output_path, plot_ee = False)
 
         # Generate next start point based on simulation model
         print 'Generating next ground truth location'
@@ -983,7 +1032,7 @@ def test_mpc(base_dir_name):
         plot_controls(q_gt, x0, mpc.n, mpc.m, u_max[0], show_plot=False, suffix='-q*-final',
                       out_path=plot_output_path)
         plot_desired_vs_controlled(q_gt, x_d, x0, mpc.n, mpc.m, show_plot=False, suffix='-q*-final',
-                                   t=len(x_d), out_path=plot_output_path)
+                                   t=len(q_gt), out_path=plot_output_path, plot_ee = False)
         plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, mpc.n, mpc.m, show_plot=False,
                                           suffix='-q*-final', out_path=plot_output_path)
         plot_all_planend_trajectories_x_d(q_gt, all_x_d, x0, mpc.n, mpc.m, show_plot=(not plot_all_t),
@@ -1131,7 +1180,6 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans
     aff_dir_path = aff_file_name[:-len(aff_file_name.split('/')[-1])]
 
     # Create output directories to store analysis
-    # TODO: Move this to '~/sandbox/aff_file_name-analysis...'
     analysis_dir = aff_file_name[:-4]+'-analysis/'
     render_out_dir = analysis_dir + 'tracking/'
     traj_out_dir = analysis_dir + 'planning/'
@@ -1264,6 +1312,12 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans
         contact_pt_movie_out_name = render_out_dir+'contact_pt_'+str(i)+'.mp4'
         p = subprocess.Popen([movie_render_bin_name, '-y', '-r', str(input_rate), '-i', contact_pt_movie_in_name,
                               '-r', str(output_rate), '-b', '1000k', contact_pt_movie_out_name])
+        p.wait()
+        print 'Rendering goal vector movie', i
+        goal_vector_movie_in_name = render_out_dir+'goal_vector_'+str(i)+'_%d.png'
+        goal_vector_movie_out_name = render_out_dir+'goal_vector_'+str(i)+'.mp4'
+        p = subprocess.Popen([movie_render_bin_name, '-y', '-r', str(input_rate), '-i', goal_vector_movie_in_name,
+                              '-r', str(output_rate), '-b', '1000k', goal_vector_movie_out_name])
         p.wait()
 
 _TEST_CLASSES = ['bear', 'glad', 'soap_box', 'bowl', 'shampoo', 'large_brush']
