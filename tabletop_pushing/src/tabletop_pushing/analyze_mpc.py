@@ -202,7 +202,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     y_d = [X_d_k[1] for X_d_k in X_d]
     # theta_d = [X_d_k[2] for X_d_k in X_d]
     plotter.plot(x_d, y_d, color = plan_color, label='_nolegend_')
-    plotter.plot(x_d, y_d, color = plan_color, marker = 'x', label='Desired Object Path')
+    plotter.plot(x_d, y_d, color = plan_color, marker = 'o', label='Desired Object Path')
 
     # Plot predicted
     x_hat = [X_k[0] for X_k in X[t:]]
@@ -211,7 +211,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     ee_x_hat = [X_k[3] for X_k in X[t:]]
     ee_y_hat = [X_k[4] for X_k in X[t:]]
     plotter.plot(x_hat, y_hat, color = predicted_color,label='_nolegend_')
-    plotter.plot(x_hat, y_hat, color = predicted_color, marker = '+', label='Predicted Object')
+    plotter.plot(x_hat, y_hat, color = predicted_color, marker = 'o', label='Predicted Object')
     if plot_ee:
         plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color,label='_nolegend_')
         plotter.plot(ee_x_hat, ee_y_hat, color = ee_predicted_color, marker = 'x',label='Predicted EE')
@@ -223,7 +223,7 @@ def plot_desired_vs_controlled(q_star, X_d, x0, n, m, show_plot=True, suffix = '
     ee_x_gt = [X_k[3] for X_k in X[:t+1]]
     ee_y_gt = [X_k[4] for X_k in X[:t+1]]
     plotter.plot(x_gt, y_gt, color = gt_color,label='_nolegend_')
-    plotter.plot(x_gt, y_gt, color = gt_color, marker = '+',label='Observed Object')
+    plotter.plot(x_gt, y_gt, color = gt_color, marker = 'o',label='Observed Object')
     if plot_ee:
         plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color,label='_nolegend_')
         plotter.plot(ee_x_gt, ee_y_gt, color = gt_ee_color, marker ='x',label='Observed EE')
