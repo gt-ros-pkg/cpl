@@ -50,6 +50,9 @@ void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state);
+void visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud,
+                                    tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,
+                                    cv::Mat& disp_frame);
 
 cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& cur_state,

@@ -1172,7 +1172,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans
     # Fixed parameters
     n = 6
     m = 3
-    u_max = 0.03
+    u_max = 0.015
 
     # Get derived names from aff file name
     q_star_file_name = aff_file_name[:-4]+'-q_star.txt'
@@ -1295,7 +1295,7 @@ def analyze_mpc_trial_data(aff_file_name, wait_for_renders=False, plot_all_plans
     p = subprocess.Popen([render_bin_name, aff_file_name, aff_dir_path, render_out_dir, str(wait_time),
                           str(start_idx)], shell=False)
     p.wait()
-
+    
     # Render resultant state and object image sequences into movies using ffmpeg
     movie_render_bin_name = 'avconv'
     input_rate = 10

@@ -180,13 +180,25 @@ void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
 {
-  double max_y = 0.2;
+    double max_y = 0.2;
   double min_y = -0.2;
   double max_x = 0.2;
   double min_x = -0.2;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+  visualizeObjectBoundarySamples(hull_cloud, cur_state, footprint);
+  return footprint;
+}
+
+void visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state, cv::Mat& footprint)
+{
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
 
   cv::Scalar kuler_green(51, 178, 0);
   cv::Scalar kuler_red(18, 18, 178);
@@ -212,7 +224,6 @@ cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerSta
     prev_img_pt.y = img_pt.y;
   }
   cv::line(footprint, prev_img_pt, init_img_pt, kuler_blue,1);
-  return footprint;
 }
 
 cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hull_b,

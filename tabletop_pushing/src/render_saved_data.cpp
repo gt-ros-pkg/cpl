@@ -729,6 +729,7 @@ int main_visualize_training_samples(int argc, char** argv)
     cv::imwrite(trial_cloud_out_name.str(), sample_pt_cloud_img);
     cv::waitKey(wait_time);
   }
+  visualizeObjectBoundarySamples(base_hull_cloud, base_state, sample_pt_cloud_combined_img);
   cv::imshow("Combined Sample pt image", sample_pt_cloud_combined_img);
   std::stringstream combined_cloud_out_name;
   combined_cloud_out_name << out_file_path << "combined_samples.png";
@@ -823,11 +824,11 @@ int main_visualize_training_samples_global(int argc, char** argv)
 
       ProtoObject step_obj = generateObjectFromState(step_obj_cloud);
       XYZPointCloud step_cloud = getObjectBoundarySamples(step_obj, boundary_hull_alpha);
-      // visualizeObjectBoundarySamplesGlobal(step_cloud, sample_pt_cloud_img);
-      // visualizeObjectBoundarySamplesGlobal(step_cloud, sample_pt_cloud_combined_img);
+      visualizeObjectBoundarySamplesGlobal(step_cloud, sample_pt_cloud_img);
+      visualizeObjectBoundarySamplesGlobal(step_cloud, sample_pt_cloud_combined_img);
       ControlTimeStep cts = trial.obj_trajectory[j];
       projectCTSOntoObjectBoundaryGlobal(sample_pt_cloud_img, cts, trial);
-      projectCTSOntoObjectBoundaryGlobal(sample_pt_cloud_combined_img, cts, base_trial);
+      // projectCTSOntoObjectBoundaryGlobal(sample_pt_cloud_combined_img, cts, base_trial);
     }
     ROS_INFO_STREAM("Showing image for trial: " << i);
     cv::imshow("Sample pt image", sample_pt_cloud_img);
@@ -836,6 +837,53 @@ int main_visualize_training_samples_global(int argc, char** argv)
     trial_cloud_out_name << out_file_path << "trial_samples_" << i << ".png";
     cv::imwrite(trial_cloud_out_name.str(), sample_pt_cloud_img);
     // cv::waitKey(wait_time);
+  }
+  feedback_idx = atoi(argv[4]);
+  for (unsigned int i = 0; i < trials.size(); ++i, feedback_idx++)
+  {
+    PushTrial trial = trials[i];
+
+    // Read in workspace transform and camera parameters
+    std::stringstream trial_transform_name, trial_cam_info_name;
+    trial_transform_name << data_directory_path << "workspace_to_cam_" << feedback_idx << ".txt";
+    trial_cam_info_name << data_directory_path << "cam_info_" << feedback_idx << ".txt";
+    tf::Transform workspace_to_camera = readTFTransform(trial_transform_name.str());
+    sensor_msgs::CameraInfo cam_info = readCameraInfo(trial_cam_info_name.str());
+
+    // Read in image and point cloud for object
+    // Get associated image and object point cloud for this trial
+    std::stringstream trial_img_name, trial_obj_name;
+    trial_img_name << data_directory_path << "feedback_control_input_" << feedback_idx << "_" << 0 << ".png";
+    trial_obj_name << data_directory_path << "feedback_control_obj_" << feedback_idx << "_" << 0 << ".pcd";
+    cv::Mat trial_base_img = cv::imread(trial_img_name.str());
+    XYZPointCloud trial_obj_cloud;
+    if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(trial_obj_name.str(), trial_obj_cloud) == -1) //* load the file
+    {
+      ROS_ERROR_STREAM("Couldn't read file " << trial_obj_name.str());
+    }
+
+    // Create objects for use by standard methods
+    ProtoObject trial_obj = generateObjectFromState(trial_obj_cloud);
+    XYZPointCloud hull_cloud = getObjectBoundarySamples(trial_obj, boundary_hull_alpha);
+    // Go through each control time step in the current trial
+    for (unsigned int j = 0; j < trial.obj_trajectory.size(); ++j)
+    {
+      std::stringstream step_obj_name;
+      step_obj_name << data_directory_path << "feedback_control_obj_" << feedback_idx << "_" << j << ".pcd";
+      cv::Mat trial_base_img = cv::imread(trial_img_name.str());
+      XYZPointCloud step_obj_cloud;
+      if (pcl16::io::loadPCDFile<pcl16::PointXYZ>(step_obj_name.str(), step_obj_cloud) == -1) //* load the file
+      {
+        ROS_ERROR_STREAM("Couldn't read file " << step_obj_name.str());
+      }
+
+      ProtoObject step_obj = generateObjectFromState(step_obj_cloud);
+      ControlTimeStep cts = trial.obj_trajectory[j];
+      projectCTSOntoObjectBoundaryGlobal(sample_pt_cloud_combined_img, cts, base_trial);
+    }
+    ROS_INFO_STREAM("Showing image for trial: " << i);
+    cv::imshow("Combined Sample pt image", sample_pt_cloud_combined_img);
+    cv::waitKey(wait_time);
   }
   cv::imshow("Combined Sample pt image", sample_pt_cloud_combined_img);
   std::stringstream combined_cloud_out_name;
@@ -941,9 +989,97 @@ int main_render(int argc, char** argv)
   return 0;
 }
 
+int main_render_offline(int argc, char** argv)
+{
+
+  if (argc < 4 || argc > 6)
+  {
+    std::cout << "usage: " << argv[0] << " aff_file_path data_directory_path out_file_path [wait_time] [start_idx]" << std::endl;
+    return -1;
+  }
+
+  double boundary_hull_alpha = 0.01;
+  std::string aff_file_path(argv[1]);
+  std::string data_directory_path(argv[2]);
+  std::string out_file_path(argv[3]);
+  double wait_time = 0;
+  if (argc > 4)
+  {
+    wait_time = atoi(argv[4]);
+  }
+
+  int feedback_idx = 1;
+  if (argc > 5)
+  {
+    feedback_idx = atoi(argv[5]);
+  }
+
+  // Read in aff file grouping each trajectory and number of elements
+  std::vector<PushTrial> trials = getTrialsFromFile(aff_file_path);
+
+  // Go through all trials reading data associated with them
+  for (unsigned int i = 0; i < trials.size(); ++i, feedback_idx++)
+  {
+    // Read in workspace transform and camera parameters
+    std::stringstream cur_transform_name, cur_cam_info_name;
+    cur_transform_name << data_directory_path << "workspace_to_cam_" << feedback_idx << ".txt";
+    cur_cam_info_name << data_directory_path << "cam_info_" << feedback_idx << ".txt";
+    tf::Transform workspace_to_camera = readTFTransform(cur_transform_name.str());
+    sensor_msgs::CameraInfo cam_info = readCameraInfo(cur_cam_info_name.str());
+
+    PushTrial trial = trials[i];
+    // Get first image
+    std::stringstream init_img_name;
+    init_img_name << data_directory_path << "feedback_control_input_" << feedback_idx << "_" << 0 << ".png";
+    cv::Mat init_base_img = cv::imread(init_img_name.str());
+    pcl16::PointXYZ goal_point;
+    goal_point.x = trial.goal_pose.x;
+    goal_point.y = trial.goal_pose.y;
+    goal_point.z = trial.init_loc.z;
+
+    cv::Mat init_goal_vector_img = displayPushVector(init_base_img, trial.init_loc, goal_point,
+                                                     workspace_to_camera, cam_info);
+    cv::imshow("Init Goal vector", init_goal_vector_img);
+    cv::waitKey(wait_time);
+
+    std::stringstream init_goal_out_name;
+    init_goal_out_name << out_file_path << "init_goal_vector_"  << feedback_idx << ".png";
+    cv::imwrite(init_goal_out_name.str(), init_goal_vector_img);
+
+    // Get final image
+    cv::Mat final_base_img;
+    int j = 0;
+    while (true)
+    {
+      // Test if image exists / can be read
+      std::stringstream final_img_name;
+      final_img_name << data_directory_path << "feedback_control_input_" << feedback_idx << "_" << j << ".png";
+      cv::Mat tmp_img = cv::imread(final_img_name.str());
+      if (!tmp_img.data)
+      {
+        break;
+      }
+      else
+      {
+        tmp_img.copyTo(final_base_img);
+      }
+      j++;
+    }
+    cv::Mat final_goal_vector_img = displayPushVector(final_base_img, trial.final_loc, goal_point,
+                                                     workspace_to_camera, cam_info);
+    cv::imshow("Final Goal vector", final_goal_vector_img);
+    cv::waitKey(wait_time);
+    std::stringstream final_goal_out_name;
+    final_goal_out_name << out_file_path << "final_goal_vector_"  << feedback_idx << ".png";
+    cv::imwrite(final_goal_out_name.str(), final_goal_vector_img);
+  }
+  return 0;
+}
+
 int main(int argc, char** argv)
 {
   // return main_visualize_training_samples(argc, argv);
-  return main_visualize_training_samples_global(argc, argv);
-  // return main_render(argc, argv);
+  // return main_visualize_training_samples_global(argc, argv);
+  return main_render(argc, argv);
+  // return main_render_offline(argc, argv);
 }
