@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2012, Georgia Institute of Technology
+ *  Copyright (c) 2014, Georgia Institute of Technology
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -96,6 +96,7 @@
 #include <tabletop_pushing/push_primitives.h>
 #include <tabletop_pushing/arm_obj_segmentation.h>
 #include <tabletop_pushing/extern/Timer.hpp>
+#include <tabletop_pushing/io_utils.h>
 
 // libSVM
 #include <libsvm/svm.h>
@@ -116,35 +117,28 @@
 
 // Debugging IFDEFS
 // #define DISPLAY_INPUT_COLOR 1
-// #define DISPLAY_INPUT_DEPTH 1
-#define DISPLAY_WAIT 1
+// #define DISPLAY_WAIT 1
 // #define PROFILE_CB_TIME 1
 // #define DEBUG_POSE_ESTIMATION 1
+// #define VISUALIZE_CONTACT_PT 1
+#define BUFFER_AND_WRITE 1
+#define FORCE_BEFORE_AND_AFTER_VIZ 1
+// #define DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY 1
+// #define GET_SHAPE_DESCRIPTORS_EVERY_FRAME 1
 
 using boost::shared_ptr;
 
-using tabletop_pushing::LearnPush;
-using tabletop_pushing::LocateTable;
-using tabletop_pushing::PushVector;
-using tabletop_pushing::PointCloudSegmentation;
-using tabletop_pushing::ProtoObject;
-using tabletop_pushing::ProtoObjects;
-using tabletop_pushing::ShapeLocation;
-using tabletop_pushing::ShapeLocations;
-using tabletop_pushing::ObjectTracker25D;
-using tabletop_pushing::ArmObjSegmentation;
+using namespace tabletop_pushing;
 
 using geometry_msgs::PoseStamped;
 using geometry_msgs::PointStamped;
 using geometry_msgs::Pose2D;
 using geometry_msgs::Twist;
-typedef pcl16::PointCloud<pcl16::PointXYZ> XYZPointCloud;
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                         sensor_msgs::Image,
-                                                        sensor_msgs::Image,
                                                         sensor_msgs::PointCloud2> MySyncPolicy;
-using cpl_visual_features::upSample;
-using cpl_visual_features::downSample;
+// using cpl_visual_features::upSample;
+// using cpl_visual_features::downSample;
 using cpl_visual_features::subPIAngle;
 using cpl_visual_features::lineSegmentIntersection2D;
 using cpl_visual_features::ShapeDescriptors;
@@ -187,18 +181,34 @@ class ScoredIdxComparison
   bool descend_;
 };
 
+struct DynScore
+{
+  std::string dyn_name;
+  double score;
+};
+
+class DynScoreComparison
+{
+ public:
+  bool operator() (const DynScore& lhs, const DynScore& rhs) const
+  {
+    return lhs.score > rhs.score;
+  }
+};
+
+typedef std::priority_queue<DynScore, std::vector<DynScore>, DynScoreComparison> DynScorePQ;
+
 class TabletopPushingPerceptionNode
 {
  public:
   TabletopPushingPerceptionNode(ros::NodeHandle &n) :
       n_(n), n_private_("~"),
       image_sub_(n, "color_image_topic", 1),
-      depth_sub_(n, "depth_image_topic", 1),
       mask_sub_(n, "mask_image_topic", 1),
       cloud_sub_(n, "point_cloud_topic", 1),
-      sync_(MySyncPolicy(15), image_sub_, depth_sub_, mask_sub_, cloud_sub_),
+      sync_(MySyncPolicy(15), image_sub_, mask_sub_, cloud_sub_),
       as_(n, "push_tracker", false),
-      have_depth_data_(false),
+      have_sensor_data_(false),
       camera_initialized_(false), recording_input_(false), record_count_(0),
       learn_callback_count_(0), goal_out_count_(0), goal_heading_count_(0),
       frame_callback_count_(0), frame_set_count_(0),
@@ -206,7 +216,8 @@ class TabletopPushingPerceptionNode
       object_not_moving_count_(0), object_not_moving_count_limit_(10),
       gripper_not_moving_thresh_(0), gripper_not_moving_count_(0),
       gripper_not_moving_count_limit_(10), current_file_id_(""), force_swap_(false),
-      num_position_failures_(0), footprint_count_(0)
+      num_position_failures_(0), footprint_count_(0),
+      feedback_control_count_(0), feedback_control_instance_count_(0), open_loop_push_(false)
   {
     tf_ = shared_ptr<tf::TransformListener>(new tf::TransformListener());
     pcl_segmenter_ = shared_ptr<PointCloudSegmentation>(
@@ -216,11 +227,15 @@ class TabletopPushingPerceptionNode
     n_private_.param("use_displays", use_displays_, false);
     n_private_.param("write_input_to_disk", write_input_to_disk_, false);
     n_private_.param("write_to_disk", write_to_disk_, false);
+    n_private_.param("write_dyn_learning_to_disk", write_dyn_to_disk_, false);
 
     n_private_.param("min_workspace_x", pcl_segmenter_->min_workspace_x_, 0.0);
-    n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
     n_private_.param("max_workspace_x", pcl_segmenter_->max_workspace_x_, 0.0);
+    n_private_.param("min_workspace_y", pcl_segmenter_->min_workspace_y_, 0.0);
+    n_private_.param("max_workspace_y", pcl_segmenter_->min_workspace_y_, 0.0);
+    n_private_.param("min_workspace_z", pcl_segmenter_->min_workspace_z_, 0.0);
     n_private_.param("max_workspace_z", pcl_segmenter_->max_workspace_z_, 0.0);
+
     n_private_.param("min_table_z", pcl_segmenter_->min_table_z_, -0.5);
     n_private_.param("max_table_z", pcl_segmenter_->max_table_z_, 1.5);
 
@@ -291,6 +306,16 @@ class TabletopPushingPerceptionNode
     n_private_.param("start_loc_push_dist", start_loc_push_dist_, 0.30);
     n_private_.param("use_center_pointing_shape_context", use_center_pointing_shape_context_, true);
     n_private_.param("self_mask_dilate_size", mask_dilate_size_, 5);
+
+    // Setup morphological element for arm segmentation mask
+    cv::Mat tmp_morph(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
+    tmp_morph.copyTo(morph_element_);
+
+    // Setup nan point for self filtering of point cloud
+    nan_point_.x = numeric_limits<float>::quiet_NaN();
+    nan_point_.y = numeric_limits<float>::quiet_NaN();
+    nan_point_.z = numeric_limits<float>::quiet_NaN();
+
     n_private_.param("point_cloud_hist_res", point_cloud_hist_res_, 0.005);
     n_private_.param("boundary_hull_alpha", hull_alpha_, 0.01);
     n_private_.param("hull_gripper_spread", gripper_spread_, 0.05);
@@ -298,9 +323,36 @@ class TabletopPushingPerceptionNode
     n_.param("start_loc_use_fixed_goal", start_loc_use_fixed_goal_, false);
     n_.param("use_graphcut_arm_seg", use_graphcut_arm_seg_, false);
 
+    // feature point icp settings
+    int feature_point_close_size, feature_point_max_ransac_iters;
+    double feature_point_ransac_inlier_thresh, feature_point_ratio_test_thresh,
+        feature_point_ransac_inlier_percent_thresh;
+    n_private_.param("feature_point_close_size", feature_point_close_size, 3);
+    n_private_.param("feature_point_max_ransac_iters", feature_point_max_ransac_iters, 10);
+    n_private_.param("feature_point_ransac_inlier_thresh", feature_point_ransac_inlier_thresh, 0.01);
+    n_private_.param("feature_point_ratio_test_thresh", feature_point_ratio_test_thresh, 0.75);
+    n_private_.param("feature_point_ransac_inlier_percent_thresh", feature_point_ransac_inlier_percent_thresh, 0.85);
+
+    int brief_descriptor_byte_size; // must be 16, 32, or 64
+    n_private_.param("brief_descriptor_byte_size", brief_descriptor_byte_size, 16);
+
+    double segment_search_radius;
+    n_private_.param("tracker_segment_search_radius", segment_search_radius, 0.3);
 
     std::string arm_color_model_name;
     n_private_.param("arm_color_model_name", arm_color_model_name, std::string(""));
+
+    // Shape comparison dynamics parameters
+    n_private_.param("shape_dynamics_db", shape_dynamics_db_name_, std::string("./shape_db.txt"));
+    n_private_.param("shape_dynamics_db_base_path", shape_dynamics_db_base_path_,
+                     std::string("/cfg/shape_dbs/"));
+    n_private_.param("num_shape_dynamics_models_to_return", shape_dyn_k_, 5);
+    n_private_.param("use_local_only_shape_desc", local_only_sd_, false);
+    n_private_.param("use_global_only_shape_desc", global_only_sd_, false);
+    n_private_.param("local_sd_length", local_sd_length_, 36);
+    n_private_.param("normalzie_sd_comparisons", normalzie_sd_, true);
+    n_private_.param("binarize_sd", binarize_sd_, true);
+    n_private_.param("use_random_shape_clusters", random_sd_clusters_, false);
 
 #ifdef DEBUG_POSE_ESTIMATION
     pose_est_stream_.open("/u/thermans/data/new/pose_ests.txt");
@@ -315,9 +367,18 @@ class TabletopPushingPerceptionNode
       arm_obj_segmenter_->loadArmColorModel(arm_color_model_path.str());
     }
     obj_tracker_ = shared_ptr<ObjectTracker25D>(
-        new ObjectTracker25D(pcl_segmenter_, arm_obj_segmenter_, num_downsamples_, use_displays_,
-                             write_to_disk_, base_output_path_, camera_frame_, use_cv_ellipse,
-                             use_mps_segmentation_, use_graphcut_arm_seg_, hull_alpha_));
+        new ObjectTracker25D(pcl_segmenter_,
+                             arm_obj_segmenter_, num_downsamples_,
+                             use_displays_, write_to_disk_, base_output_path_,
+                             camera_frame_, use_cv_ellipse, use_mps_segmentation_,
+                             use_graphcut_arm_seg_, hull_alpha_,
+                             feature_point_close_size,
+                             feature_point_ransac_inlier_thresh,
+                             feature_point_max_ransac_iters,
+                             brief_descriptor_byte_size,
+                             feature_point_ratio_test_thresh,
+                             segment_search_radius,
+                             feature_point_ransac_inlier_percent_thresh));
 
     // Setup ros node connections
     sync_.registerCallback(&TabletopPushingPerceptionNode::sensorCallback,
@@ -351,7 +412,6 @@ class TabletopPushingPerceptionNode
   }
 
   void sensorCallback(const sensor_msgs::ImageConstPtr& img_msg,
-                      const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::ImageConstPtr& mask_msg,
                       const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   {
@@ -364,21 +424,18 @@ class TabletopPushingPerceptionNode
       cam_info_ = *ros::topic::waitForMessage<sensor_msgs::CameraInfo>(
           cam_info_topic_, n_, ros::Duration(5.0));
       camera_initialized_ = true;
+      have_sensor_data_ = true;
       pcl_segmenter_->cam_info_ = cam_info_;
+      pcl_segmenter_->cur_camera_header_ = img_msg->header;
       ROS_DEBUG_STREAM("Cam info: " << cam_info_);
     }
     // Convert images to OpenCV format
     cv::Mat color_frame;
-    cv::Mat depth_frame;
     cv::Mat self_mask;
     cv_bridge::CvImagePtr color_cv_ptr = cv_bridge::toCvCopy(img_msg);
-    cv_bridge::CvImagePtr depth_cv_ptr = cv_bridge::toCvCopy(depth_msg);
     cv_bridge::CvImagePtr mask_cv_ptr = cv_bridge::toCvCopy(mask_msg);
     color_frame = color_cv_ptr->image;
-    depth_frame = depth_cv_ptr->image;
     self_mask = mask_cv_ptr->image;
-
-    // cv::cvtColor(color_frame, color_frame, CV_RGB2BGR);
 
 #ifdef PROFILE_CB_TIME
     long long grow_mask_start_time = Timer::nanoTime();
@@ -386,100 +443,60 @@ class TabletopPushingPerceptionNode
     // Grow arm mask if requested
     if (mask_dilate_size_ > 0)
     {
-      cv::Mat morph_element(mask_dilate_size_, mask_dilate_size_, CV_8UC1, cv::Scalar(255));
-      cv::erode(self_mask, self_mask, morph_element);
+      cv::erode(self_mask, self_mask, morph_element_);
     }
 #ifdef PROFILE_CB_TIME
-    double grow_mask_elapsed_time = (((double)(Timer::nanoTime() - grow_mask_start_time)) /
-                                     Timer::NANOSECONDS_PER_SECOND);
     long long transform_start_time = Timer::nanoTime();
+    double grow_mask_elapsed_time = (((double)(transform_start_time - grow_mask_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
 #endif
+
     // Transform point cloud into the correct frame and convert to PCL struct
-    XYZPointCloud cloud;
-    pcl16::fromROSMsg(*cloud_msg, cloud);
-    tf_->waitForTransform(workspace_frame_, cloud.header.frame_id, cloud.header.stamp, ros::Duration(0.5));
-    pcl16_ros::transformPointCloud(workspace_frame_, cloud, cloud, *tf_);
+    pcl16::fromROSMsg(*cloud_msg, cur_point_cloud_);
+    tf_->waitForTransform(workspace_frame_, cloud_msg->header.frame_id, cloud_msg->header.stamp,
+                          ros::Duration(0.5));
+    pcl16_ros::transformPointCloud(workspace_frame_, cur_point_cloud_, cur_point_cloud_, *tf_);
+
 #ifdef PROFILE_CB_TIME
-    double transform_elapsed_time = (((double)(Timer::nanoTime() - transform_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
     long long filter_start_time = Timer::nanoTime();
+    double transform_elapsed_time = (((double)(filter_start_time - transform_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
 #endif
 
-    // TODO: Add a switch
-    // TODO: Smooth / fill in depth map instead of zeroing (mode filter)
-    // Convert nans to zeros
-    for (int r = 0; r < depth_frame.rows; ++r)
+    pcl16::copyPointCloud(cur_point_cloud_, cur_self_filtered_cloud_);
+    for (unsigned int r = 0; r < self_mask.rows; ++r)
     {
-      float* depth_row = depth_frame.ptr<float>(r);
-      for (int c = 0; c < depth_frame.cols; ++c)
+      for (unsigned int c = 0; c < self_mask.cols; ++c)
       {
-        float cur_d = depth_row[c];
-        if (isnan(cur_d))
+        if (self_mask.at<uchar>(r, c) == 0)
         {
-          depth_row[c] = 0.0;
-        }
-      }
-    }
-
-    XYZPointCloud cloud_self_filtered(cloud);
-    pcl16::PointXYZ nan_point;
-    nan_point.x = numeric_limits<float>::quiet_NaN();
-    nan_point.y = numeric_limits<float>::quiet_NaN();
-    nan_point.z = numeric_limits<float>::quiet_NaN();
-    for (unsigned int x = 0; x < cloud.width; ++x)
-    {
-      for (unsigned int y = 0; y < cloud.height; ++y)
-      {
-        if (self_mask.at<uchar>(y,x) == 0)
-        {
-          cloud_self_filtered.at(x,y) = nan_point;
+          cur_self_filtered_cloud_.at(c, r) = nan_point_;
         }
       }
     }
 #ifdef PROFILE_CB_TIME
-    double filter_elapsed_time = (((double)(Timer::nanoTime() - filter_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
     long long downsample_start_time = Timer::nanoTime();
+    double filter_elapsed_time = (((double)(downsample_start_time - filter_start_time)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
 #endif
 
     // Downsample everything first
-    cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
-    cv::Mat depth_frame_down = downSample(depth_frame, num_downsamples_);
-    cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
-    cv::Mat arm_mask_crop;
-    color_frame_down.copyTo(arm_mask_crop, self_mask_down);
+    // HACK: We have this fixed to 1, so let's not do extra memcopys
+    // cv::Mat color_frame_down = downSample(color_frame, num_downsamples_);
+    // cv::Mat self_mask_down = downSample(self_mask, num_downsamples_);
+    cv::pyrDown(color_frame, cur_color_frame_);
+    cv::pyrDown(self_mask, cur_self_mask_);
 
 #ifdef PROFILE_CB_TIME
-    double downsample_elapsed_time = (((double)(Timer::nanoTime() - downsample_start_time)) /
-                                   Timer::NANOSECONDS_PER_SECOND);
-    long long copy_start_time = Timer::nanoTime();
-#endif
-
-    // Save internally for use in the service callback
-    // prev_color_frame_ = cur_color_frame_.clone();
-    // prev_depth_frame_ = cur_depth_frame_.clone();
-    // prev_self_mask_ = cur_self_mask_.clone();
-    // prev_camera_header_ = cur_camera_header_;
-
-    // Update the current versions
-    cur_color_frame_ = color_frame_down.clone();
-    cur_depth_frame_ = depth_frame_down.clone();
-    cur_self_mask_ = self_mask_down.clone();
-    cur_point_cloud_ = cloud;
-    cur_self_filtered_cloud_ = cloud_self_filtered;
-    have_depth_data_ = true;
-    cur_camera_header_ = img_msg->header;
-    pcl_segmenter_->cur_camera_header_ = cur_camera_header_;
-
-#ifdef PROFILE_CB_TIME
-    double copy_elapsed_time = (((double)(Timer::nanoTime() - copy_start_time)) /
-                              Timer::NANOSECONDS_PER_SECOND);
+    long long tracker_start_time = Timer::nanoTime();
+    double downsample_elapsed_time = (((double)(tracker_start_time - downsample_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
     double update_tracks_elapsed_time = 0.0;
     double copy_tracks_elapsed_time = 0.0;
     double display_tracks_elapsed_time = 0.0;
+    double write_dyn_elapsed_time = 0.0;
     double publish_feedback_elapsed_time = 0.0;
     double evaluate_goal_elapsed_time = 0.0;
-    long long tracker_start_time = Timer::nanoTime();
 #endif
 
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
@@ -498,16 +515,8 @@ class TabletopPushingPerceptionNode
 #endif
 
       PushTrackerState tracker_state;
-      if (use_graphcut_arm_seg_)
-      {
-        obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
-                                   proxy_name_, tracker_state);
-      }
-      else
-      {
-        obj_tracker_->updateTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                                   proxy_name_, tracker_state);
-      }
+      obj_tracker_->updateTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_,
+                                 tracker_state);
 
 #ifdef DEBUG_POSE_ESTIMATION
       pose_est_stream_ << tracker_state.x.x << " " << tracker_state.x.y << " " << tracker_state.z << " "
@@ -515,55 +524,22 @@ class TabletopPushingPerceptionNode
 #endif // DEBUG_POSE_ESTIMATION
 
 #ifdef PROFILE_CB_TIME
-      update_tracks_elapsed_time = (((double)(Timer::nanoTime() - update_tracks_start_time)) /
-                                    Timer::NANOSECONDS_PER_SECOND);
       long long copy_tracks_start_time = Timer::nanoTime();
+      update_tracks_elapsed_time = (((double)(copy_tracks_start_time - update_tracks_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
 #endif
-      ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-      // TODO: Move this into the tracker or somewhere better
-      // XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
-
-      // // Visualize hull_cloud;
-      // // NOTE: Get this point with tf for offline use
-      // geometry_msgs::PointStamped hand_pt_ros;
-      // geometry_msgs::PointStamped base_point;
-      // base_point.point.x = 0.0;
-      // base_point.point.y = 0.0;
-      // base_point.point.z = 0.0;
-      // // base_point.header.frame_id = (pushing_arm_ == "l") ? "l_gripper_tool_frame" : "r_gripper_tool_frame";
-      // base_point.header.frame_id = "l_gripper_tool_frame";
-      // // base_point.header.stamp = ros::Time::now();
-      // tf_->transformPoint(workspace_frame_, base_point, hand_pt_ros);
-      // pcl16::PointXYZ hand_pt;
-      // hand_pt.x = hand_pt_ros.point.x;
-      // hand_pt.y = hand_pt_ros.point.y;
-      // hand_pt.z = hand_pt_ros.point.z;
-      // geometry_msgs::PointStamped forward_pt_ros;
-      // geometry_msgs::PointStamped base_point_forward;
-      // base_point_forward.point.x = 0.01;
-      // base_point_forward.point.y = 0.0;
-      // base_point_forward.point.z = 0.0;
-      // // base_point_forward.header.frame_id = (pushing_arm_ == "l") ? "l_gripper_tool_frame" : "r_gripper_tool_frame";
-      // base_point_forward.header.frame_id = "l_gripper_tool_frame";
-      // tf_->transformPoint(workspace_frame_, base_point_forward, forward_pt_ros);
-      // pcl16::PointXYZ forward_pt;
-      // forward_pt.x = forward_pt_ros.point.x;
-      // forward_pt.y = forward_pt_ros.point.y;
-      // forward_pt.z = forward_pt_ros.point.z;
-      // cv::Mat hull_cloud_viz = tabletop_pushing::visualizeObjectContactLocation(hull_cloud, tracker_state,
-      //                                                                           hand_pt, forward_pt);
-      // cv::imshow("obj footprint", hull_cloud_viz);
-      // std::stringstream input_out_name;
-      // input_out_name << base_output_path_ << "input" << footprint_count_ << ".png";
-      // cv::imwrite(input_out_name.str(), cur_color_frame_);
-      // std::stringstream footprint_out_name;
-      // footprint_out_name << base_output_path_ << "footprint" << footprint_count_++ << ".png";
-      // cv::imwrite(footprint_out_name.str(), hull_cloud_viz);
-
       tracker_state.proxy_name = proxy_name_;
       tracker_state.controller_name = controller_name_;
       tracker_state.behavior_primitive = behavior_primitive_;
 
+#ifdef PROFILE_CB_TIME
+      copy_tracks_elapsed_time = (((double)(Timer::nanoTime() - copy_tracks_start_time)) /
+                                        Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_CB_TIME
+#ifdef DISPLAY_WAIT
+#ifdef PROFILE_CB_TIME
+      long long display_tracks_start_time = Timer::nanoTime();
+#endif
       PointStamped start_point;
       PointStamped end_point;
       start_point.header.frame_id = workspace_frame_;
@@ -574,35 +550,92 @@ class TabletopPushingPerceptionNode
       end_point.point.x = tracker_goal_pose_.x;
       end_point.point.y = tracker_goal_pose_.y;
       end_point.point.z = start_point.point.z;
-#ifdef PROFILE_CB_TIME
-      copy_tracks_elapsed_time = (((double)(Timer::nanoTime() - copy_tracks_start_time)) /
-                                        Timer::NANOSECONDS_PER_SECOND);
-      long long display_tracks_start_time = Timer::nanoTime();
-#endif
-
       displayPushVector(cur_color_frame_, start_point, end_point);
       // displayRobotGripperPoses(cur_color_frame_);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta);
+      if (controller_name_ == "rotate_to_heading")
+      {
+        displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                           tracker_goal_pose_.theta);
+      }
 #ifdef PROFILE_CB_TIME
       display_tracks_elapsed_time = (((double)(Timer::nanoTime() - display_tracks_start_time)) /
                                   Timer::NANOSECONDS_PER_SECOND);
-      long long evaluate_goals_start_time = Timer::nanoTime();
-#endif
+#endif // PROFILE_CB_TIME
+#endif // DISPLAY_WAIT
 
       // make sure that the action hasn't been canceled
       if (as_.isActive())
       {
 #ifdef PROFILE_CB_TIME
-        long long publish_feedback_start_time = Timer::nanoTime();
+        long long write_dyn_start_time = Timer::nanoTime();
 #endif
-        as_.publishFeedback(tracker_state);
+        ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
+        if (write_dyn_to_disk_)
+        {
+          // Write image and cur obj cloud
+          std::stringstream image_out_name, obj_cloud_out_name;
+          image_out_name << base_output_path_ << "feedback_control_input_" << feedback_control_instance_count_
+                         << "_" << feedback_control_count_ << ".png";
+          obj_cloud_out_name << base_output_path_ << "feedback_control_obj_" << feedback_control_instance_count_
+                             << "_" << feedback_control_count_ << ".pcd";
+
+#ifdef BUFFER_AND_WRITE
+          cv::Mat color_frame_to_buffer;
+          cur_color_frame_.copyTo(color_frame_to_buffer);
+          color_img_buffer_.push_back(color_frame_to_buffer);
+          color_img_name_buffer_.push_back(image_out_name.str());
+          obj_cloud_buffer_.push_back(cur_obj.cloud);
+          obj_cloud_name_buffer_.push_back(obj_cloud_out_name.str());
+#else // BUFFER_AND_WRITE
+          cv::imwrite(image_out_name.str(), cur_color_frame_);
+          pcl16::io::savePCDFile(obj_cloud_out_name.str(), cur_obj.cloud);
+#endif // BUFFER_AND_WRITE
+
+          if (feedback_control_count_ == 0)
+          {
+            tf::StampedTransform workspace_to_cam_t;
+            tf_->lookupTransform(camera_frame_, workspace_frame_, ros::Time(0), workspace_to_cam_t);
+            std::stringstream workspace_to_cam_name, cam_info_name;
+            workspace_to_cam_name << base_output_path_ << "workspace_to_cam_"
+                                  << feedback_control_instance_count_ << ".txt";
+            cam_info_name << base_output_path_ << "cam_info_" << feedback_control_instance_count_ << ".txt";
+
+#ifdef BUFFER_AND_WRITE
+            workspace_transform_buffer_.push_back(workspace_to_cam_t);
+            workspace_transform_name_buffer_.push_back(workspace_to_cam_name.str());
+            cam_info_buffer_.push_back(cam_info_);
+            cam_info_name_buffer_.push_back(cam_info_name.str());
+#else // BUFFER_AND_WRITE
+            writeTFTransform(workspace_to_cam_t, workspace_to_cam_name.str());
+            writeCameraInfo(cam_info_, cam_info_name.str());
+#endif // BUFFER_AND_WRITE
+          }
+        }
 #ifdef PROFILE_CB_TIME
-        publish_feedback_elapsed_time = (((double)(Timer::nanoTime() - publish_feedback_start_time)) /
-                                      Timer::NANOSECONDS_PER_SECOND);
-        long long evaluate_goal_start_time = Timer::nanoTime();
+        long long publish_feedback_start_time = Timer::nanoTime();
+        write_dyn_elapsed_time = (((double)(publish_feedback_start_time - write_dyn_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
 #endif
-        evaluateGoalAndAbortConditions(tracker_state);
+
+        // Put sequence / stamp id for tracker_state as unique ID for writing state & control info to disk
+        tracker_state.header.seq = feedback_control_count_++;
+        // Publish sd in feedback if desired
+#ifdef GET_SHAPE_DESCRIPTORS_EVERY_FRAME
+        ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, tracker_state);
+        tracker_state.shape_descriptor.assign(sd.begin(), sd.end());
+#endif // GET_SHAPE_DESCRIPTORS_EVERY_FRAME
+        as_.publishFeedback(tracker_state);
+
+#ifdef PROFILE_CB_TIME
+        long long evaluate_goal_start_time = Timer::nanoTime();
+        publish_feedback_elapsed_time = (((double)(evaluate_goal_start_time - publish_feedback_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+#endif
+        if (!open_loop_push_)
+        {
+          evaluateGoalAndAbortConditions(tracker_state);
+        }
+
 #ifdef PROFILE_CB_TIME
         evaluate_goal_elapsed_time = (((double)(Timer::nanoTime() - evaluate_goal_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
@@ -612,6 +645,8 @@ class TabletopPushingPerceptionNode
     else if (obj_tracker_->isInitialized() && obj_tracker_->isPaused())
     {
       obj_tracker_->pausedUpdate(cur_color_frame_);
+
+#ifdef DISPLAY_WAIT
       PointStamped start_point;
       PointStamped end_point;
       PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
@@ -625,22 +660,26 @@ class TabletopPushingPerceptionNode
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point, "goal_vector", true);
       // displayRobotGripperPoses(cur_color_frame_);
-      displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
-                         tracker_goal_pose_.theta, true);
+      if (controller_name_ == "rotate_to_heading")
+      {
+        displayGoalHeading(cur_color_frame_, start_point, tracker_state.x.theta,
+                           tracker_goal_pose_.theta, true);
+      }
+#endif // DISPLAY_WAIT
     }
+
 #ifdef PROFILE_CB_TIME
     double tracker_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
                                  Timer::NANOSECONDS_PER_SECOND);
 #endif
 
-
     // Display junk
+#ifdef DISPLAY_WAIT
 #ifdef DISPLAY_INPUT_COLOR
     if (use_displays_)
     {
       cv::imshow("color", cur_color_frame_);
       // cv::imshow("self_mask", cur_self_mask_);
-      cv::imshow("arm_mask_crop", arm_mask_crop);
     }
     // Way too much disk writing!
     if (write_input_to_disk_ && recording_input_)
@@ -650,9 +689,6 @@ class TabletopPushingPerceptionNode
       {
         std::stringstream cloud_out_name;
         out_name << base_output_path_ << current_file_id_ << "_input_" << record_count_ << ".png";
-        // cloud_out_name << base_output_path_ << current_file_id_ << "_object_" << record_count_ << ".pcd";
-        // ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-        // pcl16::io::savePCDFile(cloud_out_name.str(), cur_obj.cloud);
       }
       else
       {
@@ -665,50 +701,53 @@ class TabletopPushingPerceptionNode
       record_count_++;
     }
 #endif // DISPLAY_INPUT_COLOR
-#ifdef DISPLAY_INPUT_DEPTH
-    if (use_displays_)
-    {
-      double depth_max = 1.0;
-      cv::minMaxLoc(cur_depth_frame_, NULL, &depth_max);
-      cv::Mat depth_display = cur_depth_frame_.clone();
-      depth_display /= depth_max;
-      cv::imshow("input_depth", depth_display);
-    }
-#endif // DISPLAY_INPUT_DEPTH
-#ifdef DISPLAY_WAIT
     if (use_displays_)
     {
       cv::waitKey(display_wait_ms_);
     }
 #endif // DISPLAY_WAIT
+
     ++frame_callback_count_;
+
 #ifdef PROFILE_CB_TIME
-    double cb_elapsed_time = (((double)(Timer::nanoTime() - tracker_start_time)) /
-                            Timer::NANOSECONDS_PER_SECOND);
+    double cb_elapsed_time = (((double)(Timer::nanoTime() - cb_start_time)) /
+                              Timer::NANOSECONDS_PER_SECOND);
     if (obj_tracker_->isInitialized() && !obj_tracker_->isPaused())
     {
       ROS_INFO_STREAM("cb_elapsed_time " << cb_elapsed_time);
-      ROS_INFO_STREAM("\t grow_mask_elapsed_time " << grow_mask_elapsed_time);
-      ROS_INFO_STREAM("\t transform_elapsed_time " << transform_elapsed_time);
-      ROS_INFO_STREAM("\t filter_elapsed_time " << filter_elapsed_time);
-      ROS_INFO_STREAM("\t downsample_elapsed_time " << downsample_elapsed_time);
-      ROS_INFO_STREAM("\t copy_elapsed_time " << copy_elapsed_time);
-      ROS_INFO_STREAM("\t tracker_elapsed_time " << tracker_elapsed_time);
-      ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time);
-      ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time);
-      ROS_INFO_STREAM("\t\t display_tracks_elapsed_time " << display_tracks_elapsed_time);
-      ROS_INFO_STREAM("\t\t publish_feedback_elapsed_time " << publish_feedback_elapsed_time);
-      ROS_INFO_STREAM("\t\t evaluate_goal_elapsed_time " << evaluate_goal_elapsed_time);
+      ROS_INFO_STREAM("\t grow_mask_elapsed_time " << grow_mask_elapsed_time <<
+                      "\t\t " << (100.0*grow_mask_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t transform_elapsed_time " << transform_elapsed_time <<
+                      "\t\t " << (100.0*transform_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t filter_elapsed_time " << filter_elapsed_time <<
+                      "\t\t " << (100.0*filter_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t downsample_elapsed_time " << downsample_elapsed_time <<
+                      "\t\t " << (100.0*downsample_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t tracker_elapsed_time " << tracker_elapsed_time <<
+                      "\t\t\t " << (100.0*tracker_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t update_tracks_elapsed_time " << update_tracks_elapsed_time <<
+                      "\t " << (100.0*update_tracks_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t copy_tracks_elapsed_time " << copy_tracks_elapsed_time <<
+                      "\t " << (100.0*copy_tracks_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t display_tracks_elapsed_time " << display_tracks_elapsed_time <<
+                      "\t\t " << (100.0*display_tracks_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t write_dyn_elapsed_time " << publish_feedback_elapsed_time <<
+                      "\t " << (100.0*write_dyn_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t publish_feedback_elapsed_time " << publish_feedback_elapsed_time <<
+                      " " << (100.0*publish_feedback_elapsed_time/cb_elapsed_time) << "\%");
+      ROS_INFO_STREAM("\t\t evaluate_goal_elapsed_time " << evaluate_goal_elapsed_time <<
+                      "\t " << (100.0*evaluate_goal_elapsed_time/cb_elapsed_time) << "\%\n");
     }
 #endif
   }
 
-  void evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)
+  bool evaluateGoalAndAbortConditions(PushTrackerState& tracker_state)
   {
     // Check for goal conditions
     float x_error = tracker_goal_pose_.x - tracker_state.x.x;
     float y_error = tracker_goal_pose_.y - tracker_state.x.y;
     float theta_error = subPIAngle(tracker_goal_pose_.theta - tracker_state.x.theta);
+    float pos_error = hypot(y_error, x_error);
 
     float x_dist = fabs(x_error);
     float y_dist = fabs(y_error);
@@ -720,13 +759,14 @@ class TabletopPushingPerceptionNode
       {
         abortPushingGoal("Pushing time up");
       }
-      return;
+      return false;
     }
 
     if (controller_name_ == "rotate_to_heading")
     {
       if (theta_dist < tracker_angle_thresh_)
       {
+        ROS_WARN_STREAM("Goal Reached!");
         ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                         tracker_state.x.y << ", " << tracker_state.x.theta << ")");
         ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
@@ -737,23 +777,29 @@ class TabletopPushingPerceptionNode
         res.aborted = false;
         as_.setSucceeded(res);
         obj_tracker_->pause();
+#ifdef BUFFER_AND_WRITE
+        writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
       }
-      return;
+      return true;
     }
-
-    if (x_dist < tracker_dist_thresh_ && y_dist < tracker_dist_thresh_)
+    if (pos_error < tracker_dist_thresh_)
     {
+      ROS_WARN_STREAM("Goal Reached!");
       ROS_INFO_STREAM("Cur state: (" << tracker_state.x.x << ", " <<
                       tracker_state.x.y << ", " << tracker_state.x.theta << ")");
       ROS_INFO_STREAM("Desired goal: (" << tracker_goal_pose_.x << ", " <<
                       tracker_goal_pose_.y << ", " << tracker_goal_pose_.theta << ")");
       ROS_INFO_STREAM("Goal error: (" << x_dist << ", " << y_dist << ", "
-                      << theta_dist << ")");
+                      << theta_dist << ") : " << pos_error);
       PushTrackerResult res;
       res.aborted = false;
       as_.setSucceeded(res);
       obj_tracker_->pause();
-      return;
+#ifdef BUFFER_AND_WRITE
+      writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
+      return true;
     }
 
     if (objectNotMoving(tracker_state))
@@ -779,6 +825,7 @@ class TabletopPushingPerceptionNode
         abortPushingGoal("Object is not between gripper and goal.");
       }
     }
+    return false;
   }
 
   void abortPushingGoal(std::string msg)
@@ -788,6 +835,9 @@ class TabletopPushingPerceptionNode
     res.aborted = true;
     as_.setAborted(res);
     obj_tracker_->pause();
+#ifdef BUFFER_AND_WRITE
+    writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
   }
 
   /**
@@ -801,7 +851,7 @@ class TabletopPushingPerceptionNode
    */
   bool learnPushCallback(LearnPush::Request& req, LearnPush::Response& res)
   {
-    if ( have_depth_data_ )
+    if ( have_sensor_data_ )
     {
       if (!req.analyze_previous)
       {
@@ -817,7 +867,7 @@ class TabletopPushingPerceptionNode
         record_count_ = 0;
         learn_callback_count_ = 0;
         res.no_push = true;
-        ROS_INFO_STREAM("Stopping input recording");
+        ROS_DEBUG_STREAM("Stopping input recording");
         recording_input_ = false;
         obj_tracker_->stopTracking();
       }
@@ -826,7 +876,7 @@ class TabletopPushingPerceptionNode
         ROS_INFO_STREAM("Getting current object pose");
         getObjectPose(res);
         res.no_push = true;
-        ROS_INFO_STREAM("Stopping input recording");
+        ROS_DEBUG_STREAM("Stopping input recording");
         recording_input_ = false;
         ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
         if (cur_obj.cloud.header.frame_id.size() == 0)
@@ -844,28 +894,51 @@ class TabletopPushingPerceptionNode
           // Display different color to signal swap available
           obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
           ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
-          if (use_displays_)
+          ROS_INFO_STREAM("Press 's' to swap orientation. Any other key to continue.");
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+          PointStamped start_point;
+          start_point.header.frame_id = workspace_frame_;
+          start_point.point.x = cur_state.x.x;
+          start_point.point.y = cur_state.x.y;
+          start_point.point.z = cur_state.z;
+          PointStamped end_point;
+          end_point.header.frame_id = workspace_frame_;
+          end_point.point.x = req.goal_pose.x;
+          end_point.point.y = req.goal_pose.y;
+          end_point.point.z = start_point.point.z;
+
+          displayPushVector(cur_color_frame_, start_point, end_point, "final_vector", false, true);
+          ROS_INFO_STREAM("Waiting for key press...");
+          char key_press = cv::waitKey(-1);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
+          char key_press = cv::waitKey(2000);
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+          while (key_press == 's')
           {
-            ROS_INFO_STREAM("Presss 's' to swap orientation: ");
-            char key_press = cv::waitKey(2000);
-            if (key_press == 's')
-            {
-              // TODO: Is this correct?
-              force_swap_ = !obj_tracker_->getSwapState();
-              startTracking(cur_state, force_swap_);
-              ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
-              res.theta = cur_state.x.theta;
-              obj_tracker_->stopTracking();
-              obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
-              // NOTE: Try and force redraw
-              cv::waitKey(3);
-            }
+            force_swap_ = !obj_tracker_->getSwapState();
+            startTracking(cur_state, force_swap_);
+            ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+            res.theta = cur_state.x.theta;
+            obj_tracker_->stopTracking();
+            obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+            ROS_INFO_STREAM("Press 's' to swap. Any other key to continue.");
+            key_press = cv::waitKey(1000);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
+            // NOTE: Try and force redraw
+            cv::waitKey(100);
+            key_press = 'a';
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
           }
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+          cv::destroyWindow("Object State");
+          cv::destroyWindow("final_vector");
+#endif
         }
-        else
+        else // Get pose only
         {
           ROS_INFO_STREAM("Calling tracker display");
-          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
+          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
           obj_tracker_->stopTracking();
         }
         ROS_INFO_STREAM("Done getting current pose\n");
@@ -877,12 +950,12 @@ class TabletopPushingPerceptionNode
         recording_input_ = !res.no_objects;
         if (recording_input_)
         {
-          ROS_INFO_STREAM("Starting input recording");
-          ROS_INFO_STREAM("current_file_id: " << current_file_id_);
+          ROS_DEBUG_STREAM("Starting input recording");
+          ROS_DEBUG_STREAM("current_file_id: " << current_file_id_);
         }
         else
         {
-          ROS_INFO_STREAM("Stopping input recording");
+          ROS_DEBUG_STREAM("Stopping input recording");
         }
         res.no_push = res.no_objects;
       }
@@ -894,6 +967,10 @@ class TabletopPushingPerceptionNode
       res.no_push = true;
       return false;
     }
+    if (req.initialize)
+    {
+      ROS_INFO_STREAM("Initialized");
+    }
     return true;
   }
 
@@ -903,26 +980,40 @@ class TabletopPushingPerceptionNode
     PushTrackerState cur_state;
     startTracking(cur_state, force_swap_);
     ProtoObject cur_obj = obj_tracker_->getMostRecentObject();
-    if (req.learn_start_loc)
+
+    if (req.learn_start_loc || req.dynamics_learning)
     {
       obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, true);
-      if (use_displays_)
+      ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
+      ROS_INFO_STREAM("Press 's' to swap orientation: ");
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+      ROS_INFO_STREAM("Waiting for key press...");
+      char key_press = cv::waitKey(-1);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
+      char key_press = cv::waitKey(2000);
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+      while (key_press == 's')
       {
-        ROS_INFO_STREAM("Current theta: " << cur_state.x.theta);
-        ROS_INFO_STREAM("Presss 's' to swap orientation: ");
-        char key_press = cv::waitKey(2000);
-        if (key_press == 's')
-        {
-          force_swap_ = !force_swap_;
-          obj_tracker_->toggleSwap();
-          startTracking(cur_state, force_swap_);
-          obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj);
-          // NOTE: Try and force redraw
-          cv::waitKey(3);
-          ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
-        }
+        force_swap_ = !force_swap_;
+        obj_tracker_->toggleSwap();
+        startTracking(cur_state, force_swap_);
+        obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+        ROS_INFO_STREAM("Swapped theta: " << cur_state.x.theta);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+        ROS_INFO_STREAM("Press any key to continue");
+        key_press = cv::waitKey(1000);
+#else // FORCE_BEFORE_AND_AFTER_VIZ
+        // NOTE: Try and force redraw
+        cv::waitKey(100);
+        key_press = 'a';
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+
       }
     }
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+    cv::destroyWindow("Init State");
+    cv::destroyWindow("Object State");
+#endif
 
     if (!start_tracking_on_push_call_)
     {
@@ -1014,7 +1105,7 @@ class TabletopPushingPerceptionNode
       p.push_dist = start_loc_push_dist_;
 
       // Push for a fixed amount of time
-      timing_push_ = true;
+      timing_push_ = false; // true;
 
       // NOTE: Write object point cloud to disk, images too for use in offline learning if we want to
       // change features in the future
@@ -1058,6 +1149,65 @@ class TabletopPushingPerceptionNode
       // Get push distance
       p.push_dist = hypot(res.centroid.x - res.goal_pose.x, res.centroid.y - res.goal_pose.y);
       timing_push_ = false;
+      if (req.dynamics_learning)
+      {
+        // Extract shape descriptor from the start location to return for storage and prediction use
+        ROS_INFO_STREAM("Extracting shape descriptor for learning.");
+        ShapeDescriptor sd = getDominantOrientationShapeDescriptor(cur_obj, cur_state);
+        res.shape_descriptor.assign(sd.begin(), sd.end());
+        if (req.compare_shape_for_dynamics)
+        {
+          if ( random_sd_clusters_)
+          {
+            std::vector<std::string> best_k = getBestRandomShapeMatch();
+            res.dynamics_model_names.assign(best_k.begin(), best_k.end());
+          }
+          else
+          {
+            // Compare to shape descriptors for known models and return best K matching dynamics model names
+            DynScorePQ pq_0 = getBestShapeDynamicsMatches(sd);
+            // Return match list of up to K best matching model name(s)
+
+            // Get descriptor at cur_state +/- m_pi
+            PushTrackerState cur_state_180;
+            cur_state_180.x = cur_state.x;
+            cur_state_180.x.theta = subPIAngle(cur_state.x.theta + M_PI);
+            ShapeDescriptor sd_180 = getDominantOrientationShapeDescriptor(cur_obj, cur_state_180);
+            DynScorePQ pq_180 = getBestShapeDynamicsMatches(sd_180);
+
+            // Compare pq and pq_180;
+            DynScorePQ pq;
+            if (pq_0.top().score < pq_180.top().score)
+            {
+              pq = pq_0;
+            }
+            else
+            {
+              pq = pq_180;
+              // Force swap and redisplay
+              force_swap_ = !force_swap_;
+              obj_tracker_->toggleSwap();
+              // startTracking(cur_state, force_swap_);
+              obj_tracker_->trackerDisplay(cur_color_frame_, cur_state, cur_obj, false, true);
+              res.shape_descriptor.assign(sd_180.begin(), sd_180.end());
+              ROS_WARN_STREAM("Swapped theta because of better shape match: " << cur_state.x.theta);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+              ROS_INFO_STREAM("Press any key to continue");
+              cv::waitKey();
+              cv::destroyWindow("Init State");
+              cv::destroyWindow("Object State");
+#endif // FORCE_BEFORE_AND_AFTER_VIZ
+            }
+            std::vector<std::string> best_k;
+            for (int i = 0; i < shape_dyn_k_ && pq.size() > 0; ++i)
+            {
+              best_k.push_back(pq.top().dyn_name);
+              pq.pop();
+            }
+            res.dynamics_model_names.assign(best_k.begin(), best_k.end());
+          }
+        }
+      }
     }
     // Visualize push vector
     PointStamped obj_centroid;
@@ -1078,10 +1228,12 @@ class TabletopPushingPerceptionNode
       end_point.point.y = res.goal_pose.y;
       end_point.point.z = start_point.point.z;
       displayPushVector(cur_color_frame_, start_point, end_point);
-      if (use_displays_)
-      {
-        displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
-      }
+      displayInitialPushVector(cur_color_frame_, start_point, end_point, obj_centroid);
+#ifdef FORCE_BEFORE_AND_AFTER_VIZ
+      ROS_INFO_STREAM("Press any key to continue");
+      cv::waitKey(3000);
+      cv::destroyWindow("initial_vector");
+#endif
     }
 
     // Cleanup and return
@@ -1113,13 +1265,11 @@ class TabletopPushingPerceptionNode
     }
     // Get shape features and associated locations
     ShapeLocations locs = tabletop_pushing::extractObjectShapeContext(cur_obj, use_center_pointing_shape_context_);
-    // tabletop_pushing::extractObjectShapeContext(cur_obj, !use_center_pointing_shape_context_);
 
     // Choose location index from features and history
     int loc_idx = 0;
     if (start_loc_history_.size() == 0)
     {
-      // TODO: Improve this to find a more unique / prototypical point?
       loc_idx = rand() % locs.size();
     }
     else
@@ -1424,7 +1574,7 @@ class TabletopPushingPerceptionNode
     }
 
     // Free SVM struct
-    svm_free_and_destroy_model(&push_model);
+    // svm_free_and_destroy_model(&push_model);
 
     // Write SVM scores & descriptors to disk?
     writePredictedScoreToDisk(hull_cloud, sds, pred_push_scores);
@@ -1478,7 +1628,6 @@ class TabletopPushingPerceptionNode
   ShapeLocation chooseRandomPushStartLoc(ProtoObject& cur_obj, PushTrackerState& cur_state, bool rotate_push)
   {
     // Get features for all of the boundary locations
-    // TODO: Set these values somewhere else
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
     ShapeDescriptors sds = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                                 gripper_spread_, hull_alpha_,
@@ -1514,6 +1663,154 @@ class TabletopPushingPerceptionNode
     chosen_loc.boundary_loc_ = hull_cloud[chosen_idx];
     chosen_loc.descriptor_ = sds[chosen_idx];
     return chosen_loc;
+  }
+
+  ShapeDescriptor getDominantOrientationShapeDescriptor(ProtoObject& cur_obj, PushTrackerState& cur_state)
+  {
+    XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
+    int boundary_loc_idx = -1;
+    double min_angle_dist = FLT_MAX;
+    for (int i = 0; i < hull_cloud.size(); ++i)
+    {
+      double theta_i = atan2(hull_cloud.at(i).y - cur_state.x.y, hull_cloud.at(i).x - cur_state.x.x);
+      double angle_dist_i = fabs(subPIAngle(theta_i - cur_state.x.theta));
+      if (angle_dist_i < min_angle_dist)
+      {
+        min_angle_dist = angle_dist_i;
+        boundary_loc_idx = i;
+      }
+    }
+    if (boundary_loc_idx < 0)
+    {
+      ROS_ERROR_STREAM("Failed to find dominant orientation boundary sample");
+      ShapeDescriptor sd;
+      return sd;
+    }
+    pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
+#ifdef DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY
+    cv::Mat hull_img(cur_color_frame_.size(), CV_8UC1, cv::Scalar(0));
+    pcl_segmenter_->projectPointCloudIntoImage(hull_cloud, hull_img);
+    hull_img*=255;
+    cv::Mat hull_disp_img(hull_img.size(), CV_8UC3, cv::Scalar(0,0,0));
+    cv::cvtColor(hull_img, hull_disp_img, CV_GRAY2BGR);
+    cv::Point2f img_loc_idx = pcl_segmenter_->projectPointIntoImage(boundary_loc,
+                                                                    hull_cloud.header.frame_id, camera_frame_);
+    cv::circle(hull_disp_img, img_loc_idx, 4, cv::Scalar(18, 18, 178));
+    cv::imshow("object hull", hull_disp_img);
+#endif // DISPLAY_SHAPE_DESCRIPTOR_BOUNDARY
+    return tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj, boundary_loc,
+                                                                boundary_loc_idx, gripper_spread_,
+                                                                hull_alpha_, point_cloud_hist_res_, binarize_sd_);
+  }
+
+  DynScorePQ getBestShapeDynamicsMatches(ShapeDescriptor& sd_in)
+  {
+    // Iterate through file name and shape pairs in db, compare to each
+    std::stringstream shape_dynamics_db_path;
+    shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << shape_dynamics_db_base_path_
+                           << shape_dynamics_db_name_;
+
+    ShapeDescriptor sd_feats;
+    if (local_only_sd_)
+    {
+      sd_feats.assign(sd_in.begin(), sd_in.begin() + local_sd_length_);
+    }
+    else if(global_only_sd_)
+    {
+      sd_feats.assign(sd_in.begin() + local_sd_length_, sd_in.end());
+    }
+    else // Combined
+    {
+      sd_feats = sd_in;
+    }
+    ROS_INFO_STREAM("Shape descriptor has length: " << sd_feats.size());
+    ShapeDescriptor sd;
+    if (normalzie_sd_)
+    {
+      sd = tabletop_pushing::hellingerNormalizeShapeDescriptor(sd_feats);
+    }
+    else
+    {
+      sd = sd_feats;
+    }
+
+    std::ifstream shape_file(shape_dynamics_db_path.str().c_str());
+    DynScorePQ pq;
+    while(shape_file.good())
+    {
+      std::string line;
+      std::getline(shape_file, line);
+      if (line.size() < 1)
+      {
+        break;
+      }
+      std::stringstream line_stream;
+      line_stream << line;
+      // Get descriptor and file name from line
+      DynScore dyn;
+      ShapeDescriptor cur_db_sd;
+      std::getline(line_stream, dyn.dyn_name, ':');
+      // ROS_WARN_STREAM("Reading shape descriptor for dyn_model: " << dyn.dyn_name);
+      while (line_stream.good())
+      {
+        double x;
+        line_stream >> x;
+        cur_db_sd.push_back(x);
+      }
+      // ROS_WARN_STREAM("Descriptor has length " << cur_db_sd.size());
+      dyn.score = tabletop_pushing::shapeFeatureSquaredEuclideanDist(sd, cur_db_sd);
+
+      // ROS_WARN_STREAM("Descriptor match score is " << dyn.score << "\n");
+      std::stringstream db_str;
+      for (int i = 0; i < cur_db_sd.size(); ++i)
+      {
+        db_str << " " << cur_db_sd[i];
+      }
+      // ROS_INFO_STREAM("sd:" << db_str.str() << "\n");
+      pq.push(dyn);
+    }
+    return pq;
+  }
+
+  std::vector<std::string> getBestRandomShapeMatch()
+  {
+    std::stringstream shape_dynamics_db_path;
+    shape_dynamics_db_path << ros::package::getPath("tabletop_pushing") << shape_dynamics_db_base_path_
+                           << shape_dynamics_db_name_;
+
+    std::ifstream shape_file(shape_dynamics_db_path.str().c_str());
+    int max_k = 0;
+    std::vector<std::string> dyn_models;
+
+    while(shape_file.good())
+    {
+      std::string line;
+      std::getline(shape_file, line);
+      if (line.size() < 1)
+      {
+        break;
+      }
+      std::stringstream line_stream;
+      line_stream << line;
+      // Get descriptor and file name from line
+      std::string dyn_name;
+      std::getline(line_stream, dyn_name, ':');
+      dyn_models.push_back(dyn_name);
+      // Get cluster number
+      int x;
+      line_stream >> x;
+      ROS_INFO_STREAM("Dyn model " << dyn_name << " has cluster ID: " << x);
+      if (x  > max_k)
+      {
+        max_k = x;
+      }
+    }
+
+    int rand_idx = rand() % max_k;
+    std::vector<std::string> best_k;
+    best_k.push_back(dyn_models[rand_idx]);
+    ROS_INFO_STREAM("Chose dyn model: " << best_k[0]);
+    return best_k;
   }
 
   std::vector<pcl16::PointXYZ> findAxisAlignedBoundingBox(PushTrackerState& cur_state, ProtoObject& cur_obj)
@@ -1717,10 +2014,6 @@ class TabletopPushingPerceptionNode
   void getObjectPose(LearnPush::Response& res)
   {
     bool no_objects = false;
-    // TODO: Switch to findTargetObjectGC?
-    // ProtoObject cur_obj = obj_tracker_->findTargetObjectGC(cur_color_frame_,
-    //                                                        cur_point_cloud_, cur_depth_frame_,
-    //                                                        cur_self_mask_, no_objects, true);
     ProtoObject cur_obj = obj_tracker_->findTargetObject(cur_color_frame_, cur_point_cloud_, no_objects, true);
     if (no_objects)
     {
@@ -1755,17 +2048,8 @@ class TabletopPushingPerceptionNode
     goal_out_count_ = 0;
     goal_heading_count_ = 0;
     frame_callback_count_ = 0;
-    if (use_graphcut_arm_seg_)
-    {
-      obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_point_cloud_,
-                               proxy_name_, state, start_swap);
-    }
-    else
-    {
-      obj_tracker_->initTracks(cur_color_frame_, cur_depth_frame_, cur_self_mask_, cur_self_filtered_cloud_,
-                               proxy_name_, state, start_swap);
-    }
-
+    obj_tracker_->initTracks(cur_color_frame_, cur_self_mask_, cur_self_filtered_cloud_, proxy_name_, state,
+                             start_swap);
   }
 
   void lArmStateCartCB(const pr2_manipulation_controllers::JTTaskControllerState l_arm_state)
@@ -1791,7 +2075,6 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerGoalCB()
   {
-    ROS_INFO_STREAM("Accepting goal");
     shared_ptr<const PushTrackerGoal> tracker_goal = as_.acceptNewGoal();
     tracker_goal_pose_ = tracker_goal->desired_pose;
     pushing_arm_ = tracker_goal->which_arm;
@@ -1799,11 +2082,14 @@ class TabletopPushingPerceptionNode
     proxy_name_ = tracker_goal->proxy_name;
     behavior_primitive_ = tracker_goal->behavior_primitive;
     ROS_INFO_STREAM("Accepted goal of " << tracker_goal_pose_);
+    open_loop_push_ = tracker_goal->open_loop_push;
     gripper_not_moving_count_ = 0;
     object_not_moving_count_ = 0;
     object_not_detected_count_ = 0;
     object_too_far_count_ = 0;
     object_not_between_count_ = 0;
+    feedback_control_count_ = 0;
+    feedback_control_instance_count_++;
     push_start_time_ = ros::Time::now().toSec();
 
     if (obj_tracker_->isInitialized())
@@ -1819,16 +2105,30 @@ class TabletopPushingPerceptionNode
 
   void pushTrackerPreemptCB()
   {
-    obj_tracker_->pause();
-    ROS_INFO_STREAM("Preempted push tracker");
-    // set the action state to preempted
-    as_.setPreempted();
+    ROS_WARN_STREAM("Preempted push tracker");
+    PushTrackerState tracker_state = obj_tracker_->getMostRecentState();
+    if (! evaluateGoalAndAbortConditions(tracker_state))
+    {
+      // set the action state to preempted
+      // ROS_INFO_STREAM("Aborting");
+      obj_tracker_->pause();
+      PushTrackerResult res;
+      res.aborted = true;
+      as_.setAborted(res);
+    }
+    else
+    {
+      // ROS_INFO_STREAM("Goal reached confirmed");
+    }
+#ifdef BUFFER_AND_WRITE
+    writeBuffersToDisk();
+#endif // BUFFER_AND_WRITE
   }
 
   bool objectNotMoving(PushTrackerState& tracker_state)
   {
-    if (tracker_state.x_dot.x < object_not_moving_thresh_ &&
-        tracker_state.x_dot.y < object_not_moving_thresh_)
+    if (fabs(tracker_state.x_dot.x) < object_not_moving_thresh_ &&
+        fabs(tracker_state.x_dot.y) < object_not_moving_thresh_)
     {
       ++object_not_moving_count_;
     }
@@ -1863,8 +2163,8 @@ class TabletopPushingPerceptionNode
     {
       gripper_vel = r_arm_vel_;
     }
-    if (gripper_vel.linear.x < gripper_not_moving_thresh_ &&
-        gripper_vel.linear.y < gripper_not_moving_thresh_)
+    if (fabs(gripper_vel.linear.x) < gripper_not_moving_thresh_ &&
+        fabs(gripper_vel.linear.y) < gripper_not_moving_thresh_)
     {
       ++gripper_not_moving_count_;
     }
@@ -1969,7 +2269,7 @@ class TabletopPushingPerceptionNode
    */
   bool getTableLocation(LocateTable::Request& req, LocateTable::Response& res)
   {
-    if ( have_depth_data_ )
+    if ( have_sensor_data_ )
     {
       getTablePlane(cur_point_cloud_, res.table_centroid);
       if ((res.table_centroid.pose.position.x == 0.0 &&
@@ -2003,9 +2303,10 @@ class TabletopPushingPerceptionNode
   void getTablePlane(XYZPointCloud& cloud, PoseStamped& p)
   {
     XYZPointCloud obj_cloud, table_cloud;
-    // TODO: Comptue the hull on the first call
+    // TODO: Comptue the hull on the first call and update segmentation bounds based on extent
     Eigen::Vector4f table_centroid;
-    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid, false, true);
+    pcl_segmenter_->getTablePlane(cloud, obj_cloud, table_cloud, table_centroid, true /*init_table_find*/,
+                                  false /*find_hull*/, true/*find_centroid*/);
     p.pose.position.x = table_centroid[0];
     p.pose.position.y = table_centroid[1];
     p.pose.position.z = table_centroid[2];
@@ -2018,18 +2319,20 @@ class TabletopPushingPerceptionNode
   }
 
   void displayPushVector(cv::Mat& img, PointStamped& start_point, PointStamped& end_point,
-                         std::string display_name="goal_vector", bool force_no_write=false)
+                         std::string display_name="goal_vector", bool force_no_write=false, bool force_display = false)
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
+    cv::Scalar kuler_green(51, 178, 0);
+    cv::Scalar kuler_red(18, 18, 178);
 
     cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(end_point);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
-    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::line(disp_img, img_start_point, img_end_point, kuler_green);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
-    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
-    if (use_displays_)
+    cv::circle(disp_img, img_end_point, 4, kuler_green);
+    if (use_displays_ || force_display)
     {
       cv::imshow(display_name, disp_img);
     }
@@ -2048,16 +2351,18 @@ class TabletopPushingPerceptionNode
   {
     cv::Mat disp_img;
     img.copyTo(disp_img);
+    cv::Scalar kuler_green(51, 178, 0);
+    cv::Scalar kuler_red(18, 18, 178);
 
     cv::Point img_start_point = pcl_segmenter_->projectPointIntoImage(start_point);
     cv::Point img_end_point = pcl_segmenter_->projectPointIntoImage(end_point);
     cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,0,0),3);
-    cv::line(disp_img, img_start_point, img_end_point, cv::Scalar(0,255,0));
+    cv::line(disp_img, img_start_point, img_end_point, kuler_green);
     cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,0,0),3);
-    cv::circle(disp_img, img_end_point, 4, cv::Scalar(0,255,0));
+    cv::circle(disp_img, img_end_point, 4, kuler_green);
     cv::Point img_centroid_point = pcl_segmenter_->projectPointIntoImage(centroid);
     cv::circle(disp_img, img_centroid_point, 4, cv::Scalar(0,0,0),3);
-    cv::circle(disp_img, img_centroid_point, 4, cv::Scalar(0,0,255));
+    cv::circle(disp_img, img_centroid_point, 4, kuler_red);
     cv::imshow("initial_vector", disp_img);
   }
 
@@ -2069,15 +2374,15 @@ class TabletopPushingPerceptionNode
     img.copyTo(disp_img);
 
     cv::Point img_c_idx = pcl_segmenter_->projectPointIntoImage(centroid);
-    cv::RotatedRect obj_ellipse = obj_tracker_->getMostRecentEllipse();
-    const float x_maj_rad = (std::cos(theta)*obj_ellipse.size.height*0.5);
-    const float y_maj_rad = (std::sin(theta)*obj_ellipse.size.height*0.5);
+    float circ_size = 1.0;
+    const float x_maj_rad = (std::cos(theta)*circ_size*0.5);
+    const float y_maj_rad = (std::sin(theta)*circ_size*0.5);
     pcl16::PointXYZ table_heading_point(centroid.point.x+x_maj_rad, centroid.point.y+y_maj_rad,
                                       centroid.point.z);
     const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
         table_heading_point, centroid.header.frame_id, camera_frame_);
-    const float goal_x_rad = (std::cos(goal_theta)*obj_ellipse.size.height*0.5);
-    const float goal_y_rad = (std::sin(goal_theta)*obj_ellipse.size.height*0.5);
+    const float goal_x_rad = (std::cos(goal_theta)*circ_size*0.5);
+    const float goal_y_rad = (std::sin(goal_theta)*circ_size*0.5);
     pcl16::PointXYZ goal_heading_point(centroid.point.x+goal_x_rad, centroid.point.y+goal_y_rad,
                                      centroid.point.z);
     cv::Point2f img_goal_idx = pcl_segmenter_->projectPointIntoImage(
@@ -2208,6 +2513,30 @@ class TabletopPushingPerceptionNode
     svm_file_stream.close();
   }
 
+#ifdef BUFFER_AND_WRITE
+  void writeBuffersToDisk()
+  {
+    for (int i = 0; i < color_img_buffer_.size(); ++i)
+    {
+      cv::imwrite(color_img_name_buffer_[i], color_img_buffer_[i]);
+      pcl16::io::savePCDFileBinary<pcl16::PointXYZ>(obj_cloud_name_buffer_[i], obj_cloud_buffer_[i]);
+    }
+    for (int i = 0; i < workspace_transform_buffer_.size(); ++i)
+    {
+      writeTFTransform(workspace_transform_buffer_[i], workspace_transform_name_buffer_[i]);
+      writeCameraInfo(cam_info_buffer_[i], cam_info_name_buffer_[i]);
+    }
+    // Clean up
+    color_img_buffer_.clear();
+    color_img_name_buffer_.clear();
+    obj_cloud_buffer_.clear();
+    obj_cloud_name_buffer_.clear();
+    workspace_transform_buffer_.clear();
+    workspace_transform_name_buffer_.clear();
+    cam_info_buffer_.clear();
+    cam_info_name_buffer_.clear();
+  }
+#endif // BUFFER_AND_WRITE
 
   /**
    * Executive control function for launching the node.
@@ -2224,7 +2553,6 @@ class TabletopPushingPerceptionNode
   ros::NodeHandle n_;
   ros::NodeHandle n_private_;
   message_filters::Subscriber<sensor_msgs::Image> image_sub_;
-  message_filters::Subscriber<sensor_msgs::Image> depth_sub_;
   message_filters::Subscriber<sensor_msgs::Image> mask_sub_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   message_filters::Synchronizer<MySyncPolicy> sync_;
@@ -2238,21 +2566,17 @@ class TabletopPushingPerceptionNode
   ros::Subscriber jtteleop_r_arm_subscriber_;
   actionlib::SimpleActionServer<PushTrackerAction> as_;
   cv::Mat cur_color_frame_;
-  cv::Mat cur_depth_frame_;
   cv::Mat cur_self_mask_;
-  // cv::Mat prev_color_frame_;
-  // cv::Mat prev_depth_frame_;
-  // cv::Mat prev_self_mask_;
-  std_msgs::Header cur_camera_header_;
-  // std_msgs::Header prev_camera_header_;
+  cv::Mat morph_element_;
   XYZPointCloud cur_point_cloud_;
   XYZPointCloud cur_self_filtered_cloud_;
   shared_ptr<PointCloudSegmentation> pcl_segmenter_;
-  bool have_depth_data_;
+  bool have_sensor_data_;
   int display_wait_ms_;
   bool use_displays_;
   bool write_input_to_disk_;
   bool write_to_disk_;
+  bool write_dyn_to_disk_;
   std::string base_output_path_;
   int num_downsamples_;
   std::string workspace_frame_;
@@ -2321,10 +2645,32 @@ class TabletopPushingPerceptionNode
   double hull_alpha_;
   double gripper_spread_;
   int footprint_count_;
+  int feedback_control_count_;
+  int feedback_control_instance_count_;
+  pcl16::PointXYZ nan_point_;
+  bool open_loop_push_;
 #ifdef DEBUG_POSE_ESTIMATION
   std::ofstream pose_est_stream_;
 #endif
-
+#ifdef BUFFER_AND_WRITE
+  std::vector<cv::Mat> color_img_buffer_;
+  std::vector<XYZPointCloud> obj_cloud_buffer_;
+  std::vector<tf::StampedTransform> workspace_transform_buffer_;
+  std::vector<sensor_msgs::CameraInfo> cam_info_buffer_;
+  std::vector<std::string> color_img_name_buffer_;
+  std::vector<std::string> obj_cloud_name_buffer_;
+  std::vector<std::string> workspace_transform_name_buffer_;
+  std::vector<std::string> cam_info_name_buffer_;
+#endif
+  std::string shape_dynamics_db_name_;
+  std::string shape_dynamics_db_base_path_;
+  int shape_dyn_k_;
+  bool local_only_sd_;
+  bool global_only_sd_;
+  int local_sd_length_;
+  bool normalzie_sd_;
+  bool binarize_sd_;
+  bool random_sd_clusters_;
 };
 
 int main(int argc, char ** argv)

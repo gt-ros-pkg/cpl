@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2012, Georgia Institute of Technology
+ *  Copyright (c) 2014, Georgia Institute of Technology
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -42,9 +42,12 @@
 // PCL
 #include <pcl16/point_cloud.h>
 #include <pcl16/point_types.h>
+#include <pcl16/registration/icp.h>
+#include <pcl16/registration/transformation_estimation_svd.h>
 
 // OpenCV
 #include <opencv2/core/core.hpp>
+#include <opencv2/features2d/features2d.hpp>
 
 // Boost
 #include <boost/shared_ptr.hpp>
@@ -58,8 +61,20 @@
 // STL
 #include <string>
 
+// Functional IFDEFS
+#define USE_ORB 1
+
 namespace tabletop_pushing
 {
+class ObjectFeaturePointModel
+{
+ public:
+  cv::Mat descriptors;
+  pcl16::PointCloud<pcl16::PointXYZ> locations;
+  std::vector<cv::KeyPoint> keypoints;
+  std::vector<int> bad_locs;
+};
+
 class ObjectTracker25D
 {
  public:
@@ -68,8 +83,16 @@ class ObjectTracker25D
                    int num_downsamples = 0,
                    bool use_displays=false, bool write_to_disk=false,
                    std::string base_output_path="", std::string camera_frame="",
-                   bool use_cv_ellipse = false, bool use_mps_segmentation=false, bool use_graphcut_arm_seg_=false,
-                   double hull_alpha=0.01);
+                   bool use_cv_ellipse = false, bool use_mps_segmentation=false,
+                   bool use_graphcut_arm_seg_=false,
+                   double hull_alpha = 0.01,
+                   int feature_close_size = 3,
+                   float feature_point_ransac_inlier_thresh = 0.01,
+                   int feature_point_max_ransac_iters = 100,
+                   int brief_descriptor_byte_size = 16,
+                   float feature_point_ratio_test_thresh=0.75,
+                   double segment_search_radius = 0.3,
+                   double feature_point_ransac_inlier_percent_thresh = 0.85);
 
   ProtoObject findTargetObject(cv::Mat& in_frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
                                bool& no_objects, bool init=false);
@@ -91,15 +114,27 @@ class ObjectTracker25D
 
   void fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& ellipse);
 
-  void initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                  pcl16::PointCloud<pcl16::PointXYZ>& cloud, std::string proxy_name,
-                  tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap=false);
+  void updateStateEllipse(ProtoObject& obj, cv::RotatedRect& ellipse,
+                          tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state);
+
+  void estimateTransformFromStateChange(tabletop_pushing::VisFeedbackPushTrackingFeedback& state,
+                                        tabletop_pushing::VisFeedbackPushTrackingFeedback& previous_state,
+                                        Eigen::Matrix4f& transform);
+
+  void extractFeaturePointModel(cv::Mat& frame, pcl16::PointCloud<pcl16::PointXYZ>& cloud, ProtoObject& obj,
+                                ObjectFeaturePointModel& model);
+
+  bool estimateFeaturePointTransform(ObjectFeaturePointModel& source_model, ObjectFeaturePointModel& target_model,
+                                     pcl16::Correspondences correspondences, Eigen::Matrix4f& transform);
 
   double getThetaFromEllipse(cv::RotatedRect& obj_ellipse);
 
-  void updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                    pcl16::PointCloud<pcl16::PointXYZ>& cloud, std::string proxy_name,
-                    tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
+  void initTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                  std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state,
+                  bool start_swap=false);
+
+  void updateTracks(cv::Mat& in_frame, cv::Mat& self_mask, pcl16::PointCloud<pcl16::PointXYZ>& cloud,
+                    std::string proxy_name, tabletop_pushing::VisFeedbackPushTrackingFeedback& state);
 
   void pausedUpdate(cv::Mat in_frame);
 
@@ -131,11 +166,6 @@ class ObjectTracker25D
   ProtoObject getMostRecentObject() const
   {
     return previous_obj_;
-  }
-
-  cv::RotatedRect getMostRecentEllipse() const
-  {
-    return previous_obj_ellipse_;
   }
 
   void pause()
@@ -172,7 +202,7 @@ class ObjectTracker25D
   void trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse);
 
   void trackerDisplay(cv::Mat& in_frame, tabletop_pushing::VisFeedbackPushTrackingFeedback& state, ProtoObject& obj,
-                      bool other_color=false);
+                      bool other_color = false, bool force_display = false);
 
  protected:
   void updateHeading(tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool init_state);
@@ -189,8 +219,8 @@ class ObjectTracker25D
   double previous_time_;
   ProtoObject previous_obj_;
   tabletop_pushing::VisFeedbackPushTrackingFeedback previous_state_;
-  tabletop_pushing::VisFeedbackPushTrackingFeedback init_state_;
-  cv::RotatedRect previous_obj_ellipse_;
+  tabletop_pushing::VisFeedbackPushTrackingFeedback initial_state_;
+  tabletop_pushing::VisFeedbackPushTrackingFeedback previous_centroid_state_;
   bool use_displays_;
   bool write_to_disk_;
   std::string base_output_path_;
@@ -209,6 +239,24 @@ class ObjectTracker25D
   bool use_graphcut_arm_seg_;
   double hull_alpha_;
   XYZPointCloud previous_hull_cloud_;
+  ObjectFeaturePointModel obj_feature_point_model_;
+  cv::Mat feature_point_morph_element_;
+  cv::GoodFeaturesToTrackDetector feature_detector_;
+#ifdef USE_ORB
+  cv::ORB feature_extractor_;
+#else
+  cv::BriefDescriptorExtractor feature_extractor_;
+#endif
+  cv::BFMatcher matcher_;
+  cv::Mat init_frame_;
+  Eigen::Matrix4f previous_transform_;
+  // pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_icp_;
+  pcl16::registration::TransformationEstimationSVD<pcl16::PointXYZ, pcl16::PointXYZ> feature_point_transform_est_;
+  double ratio_test_thresh_;
+  double segment_search_radius_;
+  double feature_point_max_ransac_iters_;
+  double feature_point_inlier_squared_dist_thresh_;
+  double feature_point_ransac_inlier_percent_thresh_;
 };
 };
 #endif // object_tracker_25d_h_DEFINED

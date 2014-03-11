@@ -40,7 +40,6 @@ rosbuild_add_library(graphcut include/tabletop_pushing/extern/graphcut/graph.cpp
 
 rosbuild_add_library(gmm include/tabletop_pushing/extern/gmm/gmm.h include/tabletop_pushing/extern/gmm/gmm.cpp)
 target_link_libraries(gmm ${OpenCV_LIBRARIES})
-target_link_libraries(gmm ${OpenCV_LIBRARIES})
 rosbuild_link_boost(gmm filesystem)
 # rosbuild_link_boost(gmm format)
 
@@ -77,26 +76,33 @@ target_link_libraries(object_singulation_node point_cloud_segmentation)
 target_link_libraries(object_singulation_node ${OpenCV_LIBRARIES})
 rosbuild_link_boost(object_singulation_node signals)
 
-rosbuild_add_executable(save_kinect_data src/save_kinect_images.cpp)
-target_link_libraries(save_kinect_data point_cloud_segmentation)
-target_link_libraries(save_kinect_data ${OpenCV_LIBRARIES})
-rosbuild_link_boost(save_kinect_data signals)
+# rosbuild_add_executable(save_kinect_data src/save_kinect_images.cpp)
+# target_link_libraries(save_kinect_data point_cloud_segmentation)
+# target_link_libraries(save_kinect_data ${OpenCV_LIBRARIES})
+# rosbuild_link_boost(save_kinect_data signals)
 
 rosbuild_add_executable(extract_shape_features src/extract_shape_features.cpp)
 target_link_libraries(extract_shape_features shape_features)
 target_link_libraries(extract_shape_features ${LIBSVM_LIBRARIES})
 
-rosbuild_add_executable(extract_color_model src/extract_color_model_from_data.cpp)
-target_link_libraries(extract_color_model gmm)
-target_link_libraries(extract_color_model ${OpenCV_LIBRARIES})
-rosbuild_link_boost(extract_color_model filesystem)
+# rosbuild_add_executable(extract_color_model src/extract_color_model_from_data.cpp)
+# target_link_libraries(extract_color_model gmm)
+# target_link_libraries(extract_color_model ${OpenCV_LIBRARIES})
+# rosbuild_link_boost(extract_color_model filesystem)
 
-rosbuild_add_executable(draw_log_polar_hist src/draw_log_polar_hist.cpp)
-target_link_libraries(draw_log_polar_hist shape_features)
+# rosbuild_add_executable(draw_log_polar_hist src/draw_log_polar_hist.cpp)
+# target_link_libraries(draw_log_polar_hist shape_features)
 
 rosbuild_add_executable(compare_object_boundaries src/compare_object_boundaries.cpp)
 target_link_libraries(compare_object_boundaries ${OpenCV_LIBRARIES})
 target_link_libraries(compare_object_boundaries shape_features)
 target_link_libraries(compare_object_boundaries point_cloud_segmentation)
 
+rosbuild_add_executable(render_saved_data src/render_saved_data.cpp)
+target_link_libraries(render_saved_data ${OpenCV_LIBRARIES})
+target_link_libraries(render_saved_data point_cloud_segmentation)
+target_link_libraries(render_saved_data shape_features)
+
+rosbuild_add_executable(build_shape_db src/build_shape_db.cpp)
+target_link_libraries(build_shape_db shape_features)
 # rosbuild_add_executable(pca_test src/pca_test.cpp)

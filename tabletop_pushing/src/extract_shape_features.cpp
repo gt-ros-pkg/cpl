@@ -24,6 +24,7 @@ using namespace tabletop_pushing;
 typedef tabletop_pushing::VisFeedbackPushTrackingFeedback PushTrackerState;
 
 #define XY_RES 0.001
+#define USE_HKS_DESCRIPTOR 1
 
 ShapeLocations start_loc_history_;
 double start_loc_arc_length_percent_;
@@ -198,10 +199,17 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   // ShapeLocations locs = tabletop_pushing::extractShapeContextFromSamples(hull_cloud, cur_obj, true);
   double gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[boundary_loc_idx];
+#ifdef USE_HKS_DESCRIPTOR
+  ShapeDescriptor sd = tabletop_pushing::extractHKSAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                          boundary_loc, boundary_loc_idx,
+                                                                          gripper_spread, hull_alpha,
+                                                                          point_cloud_hist_res_);
+#else // USE_HKS_DESCRIPTOR
   ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                             boundary_loc, boundary_loc_idx,
                                                                             gripper_spread, hull_alpha,
                                                                             point_cloud_hist_res_);
+#endif // USE_HKS_DESCRIPTOR
   // Add into pushing history in object frame
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
@@ -230,10 +238,19 @@ ShapeLocation chooseFixedGoalPushStartLoc(ProtoObject& cur_obj, PushTrackerState
   }
   double gripper_spread = 0.05;
   pcl16::PointXYZ boundary_loc = hull_cloud[min_dist_idx];
+#ifdef USE_HKS_DESCRIPTOR
+  // cv::Mat boundary = visualizeObjectBoundarySamples(hull_cloud, cur_state);
+  // cv::imshow("Obj boundary", boundary);
+  ShapeDescriptor sd = tabletop_pushing::extractHKSAndGlobalShapeFeatures(hull_cloud, cur_obj,
+                                                                          boundary_loc, min_dist_idx,
+                                                                          gripper_spread, hull_alpha,
+                                                                          point_cloud_hist_res_);
+#else // USE_HKS_DESCRIPTOR
   ShapeDescriptor sd = tabletop_pushing::extractLocalAndGlobalShapeFeatures(hull_cloud, cur_obj,
                                                                             boundary_loc, min_dist_idx,
                                                                             gripper_spread,
                                                                             hull_alpha, point_cloud_hist_res_);
+#endif // USE_HKS_DESCRIPTOR
   ShapeLocation s_obj(worldPointInObjectFrame(boundary_loc, cur_state), sd);
   start_loc_history_.push_back(s_obj);
 
@@ -324,12 +341,12 @@ ShapeDescriptor getTrialDescriptor(std::string cloud_path, pcl16::PointXYZ init_
   cur_obj.centroid[0] = cur_state.x.x;
   cur_obj.centroid[1] = cur_state.x.y;
   cur_obj.centroid[2] = cur_state.z;
-  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Getting cloud: " << cloud_path);
   if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
   {
     ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
   }
-  ROS_INFO_STREAM("Got cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Got cloud: " << cloud_path);
   ShapeLocation sl = chooseFixedGoalPushStartLoc(cur_obj, cur_state, new_object, num_start_loc_pushes_per_sample,
                                                  num_start_loc_sample_locs);
   return sl.descriptor_;
@@ -352,12 +369,12 @@ ShapeDescriptor getTrialDescriptor(std::string cloud_path, pcl16::PointXYZ init_
   cur_obj.centroid[0] = cur_state.x.x;
   cur_obj.centroid[1] = cur_state.x.y;
   cur_obj.centroid[2] = cur_state.z;
-  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
+  // ROS_INFO_STREAM("getting cloud: " << cloud_path);
   if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
   {
     ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
   }
-  ROS_INFO_STREAM("Got cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Got cloud: " << cloud_path);
   ShapeLocation sl = chooseFixedGoalPushStartLoc(cur_obj, cur_state, start_pt);
   return sl.descriptor_;
 }
@@ -379,12 +396,12 @@ ShapeLocation predictPushLocation(std::string cloud_path, pcl16::PointXYZ init_l
   cur_obj.centroid[0] = cur_state.x.x;
   cur_obj.centroid[1] = cur_state.x.y;
   cur_obj.centroid[2] = cur_state.z;
-  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Getting cloud: " << cloud_path);
   if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
   {
     ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
   }
-  ROS_INFO_STREAM("Got cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Got cloud: " << cloud_path);
   float chosen_score;
   ShapeLocation sl = chooseLearnedPushStartLoc(cur_obj, cur_state, param_path, chosen_score);
   return sl;
@@ -515,7 +532,7 @@ void writeNewFile(std::string out_file_name, std::vector<TrialStuff> trials, Sha
 void writeNewExampleFile(std::string out_file_name, std::vector<TrialStuff> trials, ShapeDescriptors descriptors,
                          std::vector<double>& push_scores)
 {
-  ROS_INFO_STREAM("Writing example file: " << out_file_name);
+  ROS_INFO_STREAM("Writing example file: " << out_file_name << "\n");
   std::ofstream out_file(out_file_name.c_str());
   for (unsigned int i = 0; i < descriptors.size(); ++i)
   {
@@ -579,7 +596,6 @@ void drawScores(std::vector<double>& push_scores, std::string out_file_path)
     int y = objLocToIdx(start_loc_history_[i].boundary_loc_.y, min_y, max_y);
     // double score = -log(push_scores[i])/10;
     double score = push_scores[i]/M_PI;
-    ROS_INFO_STREAM("Score " << score);
     cv::Scalar color(0, score*255, (1-score)*255);
     // color[0] = 0.5;
     // color[1] = score;
@@ -621,12 +637,12 @@ void getMajorMinorBoundaryDists(std::string cloud_path, pcl16::PointXYZ init_loc
   cur_obj.centroid[0] = init_loc.x;
   cur_obj.centroid[1] = init_loc.y;
   cur_obj.centroid[2] = init_loc.z;
-  ROS_INFO_STREAM("Getting cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Getting cloud: " << cloud_path);
   if (pcl16::io::loadPCDFile<pcl16::PointXYZ> (cloud_path, cur_obj.cloud) == -1) //* load the file
   {
     ROS_ERROR_STREAM("Couldn't read file " << cloud_path);
   }
-  ROS_INFO_STREAM("Got cloud: " << cloud_path);
+  // ROS_INFO_STREAM("Got cloud: " << cloud_path);
 
   float hull_alpha = 0.01;
   XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha);
@@ -680,12 +696,13 @@ int main(int argc, char** argv)
   if (draw_scores)
   {
     score_file = argv[4];
+    ROS_INFO_STREAM("Reading score file " << score_file);
     push_scores = readScoreFile(score_file);
     ROS_INFO_STREAM("scores.size(): " << push_scores.size());
   }
 
   bool test_straw_man = false;
-  std::ofstream straw_scores_stream("/home/thermans/Desktop/straw_scores.txt");
+  // std::ofstream straw_scores_stream("/home/thermans/Desktop/straw_scores.txt");
   double max_score = -100.0;
   ShapeDescriptors descriptors;
   for (unsigned int i = 0; i < trials.size(); ++i)
@@ -694,11 +711,11 @@ int main(int argc, char** argv)
     pcl16::PointXYZ init_loc = trials[i].init_loc;
     double init_theta = trials[i].init_theta;
     bool new_object = trials[i].new_object;
-    ROS_INFO_STREAM("trial_id: " << trial_id);
-    ROS_INFO_STREAM("init_loc: " << init_loc);
-    ROS_INFO_STREAM("init_theta: " << init_theta);
-    ROS_INFO_STREAM("new object: " << new_object);
-    ROS_INFO_STREAM("start_pt: " << trials[i].start_pt);
+    // ROS_INFO_STREAM("trial_id: " << trial_id);
+    // ROS_INFO_STREAM("init_loc: " << init_loc);
+    // ROS_INFO_STREAM("init_theta: " << init_theta);
+    // ROS_INFO_STREAM("new object: " << new_object);
+    // ROS_INFO_STREAM("start_pt: " << trials[i].start_pt);
     std::stringstream cloud_path;
     cloud_path << data_directory_path << trial_id << "_obj_cloud.pcd";
 
@@ -819,11 +836,11 @@ int main(int argc, char** argv)
     // }
 
   // std::stringstream out_file;
-  // writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
+  writeNewExampleFile(out_file_path, trials, descriptors, push_scores);
   if (draw_scores)
   {
     // TODO: Pass in info to write these to disk again?
-    drawScores(push_scores, out_file_path);
+    // drawScores(push_scores, out_file_path);
     // drawScores(push_scores);
   }
   return 0;

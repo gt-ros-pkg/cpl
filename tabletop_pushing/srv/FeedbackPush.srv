@@ -1,16 +1,20 @@
 geometry_msgs/PointStamped start_point
 float64 wrist_yaw
 geometry_msgs/Pose2D goal_pose
+geometry_msgs/Pose2D obj_start_pose
 string controller_name
 string proxy_name
 string behavior_primitive
-string tool_proxy_name
 bool left_arm
 bool right_arm
 bool high_arm_init
 bool open_gripper
 string learn_out_file_name
+bool check_model_performance
 ---
 geometry_msgs/Pose2D goal_error
 bool action_aborted
 bool failed_pre_position
+string best_model
+float64 best_model_score
+float64 used_model_score

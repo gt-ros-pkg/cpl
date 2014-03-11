@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Software License Agreement (BSD License)
 #
-#  Copyright (c) 2011, Georgia Institute of Technology
+#  Copyright (c) 2014, Georgia Institute of Technology
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -51,12 +51,20 @@ from math import sin, cos, pi, fabs, sqrt, atan2
 from push_learning import ControlAnalysisIO
 import rbf_control
 import sys
-
-
+import os
 from push_primitives import *
+from model_based_pushing_control import *
+from analyze_mpc import MPCSolutionIO, PushTrajectoryIO
+from pushing_dynamics_models import *
+from push_trajectory_generator import *
+from util import sign, subPIAngle, trigAugState
 
-_USE_CONTROLLER_IO = False
+_OFFLINE = False
 _USE_LEARN_IO = True
+_BUFFER_DATA = True
+_SAVE_MPC_DATA = True
+_USE_SHAPE_INFO_IN_SVM = False
+_FORCE_SINGLE_SQP_SOLVE = False
 
 # Setup joints stolen from Kelsey's code.
 LEFT_ARM_SETUP_JOINTS = np.matrix([[1.32734204881265387,
@@ -164,45 +172,21 @@ _ARM_ERROR_CODES[-34]='NO_FK_SOLUTION'
 _ARM_ERROR_CODES[-35]='KINEMATICS_STATE_IN_COLLISION'
 _ARM_ERROR_CODES[-36]='INVALID_TIMEOUT'
 
-def subPIAngle(theta):
-    while theta < -pi:
-        theta += 2.0*pi
-    while theta > pi:
-        theta -= 2.0*pi
-    return theta
-
-def sign(x):
-    if x < 0:
-        return -1
-    return 1
-
-def trigAugState(X, ndx, remove_old=False):
-    X_aug = []
-    if remove_old:
-        for i, x in enumerate(X):
-            if i in ndx:
-                continue
-            else:
-                X_aug.append(x)
-    else:
-        X_aug = X[:]
-    for i in ndx:
-        X_aug = np.append(X_aug, [sin(X[i]), cos(X[i])])
-    return np.asarray(X_aug)
-
 class PositionFeedbackPushNode:
 
     def __init__(self):
-        rospy.init_node('position_feedback_push_node', log_level=rospy.INFO)
+        rospy.init_node('position_feedback_push_node')
         self.controller_io = ControlAnalysisIO()
         self.use_learn_io = False
         self.use_gripper_place_joint_posture = False
         out_file_name = '/u/thermans/data/new/control_out_'+str(rospy.get_time())+'.txt'
         rospy.loginfo('Opening controller output file: '+out_file_name)
-        if _USE_CONTROLLER_IO:
-            self.controller_io.open_out_file(out_file_name)
         if _USE_LEARN_IO:
             self.learn_io = None
+        if _SAVE_MPC_DATA:
+            self.mpc_q_star_io = None
+            self.target_trajectory_io = None
+
         # Setup parameters
         self.learned_controller_base_path = rospy.get_param('~learned_controller_base_path',
                                                             '/u/thermans/cfg/controllers/')
@@ -249,12 +233,14 @@ class PositionFeedbackPushNode:
 
         self.k_contact_g = rospy.get_param('~push_control_contact_goal_gain', 0.05)
         self.k_contact_d = rospy.get_param('~push_control_contact_gain', 0.05)
+        self.k_alignment_spin_x = rospy.get_param('~push_control_contact_spin_gain', 0.25)
 
         self.k_h_f = rospy.get_param('~push_control_forward_heading_gain', 0.1)
         self.k_rotate_spin_x = rospy.get_param('~rotate_to_heading_hand_spin_gain', 0.0)
         self.max_heading_u_x = rospy.get_param('~max_heading_push_u_x', 0.2)
         self.max_heading_u_y = rospy.get_param('~max_heading_push_u_y', 0.01)
         self.max_goal_vel = rospy.get_param('~max_goal_vel', 0.015)
+        self.straight_line_u_max = rospy.get_param('~straight_line_vel', 0.015)
 
         self.straight_v = rospy.get_param('~straight_line_goal_vel', 0.03)
 
@@ -263,6 +249,44 @@ class PositionFeedbackPushNode:
 
         self.servo_head_during_pushing = rospy.get_param('servo_head_during_pushing', False)
         self.RBF = None
+
+        # MPC Parameters
+        self.MPC = None
+        self.trajectory_generator = None
+        self.mpc_delta_t = rospy.get_param('~mpc_delta_t', 1.0/9.)
+        self.mpc_state_space_dim = rospy.get_param('~mpc_n', 6)
+        self.mpc_input_space_dim = rospy.get_param('~mpc_m', 3)
+        self.mpc_lookahead_horizon = rospy.get_param('~mpc_H', 10)
+        self.mpc_u_max = rospy.get_param('~mpc_max_u', 0.03)
+        self.mpc_u_max_angular = rospy.get_param('~mpc_max_u_angular', 0.1)
+        self.min_num_mpc_trajectory_steps = rospy.get_param('~num_mpc_trajectory_steps', 2)
+        self.mpc_max_step_size = rospy.get_param('~mpc_max_step_size', 0.01)
+        self.open_loop_segment_length = rospy.get_param('~sqp_open_loop_segment_length', 50)
+        self.svr_base_path = rospy.get_param('~svr_base_path', '/cfg/SVR_DYN/')
+        # Model performance analysis
+        self.models_to_check_db = rospy.get_param('~model_checker_db_file_path', 'cfg/shape_db/shapes.txt')
+        self.model_checker_output_path = rospy.get_param('~model_checker_output_path', 'cfg')
+        self.trajectory_to_check = []
+        self.check_model_performance = False
+        self.use_err_dynamics = rospy.get_param('~use_error_dynamics', False)
+        self.use_gp_dynamics = rospy.get_param('~use_gp_dynamics', False)
+        self.sqp_max_iter = rospy.get_param('~sqp_max_iter', 50)
+        self.mpc_max_iter = rospy.get_param('~mpc_max_iter', 10)
+
+        # Set joint gains
+        self.arm_mode = None
+        # state Info
+        self.l_arm_pose = None
+        self.l_arm_x_err = None
+        self.l_arm_x_d = None
+        self.l_arm_F = None
+
+        self.r_arm_pose = None
+        self.r_arm_x_err = None
+        self.r_arm_x_d = None
+        self.r_arm_F = None
+
+        self.goal_cb_count = 0
 
         # Setup cartesian controller parameters
         if self.use_jinv:
@@ -273,19 +297,25 @@ class PositionFeedbackPushNode:
             self.controller_state_msg = JTTaskControllerState
         self.base_vel_controller_name = '_cart_jinv_push'
         self.vel_controller_state_msg = JinvTeleopControllerState
-
-        # Set joint gains
-        self.arm_mode = None
-        self.cs = ControllerSwitcher()
-        self.init_joint_controllers()
-        self.init_cart_controllers()
-        self.init_vel_controllers()
-
-        # Setup arms
         self.tf_listener = tf.TransformListener()
-        rospy.loginfo('Creating pr2 object')
-        self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, use_kinematics=False)#, use_projector=False)
 
+        if not _OFFLINE:
+            self.cs = ControllerSwitcher()
+            self.init_joint_controllers()
+            self.init_cart_controllers()
+            self.init_vel_controllers()
+
+            # Setup arms
+            rospy.loginfo('Creating pr2 object')
+            self.robot = pr2.PR2(self.tf_listener, arms=True, base=False, use_kinematics=False)#, use_projector=False)
+        # Arm Inverse Kinematics
+        self.l_arm_ik_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik', GetPositionIK)
+        self.r_arm_ik_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik', GetPositionIK)
+        self.l_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik_solver_info',
+                                                        GetKinematicSolverInfo)
+        self.r_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik_solver_info',
+                                                        GetKinematicSolverInfo)
+        # Cartesian position and velocity controllers
         self.l_arm_cart_pub = rospy.Publisher('/l'+self.base_cart_controller_name+'/command_pose', PoseStamped)
         self.r_arm_cart_pub = rospy.Publisher('/r'+self.base_cart_controller_name+'/command_pose', PoseStamped)
         self.l_arm_cart_posture_pub = rospy.Publisher('/l'+self.base_cart_controller_name+'/command_posture',
@@ -311,25 +341,6 @@ class PositionFeedbackPushNode:
 
         self.l_pressure_listener = pl.PressureListener('/pressure/l_gripper_motor', self.pressure_safety_limit)
         self.r_pressure_listener = pl.PressureListener('/pressure/r_gripper_motor', self.pressure_safety_limit)
-
-        # Arm Inverse Kinematics
-        self.l_arm_ik_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik', GetPositionIK)
-        self.r_arm_ik_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik', GetPositionIK)
-        self.l_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_left_arm_kinematics/get_ik_solver_info',
-                                                        GetKinematicSolverInfo)
-        self.r_arm_ik_solver_proxy = rospy.ServiceProxy('/pr2_right_arm_kinematics/get_ik_solver_info',
-                                                        GetKinematicSolverInfo)
-
-        # state Info
-        self.l_arm_pose = None
-        self.l_arm_x_err = None
-        self.l_arm_x_d = None
-        self.l_arm_F = None
-
-        self.r_arm_pose = None
-        self.r_arm_x_err = None
-        self.r_arm_x_d = None
-        self.r_arm_F = None
 
         # Open callback services
         self.overhead_feedback_push_srv = rospy.Service(
@@ -473,6 +484,18 @@ class PositionFeedbackPushNode:
         if self.use_learn_io:
             self.learn_io = ControlAnalysisIO()
             self.learn_io.open_out_file(request.learn_out_file_name)
+        if _SAVE_MPC_DATA:
+            trajectory_file_name = request.learn_out_file_name[:-4]+'-trajectory.txt'
+            mpc_file_name = request.learn_out_file_name[:-4]+'-q_star.txt'
+            self.target_trajectory_io = PushTrajectoryIO()
+            self.target_trajectory_io.open_out_file(trajectory_file_name)
+            self.mpc_q_star_io = MPCSolutionIO()
+            self.mpc_q_star_io.open_out_file(mpc_file_name)
+
+        if request.check_model_performance:
+            self.check_model_performance = True
+            self.used_model_name = None
+            self.trajectory_to_check = []
 
         if request.left_arm:
             which_arm = 'l'
@@ -488,13 +511,18 @@ class PositionFeedbackPushNode:
             rospy.loginfo('Failed to connect to push tracker server')
             if self.use_learn_io:
                 self.learn_io.close_out_file()
+            if _SAVE_MPC_DATA:
+                self.mpc_q_star_io.close_out_file()
+                self.target_trajectory_io.close_out_file()
             return response
         ac.cancel_all_goals()
         self.feedback_count = 0
+        self.goal_cb_count += 1
 
-        # Start pushing forward
-        # self.vel_push_forward(which_arm)
-        self.stop_moving_vel(which_arm)
+        if not _OFFLINE:
+            self.switch_to_vel_controllers()
+            self.stop_moving_vel(which_arm)
+
         done_cb = None
         active_cb = None
         goal = VisFeedbackPushTrackingGoal()
@@ -505,24 +533,152 @@ class PositionFeedbackPushNode:
         goal.controller_name = request.controller_name
         goal.proxy_name = request.proxy_name
         goal.behavior_primitive = request.behavior_primitive
+        goal.open_loop_push = False
 
         # Load learned controller information if necessary
-        if goal.controller_name.startswith(RBF_CONTROLLER_PREFIX):
+        if request.controller_name.startswith(RBF_CONTROLLER_PREFIX):
             self.setupRBFController(goal.controller_name)
-        elif goal.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
+        elif request.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             self.AFFINE_A, self.AFFINE_B = self.loadAffineController(goal.controller_name)
+        elif request.controller_name.startswith(MPC_CONTROLLER_PREFIX):
+            # Load dynamics model being used here based on the controller name
+            if request.controller_name == MPC_NAIVE_LINEAR_DYN:
+                dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
+                                               self.mpc_input_space_dim)
+            else:
+                mpc_suffix = goal.controller_name[len(MPC_CONTROLLER_PREFIX):]
+                self.used_model_name = mpc_suffix
+                # NOTE: Add switch here if we get other non svm dynamics models
+                base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
+                param_file_string = base_path + mpc_suffix + '_params.txt'
+                if self.use_err_dynamics:
+                    dyn_model = SVRWithNaiveLinearPushDynamics(self.mpc_delta_t,
+                                                               self.mpc_state_space_dim,
+                                                               self.mpc_input_space_dim,
+                                                               param_file_name = param_file_string)
+                elif self.use_gp_dynamics:
+                    dyn_model = GPPushDynamics(self.mpc_delta_t,
+                                               self.mpc_state_space_dim,
+                                               self.mpc_input_space_dim,
+                                               param_file_name = param_file_string)
+                else:
+                    dyn_model = SVRPushDynamics(param_file_name = param_file_string)
 
-        rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
-        ac.send_goal(goal, done_cb, active_cb, feedback_cb)
-        # Block until done
-        rospy.loginfo('Waiting for result')
-        ac.wait_for_result(rospy.Duration(0))
-        rospy.loginfo('Result received')
-        self.stop_moving_vel(which_arm)
-        result = ac.get_result()
-        response.action_aborted = result.aborted
+            U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
+            self.MPC =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon, U_max,
+                                                  max_iter = self.mpc_max_iter)
+
+            # Create target trajectory to goal pose
+            self.trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
+                                                                           self.min_num_mpc_trajectory_steps)
+
+        # TODO: Setup open loop generic stuff here
+        open_loop = (request.controller_name.startswith(OPEN_LOOP_SQP_PREFIX) or
+                     request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER)
+        if open_loop:
+            # TODO: Send goal but don't block so we can record tracking data, have open_loop feedback_cb
+            if request.controller_name.startswith(OPEN_LOOP_SQP_PREFIX):
+                rospy.loginfo('Setting up open loop SQP controller')
+                if request.controller_name == SQP_NAIVE_LINEAR_DYN:
+                    rospy.loginfo('Using naive dynamics model')
+                    dyn_model = NaiveInputDynamics(self.mpc_delta_t, self.mpc_state_space_dim,
+                                                   self.mpc_input_space_dim)
+                else:
+                    sqp_suffix = goal.controller_name[len(OPEN_LOOP_SQP_PREFIX):]
+                    # NOTE: Add switch here if we get other non svm dynamics models
+                    base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
+                    param_file_string = base_path + sqp_suffix + '_params.txt'
+                    self.used_model_name = sqp_suffix
+                    rospy.loginfo('Loading dynamics model: ' + param_file_string)
+                    if self.use_err_dynamics:
+                        dyn_model = SVRWithNaiveLinearPushDynamics(self.mpc_delta_t,
+                                                                   self.mpc_state_space_dim,
+                                                                   self.mpc_input_space_dim,
+                                                                   param_file_name = param_file_string)
+                    elif self.use_gp_dynamics:
+                        dyn_model = GPPushDynamics(self.mpc_delta_t,
+                                                   self.mpc_state_space_dim,
+                                                   self.mpc_input_space_dim,
+                                                   param_file_name = param_file_string)
+                    else:
+                        dyn_model = SVRPushDynamics(param_file_name = param_file_string)
+
+                U_max = [self.mpc_u_max, self.mpc_u_max, self.mpc_u_max_angular]
+                self.SQPOpt =  ModelPredictiveController(dyn_model, self.mpc_lookahead_horizon,
+                                                         U_max, iprint_level=2, ftol=1.0E-3,
+                                                         max_iter = self.sqp_max_iter)
+                rospy.loginfo('Calling controller')
+                response.action_aborted = not self.open_loop_sqp_controller(goal, request, which_arm, ac)
+            elif request.controller_name == OPEN_LOOP_STRAIGHT_LINE_CONTROLLER:
+                rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+                goal.open_loop_push = True
+                ac.send_goal(goal)
+                rospy.loginfo('Sent goal')
+
+                rospy.loginfo('Setting up open loop straight line controller')
+                response.action_aborted = not self.open_loop_straight_line_controller(goal, request, which_arm)
+
+            # TODO: Force abort, but check the final goal_error...
+            rospy.loginfo('Done with open loop push. Getting goal.')
+            ac.cancel_goal()
+            rospy.loginfo('Waiting for result')
+            ac.wait_for_result(rospy.Duration(5))
+            rospy.loginfo('Result received')
+            result = ac.get_result()
+            if result is not None:
+                response.action_aborted = result.aborted
+                if result.aborted:
+                    rospy.loginfo('Result aborted!')
+            else:
+                rospy.logwarn('No result received!\n')
+                response.action_aborted = True
+
+        else:
+            rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+            ac.send_goal(goal, done_cb, active_cb, feedback_cb)
+            # Block until done
+            rospy.loginfo('Waiting for result')
+            ac.wait_for_result(rospy.Duration(0))
+            rospy.loginfo('Result received')
+            result = ac.get_result()
+            response.action_aborted = result.aborted
+
+        if request.check_model_performance:
+            base_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.svr_base_path
+            rospy.loginfo('base_path: ' + base_path)
+            model_db_path = roslib.packages.get_pkg_dir('tabletop_pushing') + self.models_to_check_db
+            model_checker = ModelPerformanceChecker(model_db_path, base_path)
+
+            (best_model, ranked_models) = model_checker.choose_best_model(self.trajectory_to_check)
+            self.check_model_performance = False
+            # return the best model
+            response.best_model = str(best_model)
+            response.best_model_score = min(ranked_models.keys())
+            response.used_model_score = model_checker.check_model_score(self.MPC.dyn_model, self.trajectory_to_check)
+            # save ranked to disk
+            if not os.path.exists(self.model_checker_output_path):
+                os.mkdir(self.model_checker_output_path)
+            output_file_name = self.model_checker_output_path + self.models_to_check_db.split('/')[-1]
+            if self.used_model_name is None:
+                self.used_model_name = request.controller_name
+            model_checker.write_to_disk(ranked_models, output_file_name, response.used_model_score,
+                                        self.used_model_name)
+
+        # Cleanup and save data
+        if not _OFFLINE:
+            self.stop_moving_vel(which_arm)
+
         if self.use_learn_io:
+            if _BUFFER_DATA:
+                self.learn_io.write_buffer_to_disk()
+                if _SAVE_MPC_DATA:
+                    self.mpc_q_star_io.write_buffer_to_disk()
+                    self.target_trajectory_io.write_buffer_to_disk()
             self.learn_io.close_out_file()
+            if _SAVE_MPC_DATA:
+                self.mpc_q_star_io.close_out_file()
+                self.target_trajectory_io.close_out_file()
+
         return response
 
     def tracker_feedback_push(self, feedback):
@@ -532,9 +688,23 @@ class PositionFeedbackPushNode:
             self.y0 = feedback.x.y
         which_arm = self.active_arm
         if which_arm == 'l':
-            cur_pose = self.l_arm_pose
+            cur_ee_pose = self.l_arm_pose
         else:
-            cur_pose = self.r_arm_pose
+            cur_ee_pose = self.r_arm_pose
+        if _OFFLINE:
+            cur_pose_tool_frame = PoseStamped()
+            cur_pose_tool_frame.pose.position.x = 0.0
+            cur_pose_tool_frame.pose.position.y = 0.0
+            cur_pose_tool_frame.pose.position.z = 0.0
+            cur_pose_tool_frame.pose.orientation.x = 0.0
+            cur_pose_tool_frame.pose.orientation.y = 0.0
+            cur_pose_tool_frame.pose.orientation.z = 0.0
+            cur_pose_tool_frame.pose.orientation.w = 1.0
+            if which_arm == 'l':
+                cur_pose_tool_frame.header.frame_id = 'l_gripper_tool_frame'
+            else:
+                cur_pose_tool_frame.header.frame_id = 'r_gripper_tool_frame'
+            cur_ee_pose = self.tf_listener.transformPose('torso_lift_link', cur_pose_tool_frame)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('X_goal: (' + str(self.desired_pose.x) + ', ' +
@@ -552,14 +722,13 @@ class PositionFeedbackPushNode:
         # TODO: Create options for non-velocity control updates, separate things more
         # NOTE: Add new pushing visual feedback controllers here
         if feedback.controller_name == ROTATE_TO_HEADING:
-            update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_pose)
+            update_twist = self.rotateHeadingControllerPalm(feedback, self.desired_pose, which_arm, cur_ee_pose)
         elif feedback.controller_name == CENTROID_CONTROLLER:
-            update_twist = self.centroidAlignmentController(feedback, self.desired_pose,
-                                                            cur_pose)
+            update_twist = self.centroidAlignmentController(feedback, self.desired_pose, cur_ee_pose)
         elif feedback.controller_name == DIRECT_GOAL_CONTROLLER:
             update_twist = self.directGoalController(feedback, self.desired_pose)
         elif feedback.controller_name == DIRECT_GOAL_GRIPPER_CONTROLLER:
-            update_twist = self.directGoalGripperController(feedback, self.desired_pose, cur_pose)
+            update_twist = self.directGoalGripperController(feedback, self.desired_pose, cur_ee_pose)
         elif feedback.controller_name == STRAIGHT_LINE_CONTROLLER:
             update_twist = self.straightLineController(feedback, self.desired_pose)
         elif feedback.controller_name == SPIN_COMPENSATION:
@@ -568,6 +737,8 @@ class PositionFeedbackPushNode:
             update_twist = self.RBFFeedbackController(feedback)
         elif feedback.controller_name.startswith(AFFINE_CONTROLLER_PREFIX):
             update_twist = self.affineFeedbackController(feedback, self.AFFINE_A, self.AFFINE_B)
+        elif feedback.controller_name.startswith(MPC_CONTROLLER_PREFIX):
+            update_twist = self.MPCFeedbackController(feedback, cur_ee_pose, self.desired_pose)
 
         if self.feedback_count % 5 == 0:
             rospy.loginfo('q_dot: (' + str(update_twist.twist.linear.x) + ', ' +
@@ -577,27 +748,291 @@ class PositionFeedbackPushNode:
                           str(update_twist.twist.angular.y) + ', ' +
                           str(update_twist.twist.angular.z) + ')\n')
 
-        if _USE_CONTROLLER_IO:
-            self.controller_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                          update_twist.twist, update_twist.header.stamp.to_sec(),
-                                          cur_pose.pose)
         if self.use_learn_io:
-            self.learn_io.write_line(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
-                                     update_twist.twist, update_twist.header.stamp.to_sec(),
-                                     cur_pose.pose)
+            if _BUFFER_DATA:
+                log_data = self.learn_io.buffer_line
+            else:
+                log_data = self.learn_io.write_line
+            log_data(feedback.x, feedback.x_dot, self.desired_pose, self.theta0,
+                                      update_twist.twist, update_twist.header.stamp.to_sec(),
+                                      cur_ee_pose.pose, feedback.header.seq, feedback.z, feedback.shape_descriptor)
 
-        if self.servo_head_during_pushing:
+        if self.servo_head_during_pushing and not _OFFLINE:
             look_pt = np.asmatrix([feedback.x.x,
                                    feedback.x.y,
                                    feedback.z])
             head_res = self.robot.head.look_at(look_pt, feedback.header.frame_id,
                                                self.head_pose_cam_frame)
-
-        self.update_vel(update_twist, which_arm)
+        if not _OFFLINE:
+            self.update_vel(update_twist, which_arm)
         self.feedback_count += 1
 
+    def open_loop_sqp_controller(self, goal, push_request, which_arm, ac):
+        if _FORCE_SINGLE_SQP_SOLVE:
+            return self.open_loop_sqp_controller_batch(goal, push_request, which_arm, ac)
+        else:
+            return self.open_loop_sqp_controller_segments(goal, push_request, which_arm, ac)
+
+    def open_loop_sqp_controller_batch(self, goal, push_request, which_arm, ac):
+        '''
+        Returns True if the open loop control was correctly applied, False if fails or aborted
+        '''
+        # Generate push trajectory
+        trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
+                                                                  self.min_num_mpc_trajectory_steps)
+        pose_list = [goal.desired_pose]
+        x_d = trajectory_generator.generate_trajectory(push_request.obj_start_pose, pose_list)
+
+        if which_arm == 'l':
+            ee_pose = self.l_arm_pose
+        else:
+            ee_pose = self.r_arm_pose
+        if _OFFLINE:
+            cur_pose_tool_frame = PoseStamped()
+            cur_pose_tool_frame.pose.position.x = 0.0
+            cur_pose_tool_frame.pose.position.y = 0.0
+            cur_pose_tool_frame.pose.position.z = 0.0
+            cur_pose_tool_frame.pose.orientation.x = 0.0
+            cur_pose_tool_frame.pose.orientation.y = 0.0
+            cur_pose_tool_frame.pose.orientation.z = 0.0
+            cur_pose_tool_frame.pose.orientation.w = 1.0
+            if which_arm == 'l':
+                cur_pose_tool_frame.header.frame_id = 'l_gripper_tool_frame'
+            else:
+                cur_pose_tool_frame.header.frame_id = 'r_gripper_tool_frame'
+            ee_pose = self.tf_listener.transformPose('torso_lift_link', cur_pose_tool_frame)
+
+
+        [_, _, ee_phi] = tf.transformations.euler_from_quaternion(np.array([ee_pose.pose.orientation.x,
+                                                                            ee_pose.pose.orientation.y,
+                                                                            ee_pose.pose.orientation.z,
+                                                                            ee_pose.pose.orientation.w]))
+        x0 = np.asarray([push_request.obj_start_pose.x, push_request.obj_start_pose.y,
+                         push_request.obj_start_pose.theta,
+                         ee_pose.pose.position.x, ee_pose.pose.position.y, ee_phi])
+
+        # Get push plan using SQP via MPC class
+        control_tape = []
+        self.SQPOpt.H = len(x_d)-1
+        self.SQPOpt.regenerate_bounds()
+        rospy.loginfo('Solving for trajectory of length ' + str(len(x_d)))
+        q_star = self.SQPOpt.feedbackControl(x0, x_d)
+
+        # Loop through the plan converting the SQP results into twist messages
+        [x_star, u_star] = get_x_u_from_q(q_star, x0, self.SQPOpt.H, self.SQPOpt.n, self.SQPOpt.m)
+        for U_k in u_star:
+            u_x = U_k[0]
+            u_y = U_k[1]
+            u_phi = U_k[2]
+            u = TwistStamped()
+            u.header.frame_id = 'torso_lift_link'
+            u.twist.linear.x = max( min(u_x, self.mpc_u_max), -self.mpc_u_max)
+            u.twist.linear.y = max( min(u_y, self.mpc_u_max), -self.mpc_u_max)
+            u.twist.linear.z = 0.0
+            u.twist.angular.x = 0.0
+            u.twist.angular.y = 0.0
+            if push_request.controller_name == SQP_NAIVE_LINEAR_DYN:
+                u.twist.angular.z = 0.0
+            else:
+                u.twist.angular.z = max( min(u_phi, self.mpc_u_max_angular), -self.mpc_u_max_angular)
+            control_tape.append(u)
+
+        # TODO: Setup data logging here
+        if _SAVE_MPC_DATA:
+            if _BUFFER_DATA:
+                self.target_trajectory_io.buffer_line(0, x_d)
+                self.mpc_q_star_io.buffer_line(0, q_star)
+            else:
+                self.target_trajectory_io.write_line(0, x_d)
+                self.mpc_q_star_io.write_line(0, q_star)
+
+        # Send goal information to save visuale data
+        rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+        goal.open_loop_push = True
+        ac.send_goal(goal)
+        rospy.loginfo('Sent goal')
+
+        # Run the control tape
+        r_out = rospy.Rate(100)
+        for play_count, u in enumerate(control_tape):
+            if play_count % 5 == 0:
+                rospy.loginfo('q_dot: (' +
+                              str(u.twist.linear.x) + ', ' +
+                              str(u.twist.linear.y) + ', ' +
+                              str(u.twist.linear.z) + ')')
+                rospy.loginfo('omega: (' +
+                              str(u.twist.angular.x) + ', ' +
+                              str(u.twist.angular.y) + ', ' +
+                              str(u.twist.angular.z) + ')\n')
+            timeout_at = rospy.get_time() + self.mpc_delta_t
+
+            # Apply control
+            while timeout_at > rospy.get_time():
+                u.header.stamp = rospy.Time.now()
+                self.update_vel(u, which_arm)
+                r_out.sleep()
+        self.stop_moving_vel(which_arm)
+
+        return True
+
+    def open_loop_sqp_controller_segments(self, goal, push_request, which_arm, ac):
+        '''
+        Returns True if the open loop control was correctly applied, False if fails or aborted
+        '''
+        # Generate push trajectory
+        trajectory_generator = PiecewiseLinearTrajectoryGenerator(self.mpc_max_step_size,
+                                                                  self.min_num_mpc_trajectory_steps)
+        pose_list = [goal.desired_pose]
+        x_d = trajectory_generator.generate_trajectory(push_request.obj_start_pose, pose_list)
+
+        if which_arm == 'l':
+            ee_pose = self.l_arm_pose
+        else:
+            ee_pose = self.r_arm_pose
+        if _OFFLINE:
+            cur_pose_tool_frame = PoseStamped()
+            cur_pose_tool_frame.pose.position.x = 0.0
+            cur_pose_tool_frame.pose.position.y = 0.0
+            cur_pose_tool_frame.pose.position.z = 0.0
+            cur_pose_tool_frame.pose.orientation.x = 0.0
+            cur_pose_tool_frame.pose.orientation.y = 0.0
+            cur_pose_tool_frame.pose.orientation.z = 0.0
+            cur_pose_tool_frame.pose.orientation.w = 1.0
+            if which_arm == 'l':
+                cur_pose_tool_frame.header.frame_id = 'l_gripper_tool_frame'
+            else:
+                cur_pose_tool_frame.header.frame_id = 'r_gripper_tool_frame'
+            ee_pose = self.tf_listener.transformPose('torso_lift_link', cur_pose_tool_frame)
+
+
+        [_, _, ee_phi] = tf.transformations.euler_from_quaternion(np.array([ee_pose.pose.orientation.x,
+                                                                            ee_pose.pose.orientation.y,
+                                                                            ee_pose.pose.orientation.z,
+                                                                            ee_pose.pose.orientation.w]))
+        x0 = np.asarray([push_request.obj_start_pose.x, push_request.obj_start_pose.y,
+                         push_request.obj_start_pose.theta,
+                         ee_pose.pose.position.x, ee_pose.pose.position.y, ee_phi])
+
+        # Get push plan using SQP via MPC class
+        # HACK: Turned off segments and just solve for the full trajectory again, now that things go faster...
+        H = self.open_loop_segment_length
+        num_segments = int(ceil(float(len(x_d))/H))
+
+        control_tape = []
+        q_super_star = np.asarray([])
+        # Solve for each segment
+        for i in xrange(num_segments):
+            # Get current segment of the desired chain x_d_i
+            x_d_i = x_d[i*H:(i+1)*H]
+            # set H to full sequence length x_d_i
+            if len(x_d_i) < 2:
+                rospy.logwarn('x_d_i is too short! Breaking!')
+                break
+            self.SQPOpt.H = len(x_d_i)-1
+            self.SQPOpt.regenerate_bounds()
+            rospy.loginfo('Solving optimization for push plan segment ' + str(i+1) + ' of ' + str(num_segments))
+            rospy.loginfo('Current segment has ' + str(len(x_d_i)) + ' steps out of a total ' + str(len(x_d)) )
+            q_star = self.SQPOpt.feedbackControl(x0, x_d_i)
+            q_super_star = np.concatenate((q_super_star, q_star))
+
+            # Loop through the plan converting the SQP results into twist messages
+            [x_star, u_star] = get_x_u_from_q(q_star, x0, self.SQPOpt.H, self.SQPOpt.n, self.SQPOpt.m)
+            for U_k in u_star:
+                u_x = U_k[0]
+                u_y = U_k[1]
+                u_phi = U_k[2]
+                u = TwistStamped()
+                u.header.frame_id = 'torso_lift_link'
+                u.twist.linear.x = max( min(u_x, self.mpc_u_max), -self.mpc_u_max)
+                u.twist.linear.y = max( min(u_y, self.mpc_u_max), -self.mpc_u_max)
+                u.twist.linear.z = 0.0
+                u.twist.angular.x = 0.0
+                u.twist.angular.y = 0.0
+                u.twist.angular.z = max( min(u_phi, self.mpc_u_max_angular), -self.mpc_u_max_angular)
+                control_tape.append(u)
+
+            # update x0 based on final poase in q_star
+            x0 = np.asarray(x_star[-1])
+
+        # TODO: Setup data logging here
+        if _SAVE_MPC_DATA:
+            if _BUFFER_DATA:
+                self.target_trajectory_io.buffer_line(0, x_d)
+                self.mpc_q_star_io.buffer_line(0, q_super_star)
+            else:
+                self.target_trajectory_io.write_line(0, x_d)
+                self.mpc_q_star_io.write_line(0, q_super_star)
+
+        # Send goal information to save visuale data
+        rospy.loginfo('Sending goal of: ' + str(goal.desired_pose))
+        goal.open_loop_push = True
+        ac.send_goal(goal)
+        rospy.loginfo('Sent goal')
+
+        # Run the control tape
+        r_out = rospy.Rate(100)
+        for play_count, u in enumerate(control_tape):
+            if play_count % H == 0:
+                rospy.loginfo('Executing segment: ' + str(play_count/H+1))
+            # if play_count % 5 == 0:
+            #     rospy.loginfo('q_dot: (' +
+            #                   str(u.twist.linear.x) + ', ' +
+            #                   str(u.twist.linear.y) + ', ' +
+            #                   str(u.twist.linear.z) + ')')
+            #     rospy.loginfo('omega: (' +
+            #                   str(u.twist.angular.x) + ', ' +
+            #                   str(u.twist.angular.y) + ', ' +
+            #                   str(u.twist.angular.z) + ')\n')
+            timeout_at = rospy.get_time() + self.mpc_delta_t
+
+            # Apply control
+            while timeout_at > rospy.get_time():
+                u.header.stamp = rospy.Time.now()
+                self.update_vel(u, which_arm)
+                r_out.sleep()
+        self.stop_moving_vel(which_arm)
+
+        return True
+
+    def open_loop_straight_line_controller(self, goal, push_request, which_arm):
+        # Get goal vector
+        x_error = goal.desired_pose.x - push_request.obj_start_pose.x
+        y_error = goal.desired_pose.y - push_request.obj_start_pose.y
+
+        # Get pushing velocity
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        u.twist.angular.z = 0.0
+        if fabs(x_error) > fabs(y_error):
+            u.twist.linear.x = sign(x_error)*self.straight_line_u_max
+            u.twist.linear.y = y_error/fabs(x_error)*self.straight_line_u_max
+            push_time = fabs(x_error)/fabs(u.twist.linear.x)
+        else:
+            u.twist.linear.y = sign(y_error)*self.straight_line_u_max
+            u.twist.linear.x = x_error/fabs(y_error)*self.straight_line_u_max
+            push_time = fabs(y_error)/fabs(u.twist.linear.y)
+
+        rospy.loginfo('Pushing for ' + str(push_time) + ' seconds with velocity: ['+ str(u.twist.linear.x) + ', ' +
+                      str(u.twist.linear.y) + ']')
+        # TODO: Log something?
+
+        # Push for required time
+        r = rospy.Rate(100)
+        timeout_at = rospy.get_time() + push_time
+        while timeout_at > rospy.get_time():
+            u.header.stamp = rospy.Time.now()
+            self.update_vel(u, which_arm)
+            r.sleep()
+
+        self.stop_moving_vel(which_arm)
+
+        return True
     #
-    # Controller functions
+    # Feedback Controller functions
     #
 
     def spinCompensationController(self, cur_state, desired_state):
@@ -631,54 +1066,6 @@ class PositionFeedbackPushNode:
                           str(goal_y_dot) + ')')
             rospy.loginfo('q_spin_dot: (' + str(spin_x_dot) + ', ' +
                           str(spin_y_dot) + ')')
-        return u
-
-    def rotateHeadingController(self, cur_state, desired_state, which_arm, ee_pose):
-        '''
-        TODO: Change to align to a given point in object frame while pushing in direction perpendicular
-        to the original orientation...?
-        '''
-        u = TwistStamped()
-        u.header.frame_id = 'torso_lift_link'
-        u.header.stamp = rospy.Time.now()
-        u.twist.linear.z = 0.0
-        u.twist.angular.x = 0.0
-        u.twist.angular.y = 0.0
-        u.twist.angular.z = 0.0
-
-        # TODO: Add term to perpendicular to current orientation given current pushing location
-        # TODO: Pass in offset x and y in object frame
-        centroid = cur_state.x
-        ee = ee_pose.pose.position
-        rotate_x_dot = 0.0
-        rotate_y_dot = 0.0
-        # Push centroid towards the desired goal
-        x_error = desired_state.x - cur_state.x.x
-        y_error = desired_state.y - cur_state.x.y
-        t_error = subPIAngle(desired_state.theta - cur_state.x.theta)
-        t0_error = subPIAngle(self.theta0 - cur_state.x.theta)
-        goal_x_dot = self.k_g*x_error
-        goal_y_dot = self.k_g*y_error
-
-        # Add in direction to corect for not pushing through the centroid
-        goal_angle = atan2(goal_y_dot, goal_x_dot)
-        transform_angle = goal_angle
-        m = (((ee.x - centroid.x)*x_error + (ee.y - centroid.y)*y_error) /
-             sqrt(x_error*x_error + y_error*y_error))
-        tan_pt_x = centroid.x + m*x_error
-        tan_pt_y = centroid.y + m*y_error
-        contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
-        contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
-        # TODO: Clip values that get too big
-        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
-        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
-        if self.feedback_count % 5 == 0:
-            rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
-            rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
-            rospy.loginfo('q_goal_dot: (' + str(goal_x_dot) + ', ' +
-                          str(goal_y_dot) + ')')
-            rospy.loginfo('contact_pt_x_dot: (' + str(contact_pt_x_dot) + ', ' +
-                          str(contact_pt_y_dot) + ')')
         return u
 
     def rotateHeadingControllerPalm(self, cur_state, desired_state, which_arm, ee_pose):
@@ -738,9 +1125,16 @@ class PositionFeedbackPushNode:
         tan_pt_y = centroid.y + m*y_error
         contact_pt_x_dot = self.k_contact_d*(tan_pt_x - ee.x)
         contact_pt_y_dot = self.k_contact_d*(tan_pt_y - ee.y)
-        # TODO: Clip values that get too big
-        u.twist.linear.x = goal_x_dot + contact_pt_x_dot
-        u.twist.linear.y = goal_y_dot + contact_pt_y_dot
+        # Compensate for spinning with wrist rotation
+        if cur_state.behavior_primitive == OVERHEAD_PUSH:
+            contact_pt_z_angular_dot = -self.k_alignment_spin_x*cur_state.x_dot.theta
+        else:
+            contact_pt_z_angular_dot = 0.0
+        # Clip values that get too big
+        u.twist.linear.x = max( min(goal_x_dot + contact_pt_x_dot, self.mpc_u_max), -self.mpc_u_max)
+        u.twist.linear.y = max( min(goal_y_dot + contact_pt_y_dot, self.mpc_u_max), -self.mpc_u_max)
+        u.twist.angular.z = max( min(contact_pt_z_angular_dot, self.mpc_u_max_angular), -self.mpc_u_max_angular)
+
         if self.feedback_count % 5 == 0:
             rospy.loginfo('tan_pt: (' + str(tan_pt_x) + ', ' + str(tan_pt_y) + ')')
             rospy.loginfo('ee: (' + str(ee.x) + ', ' + str(ee.y) + ')')
@@ -858,6 +1252,67 @@ class PositionFeedbackPushNode:
         u.twist.linear.y = u_t[1]
         return u
 
+    def MPCFeedbackController(self, cur_state, ee_pose, desired_pose):
+        # TODO: Add ability to switch model at each feedback call (using model predictive error, etc)
+
+        k0 = cur_state.header.seq
+        # Get updated list for forward trajectory
+        pose_list = [desired_pose]
+        x_d_i = self.trajectory_generator.generate_trajectory(cur_state.x, pose_list)
+
+        self.MPC.H = min(self.mpc_lookahead_horizon, len(x_d_i)-1)
+        self.MPC.regenerate_bounds()
+        rospy.loginfo('MPC.H = ' + str(self.MPC.H))
+
+        # TODO: Choose if XTRA is used from SVR dynamics model flags
+        # Feature vector for the dynamics model
+        if _USE_SHAPE_INFO_IN_SVM:
+            xtra = cur_state.shape_descriptor
+        else:
+            xtra = []
+        [_, _, ee_phi] = tf.transformations.euler_from_quaternion(np.array([ee_pose.pose.orientation.x,
+                                                                            ee_pose.pose.orientation.y,
+                                                                            ee_pose.pose.orientation.z,
+                                                                            ee_pose.pose.orientation.w]))
+
+        x0 = [cur_state.x.x, cur_state.x.y, cur_state.x.theta,
+              ee_pose.pose.position.x, ee_pose.pose.position.y, ee_phi]
+        q_star = self.MPC.feedbackControl(x0, x_d_i, xtra)
+
+        if _SAVE_MPC_DATA:
+            if _BUFFER_DATA:
+                self.target_trajectory_io.buffer_line(k0, x_d_i)
+                self.mpc_q_star_io.buffer_line(k0, q_star)
+            else:
+                self.target_trajectory_io.write_line(k0, x_d_i)
+                self.mpc_q_star_io.write_line(k0, q_star)
+
+        if self.check_model_performance:
+            u_k = [max( min(q_star[0], self.mpc_u_max), -self.mpc_u_max),
+                   max( min(q_star[1], self.mpc_u_max), -self.mpc_u_max),
+                   max( min(q_star[2], self.mpc_u_max_angular), -self.mpc_u_max_angular)]
+            self.trajectory_to_check.append((x0, u_k))
+
+        # Use previous to initialize at next time step
+        self.MPC.init_from_previous = True
+
+        u = TwistStamped()
+        u.header.frame_id = 'torso_lift_link'
+        u.header.stamp = rospy.Time.now()
+        u.twist.linear.x = max( min(q_star[0], self.mpc_u_max), -self.mpc_u_max)
+        u.twist.linear.y = max( min(q_star[1], self.mpc_u_max), -self.mpc_u_max)
+        if fabs(u.twist.linear.x) < 0.001:
+            u.twist.linear.x = 0.0
+        if fabs(u.twist.linear.y) < 0.001:
+            u.twist.linear.y = 0.0
+        u.twist.linear.z = 0.0
+        u.twist.angular.x = 0.0
+        u.twist.angular.y = 0.0
+        if cur_state.controller_name == MPC_NAIVE_LINEAR_DYN:
+            u.twist.angular.z = 0.0
+        else:
+            u.twist.angular.z = max( min(q_star[2], self.mpc_u_max_angular), -self.mpc_u_max_angular)
+        return u
     #
     # Post behavior functions
     #
@@ -1155,7 +1610,7 @@ class PositionFeedbackPushNode:
 
         if request.open_gripper:
             res = robot_gripper.open(block=True, position=0.9)
-            raw_input('waiting for input to close gripper: ')
+            raw_input('Waiting for input to close gripper: ')
             print '\n'
             res = robot_gripper.close(block=True, effort=self.max_close_effort)
 
@@ -1643,8 +2098,8 @@ class PositionFeedbackPushNode:
             arm_error = self.r_arm_x_err
         error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
                           arm_error.linear.z**2)
-        rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
-        rospy.loginfo('Move cart gripper error: ' + str(arm_error.linear)+'\n'+str(arm_error.angular))
+        # rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        # rospy.loginfo('Move cart gripper error: ' + str(arm_error.linear)+'\n'+str(arm_error.angular))
         return (arm_error, error_dist)
 
     def move_to_cart_pose_ik(self, pose, which_arm, pressure=1000, nsecs=2.0):
@@ -1879,7 +2334,7 @@ class PositionFeedbackPushNode:
             arm_error = self.r_arm_x_err
         error_dist = sqrt(arm_error.linear.x**2 + arm_error.linear.y**2 +
                           arm_error.linear.z**2)
-        rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
+        # rospy.loginfo('Move cart gripper error dist: ' + str(error_dist)+'\n')
         return (arm_error, error_dist)
 
     def stop_moving_cart(self, which_arm):
@@ -2132,11 +2587,14 @@ class PositionFeedbackPushNode:
 
     def shutdown_hook(self):
         rospy.loginfo('Cleaning up node on shutdown')
-        if _USE_CONTROLLER_IO:
-            self.controller_io.close_out_file()
         if _USE_LEARN_IO:
             if self.learn_io is not None:
                 self.learn_io.close_out_file()
+        if _SAVE_MPC_DATA:
+            if self.mpc_q_star_io is not None:
+                self.mpc_q_star_io.close_out_file()
+            if self.target_trajectory_io is not None:
+                self.target_trajectory_io.close_out_file()
         # TODO: stop moving the arms on shutdown
 
     #
@@ -2153,10 +2611,11 @@ class PositionFeedbackPushNode:
         #     print 'Right arm: ' + str(self.robot.right.pose())
         #     if code_in.startswith('q'):
         #         getting_joints = False
-        self.init_spine_pose()
-        self.init_head_pose(self.head_pose_cam_frame)
-        self.init_arms()
-        self.switch_to_cart_controllers()
+        if not _OFFLINE:
+            self.init_spine_pose()
+            self.init_head_pose(self.head_pose_cam_frame)
+            self.init_arms()
+            self.switch_to_cart_controllers()
         rospy.loginfo('Done initializing feedback pushing node.')
         rospy.on_shutdown(self.shutdown_hook)
         rospy.spin()

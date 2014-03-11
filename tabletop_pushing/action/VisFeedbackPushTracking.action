@@ -5,6 +5,7 @@ string which_arm
 string controller_name
 string proxy_name
 string behavior_primitive
+bool open_loop_push
 ---
 # Result Definition
 std_msgs/Header header
@@ -22,3 +23,4 @@ bool no_detection
 string controller_name
 string proxy_name
 string behavior_primitive
+float64[] shape_descriptor

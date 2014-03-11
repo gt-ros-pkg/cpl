@@ -2,6 +2,7 @@ bool initialize
 bool analyze_previous
 geometry_msgs/Pose2D goal_pose
 bool learn_start_loc
+bool dynamics_learning
 bool new_object
 bool get_pose_only
 string controller_name
@@ -13,6 +14,7 @@ int32 num_start_loc_clusters
 int32 num_start_loc_sample_locs
 int32 num_start_loc_pushes_per_sample
 bool previous_position_worked
+bool compare_shape_for_dynamics
 ---
 tabletop_pushing/PushVector push
 geometry_msgs/Point centroid
@@ -22,3 +24,4 @@ bool no_push
 bool no_objects
 float64[] shape_descriptor
 float64 predicted_score
+string[] dynamics_model_names

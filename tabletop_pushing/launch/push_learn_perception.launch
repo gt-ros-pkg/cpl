@@ -23,28 +23,32 @@
     <remap from="point_cloud_topic" to="$(arg point_cloud_topic_name)"/>
     <param name="camera_frame" value="$(arg camera_frame_name)" type="string"/>
 
+    <param name="use_displays" value="false" type="bool"/>
+    <param name="display_wait_ms" value="3" type="int"/>
+    <param name="write_to_disk" value="false" type="bool"/>
+    <param name="write_input_to_disk" value="false" type="bool"/>
+    <param name="write_dyn_learning_to_disk" value="true" type="bool"/>
+
     <param name="start_tracking_on_push_call" value="false" type="bool"/>
 
     <param name="start_loc_push_time_limit" value="6.0" type="double"/>
     <param name="start_loc_push_dist" value="0.30" type="double"/>
     <param name="use_center_pointing_shape_context" value="true" type="bool"/>
-    <param name="use_displays" value="true" type="bool"/>
-    <param name="display_wait_ms" value="5" type="int"/>
-    <param name="write_to_disk" value="false" type="bool"/>
-    <param name="write_input_to_disk" value="false" type="bool"/>
     <param name="icp_max_iters" value="1000" type="int" />
     <param name="icp_transform_eps" value="0.001" type="double"/>
     <param name="icp_max_cor_dist" value="1.0" type="double"/>
     <param name="icp_ransac_thresh" value="0.015" type="double"/>
 
     <param name="workspace_frame" value="torso_lift_link" type="string"/>
-    <param name="min_workspace_x" value="-1.0" type="double"/>
-    <param name="max_workspace_x" value="1.5" type="double"/>
-    <param name="min_workspace_z" value="-0.8" type="double"/>
-    <param name="max_workspace_z" value="0.6" type="double"/>
+    <param name="min_workspace_x" value="0.0" type="double"/>
+    <param name="max_workspace_x" value="1.0" type="double"/>
+    <param name="min_workspace_y" value="-0.5" type="double"/>
+    <param name="max_workspace_y" value="0.5" type="double"/>
+    <param name="min_workspace_z" value="-0.3" type="double"/>
+    <param name="max_workspace_z" value="0.5" type="double"/>
     <param name="min_table_z" value="-1.0" type="double"/>
     <param name="max_table_z" value="1.0" type="double"/>
-    <param name="self_mask_dilate_size" value="0" type="int"/>
+    <param name="self_mask_dilate_size" value="15" type="int"/>
     <param name="num_downsamples" value="1" type="int"/>
 
     <param name="pcl_cluster_tolerance" value="0.03" type="double"/>
@@ -72,24 +76,38 @@
 
     <param name="img_output_path" value="/u/thermans/data/new/" type="string"/>
 
-    <param name="push_tracker_dist_thresh" value="0.01" type="double"/>
+    <param name="push_tracker_dist_thresh" value="0.02" type="double"/>
     <param name="push_tracker_angle_thresh" value="0.1" type="double"/>
     <param name="major_axis_spin_pos_scale" value="0.75" type="double"/>
     <param name="use_cv_ellipse" value="false" type="bool"/>
     <param name="max_object_gripper_dist" value="0.25" type="double"/>
     <param name="gripper_not_moving_thresh" value="0.001" type="double"/>
-    <param name="object_not_moving_thresh" value="0.003" type="double"/>
-    <param name="gripper_not_moving_count_limit" value="50" type="int"/>
-    <param name="object_not_moving_count_limit" value="50" type="int"/>
+    <param name="object_not_moving_thresh" value="0.001" type="double"/>
+    <param name="gripper_not_moving_count_limit" value="15" type="int"/>
+    <param name="object_not_moving_count_limit" value="10" type="int"/>
     <param name="object_not_detected_count_limit" value="5" type="int"/>
-    <param name="object_too_far_count_limit" value="2" type="int"/>
-    <param name="object_not_between_count_limit" value="2" type="int"/>
-    <param name="object_not_between_epsilon" value="0.02" type="double"/>
+    <param name="object_too_far_count_limit" value="5" type="int"/>
+    <param name="object_not_between_count_limit" value="5" type="int"/>
+    <param name="object_not_between_epsilon" value="0.05" type="double"/>
     <param name="point_cloud_hist_res" value="0.0051" type="double"/>
 
     <param name="boundary_hull_alpha" value="0.01" type="double"/>
     <param name="hull_gripper_spread" value="0.05" type="double"/>
 
     <param name="arm_color_model_name" value="arm_color_model_1.bin" type="string"/>
+
+    <param name="feature_point_close_size" value="3" type="int"/>
+    <param name="feature_point_max_ransac_iters" value="100" type="int"/>
+    <param name="feature_point_ransac_inlier_thresh" value="0.0025" type="double"/>
+    <param name="feature_point_ratio_test_thresh" value="0.85" type="double"/>
+    <param name="brief_descriptor_byte_size" value="16" type="int"/>
+    <param name="tracker_segment_search_radius" value="0.25" type="double"/>
+
+    <param name="shape_dynamics_db" value="hold_out_bear_global.txt" type="string"/>
+    <param name="use_local_only_shape_desc" value="false" type="bool"/>
+    <param name="use_global_only_shape_desc" value="true" type="bool"/>
+    <param name="normalize_sd_comparison" value="true" type="bool"/>
+    <param name="binarize_sd" value="true" type="bool"/>
+    <param name="use_random_shape_clusters" value="false" type="bool"/>
   </node>
 </launch>

@@ -10,14 +10,14 @@ using cpl_visual_features::ShapeDescriptor;
 int main(int argc, char** argv)
 {
   std::string param_path;
-  param_path = "/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/examples_line_dist/push_svm_1.model";
+  param_path = "/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/push_svm_ichr_no_food_box.model";
   ROS_INFO_STREAM("param_path " << param_path);
   svm_model* push_model;
   push_model = svm_load_model(param_path.c_str());
   ROS_INFO_STREAM("svm type: " << svm_get_svm_type(push_model));
   ROS_INFO_STREAM("nr classes: " << svm_get_nr_class(push_model));
-  int num_sv = svm_get_nr_sv(push_model);
-  ROS_INFO_STREAM("nr sv: " << num_sv);
+  // int num_sv = svm_get_nr_sv(push_model);
+  // ROS_INFO_STREAM("nr sv: " << num_sv);
   ROS_INFO_STREAM("rho: " << *push_model->rho);
   svm_parameter params = push_model->param;
   ROS_INFO_STREAM("kernel type: " << params.kernel_type);
@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 
   int local_length = 36;
   int global_length = 60;
-  std::string test_feat_path = "/home/thermans/Dropbox/Data/ichr2013-results/icdl_data/examples_line_dist/test_K_sds.txt";
+  std::string test_feat_path = "/u/thermans/src/gt-ros-pkg/cpl/tabletop_pushing/cfg/push_svm_ichr_no_food_box-feats.txt";
   ShapeDescriptors sds = tabletop_pushing::loadSVRTrainingFeatures(test_feat_path, local_length+global_length);
 
   // Remove trailing .model

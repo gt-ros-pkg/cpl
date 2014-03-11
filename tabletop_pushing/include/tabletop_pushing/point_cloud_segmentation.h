@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2012, Georgia Institute of Technology
+ *  Copyright (c) 2014, Georgia Institute of Technology
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 #include <std_msgs/Header.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Pose2D.h>
 
 // TF
 #include <tf/transform_listener.h>
@@ -90,14 +91,17 @@ class PointCloudSegmentation
   /**
    * Function to find the table plane in the image by plane RANSAC
    *
-   * @param cloud       The input cloud
-   * @param objs_cloud  [Returned] the cloud not containing the table plane
-   * @param plane_cloud [Returned the cloud containing the plane
-   * @param center      [Returned] the center of the table plane
-   * @param find_hull   set true to estimate the extent of the plane
+   * @param cloud           The input cloud
+   * @param objs_cloud      [Returned] the cloud not containing the table plane
+   * @param plane_cloud     [Returned] the cloud containing the plane
+   * @param center          [Returned] the center of the table plane
+   * @param init_table_find set true to have a greater search space for finding table plane
+   * @param find_hull       set true to estimate the extent of the plane
+   * @param find_centroid   set true to estimate the extent of the plane
    */
   void getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
                      XYZPointCloud& plane_cloud, Eigen::Vector4f& center,
+                     bool init_table_find=false,
                      bool find_hull=false, bool find_centroid=false);
 
   /**
@@ -105,7 +109,7 @@ class PointCloudSegmentation
    *
    * @param cloud       The input cloud
    * @param objs_cloud  [Returned] the cloud not containing the table plane
-   * @param plane_cloud [Returned the cloud containing the plane
+   * @param plane_cloud [Returned] the cloud containing the plane
    * @param center      [Returned] the center of the table plane
    * @param find_hull   set true to estimate the extent of the plane
    */
@@ -118,7 +122,7 @@ class PointCloudSegmentation
    *
    * @param input_cloud   The point cloud to operate on.
    * @param objs          [Returned] The object clusters.
-   * @param extract_table True if the table plane should be extracted
+   * @param use_mps       If true then mps is used instead of RANSAC to get the table plane
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs, bool use_mps=false);
 
@@ -128,7 +132,7 @@ class PointCloudSegmentation
    * @param input_cloud   The point cloud to operate on.
    * @param objs          [Returned] The object clusters.
    * @param objs_cloud    The point cloud containing the object points.
-   * @param extract_table True if the table plane should be extracted
+   * @param use_mps       If true then mps is used instead of RANSAC to get the table plane
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
                            XYZPointCloud& objs_cloud, bool use_mps=false);
@@ -138,13 +142,26 @@ class PointCloudSegmentation
    *
    * @param input_cloud   The point cloud to operate on.
    * @param objs          [Returned] The object clusters.
-   * @param objs_cloud    The point cloud containing the object points.
-   * @param plane_cloud   The point cloud containing the table plane points.
-   * @param extract_table True if the table plane should be extracted
+   * @param objs_cloud    [Returned] The point cloud containing the object points.
+   * @param plane_cloud   [Returned] The point cloud containing the table plane points.
+   * @param use_mps       If true then mps is used instead of RANSAC to get the table plane
    */
   void findTabletopObjects(XYZPointCloud& input_cloud, ProtoObjects& objs,
-                                   XYZPointCloud& objs_cloud,
-                                   XYZPointCloud& plane_cloud, bool use_mps=false);
+                           XYZPointCloud& objs_cloud,
+                           XYZPointCloud& plane_cloud, bool use_mps=false);
+
+  /**
+   * Segment the spactial regions from the plan, but first reduce the search space based on previous object pose
+   *
+   * @param input_cloud The point cloud to operate on.
+   * @param objs        [Returned] The object clusters.
+   * @param prev_state  The previous object state estimate to guide the segmentation
+   * @param search_radius How far to look in x and y from center of prev_state
+   */
+  void findTabletopObjectsRestricted(XYZPointCloud& input_cloud, ProtoObjects& objs,
+                                     geometry_msgs::Pose2D& prev_state,
+                                     double search_radius);
+
 
   /**
    * Function to segment point cloud regions using euclidean clustering
@@ -164,7 +181,8 @@ class PointCloudSegmentation
    */
   double ICPProtoObjects(ProtoObject& a, ProtoObject& b, Eigen::Matrix4f& transform);
 
-  double ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1, Eigen::Matrix4f& transform,
+  double ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1,
+                            Eigen::Matrix4f& init_transform, Eigen::Matrix4f& transform,
                             XYZPointCloud& aligned);
 
   /**
@@ -235,6 +253,14 @@ class PointCloudSegmentation
     return dx*dx+dy*dy+dz*dz;
   }
 
+  static inline double sqrDist(pcl16::PointXYZ a, Eigen::Vector4f b)
+  {
+    const double dx = a.x-b[0];
+    const double dy = a.y-b[1];
+    const double dz = a.z-b[2];
+    return dx*dx+dy*dy+dz*dz;
+  }
+
   static inline double sqrDistXY(pcl16::PointXYZ a, pcl16::PointXYZ b)
   {
     const double dx = a.x-b.x;
@@ -271,11 +297,27 @@ class PointCloudSegmentation
    * Filter a point cloud to only be above the estimated table and within the
    * workspace in x, then downsample the voxels.
    *
-   * @param cloud_in The cloud to filter and downsample
-   *
-   * @return The downsampled cloud
+   * @param cloud_in   The cloud to filter and downsample
+   * @param cloud_down [Returned] The downsampled cloud
    */
   void downsampleCloud(XYZPointCloud& cloud_in, XYZPointCloud& cloud_down);
+
+  /**    * Filter the cloud then downsample
+   *
+   * @param cloud_in   The cloud to filter and downsample
+   * @param cloud_down [Returned] The downsampled cloud
+   * @param min_x      Min x for filter
+   * @param max_x      Max x for filter
+   * @param min_y      Min y for filter
+   * @param max_y      Max y for filter
+   * @param min_z      Min z for filter
+   * @param max_z      Max z for filter
+   * @param filter_y   If true filter in y direction, default to false
+   */
+  void downsampleCloud(XYZPointCloud& cloud_in, XYZPointCloud& cloud_down,
+                       double min_x, double max_x,
+                       double min_y, double max_y,
+                       double min_z, double max_z, bool filter_y = false);
 
   /**
    * Method to project the current proto objects into an image
@@ -340,8 +382,11 @@ class PointCloudSegmentation
   double max_table_z_;
   double min_workspace_x_;
   double max_workspace_x_;
+  double min_workspace_y_;
+  double max_workspace_y_;
   double min_workspace_z_;
   double max_workspace_z_;
+  double table_z_;
   double table_ransac_thresh_;
   double table_ransac_angle_thresh_;
   double cluster_tolerance_;

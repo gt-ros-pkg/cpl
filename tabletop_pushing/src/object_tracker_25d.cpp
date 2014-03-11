@@ -1,3 +1,37 @@
+/*********************************************************************
+ * Software License Agreement (BSD License)
+ *
+ *  Copyright (c) 2014, Georgia Institute of Technology
+ *  All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted provided that the following conditions
+ *  are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the following
+ *     disclaimer in the documentation and/or other materials provided
+ *     with the distribution.
+ *   * Neither the name of the Georgia Institute of Technology nor the names of
+ *     its contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ *********************************************************************/
+
 // TabletopPushing
 #include <tabletop_pushing/object_tracker_25d.h>
 #include <tabletop_pushing/push_primitives.h>
@@ -17,6 +51,16 @@
 // Debugging IFDEFS
 // #define PROFILE_TRACKING_TIME 1
 // #define PROFILE_FIND_TARGET_TIME 1
+// #define PROFILE_COMPUTE_STATE_TIME 1
+// #define VISUALIZE_FEATURE_POINT_PROXY 1
+// #define USE_DISPLAY 1
+
+// Functional IFDEFS
+#define NUM_RIGID_RANSAC_SAMPLES 4
+// #define USE_BOUNDARY_TRANSFORM_GUESS 1
+// #define USE_FRAME_TO_FRAME_MATCHING 1
+// #define USE_RATIO_TEST 1
+// #define USE_RESTRICTED_SEARCH 1
 
 using namespace tabletop_pushing;
 using geometry_msgs::PoseStamped;
@@ -34,7 +78,14 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
                                    shared_ptr<ArmObjSegmentation> arm_segmenter, int num_downsamples,
                                    bool use_displays, bool write_to_disk, std::string base_output_path,
                                    std::string camera_frame, bool use_cv_ellipse, bool use_mps_segmentation,
-                                   bool use_graphcut_arm_seg, double hull_alpha) :
+                                   bool use_graphcut_arm_seg, double hull_alpha,
+                                   int feature_point_close_size,
+                                   float feature_point_ransac_inlier_thresh,
+                                   int feature_point_max_ransac_iters,
+                                   int brief_descriptor_byte_size,
+                                   float feature_point_ratio_test_thresh,
+                                   double segment_search_radius,
+                                   double feature_point_ransac_inlier_percent_thresh) :
     pcl_segmenter_(segmenter), arm_segmenter_(arm_segmenter),
     num_downsamples_(num_downsamples), initialized_(false),
     frame_count_(0), use_displays_(use_displays), write_to_disk_(write_to_disk),
@@ -42,9 +93,26 @@ ObjectTracker25D::ObjectTracker25D(shared_ptr<PointCloudSegmentation> segmenter,
     paused_(false), frame_set_count_(0), camera_frame_(camera_frame),
     use_cv_ellipse_fit_(use_cv_ellipse), use_mps_segmentation_(use_mps_segmentation),
     have_obj_color_model_(false), have_table_color_model_(false), use_graphcut_arm_seg_(use_graphcut_arm_seg),
-    hull_alpha_(hull_alpha)
+    hull_alpha_(hull_alpha),
+#ifdef USE_ORB
+    // feature_extractor_(orb_params),
+#else
+    feature_extractor_(brief_descriptor_byte_size),
+#endif
+#ifdef USE_RATIO_TEST
+    matcher_(cv::NORM_HAMMING, false),
+#else
+    matcher_(cv::NORM_HAMMING, true),
+#endif
+    ratio_test_thresh_(feature_point_ratio_test_thresh),
+    segment_search_radius_(segment_search_radius),
+    feature_point_max_ransac_iters_(feature_point_max_ransac_iters),
+    feature_point_inlier_squared_dist_thresh_(feature_point_ransac_inlier_thresh),
+    feature_point_ransac_inlier_percent_thresh_(feature_point_ransac_inlier_percent_thresh)
 {
   upscale_ = std::pow(2,num_downsamples_);
+  cv::Mat tmp_morph(feature_point_close_size, feature_point_close_size, CV_8UC1, cv::Scalar(255));
+  tmp_morph.copyTo(feature_point_morph_element_);
 }
 
 ProtoObject ObjectTracker25D::findTargetObjectGC(cv::Mat& in_frame, XYZPointCloud& cloud, cv::Mat& depth_frame,
@@ -133,7 +201,18 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
   long long find_target_start_time = Timer::nanoTime();
 #endif
   ProtoObjects objs;
+#ifdef USE_RESTRICTED_SEARCH
+  if (init)
+  {
+    pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
+  }
+  else
+  {
+    pcl_segmenter_->findTabletopObjectsRestricted(cloud, objs, previous_state_.x, segment_search_radius_);
+  }
+#else // USE_RESTRICTED_SEARCH
   pcl_segmenter_->findTabletopObjects(cloud, objs, use_mps_segmentation_);
+#endif
 #ifdef PROFILE_FIND_TARGET_TIME
   double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);
@@ -153,7 +232,23 @@ ProtoObject ObjectTracker25D::findTargetObject(cv::Mat& in_frame, XYZPointCloud&
     return empty;
   }
   no_objects = false;
+#ifdef PROFILE_FIND_TARGET_TIME
+  // Have to do an extra copy here...
+  ProtoObject chosen = matchToTargetObject(objs, in_frame, init);
+
+  double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
+                                       Timer::NANOSECONDS_PER_SECOND);
+  double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("find_target_elapsed_time " << find_target_elapsed_time);
+  ROS_INFO_STREAM("\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time <<
+                  "\t " << (100.0*find_tabletop_objects_elapsed_time/find_target_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t choose_object_elapsed_time " << choose_object_elapsed_time <<
+                  "\t\t " << (100.0*choose_object_elapsed_time/find_target_elapsed_time) << "\%\n");
+  return chosen;
+#else // PROFILE_FIND_TARGET_TIME
   return matchToTargetObject(objs, in_frame, init);
+#endif // PROFILE_FIND_TARGET_TIME
 }
 
 ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& in_frame, bool init)
@@ -206,12 +301,7 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     }
   }
 
-#ifdef PROFILE_FIND_TARGET_TIME
-  double choose_object_elapsed_time = (((double)(Timer::nanoTime() - choose_object_start_time)) /
-                                       Timer::NANOSECONDS_PER_SECOND);
-  long long display_object_start_time = Timer::nanoTime();
-#endif
-
+#ifdef USE_DISPLAY
   if (use_displays_)
   {
     cv::Mat disp_img = pcl_segmenter_->projectProtoObjectsIntoImage(
@@ -219,17 +309,8 @@ ProtoObject ObjectTracker25D::matchToTargetObject(ProtoObjects& objs, cv::Mat& i
     pcl_segmenter_->displayObjectImage(disp_img, "Objects", true);
     // ROS_INFO_STREAM("Updating display");
   }
+#endif // USE_DISPLAY
   // ROS_INFO_STREAM("Returning matched object\n");
-#ifdef PROFILE_FIND_TARGET_TIME
-  double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) /
-                                  Timer::NANOSECONDS_PER_SECOND);
-  double display_object_elapsed_time = (((double)(Timer::nanoTime() - display_object_start_time)) /
-                                        Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
-  ROS_INFO_STREAM("\t\t find tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
-  ROS_INFO_STREAM("\t\t choose_object_elapsed_time " << choose_object_elapsed_time);
-  ROS_INFO_STREAM("\t\t display_objects_elapsed_time " << display_object_elapsed_time);
-#endif
 
   return objs[chosen_idx];
 }
@@ -259,43 +340,75 @@ void ObjectTracker25D::updateHeading(PushTrackerState& state, bool init_state)
 void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, std::string proxy_name,
                                     cv::Mat& in_frame, PushTrackerState& state, bool init_state)
 {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+  long long compute_state_start_time = Timer::nanoTime();
+  double boundary_samples_elapsed_time = 0.0;
+  double fit_ellipse_elapsed_time = 0.0;
+  double copy_state_elapsed_time = 0.0;
+  double icp_elapsed_time = 0.0;
+  double update_stuff_elapsed_time = 0.0;
+  double feature_extract_elapsed_time = 0.0;
+  double feature_match_elapsed_time = 0.0;
+  double feature_align_elapsed_time = 0.0;
+#endif // PROFILE_COMPUTE_STATE_TIME
+
   // TODO: Have each proxy create an image, and send that image to the trackerDisplay
   // function to deal with saving and display.
   cv::RotatedRect obj_ellipse;
   if (proxy_name == ELLIPSE_PROXY || proxy_name == CENTROID_PROXY ||
       proxy_name == SPHERE_PROXY || proxy_name == CYLINDER_PROXY)
   {
-    fitObjectEllipse(cur_obj, obj_ellipse);
-    previous_obj_ellipse_ = obj_ellipse;
-    state.x.theta = getThetaFromEllipse(obj_ellipse);
-    state.x.x = cur_obj.centroid[0];
-    state.x.y = cur_obj.centroid[1];
-    state.z = cur_obj.centroid[2];
-    updateHeading(state, init_state);
+    updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
   }
   else if (proxy_name == HULL_ELLIPSE_PROXY || proxy_name == HULL_ICP_PROXY ||
            proxy_name == HULL_SHAPE_CONTEXT_PROXY)
   {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long boundary_samples_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     // Get 2D object boundary
     XYZPointCloud hull_cloud = tabletop_pushing::getObjectBoundarySamples(cur_obj, hull_alpha_);
-    // Use vertical z centroid from object
-    state.z = cur_obj.centroid[2];
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    boundary_samples_elapsed_time = (((double)(Timer::nanoTime() - boundary_samples_start_time)) /
+                                     Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
 
     // Get ellipse orientation from the 2D boundary
-    // TODO: Add in switch for different hull proxies
     if (frame_count_ < 1 || proxy_name == HULL_ELLIPSE_PROXY)
     {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long fit_ellipse_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
       fitHullEllipse(hull_cloud, obj_ellipse);
       state.x.theta = getThetaFromEllipse(obj_ellipse);
       // Get (x,y) centroid of boundary
       state.x.x = obj_ellipse.center.x;
       state.x.y = obj_ellipse.center.y;
+      // Use vertical z centroid from object
+      state.z = cur_obj.centroid[2];
+      updateHeading(state, init_state);
+
+#ifdef USE_BOUNDARY_TRANSFORM_GUESS
+      previous_centroid_state_ = state;
+#endif // USE_BOUNDARY_TRANSFORM_GUESS
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      fit_ellipse_elapsed_time = (((double)(Timer::nanoTime() - fit_ellipse_start_time)) /
+                                  Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     }
     else
     {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long icp_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
       cpl_visual_features::Path matches;
       XYZPointCloud aligned;
       Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
+
       if (proxy_name == HULL_SHAPE_CONTEXT_PROXY)
       {
         double match_cost;
@@ -305,22 +418,65 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       }
       else // (proxy_name == HULL_ICP_PROXY)
       {
-        // TODO: Add guess of movement based on previous state estimates
-        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud, transform,
-                                                                aligned);
+        Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+
+#ifdef USE_BOUNDARY_TRANSFORM_GUESS
+        cv::RotatedRect centroid_obj_ellipse;
+        tabletop_pushing::VisFeedbackPushTrackingFeedback centroid_state;
+        fitHullEllipse(hull_cloud, centroid_obj_ellipse);
+        centroid_state.x.theta = getThetaFromEllipse(centroid_obj_ellipse);
+        // Get (x,y) centroid of boundary
+        centroid_state.x.x = centroid_obj_ellipse.center.x;
+        centroid_state.x.y = centroid_obj_ellipse.center.y;
+        // Use vertical z centroid from object
+        centroid_state.z = cur_obj.centroid[2];
+
+        estimateTransformFromStateChange(centroid_state, previous_centroid_state_, guess);
+        previous_centroid_state_ = centroid_state;
+#endif // USE_BOUNDARY_TRANSFORM_GUESS
+
+        double match_score = pcl_segmenter_->ICPBoundarySamples(previous_hull_cloud_, hull_cloud,
+                                                                guess, transform, aligned);
+
         // ROS_INFO_STREAM("Found ICP match with score: " << match_score);
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+        icp_elapsed_time = (((double)(Timer::nanoTime() - icp_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
       }
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long copy_state_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
 
       // Transform previous state using the estimate and update current state
       // ROS_INFO_STREAM("Found transform of: \n" << transform);
+      // // HACK: Remove z change components to keep in plane
+      // // Remove any z rotation
+      // transform(0,2) = 0.0;
+      // transform(1,2) = 0.0;
+      // transform(2,0) = 0.0;
+      // transform(2,1) = 0.0;
+      // // Remove any delta z
+      // transform(2,3) = 0.0;
+      // ROS_INFO_STREAM("Cleaned transform of: \n" << transform);
       Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
       Eigen::Vector4f x_t_1 = transform*x_t_0;
-      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
       state.x.x = x_t_1(0);
       state.x.y = x_t_1(1);
+      state.z = x_t_1(2);
+      Eigen::Matrix3f rot = transform.block<3,3>(0,0);
       const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
       const Eigen::Vector3f x_axis_t = rot*x_axis;
       state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      copy_state_elapsed_time = (((double)(Timer::nanoTime() - copy_state_start_time)) /
+                                 Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
+#ifdef USE_DISPLAY
       // Visualize the matches
       if (use_displays_ || write_to_disk_)
       {
@@ -349,11 +505,21 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
           cv::imwrite(out_name.str(), match_img);
         }
       }
+#endif // USE_DISPLAY
     }
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    long long update_stuff_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+
     // Update stuff
-    previous_obj_ellipse_ = obj_ellipse;
     previous_hull_cloud_ = hull_cloud;
-    updateHeading(state, init_state);
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    update_stuff_elapsed_time = (((double)(Timer::nanoTime() - update_stuff_start_time)) /
+                                 Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
   }
   else if (proxy_name == BOUNDING_BOX_XY_PROXY)
   {
@@ -371,7 +537,6 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
         max_z = cur_obj.cloud.at(i).z;
       }
     }
-    previous_obj_ellipse_ = obj_ellipse;
     state.x.x = obj_ellipse.center.x;
     state.x.y = obj_ellipse.center.y;
     state.z = (min_z+max_z)*0.5;
@@ -382,10 +547,210 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     // ROS_INFO_STREAM("centroid (x,y,z): " << cur_obj.centroid[0] << ", " << cur_obj.centroid[1]
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
+  else if (proxy_name == FEATURE_POINT_PROXY)
+  {
+#ifdef PROFILE_COMPUTE_STATE_TIME
+    long long feature_extract_start_time = Timer::nanoTime();
+#endif // PROFILE_COMPUTE_STATE_TIME
+    if (init_state)
+    {
+      // Extract object model
+      updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
+      extractFeaturePointModel(in_frame, cloud, cur_obj, obj_feature_point_model_);
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      feature_extract_elapsed_time = (((double)(Timer::nanoTime() - feature_extract_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+    }
+    else
+    {
+      // Get feature points for current model
+      ObjectFeaturePointModel obj_model_detected;
+      extractFeaturePointModel(in_frame, cloud, cur_obj, obj_model_detected);
+      // ROS_INFO_STREAM("object source model has " << obj_feature_point_model_.bad_locs.size() << " bad locs from " <<
+      //                 obj_feature_point_model_.keypoints.size() << " total keypoints");
+      // ROS_INFO_STREAM("object target model has " << obj_model_detected.bad_locs.size() << " bad locs from " <<
+      //                 obj_model_detected.keypoints.size() << " total keypoints");
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long feature_match_start_time = Timer::nanoTime();
+      feature_extract_elapsed_time = (((double)(feature_match_start_time - feature_extract_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
+      // Match feature points to model
+      pcl16::Correspondences correspondences;
+#ifdef USE_RATIO_TEST
+      // Setup mask of bad locs to not match to them
+      cv::Mat no_match_mask(obj_model_detected.keypoints.size(), obj_feature_point_model_.keypoints.size(),
+                            CV_8UC1, cv::Scalar(1) );
+      for (int i = 0; i < obj_feature_point_model_.bad_locs.size(); ++i)
+      {
+        int c = obj_feature_point_model_.bad_locs[i];
+        for (int r = 0; r < no_match_mask.rows; ++r)
+        {
+          no_match_mask.at<uchar>(r,c) = 0;
+        }
+      }
+
+      for (int i = 0; i < obj_model_detected.bad_locs.size(); ++i)
+      {
+        int r = obj_model_detected.bad_locs[i];
+        for (int c = 0; c < no_match_mask.cols; ++c)
+        {
+          no_match_mask.at<uchar>(r,c) = 0;
+        }
+      }
+
+      std::vector<std::vector<cv::DMatch> > matches;
+      matcher_.knnMatch(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches, 2,
+                        no_match_mask, true);
+      for (int i = 0; i < matches.size(); ++i)
+      {
+        if (matches[i][0].distance < ratio_test_thresh_*matches[i][1].distance)
+        {
+          correspondences.push_back(pcl16::Correspondence(matches[i][0].trainIdx,
+                                                          matches[i][0].queryIdx,
+                                                          matches[i][0].distance));
+        }
+      }
+      // ROS_INFO_STREAM("Found " << correspondences.size() << " good matches with ratio test thresh of " <<
+                      ratio_test_thresh_);
+#else  // USE_RATIO_TEST
+      std::vector<cv::DMatch> matches;
+      matcher_.match(obj_model_detected.descriptors, obj_feature_point_model_.descriptors, matches);
+      for (int i = 0; i < matches.size(); ++i)
+      {
+        pcl16::PointXYZ source_pt = obj_feature_point_model_.locations.at(matches[i].trainIdx);
+        pcl16::PointXYZ target_pt = obj_model_detected.locations.at(matches[i].queryIdx);
+        if (isnan(source_pt.x) || isnan(source_pt.y) || isnan(source_pt.z) ||
+            isnan(target_pt.x) || isnan(target_pt.y) || isnan(target_pt.z))
+        {
+        }
+        else
+        {
+          correspondences.push_back(pcl16::Correspondence(matches[i].trainIdx,
+                                                          matches[i].queryIdx,
+                                                          matches[i].distance));
+        }
+      }
+      // ROS_INFO_STREAM("Found " << correspondences.size() << " good matches");
+#endif
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long feature_align_start_time = Timer::nanoTime();
+      feature_match_elapsed_time = (((double)(feature_align_start_time - feature_match_start_time)) /
+                                   Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
+#ifdef VISUALIZE_FEATURE_POINT_PROXY
+      cv::Mat match_img = in_frame.clone();
+      for (int i = 0; i < matches.size(); ++i)
+      {
+#ifdef USE_RATIO_TEST
+        // Must pass ratio test
+        if (matches[i][0].distance < ratio_test_thresh_*matches[i][1].distance)
+        {
+          cv::circle(match_img, obj_feature_point_model_.keypoints[matches[i][0].trainIdx].pt, 3,
+                     cv::Scalar(18, 18, 178));
+          cv::circle(match_img, obj_model_detected.keypoints[matches[i][0].queryIdx].pt, 3,
+                     cv::Scalar(51, 178, 0));
+          cv::line(match_img, obj_feature_point_model_.keypoints[matches[i][0].trainIdx].pt,
+                   obj_model_detected.keypoints[matches[i][0].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
+        }
+#else
+        cv::circle(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt, 3,
+                   cv::Scalar(18, 18, 178));
+        cv::circle(match_img, obj_model_detected.keypoints[matches[i].queryIdx].pt, 3,
+                   cv::Scalar(51, 178, 0));
+        cv::line(match_img, obj_feature_point_model_.keypoints[matches[i].trainIdx].pt,
+                 obj_model_detected.keypoints[matches[i].queryIdx].pt, cv::Scalar(204, 133, 20), 1);
+#endif
+      }
+      cv::imshow("Matches", match_img);
+#endif // VISUALIZE_FEATURE_POINT_PROXY
+
+      // Estimate transform
+      Eigen::Matrix4f transform;
+      bool converged = estimateFeaturePointTransform(obj_feature_point_model_, obj_model_detected, correspondences,
+                                                     transform);
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      long long copy_state_start_time = Timer::nanoTime();
+      feature_align_elapsed_time = (((double)(copy_state_start_time - feature_align_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
+      if (!converged)
+      {
+        ROS_WARN_STREAM("RANSAC did not converge. Estimating state from ellipse");
+        updateStateEllipse(cur_obj, obj_ellipse, state, init_state);
+        Eigen::Matrix4f state_transform;
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+        estimateTransformFromStateChange(state, previous_state_, state_transform);
+#else
+        estimateTransformFromStateChange(state, initial_state_, state_transform);
+#endif
+        previous_transform_ = state_transform;
+      }
+      else
+      {
+        // Update state estimates
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+        // Transform previous state to current state using the estimate transform
+        // ROS_INFO_STREAM("Transforming previous state");
+        Eigen::Vector4f x_t_0(previous_state_.x.x, previous_state_.x.y, previous_state_.z, 1.0);
+        Eigen::Vector4f x_t_1 = transform*x_t_0;
+        state.x.x = x_t_1(0);
+        state.x.y = x_t_1(1);
+        state.z = x_t_1(2);
+        Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+        const Eigen::Vector3f x_axis(cos(previous_state_.x.theta), sin(previous_state_.x.theta), 0.0);
+        const Eigen::Vector3f x_axis_t = rot*x_axis;
+        state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+
+#else // USE_FRAME_TO_FRAME_MATCHING
+        // Transform initial state to current state using the estimate transform
+        // ROS_INFO_STREAM("Transforming init state");
+        Eigen::Vector4f x_t_0(initial_state_.x.x, initial_state_.x.y, initial_state_.z, 1.0);
+        Eigen::Vector4f x_t_1 = transform*x_t_0;
+        state.x.x = x_t_1(0);
+        state.x.y = x_t_1(1);
+        state.z = x_t_1(2);
+        Eigen::Matrix3f rot = transform.block<3,3>(0,0);
+        const Eigen::Vector3f x_axis(cos(initial_state_.x.theta), sin(initial_state_.x.theta), 0.0);
+        const Eigen::Vector3f x_axis_t = rot*x_axis;
+        state.x.theta = atan2(x_axis_t(1), x_axis_t(0));
+#endif // USE_FRAME_TO_FRAME_MATCHING
+        previous_transform_ = transform;
+      }
+#ifdef USE_FRAME_TO_FRAME_MATCHING
+      // Update model to previous frame
+      obj_model_detected.descriptors.copyTo(obj_feature_point_model_.descriptors);
+      obj_feature_point_model_.locations.clear();
+      obj_feature_point_model_.locations.width = obj_model_detected.locations.size();
+      obj_feature_point_model_.locations.height = 1;
+      obj_feature_point_model_.locations.resize(obj_feature_point_model_.locations.width);
+      for (int i = 0; i < obj_model_detected.locations.size(); ++i)
+      {
+        obj_feature_point_model_.locations.push_back(obj_model_detected.locations[i]);
+      }
+      obj_feature_point_model_.keypoints.assign(obj_model_detected.keypoints.begin(),
+                                                obj_model_detected.keypoints.end());
+      obj_feature_point_model_.bad_locs.assign(obj_model_detected.bad_locs.begin(),
+                                               obj_model_detected.bad_locs.end());
+#endif// USE_FRAME_TO_FRAME_MATCHING
+#ifdef PROFILE_COMPUTE_STATE_TIME
+      copy_state_elapsed_time = (((double)(Timer::nanoTime() - copy_state_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_COMPUTE_STATE_TIME
+
+    }
+  }
   else
   {
-    ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << " requested");
+    ROS_WARN_STREAM("Unknown perceptual proxy: " << proxy_name << "!");
   }
+
   if (proxy_name == SPHERE_PROXY)
   {
     XYZPointCloud sphere_cloud;
@@ -445,7 +810,7 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
     //                 << ", " << cur_obj.centroid[2] << ")");
   }
 
-  if (use_displays_ || write_to_disk_)
+  if (frame_count_ < 1)
   {
     if (proxy_name == ELLIPSE_PROXY)
     {
@@ -460,6 +825,52 @@ void ObjectTracker25D::computeState(ProtoObject& cur_obj, XYZPointCloud& cloud, 
       trackerDisplay(in_frame, state, cur_obj);
     }
   }
+#ifdef USE_DISPLAY
+  else if (use_displays_ || write_to_disk_)
+  {
+    if (proxy_name == ELLIPSE_PROXY)
+    {
+      trackerDisplay(in_frame, cur_obj, obj_ellipse);
+    }
+    else if(proxy_name == BOUNDING_BOX_XY_PROXY)
+    {
+      trackerBoxDisplay(in_frame, cur_obj, obj_ellipse);
+    }
+    else
+    {
+      trackerDisplay(in_frame, state, cur_obj);
+    }
+  }
+#endif // USE_DISPLAY
+
+#ifdef PROFILE_COMPUTE_STATE_TIME
+  double compute_state_elapsed_time = (((double)(Timer::nanoTime() - compute_state_start_time)) /
+                                          Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("compute_state_elapsed_time " << compute_state_elapsed_time);
+  if (proxy_name == HULL_ICP_PROXY)
+  {
+    ROS_INFO_STREAM("\t fit_ellipse_elapsed_time " << fit_ellipse_elapsed_time << "\t\t\t" <<
+                    (100.0*fit_ellipse_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t boundary_samples_elapsed_time " << boundary_samples_elapsed_time << "\t" <<
+                    (100.0*boundary_samples_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t icp_elapsed_time " << icp_elapsed_time << "\t\t\t" <<
+                    (100.0*icp_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t update_stuff_elapsed_time " << update_stuff_elapsed_time << "\t\t" <<
+                    (100.0*update_stuff_elapsed_time/compute_state_elapsed_time) << "\%");
+  }
+  if (proxy_name == FEATURE_POINT_PROXY)
+  {
+    ROS_INFO_STREAM("\t feature_extract_elapsed_time " << feature_extract_elapsed_time << "\t\t" <<
+                    (100.0*feature_extract_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t feature_match_elapsed_time " << feature_match_elapsed_time << "\t\t" <<
+                    (100.0*feature_match_elapsed_time/compute_state_elapsed_time) << "\%");
+    ROS_INFO_STREAM("\t feature_align_elapsed_time " << feature_align_elapsed_time << "\t\t" <<
+                    (100.0*feature_align_elapsed_time/compute_state_elapsed_time) << "\%");
+  }
+  ROS_INFO_STREAM("\t copy_state_elapsed_time " << copy_state_elapsed_time << "\t\t" <<
+                  (100.0*copy_state_elapsed_time/compute_state_elapsed_time) << "\%\n");
+#endif // PROFILE_COMPUTE_STATE_TIME
+
 }
 
 void ObjectTracker25D::fitObjectEllipse(ProtoObject& obj, cv::RotatedRect& ellipse)
@@ -537,6 +948,17 @@ void ObjectTracker25D::findFootprintEllipse(ProtoObject& obj, cv::RotatedRect& o
   }
   ROS_DEBUG_STREAM("Number of points is: " << obj_pts.size());
   obj_ellipse = cv::fitEllipse(obj_pts);
+}
+
+void ObjectTracker25D::updateStateEllipse(ProtoObject& cur_obj, cv::RotatedRect& obj_ellipse,
+                                          PushTrackerState& state, bool init_state)
+{
+  fitObjectEllipse(cur_obj, obj_ellipse);
+  state.x.theta = getThetaFromEllipse(obj_ellipse);
+  state.x.x = cur_obj.centroid[0];
+  state.x.y = cur_obj.centroid[1];
+  state.z = cur_obj.centroid[2];
+  updateHeading(state, init_state);
 }
 
 
@@ -625,9 +1047,217 @@ void ObjectTracker25D::fit2DMassEllipse(ProtoObject& obj, cv::RotatedRect& obj_e
   obj_ellipse.size.width = std::max(eigen_values(1)*0.1, 0.03);
 }
 
-void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
-                                  XYZPointCloud& cloud, std::string proxy_name,
-                                  tabletop_pushing::VisFeedbackPushTrackingFeedback& state, bool start_swap)
+void ObjectTracker25D::extractFeaturePointModel(cv::Mat& frame, XYZPointCloud& cloud, ProtoObject& obj,
+                                                ObjectFeaturePointModel& model)
+{
+  // Get grayscale image for keypoint extraction
+  cv::Mat frame_bw;
+  cv::cvtColor(frame, frame_bw, CV_BGR2GRAY);
+
+  // Get object mask in frame
+  cv::Mat obj_mask(frame.size(), CV_8UC1, cv::Scalar(0));
+  pcl_segmenter_->projectPointCloudIntoImage(obj.cloud, obj_mask);
+  obj_mask*=255;
+  cv::dilate(obj_mask, obj_mask, feature_point_morph_element_);
+  cv::erode(obj_mask, obj_mask, feature_point_morph_element_);
+
+  // Get keypoint descriptors from mask
+  cv::Mat descriptors;
+  feature_detector_.detect(frame_bw, model.keypoints, obj_mask);
+#ifdef USE_ORB
+  feature_extractor_(frame_bw, obj_mask, model.keypoints, descriptors, true);
+#else
+  feature_extractor_.compute(frame_bw, model.keypoints, descriptors);
+#endif
+
+  descriptors.copyTo(model.descriptors);
+  model.locations.width = model.keypoints.size();
+  model.locations.height = 1;
+  model.locations.is_dense = false;
+  model.locations.resize(model.locations.width);
+  model.locations.header.frame_id = cloud.header.frame_id;
+  model.locations.header.stamp = cloud.header.stamp;
+
+  // Get associated 3D locations for the keypoints
+  for (int i = 0; i < model.keypoints.size(); ++i)
+  {
+    model.locations.at(i) = cloud.at((int)(upscale_*model.keypoints[i].pt.x),
+                                     (int)(upscale_*model.keypoints[i].pt.y));
+    // Make sure this is a valid 3D point
+    if (isnan(model.locations.at(i).x) || isnan(model.locations.at(i).y) || isnan(model.locations.at(i).z))
+    {
+      model.bad_locs.push_back(i);
+    }
+  }
+  if (frame_count_ < 1)
+  {
+    // ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid initial 3D keypoints.");
+  }
+  else
+  {
+    // ROS_INFO_STREAM("Found " << model.locations.size() - model.bad_locs.size() << " valid 3D keypoints.");
+  }
+
+#ifdef VISUALIZE_FEATURE_POINT_PROXY
+  cv::Mat key_disp_frame = frame.clone();
+  cv::Mat model_points = frame.clone();
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  for (int i = 0; i < model.locations.size(); ++i)
+  {
+    const cv::Point img_idx = pcl_segmenter_->projectPointIntoImage(model.locations.at(i),
+                                                                    model.locations.header.frame_id,
+                                                                    camera_frame_);
+    if (frame_count_ < 1)
+    {
+      cv::circle(model_points, img_idx, 3, kuler_red);
+    }
+    else
+    {
+      cv::circle(model_points, img_idx, 3, kuler_green);
+    }
+  }
+
+  // TODO: Show keypoints on 3D segmentaiton data...
+
+  if (frame_count_ < 1)
+  {
+    // cv::imshow("init object mask", obj_mask);
+    cv::imshow("init model points", model_points);
+  }
+  else
+  {
+    // cv::imshow("object mask", obj_mask);
+    cv::imshow("model points", model_points);
+  }
+#endif // VISUALIZE_FEATURE_POINT_PROXY
+}
+
+bool ObjectTracker25D::estimateFeaturePointTransform(ObjectFeaturePointModel& source_model,
+                                                     ObjectFeaturePointModel& target_model,
+                                                     pcl16::Correspondences correspondences,
+                                                     Eigen::Matrix4f& transform)
+{
+  if (correspondences.size() < NUM_RIGID_RANSAC_SAMPLES)
+  {
+    ROS_WARN_STREAM("Too few feature point samples to estimate rigid transform");
+    return false;
+  }
+  // Just estimate the transform and return if there is no sampling to be done
+  if (correspondences.size() == NUM_RIGID_RANSAC_SAMPLES)
+  {
+    ROS_WARN_STREAM("Estimating transfrom from 4 samples.");
+    feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations,
+                                                             correspondences, transform);
+    return true;
+  }
+
+  // Setup indices from which to sample
+  std::vector<int> sample_indices;
+  for (int i = 0; i < correspondences.size(); ++i)
+  {
+    sample_indices.push_back(i);
+  }
+
+  pcl16::Correspondences inliers;
+  inliers.clear();
+  for (int iter = 0; iter < feature_point_max_ransac_iters_; ++iter)
+  {
+    std::vector<int> available_sample_indices(sample_indices.begin(), sample_indices.end());
+    pcl16::Correspondences samples;
+    Eigen::Matrix4f cur_transform;
+    for (int i = 0; i < NUM_RIGID_RANSAC_SAMPLES; ++i)
+    {
+      // Sample pair from source & target indices
+      int rand_idx = rand() % available_sample_indices.size();
+      samples.push_back(correspondences[rand_idx]);
+      // Remove rand_idx from available_sample_indices
+      available_sample_indices.erase(available_sample_indices.begin()+rand_idx);
+    }
+    feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations,
+                                                             samples, cur_transform);
+    // Check all other pairs for inliears vs outliers
+    pcl16::Correspondences cur_inliers(samples);
+    for (unsigned int i = 0; i < available_sample_indices.size(); ++i)
+    {
+      int idx = available_sample_indices[i];
+      Eigen::Vector4f source_pt(source_model.locations[correspondences[idx].index_query].x,
+                                source_model.locations[correspondences[idx].index_query].y,
+                                source_model.locations[correspondences[idx].index_query].z,
+                                1.0f);
+      Eigen::Vector4f transformed_pt = cur_transform*source_pt;
+      pcl16::PointXYZ target_pt = target_model.locations[correspondences[idx].index_match];
+      // Add correspondence to inlier set if the error is less than the set threshold
+      if ( PointCloudSegmentation::sqrDist(target_pt, transformed_pt) < feature_point_inlier_squared_dist_thresh_)
+      {
+        cur_inliers.push_back(correspondences[idx]);
+      }
+    }
+    if (cur_inliers.size() > inliers.size())
+    {
+      inliers.assign(cur_inliers.begin(), cur_inliers.end());
+      // ROS_INFO_STREAM("Found " << inliers.size() << " inliers at " <<
+      //                 static_cast<float>(inliers.size())/static_cast<float>(correspondences.size())*100 <<
+      //                 "% on iteration " << iter);
+    }
+    // Check convergence
+    if (static_cast<float>(inliers.size())/static_cast<float>(correspondences.size()) >
+        feature_point_ransac_inlier_percent_thresh_)
+    {
+      // TODO: Cleanup if necessary
+      // ROS_INFO_STREAM("Converged since found over " << 100*feature_point_ransac_inlier_percent_thresh_ << "% inliers");
+      break;
+    }
+  }
+
+  // Compute final transform using all inlier points
+  feature_point_transform_est_.estimateRigidTransformation(source_model.locations, target_model.locations, inliers,
+                                                           transform);
+  // ROS_INFO_STREAM("Found final transform of \n" << transform << "\n");
+  return true;
+}
+
+void ObjectTracker25D::estimateTransformFromStateChange(PushTrackerState& state,
+                                                        PushTrackerState& previous_state,
+                                                        Eigen::Matrix4f& transform)
+{
+  double delta_x = state.x.x - previous_state_.x.x;
+  double delta_y = state.x.y - previous_state_.x.y;
+
+  // Make sure not a +/-pi swap of the heading between frames...
+  if ( (state.x.theta > 0) != (previous_state_.x.theta > 0) )
+  {
+    // Test if swapping makes a shorter distance than changing
+    float augmented_theta = state.x.theta + (state.x.theta > 0.0) ? - M_PI : M_PI;
+    float augmented_diff = fabs(subPIAngle(augmented_theta - previous_state_.x.theta));
+    float current_diff = fabs(subPIAngle(state.x.theta - previous_state_.x.theta));
+    if (augmented_diff < current_diff)
+    {
+      state.x.theta = augmented_theta;
+    }
+  }
+
+  double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
+
+  transform(0,0) = cos(delta_theta);
+  transform(0,1) = -sin(delta_theta);
+  transform(1,0) = -transform(0,1);
+  transform(1,1) = transform(0,0);
+  transform(2,2) = 1.0;
+  transform(3,3) = 1.0;
+  transform(0,3) = delta_x;
+  transform(1,3) = delta_y;
+  ROS_INFO_STREAM("Delta X: " << delta_x);
+  ROS_INFO_STREAM("Delta Y: " << delta_y);
+  ROS_INFO_STREAM("Delta Theta: " << delta_theta);
+  ROS_INFO_STREAM("Initial transform of: \n" << transform);
+}
+
+
+
+void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& self_mask, XYZPointCloud& cloud,
+                                  std::string proxy_name,
+                                  PushTrackerState& state, bool start_swap)
 {
   paused_ = false;
   initialized_ = false;
@@ -637,15 +1267,8 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   frame_count_ = 0;
   record_count_ = 0;
   frame_set_count_++;
-  ProtoObject cur_obj;
-  if (use_graphcut_arm_seg_)
-  {
-    cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects, true);
-  }
-  else
-  {
-    cur_obj = findTargetObject(in_frame, cloud, no_objects, true);
-  }
+  previous_obj_ = findTargetObject(in_frame, cloud, no_objects, true);
+  previous_transform_ = Eigen::Matrix4f::Identity();
   initialized_ = true;
   if (no_objects)
   {
@@ -657,7 +1280,7 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   }
   else
   {
-    computeState(cur_obj, cloud, proxy_name, in_frame, state, true);
+    computeState(previous_obj_, cloud, proxy_name, in_frame, state, true);
     state.header.seq = 0;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
@@ -670,15 +1293,13 @@ void ObjectTracker25D::initTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::M
   state.x_dot.y = 0.0;
   state.x_dot.theta = 0.0;
 
-  ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                   state.x.theta << ")");
-  ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                   << ", " << state.x_dot.theta << ")\n");
+  ROS_DEBUG_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " << state.x.theta << ")");
+  ROS_DEBUG_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y << ", " << state.x_dot.theta << ")\n");
 
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;
-  init_state_ = state;
-  previous_obj_ = cur_obj;
+  initial_state_ = state;
+  in_frame.copyTo(init_frame_);
   obj_saved_ = true;
   frame_count_ = 1;
   record_count_ = 1;
@@ -689,7 +1310,7 @@ double ObjectTracker25D::getThetaFromEllipse(cv::RotatedRect& obj_ellipse)
   return subPIAngle(DEG2RAD(obj_ellipse.angle)+0.5*M_PI);
 }
 
-void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv::Mat& self_mask,
+void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& self_mask,
                                     XYZPointCloud& cloud, std::string proxy_name, PushTrackerState& state)
 {
 #ifdef PROFILE_TRACKING_TIME
@@ -700,7 +1321,7 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
 #ifdef PROFILE_TRACKING_TIME
     long long init_start_time = Timer::nanoTime();
 #endif
-    initTracks(in_frame, depth_frame, self_mask, cloud, proxy_name, state);
+    initTracks(in_frame, self_mask, cloud, proxy_name, state);
 #ifdef PROFILE_TRACKING_TIME
     double init_elapsed_time = (((double)(Timer::nanoTime() - init_start_time)) / Timer::NANOSECONDS_PER_SECOND);
     ROS_INFO_STREAM("init_elapsed_time " << init_elapsed_time);
@@ -712,17 +1333,12 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
   long long find_target_start_time = Timer::nanoTime();
 #endif
   ProtoObject cur_obj;
-  if (use_graphcut_arm_seg_)
-  {
-    cur_obj = findTargetObjectGC(in_frame, cloud, depth_frame, self_mask, no_objects);
-  }
-  else
-  {
-    cur_obj = findTargetObject(in_frame, cloud, no_objects);
-  }
+  cur_obj = findTargetObject(in_frame, cloud, no_objects);
 #ifdef PROFILE_TRACKING_TIME
   double find_target_elapsed_time = (((double)(Timer::nanoTime() - find_target_start_time)) / Timer::NANOSECONDS_PER_SECOND);
   long long update_model_start_time = Timer::nanoTime();
+  double compute_state_elapsed_time = 0.0;
+  long long copy_state_start_time = 0;
 #endif
 
   // Update model
@@ -747,41 +1363,64 @@ void ObjectTracker25D::updateTracks(cv::Mat& in_frame, cv::Mat& depth_frame, cv:
   else
   {
     obj_saved_ = true;
+#ifdef PROFILE_TRACKING_TIME
+    double compute_state_start_time = Timer::nanoTime();
+#endif // PROFILE_TRACKING_TIME
+
     computeState(cur_obj, cloud, proxy_name, in_frame, state);
+
+#ifdef PROFILE_TRACKING_TIME
+    copy_state_start_time = Timer::nanoTime();
+    compute_state_elapsed_time = (((double)(copy_state_start_time - compute_state_start_time)) / Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_TRACKING_TIME
+
     state.header.seq = frame_count_;
     state.header.stamp = cloud.header.stamp;
     state.header.frame_id = cloud.header.frame_id;
     // Estimate dynamics and do some bookkeeping
     double delta_x = state.x.x - previous_state_.x.x;
     double delta_y = state.x.y - previous_state_.x.y;
+    // double delta_z = state.z - previous_state_.z;
     double delta_theta = subPIAngle(state.x.theta - previous_state_.x.theta);
     double delta_t = state.header.stamp.toSec() - previous_time_;
     state.x_dot.x = delta_x/delta_t;
     state.x_dot.y = delta_y/delta_t;
     state.x_dot.theta = delta_theta/delta_t;
-
-    ROS_DEBUG_STREAM("x: (" << state.x.x << ", " << state.x.y << ", " <<
-                     state.x.theta << ")");
-    ROS_DEBUG_STREAM("x_dot: (" << state.x_dot.x << ", " << state.x_dot.y
-                     << ", " << state.x_dot.theta << ")");
+    // ROS_INFO_STREAM("Delta X: (" << delta_x << ", " << delta_y << ", " << delta_z << ", " << delta_theta << ")");
+    // ROS_INFO_STREAM("Delta t: " << delta_t);
+    // ROS_INFO_STREAM("X: (" << state.x.x << ", " << state.x.y << ", " << state.z << ", " <<
+    //                 state.x.theta << ")");
+    // ROS_INFO_STREAM("X_dot: (" << state.x_dot.x << ", " << state.x_dot.y
+    //                 << ", " << state.x_dot.theta << ")");
     previous_obj_ = cur_obj;
   }
   // We update the header and take care of other bookkeeping before returning
-  state.init_x.x = init_state_.x.x;
-  state.init_x.y = init_state_.x.y;
-  state.init_x.theta = init_state_.x.theta;
+  state.init_x.x = initial_state_.x.x;
+  state.init_x.y = initial_state_.x.y;
+  state.init_x.theta = initial_state_.x.theta;
 
   previous_time_ = state.header.stamp.toSec();
   previous_state_ = state;
   frame_count_++;
   record_count_++;
+
 #ifdef PROFILE_TRACKING_TIME
-  double update_model_elapsed_time = (((double)(Timer::nanoTime() - update_model_start_time)) /
+  long long update_model_end_time = Timer::nanoTime();
+  double update_model_elapsed_time = (((double)(update_model_end_time - update_model_start_time)) /
                                    Timer::NANOSECONDS_PER_SECOND);
-  double update_elapsed_time = (((double)(Timer::nanoTime() - update_start_time)) / Timer::NANOSECONDS_PER_SECOND);
-  ROS_INFO_STREAM("update_elapsed_time " << update_elapsed_time);
-  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time);
-  ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time);
+  double update_elapsed_time = (((double)(update_model_end_time - update_start_time)) /
+                                Timer::NANOSECONDS_PER_SECOND);
+  double copy_state_elapsed_time = (((double)(update_model_end_time - copy_state_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("update_tracks_elapsed_time " << update_elapsed_time);
+  ROS_INFO_STREAM("\t find_target_elapsed_time " << find_target_elapsed_time <<
+                  "\t\t " << (100.0*find_target_elapsed_time/update_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t update_model_elapsed_time " << update_model_elapsed_time <<
+                  "\t\t " << (100.0*update_model_elapsed_time/update_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t compute_state_elapsed_time " << compute_state_elapsed_time <<
+                  "\t " << (100.0*compute_state_elapsed_time/update_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t copy_state_elapsed_time " << copy_state_elapsed_time <<
+                  "\t " << (100.0*copy_state_elapsed_time/update_elapsed_time) << "\%\n");
 #endif
 
 }
@@ -826,10 +1465,11 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
       table_min_point, cur_obj.cloud.header.frame_id, camera_frame_);
   const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
       table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
+
   cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(18, 18, 178),1);
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(51, 178, 0),1);
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                              std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
@@ -839,8 +1479,12 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, ProtoObject& cur_obj, c
                                        img_maj_idx.x-img_c_idx.x));
   cv::RotatedRect img_ellipse(img_c_idx, img_size, img_angle);
   cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
-  cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
-  if (use_displays_)
+  cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(25, 252, 255), 1);
+  if (frame_count_ < 1)
+  {
+    cv::imshow("Init State", centroid_frame);
+  }
+  else if (use_displays_)
   {
     cv::imshow("Object State", centroid_frame);
   }
@@ -881,9 +1525,9 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   const cv::Point2f img_maj_idx = pcl_segmenter_->projectPointIntoImage(
       table_maj_point, cur_obj.cloud.header.frame_id, camera_frame_);
   cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
+  cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(18, 18, 178),1);
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
-  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+  cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(51, 178, 0),1);
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
                              std::pow(img_maj_idx.y-img_c_idx.y,2))*2.0;
@@ -900,9 +1544,13 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   }
   for (int i = 0; i < 4; i++)
   {
-    cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(0,255,255), 1);
+    cv::line(centroid_frame, vertices[i], vertices[(i+1)%4], cv::Scalar(25, 252, 255), 1);
   }
-  if (use_displays_)
+  if (frame_count_ < 1)
+  {
+    cv::imshow("Init State", centroid_frame);
+  }
+  else if (use_displays_)
   {
     cv::imshow("Object State", centroid_frame);
   }
@@ -915,7 +1563,8 @@ void ObjectTracker25D::trackerBoxDisplay(cv::Mat& in_frame, ProtoObject& cur_obj
   }
 }
 
-void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj, bool other_color)
+void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state, ProtoObject& obj, bool other_color,
+                                      bool force_display)
 {
   cv::Mat centroid_frame;
   in_frame.copyTo(centroid_frame);
@@ -941,13 +1590,13 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,0,0),3);
   if( other_color)
   {
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(255, 255,0),1);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0, 255, 255),1);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(204, 133, 20),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(25, 252, 255),1);
   }
   else
   {
-    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(0,0,255),1);
-    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(0,255,0),1);
+    cv::line(centroid_frame, img_c_idx, img_maj_idx, cv::Scalar(18, 18, 178),1);
+    cv::line(centroid_frame, img_c_idx, img_min_idx, cv::Scalar(51, 178, 0),1);
   }
   cv::Size img_size;
   img_size.width = std::sqrt(std::pow(img_maj_idx.x-img_c_idx.x,2) +
@@ -960,7 +1609,11 @@ void ObjectTracker25D::trackerDisplay(cv::Mat& in_frame, PushTrackerState& state
   // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,0,0), 3);
   // cv::ellipse(centroid_frame, img_ellipse, cv::Scalar(0,255,255), 1);
 
-  if (use_displays_)
+  if (frame_count_ < 1)
+  {
+    cv::imshow("Init State", centroid_frame);
+  }
+  else if (use_displays_ || other_color || force_display)
   {
     cv::imshow("Object State", centroid_frame);
   }

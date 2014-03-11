@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2012, Georgia Institute of Technology
+ *  Copyright (c) 2014, Georgia Institute of Technology
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -72,6 +72,7 @@
 // #define PROFILE_OBJECT_SEGMENTATION_TIME 1
 // #define PROFILE_TABLE_SEGMENTATION_TIME 1
 // #define PROFILE_OBJECT_CLUSTER_TIME 1
+// #define DOWNSAMPLE_OBJS_CLOUD 1
 
 #define randf() static_cast<float>(rand())/RAND_MAX
 
@@ -94,8 +95,10 @@ PointCloudSegmentation::PointCloudSegmentation(boost::shared_ptr<tf::TransformLi
   }
 }
 
-void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud, XYZPointCloud& plane_cloud,
-                                           Eigen::Vector4f& table_centroid, bool find_hull, bool find_centroid)
+void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& objs_cloud,
+                                           XYZPointCloud& plane_cloud,
+                                           Eigen::Vector4f& table_centroid, bool init_table_find,
+                                           bool find_hull, bool find_centroid)
 {
 #ifdef PROFILE_TABLE_SEGMENTATION_TIME
   long long get_table_plane_start_time = Timer::nanoTime();
@@ -111,7 +114,7 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   }
 #ifdef PROFILE_TABLE_SEGMENTATION_TIME
   double downsample_elapsed_time = (((double)(Timer::nanoTime() - get_table_plane_start_time)) /
-                                  Timer::NANOSECONDS_PER_SECOND);
+                                    Timer::NANOSECONDS_PER_SECOND);
   long long filter_cloud_z_start_time = Timer::nanoTime();
 #endif
   // Filter Cloud to not look for table planes on the ground
@@ -126,7 +129,14 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
     z_pass.setInputCloud(cloud.makeShared());
   }
   z_pass.setFilterFieldName("z");
-  z_pass.setFilterLimits(min_table_z_, max_table_z_);
+  if (init_table_find)
+  {
+    z_pass.setFilterLimits(min_table_z_, max_table_z_);
+  }
+  else
+  {
+    z_pass.setFilterLimits(min_workspace_z_, max_workspace_z_);
+  }
   z_pass.filter(cloud_z_filtered);
 #ifdef PROFILE_TABLE_SEGMENTATION_TIME
   double filter_cloud_z_elapsed_time = (((double)(Timer::nanoTime() - filter_cloud_z_start_time)) /
@@ -174,25 +184,26 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   long long find_centroid_start_time = Timer::nanoTime();
 #endif
   // Estimate hull from the inlier points
-  if (find_hull)
-  {
-    ROS_INFO_STREAM("finding concave hull. Plane size: " <<
-                    plane_cloud.size());
-    XYZPointCloud hull_cloud;
-    pcl16::ConcaveHull<PointXYZ> hull;
-    hull.setInputCloud(plane_cloud.makeShared());
-    hull.setAlpha(hull_alpha_);
-    hull.reconstruct(hull_cloud);
-    ROS_INFO_STREAM("hull_cloud.size() " << hull_cloud.size());
-    // TODO: Return the hull_cloud
-    // TODO: Figure out if stuff is inside the hull
-  }
+  // if (find_hull)
+  // {
+  //   ROS_INFO_STREAM("finding concave hull. Plane size: " <<
+  //                   plane_cloud.size());
+  //   XYZPointCloud hull_cloud;
+  //   pcl16::ConcaveHull<PointXYZ> hull;
+  //   hull.setInputCloud(plane_cloud.makeShared());
+  //   hull.setAlpha(hull_alpha_);
+  //   hull.reconstruct(hull_cloud);
+  //   ROS_INFO_STREAM("hull_cloud.size() " << hull_cloud.size());
+  //   // TODO: Return the hull_cloud
+  //   // TODO: Figure out if stuff is inside the hull
+  // }
 
   // Extract the plane members into their own point cloud
   if (find_centroid)
   {
     pcl16::compute3DCentroid(plane_cloud, table_centroid);
-    min_workspace_z_ = table_centroid[2];
+    // ROS_WARN_STREAM("Updating table z to: " << table_centroid[2]);
+    table_z_ = table_centroid[2];
   }
   // cv::Size img_size(320, 240);
   // cv::Mat plane_img(img_size, CV_8UC1, cv::Scalar(0));
@@ -205,11 +216,16 @@ void PointCloudSegmentation::getTablePlane(XYZPointCloud& cloud, XYZPointCloud& 
   double find_centroid_elapsed_time = (((double)(Timer::nanoTime() - find_centroid_start_time)) /
                                        Timer::NANOSECONDS_PER_SECOND);
   ROS_INFO_STREAM("\t get Table Plane Elapsed Time " << get_table_plane_elapsed_time);
-  ROS_INFO_STREAM("\t\t downsample Elapsed Time " << downsample_elapsed_time);
-  ROS_INFO_STREAM("\t\t filter Z Elapsed Time " << filter_cloud_z_elapsed_time);
-  ROS_INFO_STREAM("\t\t filter X Elapsed Time " << filter_cloud_x_elapsed_time);
-  ROS_INFO_STREAM("\t\t RANSAC Elapsed Time " << RANSAC_elapsed_time);
-  ROS_INFO_STREAM("\t\t find Centroid Elapsed Time " << find_centroid_elapsed_time);
+  ROS_INFO_STREAM("\t\t downsample Elapsed Time " << downsample_elapsed_time <<
+                  "\t\t\t " << (100.*downsample_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t filter Z Elapsed Time " << filter_cloud_z_elapsed_time <<
+                  "\t\t\t " << (100.*filter_cloud_z_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t filter X Elapsed Time " << filter_cloud_x_elapsed_time <<
+                  "\t\t\t " << (100.*filter_cloud_x_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t RANSAC Elapsed Time " << RANSAC_elapsed_time <<
+                  "\t\t\t\t " << (100.*RANSAC_elapsed_time/get_table_plane_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t find Centroid Elapsed Time " << find_centroid_elapsed_time <<
+                  "\t\t\t " << (100.*find_centroid_elapsed_time/get_table_plane_elapsed_time) << "\%");
 #endif
 
 }
@@ -345,7 +361,7 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   }
   else
   {
-    getTablePlane(input_cloud, objs_cloud, plane_cloud, table_centroid_, false);
+    getTablePlane(input_cloud, objs_cloud, plane_cloud, table_centroid_, false/*init table*/, false, true);
   }
 
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
@@ -354,17 +370,18 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   long long cluster_objects_start_time = Timer::nanoTime();
 #endif
 
-  // TODO: Check the downsample rate vs not downsampling
-  // TODO: Check the tracking quality
-  // TODO: Make a switch to easily choose between these two methods
+  // Find independent regions
+#ifdef DOWNSAMPLE_OBJS_CLOUD
   XYZPointCloud objects_cloud_down;
   downsampleCloud(objs_cloud, objects_cloud_down);
-  // Find independent regions
   if (objects_cloud_down.size() > 0)
   {
     clusterProtoObjects(objects_cloud_down, objs);
   }
-  // clusterProtoObjects(objs_cloud, objs);
+#else // DOWNSAMPLE_OBJS_CLOUD
+  clusterProtoObjects(objs_cloud, objs);
+#endif // DOWNSAMPLE_OBJS_CLOUD
+
 #ifdef PROFILE_OBJECT_SEGMENTATION_TIME
   double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
                                            Timer::NANOSECONDS_PER_SECOND);
@@ -373,13 +390,71 @@ void PointCloudSegmentation::findTabletopObjects(XYZPointCloud& input_cloud, Pro
   ROS_INFO_STREAM("find_tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
   if (use_mps)
   {
-    ROS_INFO_STREAM("\t segment Table MPS Time " << segment_table_elapsed_time);
+    ROS_INFO_STREAM("\t segment Table MPS Time " << segment_table_elapsed_time <<
+                    "\t\t\t\t " << (100.*segment_table_elapsed_time/find_tabletop_objects_elapsed_time) << "\%");
   }
   else
   {
-    ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time);
+    ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time <<
+                    "\t\t\t\t " << (100.*segment_table_elapsed_time/find_tabletop_objects_elapsed_time) << "\%");
   }
-  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time << "\n");
+  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time  <<
+                  "\t\t\t\t " << (100.*cluster_objects_elapsed_time/find_tabletop_objects_elapsed_time) << "\%\n");
+#endif
+
+}
+
+void PointCloudSegmentation::findTabletopObjectsRestricted(XYZPointCloud& input_cloud, ProtoObjects& objs,
+                                                           geometry_msgs::Pose2D& prev_state,
+                                                           double search_radius)
+{
+#ifdef PROFILE_OBJECT_SEGMENTATION_TIME
+  long long find_tabletop_objects_start_time = Timer::nanoTime();
+#endif
+
+  // Get table plane
+  XYZPointCloud objs_cloud, plane_cloud;
+  getTablePlane(input_cloud, objs_cloud, plane_cloud, table_centroid_, false/*init table*/, false);
+
+#ifdef PROFILE_OBJECT_SEGMENTATION_TIME
+  double segment_table_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
+                                    Timer::NANOSECONDS_PER_SECOND);
+  long long cluster_objects_start_time = Timer::nanoTime();
+#endif
+
+  double min_search_x = prev_state.x - search_radius;
+  double min_search_y = prev_state.y - search_radius;
+  double max_search_x = prev_state.x + search_radius;
+  double max_search_y = prev_state.y + search_radius;
+  // Find independent regions
+  XYZPointCloud objects_cloud_down;
+  downsampleCloud(objs_cloud, objects_cloud_down,
+                  min_search_x, max_search_x,
+                  min_search_y, max_search_y,
+                  table_z_, max_workspace_z_, true);
+  if (objects_cloud_down.size() > 0)
+  {
+    clusterProtoObjects(objects_cloud_down, objs);
+  }
+
+#ifdef PROFILE_OBJECT_SEGMENTATION_TIME
+  double find_tabletop_objects_elapsed_time = (((double)(Timer::nanoTime() - find_tabletop_objects_start_time)) /
+                                           Timer::NANOSECONDS_PER_SECOND);
+  double cluster_objects_elapsed_time = (((double)(Timer::nanoTime() - cluster_objects_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("find_tabletop_objects_elapsed_time " << find_tabletop_objects_elapsed_time);
+  if (use_mps)
+  {
+    ROS_INFO_STREAM("\t segment Table MPS Time " << segment_table_elapsed_time <<
+                    "\t\t\t\t " << (100.*segment_table_elapsed_time/find_tabletop_objects_elapsed_time) << "\%");
+  }
+  else
+  {
+    ROS_INFO_STREAM("\t segment table RANSAC Time " << segment_table_elapsed_time <<
+                    "\t\t\t\t " << (100.*segment_table_elapsed_time/find_tabletop_objects_elapsed_time) << "\%");
+  }
+  ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time  <<
+                  "\t\t\t\t " << (100.*cluster_objects_elapsed_time/find_tabletop_objects_elapsed_time) << "\%\n");
 #endif
 
 }
@@ -434,8 +509,10 @@ void PointCloudSegmentation::clusterProtoObjects(XYZPointCloud& objects_cloud, P
   double proto_object_elapsed_time = (((double)(Timer::nanoTime() - proto_object_start_time)) /
                                       Timer::NANOSECONDS_PER_SECOND);
   ROS_INFO_STREAM("\t cluster_objects_elapsed_time " << cluster_objects_elapsed_time);
-  ROS_INFO_STREAM("\t\t pcl_cluster_elapsed_time " << pcl_cluster_elapsed_time);
-  ROS_INFO_STREAM("\t\t proto_object_elapsed_time " << proto_object_elapsed_time);
+  ROS_INFO_STREAM("\t\t pcl_cluster_elapsed_time " << pcl_cluster_elapsed_time <<
+                  "\t\t\t " << (100.*pcl_cluster_elapsed_time/cluster_objects_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t\t proto_object_elapsed_time " << proto_object_elapsed_time <<
+                  "\t\t\t " << (100.*proto_object_elapsed_time/cluster_objects_elapsed_time) << "\%");
 #endif
 
 }
@@ -477,18 +554,21 @@ double PointCloudSegmentation::ICPProtoObjects(ProtoObject& a, ProtoObject& b,
  * @return The ICP fitness score of the match
  */
 double PointCloudSegmentation::ICPBoundarySamples(XYZPointCloud& hull_t_0, XYZPointCloud& hull_t_1,
+                                                  Eigen::Matrix4f& init_transform,
                                                   Eigen::Matrix4f& transform, XYZPointCloud& aligned)
 {
+  // TODO: Profile this funciton!!!!!!!!!!!
+  // TODO: Profile diff from nonlinear to standard...
   // TODO: Investigate this!
-  pcl16::IterativeClosestPointNonLinear<PointXYZ, PointXYZ> icp;
-  // pcl16::IterativeClosestPoint<PointXYZ, PointXYZ> icp;
-  icp.setMaximumIterations(icp_max_iters_);
-  icp.setTransformationEpsilon(icp_transform_eps_);
-  icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
-  icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
+  // pcl16::IterativeClosestPointNonLinear<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  pcl16::IterativeClosestPoint<pcl16::PointXYZ, pcl16::PointXYZ> icp;
+  // icp.setMaximumIterations(icp_max_iters_);
+  // icp.setTransformationEpsilon(icp_transform_eps_);
+  // icp.setMaxCorrespondenceDistance(icp_max_cor_dist_);
+  // icp.setRANSACOutlierRejectionThreshold(icp_ransac_thresh_);
   icp.setInputCloud(boost::make_shared<XYZPointCloud>(hull_t_0));
   icp.setInputTarget(boost::make_shared<XYZPointCloud>(hull_t_1));
-  icp.align(aligned);
+  icp.align(aligned, init_transform);
   double score = icp.getFitnessScore();
   transform = icp.getFinalTransformation();
   return score;
@@ -797,30 +877,58 @@ void PointCloudSegmentation::lineCloudIntersectionEndPoints(XYZPointCloud& cloud
  */
 void PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in, XYZPointCloud& cloud_down)
 {
-  XYZPointCloud cloud_z_filtered, cloud_x_filtered;
+  downsampleCloud(cloud_in, cloud_down,
+                  min_workspace_x_, max_workspace_x_,
+                  min_workspace_y_, max_workspace_y_,
+                  min_workspace_z_, max_workspace_z_, false);
+}
+
+void PointCloudSegmentation::downsampleCloud(XYZPointCloud& cloud_in, XYZPointCloud& cloud_down,
+                                             double min_x, double max_x,
+                                             double min_y, double max_y,
+                                             double min_z, double max_z, bool filter_y)
+{
+  XYZPointCloud cloud_z_filtered, cloud_x_filtered, cloud_filtered;
   pcl16::PassThrough<PointXYZ> z_pass;
   z_pass.setFilterFieldName("z");
-  ROS_DEBUG_STREAM("Number of points in cloud_in is: " <<
-                   cloud_in.size());
+  // ROS_INFO_STREAM("Number of points in cloud_in is: " <<
+  //                  cloud_in.size());
   z_pass.setInputCloud(cloud_in.makeShared());
-  z_pass.setFilterLimits(min_workspace_z_, max_workspace_z_);
+  z_pass.setFilterLimits(min_z, max_z);
   z_pass.filter(cloud_z_filtered);
-  ROS_DEBUG_STREAM("Number of points in cloud_z_filtered is: " <<
-                   cloud_z_filtered.size());
+  // ROS_INFO_STREAM("Number of points in cloud_z_filtered is: " <<
+  //                  cloud_z_filtered.size());
 
   pcl16::PassThrough<PointXYZ> x_pass;
   x_pass.setInputCloud(cloud_z_filtered.makeShared());
   x_pass.setFilterFieldName("x");
-  x_pass.setFilterLimits(min_workspace_x_, max_workspace_x_);
-  x_pass.filter(cloud_x_filtered);
+  x_pass.setFilterLimits(min_x, max_x);
+  if (filter_y)
+  {
+    x_pass.filter(cloud_x_filtered);
+    // ROS_INFO_STREAM("Number of points in cloud_x_filtered is: " <<
+    //                 cloud_x_filtered.size());
+
+    pcl16::PassThrough<PointXYZ> y_pass;
+    y_pass.setInputCloud(cloud_z_filtered.makeShared());
+    y_pass.setFilterFieldName("y");
+    y_pass.setFilterLimits(min_y, max_y);
+    y_pass.filter(cloud_filtered);
+  }
+  else
+  {
+    x_pass.filter(cloud_filtered);
+  }
+  // ROS_INFO_STREAM("Number of points in cloud_filtered is: " <<
+  //                 cloud_filtered.size());
 
   pcl16::VoxelGrid<PointXYZ> downsample_outliers;
-  downsample_outliers.setInputCloud(cloud_x_filtered.makeShared());
+  downsample_outliers.setInputCloud(cloud_filtered.makeShared());
   downsample_outliers.setLeafSize(voxel_down_res_, voxel_down_res_,
                                   voxel_down_res_);
   downsample_outliers.filter(cloud_down);
-  ROS_DEBUG_STREAM("Number of points in objs_downsampled: " <<
-                   cloud_down.size());
+  // ROS_INFO_STREAM("Number of points in objs_downsampled: " <<
+  //                 cloud_down.size());
 }
 
 /**
@@ -934,6 +1042,8 @@ void PointCloudSegmentation::projectPointCloudIntoImage(XYZPointCloud& cloud,
 {
   for (unsigned int i = 0; i < cloud.size(); ++i)
   {
+    if (isnan(cloud.at(i).x) || isnan(cloud.at(i).y) || isnan(cloud.at(i).z))
+      continue;
     cv::Point img_idx = projectPointIntoImage(cloud.at(i),
                                               cloud.header.frame_id,
                                               cur_camera_header_.frame_id);

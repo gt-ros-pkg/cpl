@@ -12,9 +12,14 @@
 #include <cpl_visual_features/helpers.h>
 #include <iostream>
 
+#include <Eigen/Eigenvalues>
+
+#include <tabletop_pushing/extern/Timer.hpp>
+
 #define XY_RES 0.00075
 #define DRAW_LR_LIMITS 1
 // #define USE_RANGE_AND_VAR_FEATS 1
+// #define PROFILE_BOUNDARY_SAMPLE_TIME 1
 
 using namespace cpl_visual_features;
 using tabletop_pushing::ProtoObject;
@@ -80,12 +85,20 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
 {
   // Get 2D projection of object
   // TODO: Remove the z, then add it back after finding the hull... how do we do this?
+#ifdef PROFILE_BOUNDARY_SAMPLE_TIME
+  long long get_obj_boundary_start_time = Timer::nanoTime();
+#endif // PROFILE_BOUNDARY_SAMPLE_TIME
   XYZPointCloud footprint_cloud(cur_obj.cloud);
   for (int i = 0; i < footprint_cloud.size(); ++i)
   {
     // HACK: This is a complete hack, based on the current table height used in pushing.
     footprint_cloud.at(i).z = -0.3;
   }
+#ifdef PROFILE_BOUNDARY_SAMPLE_TIME
+  long long hull_extract_start_time = Timer::nanoTime();
+  double footprint_cloud_elapsed_time = (((double)(hull_extract_start_time - get_obj_boundary_start_time)) /
+                                         Timer::NANOSECONDS_PER_SECOND);
+#endif // PROFILE_BOUNDARY_SAMPLE_TIME
 
   // TODO: Examine sensitivity of hull_alpha...
   XYZPointCloud hull_cloud;
@@ -94,6 +107,18 @@ XYZPointCloud getObjectBoundarySamples(ProtoObject& cur_obj, double hull_alpha)
   hull.setInputCloud(footprint_cloud.makeShared());
   hull.setAlpha(hull_alpha);
   hull.reconstruct(hull_cloud);
+#ifdef PROFILE_BOUNDARY_SAMPLE_TIME
+  long long hull_extract_end_time = Timer::nanoTime();
+  double hull_extract_elapsed_time = (((double)(hull_extract_end_time - hull_extract_start_time)) /
+                                      Timer::NANOSECONDS_PER_SECOND);
+  double get_obj_boundary_elapsed_time = (((double)(hull_extract_end_time - get_obj_boundary_start_time)) /
+                                          Timer::NANOSECONDS_PER_SECOND);
+  ROS_INFO_STREAM("get_obj_boundary_elapsed_time " << get_obj_boundary_elapsed_time);
+  ROS_INFO_STREAM("\t footprint_cloud_elapsed_time " << footprint_cloud_elapsed_time <<
+                  "\t\t " << (100.*footprint_cloud_elapsed_time/get_obj_boundary_elapsed_time) << "\%");
+  ROS_INFO_STREAM("\t hull_extract_elapsed_time " << hull_extract_elapsed_time <<
+                  "\t\t " << (100.*hull_extract_elapsed_time/get_obj_boundary_elapsed_time) << "\%");
+#endif // PROFILE_BOUNDARY_SAMPLE_TIME
   return hull_cloud;
 }
 
@@ -155,32 +180,59 @@ void estimateTransformFromMatches(XYZPointCloud& cloud_t_0, XYZPointCloud& cloud
 
 cv::Mat visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state)
 {
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
+    double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
   cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+  visualizeObjectBoundarySamples(hull_cloud, cur_state, footprint);
+  return footprint;
+}
 
+void visualizeObjectBoundarySamples(XYZPointCloud& hull_cloud, PushTrackerState& cur_state, cv::Mat& footprint)
+{
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+
+  cv::Scalar kuler_green(51, 178, 0);
+  cv::Scalar kuler_red(18, 18, 178);
+  cv::Scalar kuler_yellow(25, 252, 255);
+  cv::Scalar kuler_blue(204, 133, 20);
+
+  cv::Point prev_img_pt, init_img_pt;
   for (int i = 0; i < hull_cloud.size(); ++i)
   {
     pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
-    int img_x = objLocToIdx(obj_pt.x, min_x, max_x);
-    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
-    cv::Scalar color(128, 0, 0);
-    cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+    cv::Point img_pt(cols - objLocToIdx(obj_pt.x, min_x, max_x), objLocToIdx(obj_pt.y, min_y, max_y));
+    cv::circle(footprint, img_pt, 1, kuler_blue, 3);
+    if (i > 0)
+    {
+      cv::line(footprint, img_pt, prev_img_pt, kuler_blue, 1);
+    }
+    else
+    {
+      init_img_pt.x = img_pt.x;
+      init_img_pt.y = img_pt.y;
+    }
+    prev_img_pt.x = img_pt.x;
+    prev_img_pt.y = img_pt.y;
   }
-  return footprint;
+  cv::line(footprint, prev_img_pt, init_img_pt, kuler_blue,1);
 }
 
 cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hull_b,
                                        PushTrackerState& cur_state, cpl_visual_features::Path& path)
 {
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
   double max_displacement = 100;
   int rows = ceil((max_y-min_y)/XY_RES);
   int cols = ceil((max_x-min_x)/XY_RES);
@@ -197,9 +249,9 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
     // Transform to display frame
     pcl16::PointXYZ start_point_obj = worldPointInObjectFrame(start_point_world, cur_state);
     pcl16::PointXYZ end_point_obj = worldPointInObjectFrame(end_point_world, cur_state);
-    cv::Point start_point(objLocToIdx(start_point_obj.x, min_x, max_x),
+    cv::Point start_point(cols - objLocToIdx(start_point_obj.x, min_x, max_x),
                           objLocToIdx(start_point_obj.y, min_y, max_y));
-    cv::Point end_point(objLocToIdx(end_point_obj.x, min_x, max_x),
+    cv::Point end_point(cols - objLocToIdx(end_point_obj.x, min_x, max_x),
                         objLocToIdx(end_point_obj.y, min_y, max_y));
 
     // Draw green point for previous, blue point for current
@@ -211,7 +263,7 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
         std::abs(start_point.x - end_point.x) +
         std::abs(start_point.y - end_point.y) < max_displacement)
     {
-      cv::line(match_img, start_point, end_point, red);
+      cv::line(match_img, start_point, end_point, red, 3);
     }
 
   }
@@ -219,30 +271,31 @@ cv::Mat visualizeObjectBoundaryMatches(XYZPointCloud& hull_a, XYZPointCloud& hul
 }
 
 cv::Mat visualizeObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerState& cur_state,
-                                       pcl16::PointXYZ& contact_pt, pcl16::PointXYZ& forward_pt)
+                                       pcl16::PointXYZ& tool_pt0, pcl16::PointXYZ& tool_pt1)
 {
-  double max_y = 0.3;
-  double min_y = -0.3;
-  double max_x = 0.3;
-  double min_x = -0.3;
-
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
   cv::Mat footprint = visualizeObjectBoundarySamples(hull_cloud, cur_state);
-  pcl16::PointXYZ contact_pt_obj =  worldPointInObjectFrame(contact_pt, cur_state);
-  int img_x = objLocToIdx(contact_pt_obj.x, min_x, max_x);
-  int img_y = objLocToIdx(contact_pt_obj.y, min_y, max_y);
-  pcl16::PointXYZ forward_pt_obj =  worldPointInObjectFrame(forward_pt, cur_state);
-  int img_x_1 = objLocToIdx(forward_pt_obj.x, min_x, max_x);
-  int img_y_1 = objLocToIdx(forward_pt_obj.y, min_y, max_y);
+
+  pcl16::PointXYZ contact_pt_world = estimateObjectContactLocation(hull_cloud, cur_state,
+                                                                   tool_pt0, tool_pt1);
+  pcl16::PointXYZ contact_pt_obj =  worldPointInObjectFrame(contact_pt_world, cur_state);
+  int img_contact_pt_x = footprint.cols - objLocToIdx(contact_pt_obj.x, min_x, max_x);
+  int img_contact_pt_y = objLocToIdx(contact_pt_obj.y, min_y, max_y);
+
+  pcl16::PointXYZ tool_pt_obj0 =  worldPointInObjectFrame(tool_pt0, cur_state);
+  int img_x0 = footprint.cols - objLocToIdx(tool_pt_obj0.x, min_x, max_x);
+  int img_y0 = objLocToIdx(tool_pt_obj0.y, min_y, max_y);
+  pcl16::PointXYZ tool_pt_obj1 =  worldPointInObjectFrame(tool_pt1, cur_state);
+  int img_x1 = footprint.cols - objLocToIdx(tool_pt_obj1.x, min_x, max_x);
+  int img_y1 = objLocToIdx(tool_pt_obj1.y, min_y, max_y);
   cv::Scalar color(0, 0, 128);
-  cv::line(footprint, cv::Point(img_x, img_y), cv::Point(img_x_1, img_y_1), color, 1);
-  cv::circle(footprint, cv::Point(img_x, img_y), 3, color, 3);
-  cv::circle(footprint, cv::Point(img_x_1, img_y_1), 3, color, 3);
-  // ROS_WARN_STREAM("World point: (" << contact_pt.x << ", " << contact_pt.y << ")");
-  // ROS_WARN_STREAM("Obj point: (" << contact_pt_obj.x << ", " << contact_pt_obj.y << ")");
-  // ROS_WARN_STREAM("Img point: (" << img_x << ", " << img_y << ")");
-  // ROS_WARN_STREAM("World point: (" << forward_pt.x << ", " << forward_pt.y << ")");
-  // ROS_WARN_STREAM("Obj point: (" << forward_pt_obj.x << ", " << forward_pt_obj.y << ")");
-  // ROS_WARN_STREAM("Img point: (" << img_x_1 << ", " << img_y_1 << ")");
+  cv::line(footprint, cv::Point(img_x0, img_y0), cv::Point(img_x1, img_y1), color, 1);
+  cv::circle(footprint, cv::Point(img_x0, img_y0), 3, color, 3);
+  cv::circle(footprint, cv::Point(img_x1, img_y1), 3, color, 3);
+  cv::circle(footprint, cv::Point(img_contact_pt_x, img_contact_pt_y), 3, cv::Scalar(0, 128, 128), 3);
   return footprint;
 }
 
@@ -1084,13 +1137,13 @@ ShapeDescriptor extractGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur
 
 ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                     double sample_spread, double hull_alpha,
-                                                    double hist_res)
+                                                    double hist_res, bool binarzie_and_normalize)
 {
   ShapeDescriptors descs;
   for (unsigned int i = 0; i < hull.size(); ++i)
   {
     ShapeDescriptor d = extractLocalAndGlobalShapeFeatures(hull, cur_obj, hull[i], i, sample_spread, hull_alpha,
-                                                           hist_res);
+                                                           hist_res, binarzie_and_normalize);
     descs.push_back(d);
   }
   return descs;
@@ -1098,10 +1151,19 @@ ShapeDescriptors extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoOb
 
 ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
                                                    pcl16::PointXYZ sample_pt, int sample_pt_idx,
-                                                   double sample_spread, double hull_alpha, double hist_res)
+                                                   double sample_spread, double hull_alpha, double hist_res,
+                                                   bool binarize_and_normalize)
 {
   // ROS_INFO_STREAM("Local");
   ShapeDescriptor local_raw = extractLocalShapeFeatures(hull, cur_obj, sample_pt, sample_spread, hull_alpha, hist_res);
+  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+  if (! binarize_and_normalize)
+  {
+    // TODO: Downsample local_raw first? (Probably yes...)
+    local_raw.insert(local_raw.end(), global.begin(), global.end());
+    return local_raw;
+  }
+
   // Binarize local histogram
   for (unsigned int i = 0; i < local_raw.size(); ++i)
   {
@@ -1188,7 +1250,7 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   // ROS_INFO_STREAM("Local raw size: " << local_raw.size());
 
   // ROS_INFO_STREAM("Global");
-  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+
   // Binarize global histogram then L1 normalize
   double global_sum = 0.0;
   for (unsigned int i = 0; i < global.size(); ++i)
@@ -1216,6 +1278,40 @@ ShapeDescriptor extractLocalAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObj
   return local;
 }
 
+ShapeDescriptor extractHKSAndGlobalShapeFeatures(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                                 pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                                 double sample_spread, double hull_alpha, double hist_res)
+{
+  ShapeDescriptor local = extractHKSDescriptor(hull, cur_obj, sample_pt, sample_pt_idx,
+                                               sample_spread, hull_alpha, hist_res);
+
+  // ROS_INFO_STREAM("Global");
+  ShapeDescriptor global = extractGlobalShapeFeatures(hull, cur_obj, sample_pt, sample_pt_idx, sample_spread);
+  // Binarize global histogram then L1 normalize
+  double global_sum = 0.0;
+  for (unsigned int i = 0; i < global.size(); ++i)
+  {
+    if (global[i] > 0)
+    {
+      global[i] = 1.0;
+      global_sum += 1.0;
+    }
+    else
+    {
+      global[i] = 0.0;
+    }
+  }
+  // L1 normalize global histogram
+  for (unsigned int i = 0; i < global.size(); ++i)
+  {
+    global[i] /= global_sum;
+  }
+  // ROS_INFO_STREAM("local.size() << " << local.size());
+  // ROS_INFO_STREAM("global.size() << " << global.size());
+  local.insert(local.end(), global.begin(), global.end());
+  // ROS_INFO_STREAM("combined.size() << " << local.size());
+  return local;
+}
 
 /**
  * Create an affinity matrix for a set of ShapeLocations
@@ -1325,29 +1421,46 @@ double shapeFeatureSquaredEuclideanDist(ShapeDescriptor& a, ShapeDescriptor& b)
 }
 
 void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<int>& cluster_ids, ShapeDescriptors& centers,
-                          double min_err_change, int max_iter, int num_retries)
+                          double min_err_change, int max_iter, int num_retries, bool normalize)
 {
-  cv::Mat samples(locs.size(), locs[0].descriptor_.size(), CV_64FC1);
+  ShapeDescriptors sds;
+  for (unsigned int i = 0; i < locs.size(); ++i)
+  {
+    sds.push_back(locs[i].descriptor_);
+  }
+  clusterShapeFeatures(sds, num_clusters, cluster_ids, centers, min_err_change, max_iter, num_retries, normalize);
+}
+
+void clusterShapeFeatures(ShapeDescriptors& sds, int num_clusters, std::vector<int>& cluster_ids,
+                          ShapeDescriptors& centers,
+                          double min_err_change, int max_iter, int num_retries, bool normalize)
+
+{
+  cv::Mat samples(sds.size(), sds[0].size(), CV_32FC1);
   for (int r = 0; r < samples.rows; ++r)
   {
     // NOTE: Normalize features here
     double feature_sum = 0;
     for (int c = 0; c < samples.cols; ++c)
     {
-      samples.at<double>(r,c) = locs[r].descriptor_[c];
-      feature_sum += samples.at<double>(r,c);
+      samples.at<float>(r,c) = sds[r][c];
+      feature_sum += samples.at<float>(r,c);
     }
-    if (feature_sum == 0)
+    if (normalize)
     {
-      continue;
-    }
-    for (int c = 0; c < samples.cols; ++c)
-    {
-      samples.at<double>(r,c) /= feature_sum;
-      // NOTE: Use Hellinger distance for comparison
-      samples.at<double>(r,c) = sqrt(samples.at<double>(r,c));
+      if (feature_sum == 0)
+      {
+        continue;
+      }
+      for (int c = 0; c < samples.cols; ++c)
+      {
+        samples.at<float>(r,c) /= feature_sum;
+        // NOTE: Use Hellinger distance for comparison
+        samples.at<float>(r,c) = sqrt(samples.at<float>(r,c));
+      }
     }
   }
+  ROS_INFO_STREAM("samples has size: (" << samples.rows << ", " << samples.cols << ")");
   cv::TermCriteria term_crit(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, max_iter, min_err_change);
   // cv::Mat labels;
   cv::Mat centers_cv;
@@ -1358,7 +1471,7 @@ void clusterShapeFeatures(ShapeLocations& locs, int num_clusters, std::vector<in
     ShapeDescriptor s(centers_cv.cols, 0);
     for (int c = 0; c < centers_cv.cols; ++c)
     {
-      s[c] = centers_cv.at<double>(r,c);
+      s[c] = centers_cv.at<float>(r,c);
     }
     centers.push_back(s);
   }
@@ -1376,16 +1489,7 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
 {
   int min_idx = -1;
   min_dist = FLT_MAX;
-  ShapeDescriptor normalized(descriptor);
-  double feature_sum = 0;
-  for (int i = 0; i < normalized.size(); ++i)
-  {
-    feature_sum += normalized[i];
-  }
-  for (int i = 0; i < normalized.size(); ++i)
-  {
-    normalized[i] = sqrt(normalized[i]/feature_sum);
-  }
+  ShapeDescriptor normalized = hellingerNormalizeShapeDescriptor(descriptor);
   for (int c = 0; c < centers.size(); ++c)
   {
     double c_dist = (shapeFeatureSquaredEuclideanDist(normalized, centers[c]));
@@ -1396,6 +1500,21 @@ int closestShapeFeatureCluster(ShapeDescriptor& descriptor, ShapeDescriptors& ce
     }
   }
   return min_idx;
+}
+
+ShapeDescriptor hellingerNormalizeShapeDescriptor(ShapeDescriptor& sd_in)
+{
+  ShapeDescriptor normalized(sd_in);
+  double feature_sum = 0;
+  for (int i = 0; i < normalized.size(); ++i)
+  {
+    feature_sum += normalized[i];
+  }
+  for (int i = 0; i < normalized.size(); ++i)
+  {
+    normalized[i] = sqrt(normalized[i]/feature_sum);
+  }
+  return normalized;
 }
 
 ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_length)
@@ -1438,6 +1557,12 @@ ShapeDescriptors loadSVRTrainingFeatures(std::string feature_path, int feat_leng
   return train_feats;
 }
 
+double compareShapeDescriptors(ShapeDescriptor& a, ShapeDescriptor& b)
+{
+  // TODO: Do we want to use chi-squared instead?
+  return shapeFeatureSquaredEuclideanDist(a, b);
+}
+
 cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int local_length, int global_length,
                           double gamma_local, double gamma_global, double mixture_weight)
 {
@@ -1460,6 +1585,461 @@ cv::Mat computeChi2Kernel(ShapeDescriptors& sds, std::string feat_path, int loca
   // Linear combination of local and global kernels
   cv::Mat K = mixture_weight * K_global + (1 - mixture_weight) * K_local;
   return K;
+}
+
+pcl16::PointXYZ estimateObjectContactLocation(XYZPointCloud& hull_cloud, PushTrackerState& cur_state,
+                                              pcl16::PointXYZ& tool_pt0, pcl16::PointXYZ& tool_pt1)
+{
+  double min_dist = FLT_MAX;
+  int min_idx = -1;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    double dist_i = dist(hull_cloud.at(i), tool_pt1);
+    if (dist_i < min_dist)
+    {
+      min_dist = dist_i;
+      min_idx = i;
+    }
+  }
+  return hull_cloud.at(min_idx);
+}
+
+
+XYZPointCloud laplacianSmoothBoundary(XYZPointCloud& hull_cloud, int m)
+{
+  const int n = hull_cloud.size();
+
+  // Construct the smoothing matrix
+  Eigen::MatrixXd L(n,n);
+  computeTutteLaplacian(hull_cloud, L);
+  Eigen::MatrixXd S = Eigen::MatrixXd::Identity(n,n) - 0.5*L;
+
+  Eigen::MatrixXd X(n, 3);
+  for (int i = 0; i < n; ++i)
+  {
+    X(i,0) = hull_cloud.at(i).x;
+    X(i,1) = hull_cloud.at(i).y;
+    X(i,2) = hull_cloud.at(i).z;
+  }
+
+  // Raise matrix to the m power
+  Eigen::MatrixXd Sm(S);
+  for (int i = 1; i < m; ++i)
+  {
+    Sm *= S;
+  }
+  Eigen::MatrixXd X_hat = Sm*X;
+
+  XYZPointCloud smoothed_cloud;
+  smoothed_cloud.header = hull_cloud.header;
+  smoothed_cloud.width = hull_cloud.size();
+  smoothed_cloud.height = 1;
+  smoothed_cloud.is_dense = false;
+  smoothed_cloud.resize(smoothed_cloud.width);
+  for (int i = 0; i < n; ++i)
+  {
+    smoothed_cloud.at(i) = pcl16::PointXYZ(X_hat(i,0), X_hat(i,1), X_hat(i,2));
+  }
+  return smoothed_cloud;
+}
+
+XYZPointCloud laplacianBoundaryCompression(XYZPointCloud& hull_cloud, int k)
+{
+  const int n = hull_cloud.size();
+  Eigen::MatrixXd X(n, 3);
+  for (int i = 0; i < n; ++i)
+  {
+    X(i,0) = hull_cloud.at(i).x;
+    X(i,1) = hull_cloud.at(i).y;
+    X(i,2) = hull_cloud.at(i).z;
+  }
+
+  Eigen::MatrixXd L(n,n);
+  computeInverseDistLaplacian(hull_cloud, L);
+
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(L);
+  Eigen::VectorXd Lambda = es.eigenvalues();
+  Eigen::MatrixXd E = es.eigenvectors();
+
+  Eigen::MatrixXd X_tilde = E.transpose()*X;
+  if (k > n) k = n;
+  for (int i = n-1; i >= k; --i)
+  {
+    X_tilde(i,0) = 0.0;
+    X_tilde(i,1) = 0.0;
+    X_tilde(i,2) = 0.0;
+  }
+
+  Eigen::MatrixXd X_hat = E*X_tilde;
+
+  XYZPointCloud compressed_cloud;
+  compressed_cloud.header = hull_cloud.header;
+  compressed_cloud.width = hull_cloud.size();
+  compressed_cloud.height = 1;
+  compressed_cloud.is_dense = false;
+  compressed_cloud.resize(compressed_cloud.width);
+  for (int i = 0; i < n; ++i)
+  {
+    compressed_cloud.at(i) = pcl16::PointXYZ(X_hat(i,0), X_hat(i,1), X_hat(i,2));
+  }
+  return compressed_cloud;
+}
+
+std::vector<XYZPointCloud> laplacianBoundaryCompressionAllKs(XYZPointCloud& hull_cloud)
+{
+  const int n = hull_cloud.size();
+  Eigen::MatrixXd X(n, 3);
+  for (int i = 0; i < n; ++i)
+  {
+    X(i,0) = hull_cloud.at(i).x;
+    X(i,1) = hull_cloud.at(i).y;
+    X(i,2) = hull_cloud.at(i).z;
+  }
+
+  Eigen::MatrixXd L(n,n);
+  computeInverseDistLaplacian(hull_cloud, L);
+
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(L);
+  Eigen::VectorXd Lambda = es.eigenvalues();
+  Eigen::MatrixXd E = es.eigenvectors();
+
+  Eigen::MatrixXd X_tilde = E.transpose()*X;
+  std::vector<XYZPointCloud> clouds;
+  for (int i = n-1; i > 0; --i)
+  {
+    X_tilde(i,0) = 0.0;
+    X_tilde(i,1) = 0.0;
+    X_tilde(i,2) = 0.0;
+
+    Eigen::MatrixXd X_hat = E*X_tilde;
+
+    XYZPointCloud compressed_cloud;
+    compressed_cloud.header = hull_cloud.header;
+    compressed_cloud.width = hull_cloud.size();
+    compressed_cloud.height = 1;
+    compressed_cloud.is_dense = false;
+    compressed_cloud.resize(compressed_cloud.width);
+    for (int j = 0; j < n; ++j)
+    {
+      compressed_cloud.at(j) = pcl16::PointXYZ(X_hat(j,0), X_hat(j,1), X_hat(j,2));
+    }
+    clouds.push_back(compressed_cloud);
+  }
+  return clouds;
+}
+
+ShapeDescriptor extractHKSDescriptor(XYZPointCloud& hull, ProtoObject& cur_obj,
+                                     pcl16::PointXYZ sample_pt, int sample_pt_idx,
+                                     double sample_spread, double hull_alpha, double hist_res)
+{
+  cv::Mat K_xx = extractHeatKernelSignatures(hull);
+  ShapeDescriptor desc;
+  for (int c = 0; c < K_xx.cols; ++c)
+  {
+    desc.push_back(K_xx.at<double>(sample_pt_idx,c));
+  }
+  return desc;
+}
+
+cv::Mat extractHeatKernelSignatures(XYZPointCloud& hull_cloud, int connectivity)
+{
+  const int n = hull_cloud.size();
+  Eigen::MatrixXd L(n,n);
+  // computeInverseDistLaplacian(hull_cloud, L);
+  computeInverseKDistLaplacian(hull_cloud, L, connectivity);
+  // Perform the generalized eigenvalue decomposition with matrix A
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> ges(L);
+  Eigen::VectorXd Lambda = ges.eigenvalues();
+  Eigen::MatrixXd Phi = ges.eigenvectors();
+  // Normalize the eigenvectors
+  for (int i = 0; i < n; ++i)
+  {
+    if (Phi.col(i).sum() != 0.0)
+    {
+      Phi.col(i) = Phi.col(i)/Phi.col(i).sum();
+    }
+  }
+
+  // ROS_INFO_STREAM("Eigenvalues: " << Lambda);
+  // ROS_INFO_STREAM("Phi[0] = " << Phi.col(0));
+  // ROS_INFO_STREAM("Phi[n-1] = " << Phi.col(n-1));
+  const int num_ts = 100;
+  const double min_t = abs(4.0*log(10.0) / Lambda(n-1));
+  const double max_t = abs(4.0*log(10.0) / Lambda(1));
+  const double t_step = (log(max_t)-log(min_t))/num_ts;
+  // ROS_INFO_STREAM("Min_t: "  << min_t);
+  // ROS_INFO_STREAM("Max_t: "  << max_t);
+
+  Eigen::VectorXd T(num_ts);
+  Eigen::MatrixXd hs(n, num_ts);
+  // NOTE: Ignore eigenvector 0
+  // const int start_eig = 0;
+  const int start_eig = 1;
+  for (int j = 0; j < num_ts; ++j)
+  {
+    T(j) = exp(t_step*(j+1.0));
+    for (int i = start_eig; i < n; ++i)
+    {
+      const float h = std::exp(-Lambda(i)*T(j));
+      // ROS_INFO_STREAM("h[" << i << ", " << j << "] = " << h);
+      hs(i, j) = h;
+    }
+    // ROS_INFO_STREAM("Heat trace[" << j << "] = " << heat_trace);
+  }
+
+  // Compute the heat kernel signature at each point for the specified time scalse
+  cv::Mat K_xx(n, num_ts, CV_64FC1, cv::Scalar(0.0));
+  for (int x = 0; x < n; ++x)
+  {
+    for (int j = 0; j < T.size(); ++j)
+    {
+      for (int i = start_eig; i < n; ++i)
+      {
+        K_xx.at<double>(x,j) += hs(i,j)*Phi(x,i)*Phi(x,i);
+      }
+    }
+  }
+  return K_xx;
+}
+
+double compareHeatKernelSignatures(cv::Mat a, cv::Mat b)
+{
+  double sum = 0.0;
+  for (int i = 0; i < a.cols; ++i)
+  {
+    double diff_i = a.at<double>(0,i) - b.at<double>(0,i);
+    sum += diff_i*diff_i;
+  }
+  // ROS_INFO_STREAM("dist^2 = " << sum);
+  return std::sqrt(sum);
+}
+
+double compareHeatKernelSignatures(cv::Mat& K_xx, int a, int b)
+{
+  double sum = 0.0;
+  for (int i = 0; i < K_xx.cols; ++i)
+  {
+    double diff_i = K_xx.at<double>(a,i) - K_xx.at<double>(b,i);
+    sum += diff_i*diff_i;
+  }
+  return std::sqrt(sum);
+}
+
+cv::Scalar getColorFromDist(const double dist, const double max_dist,const double min_dist)
+{
+  const double dist_norm = (dist-min_dist)/(max_dist-min_dist);
+  cv::Scalar color(0, (1.0-dist_norm)*255, dist_norm*255);
+  return color;
+}
+
+cv::Mat visualizeHKSDists(XYZPointCloud& hull_cloud, cv::Mat K_xx, PushTrackerState& cur_state, int target_idx)
+{
+  // ROS_INFO_STREAM("Comparing all points to point: " << target_idx);
+  std::vector<double> K_dists;
+  for (int x = 0; x < hull_cloud.size(); ++x)
+  {
+    K_dists.push_back(compareHeatKernelSignatures(K_xx.row(target_idx), K_xx.row(x)));
+    // ROS_INFO_STREAM("dist = " << K_dists[x]);
+  }
+
+  double min_dist = 0;
+  double max_dist = 0;
+  cv::minMaxLoc(K_dists, &min_dist, &max_dist);
+  // ROS_INFO_STREAM("Min dist: " << min_dist);
+  // ROS_INFO_STREAM("Max dist: " << max_dist);
+
+  // Project hull into image with colors projected based on distance
+  double max_y = 0.2;
+  double min_y = -0.2;
+  double max_x = 0.2;
+  double min_x = -0.2;
+  int rows = ceil((max_y-min_y)/XY_RES);
+  int cols = ceil((max_x-min_x)/XY_RES);
+  cv::Mat footprint(rows, cols, CV_8UC3, cv::Scalar(255,255,255));
+
+  int prev_img_x;
+  int prev_img_y;
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    pcl16::PointXYZ obj_pt =  worldPointInObjectFrame(hull_cloud[i], cur_state);
+    int img_x = cols - objLocToIdx(obj_pt.x, min_x, max_x);
+    int img_y = objLocToIdx(obj_pt.y, min_y, max_y);
+    if (i == target_idx) // Circle target index location
+    {
+      cv::circle(footprint, cv::Point(img_x, img_y), 3, cv::Scalar(0,0,0), 3);
+      // ROS_INFO_STREAM("Dist from target to target is: " << K_dists[i]);
+    }
+    cv::Scalar color = getColorFromDist(K_dists[i], max_dist, min_dist);
+
+    cv::circle(footprint, cv::Point(img_x, img_y), 1, color, 3);
+    if (i > 0)
+    {
+      cv::line(footprint, cv::Point(img_x, img_y), cv::Point(prev_img_x, prev_img_y), color, 1);
+    }
+    prev_img_x = img_x;
+    prev_img_y = img_y;
+  }
+  return footprint;
+}
+
+cv::Mat visualizeHKSDistMatrix(XYZPointCloud& hull_cloud, cv::Mat K_xx)
+{
+  cv::Mat dist_matrix(hull_cloud.size(), hull_cloud.size(), CV_64FC1);
+  for (int i = 0; i < hull_cloud.size(); ++i)
+  {
+    for (int j = i; j < hull_cloud.size(); ++j)
+    {
+      dist_matrix.at<double>(i,j) = compareHeatKernelSignatures(K_xx.row(i), K_xx.row(j));
+      dist_matrix.at<double>(j,i) = dist_matrix.at<double>(i,j);
+    }
+  }
+  return dist_matrix;
+}
+
+void computeDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
+  }
+}
+
+void computeNormalizedDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r/dist_sum;
+    L(i, i) = 1.0;
+    L(i, i_plus_1) = -dist_f/dist_sum;
+  }
+}
+
+void computeInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r;
+    L(i, i) = dist_sum;
+    L(i, i_plus_1) = -dist_f;
+  }
+}
+
+void computeNormalizedInverseDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_1));
+    const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_1));
+    const float dist_sum = dist_r + dist_f;
+    L(i, i_minus_1) = -dist_r/dist_sum;
+    L(i, i) = 1.0;
+    L(i, i_plus_1) = -dist_f/dist_sum;
+  }
+}
+
+void computeTutteLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L)
+{
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    // Circular indexes
+    const int i_minus_1 = (n+i-1)%n;
+    const int i_plus_1 = (i+1)%n;
+    L(i, i_minus_1) = -0.5;
+    L(i, i) = 1;
+    L(i, i_plus_1) = -0.5;
+  }
+}
+
+void computeInverseKDistLaplacian(XYZPointCloud& hull_cloud, Eigen::MatrixXd& L, int K)
+{
+  // ROS_INFO_STREAM("Connected to " << K << " neighbors");
+  const int n = hull_cloud.size();
+  for (int r = 0; r < n; ++r)
+  {
+    for (int c = 0; c < n; ++c)
+    {
+      L(r,c) = 0.0;
+    }
+  }
+  for (int i = 0; i < n; ++i)
+  {
+    float dist_sum = 0.0;
+    // Circular indexes
+    for (int k = 1; k <= K; ++k)
+    {
+      const int i_minus_k = (n+i-k)%n;
+      const int i_plus_k = (i+k)%n;
+      const float dist_r = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_minus_k));
+      const float dist_f = 1.0/dist(hull_cloud.at(i), hull_cloud.at(i_plus_k));
+      dist_sum += dist_r + dist_f;
+      L(i, i_minus_k) = -dist_r;
+      L(i, i_plus_k) = -dist_f;
+    }
+    L(i, i) = dist_sum;
+  }
 }
 
 };
